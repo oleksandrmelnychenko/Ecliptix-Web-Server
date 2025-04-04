@@ -1,10 +1,8 @@
 using System.IO.Compression;
 using Ecliptix.Core.Interceptors;
 using Ecliptix.Core.Services;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using OpenTelemetry.Metrics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,10 +26,39 @@ builder.Services.AddLogging(loggingBuilder =>
     loggingBuilder.AddEventSourceLogger();
 });
 
+// Add OpenTelemetry with console exporter for testing
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics =>
+    {
+        metrics.AddAspNetCoreInstrumentation();
+        metrics.AddConsoleExporter(); // For debugging; replace with OTLP in production
+    });
+
+// Configure Kestrel for HTTP/3
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(5001, listenOptions =>
+    {
+        listenOptions.Protocols = HttpProtocols.Http3 | HttpProtocols.Http2; // Support HTTP/3 and HTTP/2
+        // Note: Requires TLS certificate in production
+    });
+});
+
 var app = builder.Build();
 
 // Configure request pipeline
-ConfigureRequestPipeline(app);
+app.UseRateLimiter(); // Early to limit all requests
+app.UseHttpsRedirection();
+app.UseRequestLocalization();
+app.UseDefaultFiles();
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseResponseCompression();
+
+// Top-level route registrations
+app.MapGrpcService<AppDeviceServices>();
+app.MapGet("/", () => Results.Ok("Service up and running"));
+app.MapHealthChecks("/health"); // Optional: Expose health endpoint
 
 app.Run();
 
@@ -41,10 +68,10 @@ static void RegisterLocalization(IServiceCollection services)
     services.AddLocalization();
     services.Configure<RequestLocalizationOptions>(options =>
     {
-        // Uncomment and define these if needed
+        options.FallBackToParentUICultures = true;
+        // Uncomment if needed:
         // options.SetDefaultCulture(LocalizationConfigurations.DefaultCulture);
         // options.AddSupportedUICultures(LocalizationConfigurations.SupportedCultures);
-        options.FallBackToParentUICultures = true;
     });
 }
 
@@ -61,28 +88,5 @@ static void RegisterGrpc(IServiceCollection services)
         c.ResponseCompressionLevel = CompressionLevel.Fastest;
         c.Interceptors.Add<RequestMetaDataInterceptor>();
         c.Interceptors.Add<ThreadCultureInterceptor>();
-    });
-}
-
-// Pipeline configuration methods
-static void ConfigureRequestPipeline(WebApplication app)
-{
-    app.UseRouting();
-    app.UseHttpsRedirection();
-    app.UseRequestLocalization();
-    app.UseDefaultFiles();
-    app.UseAuthentication();
-    app.UseAuthorization();
-    app.UseResponseCompression();
-
-    ConfigureEndpoints(app);
-}
-
-static void ConfigureEndpoints(WebApplication app)
-{
-    app.UseEndpoints(endpoints =>
-    {
-        endpoints.MapGrpcService<AppDeviceServices>();
-        endpoints.MapGet("/", () => Results.Ok("Service up and running"));
     });
 }
