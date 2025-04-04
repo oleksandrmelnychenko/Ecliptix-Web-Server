@@ -2,7 +2,7 @@ syntax = "proto3";
 import "CipherPayload.proto";
 
 package ecliptix.proto.verification;
-option csharp_namespace = "Grpc.Services";
+option csharp_namespace = "Ecliptix.Protobuf.VerificationServices";
 
 service VerificationServiceActions {
   rpc SendVerificationCode(CipherPayload) returns (stream CipherPayload);

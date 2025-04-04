@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package ecliptix.proto.app_device;
-option csharp_namespace = "Grpc.Services";
+option csharp_namespace = "Ecliptix.Protobuf.AppDevice";
 
 message AppDevice {
   bytes app_instance_id = 1;

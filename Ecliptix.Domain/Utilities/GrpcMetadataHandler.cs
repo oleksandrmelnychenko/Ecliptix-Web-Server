@@ -1,3 +1,4 @@
+using Ecliptix.Protobuf.CipherPayload;
 using Grpc.Core;
 using Microsoft.Extensions.Configuration;
 
@@ -37,7 +38,7 @@ public static class GrpcMetadataHandler {
 
         string? apiKey = requestHeaders.GetValueOrDefault(ApiKey);
         apiKey.ThrowIfNull(ConnectionIdHeaderErrorMessage);
-
+        
         string? keyExchangeContextTypeValue = requestHeaders.GetValueOrDefault(KeyExchangeContextTypeKey);
         keyExchangeContextTypeValue.ThrowIfNull(ConnectionIdHeaderErrorMessage);
         if (!AllowedKeyExchangeContextTypes.Any(c => c.Equals(keyExchangeContextTypeValue))) {

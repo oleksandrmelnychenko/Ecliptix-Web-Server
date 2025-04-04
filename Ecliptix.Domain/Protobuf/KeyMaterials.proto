@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package ecliptix.proto.key_materials;
-option csharp_namespace = "Grpc.Services";
+option csharp_namespace = "Ecliptix.Protobuf.KeyMaterials";
 
 import "google/protobuf/timestamp.proto";
 

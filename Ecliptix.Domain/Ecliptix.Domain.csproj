@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="BouncyCastle.NetCore" Version="2.2.1"/>
+        <PackageReference Include="Grpc.AspNetCore.Server" Version="2.70.0"/>
+        <PackageReference Include="protobuf-net" Version="3.2.46"/>
+        <PackageReference Include="protobuf-net.Grpc" Version="1.2.2"/>
+        <PackageReference Include="Protobuf.Grpc" Version="1.0.170"/>
+        <PackageReference Include="Google.Protobuf" Version="3.23.4"/>
+        <PackageReference Include="Grpc.Tools" Version="2.56.2">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="Pixelbin" Version="1.0.1"/>
+        <PackageReference Include="protobuf-net.Grpc.AspNetCore" Version="1.1.1"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Protobuf Include="Protobuf\AppDevice.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
+        <Protobuf Include="Protobuf\AppDeviceServiceActions.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
+        <Protobuf Include="Protobuf\CipherPayload.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
+        <Protobuf Include="Protobuf\PubKeyExchange.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
+
+        <Protobuf Include="Protobuf\HealthCheck.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
+        <Protobuf Include="Protobuf\KeyMaterials.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
+        <Protobuf Include="Protobuf\Verification.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
+        <Protobuf Include="Protobuf\VerificationServiceActions.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
+        
+    </ItemGroup>
+
+</Project>

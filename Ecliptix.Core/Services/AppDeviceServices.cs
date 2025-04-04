@@ -1,6 +1,9 @@
 namespace Ecliptix.Core.Services;
 
-public class AppDeviceServices
+public class AppDeviceServices 
 {
-    
+    public AppDeviceServices()
+    {
+        
+    }
 }

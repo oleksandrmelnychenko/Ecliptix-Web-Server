@@ -3,7 +3,7 @@ import "PubKeyExchange.proto";
 import "CipherPayload.proto";
 
 package ecliptix.proto.app_device;
-option csharp_namespace = "Grpc.Services";
+option csharp_namespace = "Ecliptix.Protobuf.AppDeviceServices";
 
 service AppDeviceServiceActions {
   rpc EstablishAppDeviceEphemeralConnect(PubKeyExchange) returns (PubKeyExchange);

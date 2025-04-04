@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package ecliptix.proto.verification;
-option csharp_namespace = "Grpc.Services";
+option csharp_namespace = "Ecliptix.Protobuf.Verification";
 
 enum VerificationStatus {
   SUCCESS = 0;
