@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package ecliptix.proto.verification;
+option csharp_namespace = "Grpc.Services";
+
+enum VerificationStatus {
+  SUCCESS = 0;
+  INVALID_MOBILE = 1;
+  INTERNAL_ERROR = 2;
+  INVALID_VERIFICATION_CODE = 3;
+  VERIFICATION_CODE_EXPIRED = 4;
+  INVALID_CODE = 5;
+}
+
+enum VerificationType {
+  REGISTRATION = 0;
+  LOGIN = 1;
+  PASSWORD_RESET = 2;
+}
+
+message VerifyAppDeviceRequest {
+  string mobile = 1;
+  VerificationType verification_type = 2;
+}
+
+message VerifyCodeRequest {
+  string code = 1;
+  VerificationType verification_type = 2;
+}
+
+message VerifyCodeReply{
+  VerificationStatus status = 1;
+  string message = 2;
+}
+
+message TimerTick {
+  uint64 remaining_seconds = 1;
+}
+
+message ErrorReply {
+  VerificationStatus status = 1;
+  string message = 2;
+}
+
+message SendVerificationCodeReply {
+  oneof payload {
+    TimerTick timer_tick = 1;
+    ErrorReply error = 2;
+  }
+}

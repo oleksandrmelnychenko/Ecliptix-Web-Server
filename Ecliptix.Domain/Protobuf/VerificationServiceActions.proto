@@ -1,0 +1,11 @@
+syntax = "proto3";
+import "CipherPayload.proto";
+
+package ecliptix.proto.verification;
+option csharp_namespace = "Grpc.Services";
+
+service VerificationServiceActions {
+  rpc SendVerificationCode(CipherPayload) returns (stream CipherPayload);
+  rpc VerifyWithCode(CipherPayload) returns (CipherPayload);
+  rpc GetVerificationSessionIfExist(CipherPayload) returns (stream CipherPayload);
+}

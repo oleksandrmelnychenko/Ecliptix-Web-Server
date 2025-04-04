@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package ecliptix.proto;
+option csharp_namespace = "Grpc.Services";
+
+import "google/protobuf/timestamp.proto";
+
+enum PubKeyExchangeState {
+  INIT = 0;
+  COMPLETE = 1;
+  PENDING = 2;
+  FAILED = 3;
+}
+
+enum PubKeyExchangeOfType {
+  APP_DEVICE_EPHEMERAL_CONNECT = 0;
+}
+
+message PubKeyExchange {
+  uint32 request_id = 1;
+  PubKeyExchangeState state = 2;
+  PubKeyExchangeOfType of_type = 3;
+  bytes payload = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message PublicKeyBundle {
+  bytes identity_public_key = 1;
+
+  uint32 signed_pre_key_id = 2;
+  bytes signed_pre_key_public_key = 3;
+  bytes signed_pre_key_signature = 4;
+
+  message OneTimePreKey {
+    uint32 pre_key_id = 1;
+    bytes public_key = 2;
+  }
+  repeated OneTimePreKey one_time_pre_keys = 5;
+
+  bytes identity_x25519_public_key = 6;
+
+  bytes ephemeral_x25519_public_key = 7;
+}
