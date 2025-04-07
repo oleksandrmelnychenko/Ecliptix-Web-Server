@@ -25,6 +25,16 @@ else
     Console.WriteLine($"Error: {result.UnwrapErr()}");
 }
 
+LocalKeyMaterial localKeyMaterial = new LocalKeyMaterial(3);
+byte[] k = localKeyMaterial.GenerateEphemeralKeyPair();
+LocalPublicKeyBundle publicKeyBundle = localKeyMaterial.CreatePublicBundle(k);
+
+
+
+
+
+
+
 
 var builder = WebApplication.CreateBuilder(args);
 
