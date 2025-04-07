@@ -1,131 +1,55 @@
 using System;
-using System.Buffers;
-using System.Runtime.InteropServices;
-using System.Security;
+using System.Runtime.CompilerServices;
 using Sodium;
-using Sodium.Exceptions;
 
-namespace Ecliptix.Core.Protocol;
-
-public sealed class HkdfSha256(ReadOnlySpan<byte> inputKeyMaterial) : IDisposable
+namespace Ecliptix.Core.Protocol
 {
-    private byte[]? _ikm = inputKeyMaterial.ToArray();
-    private bool _disposed;
-    private const int HashLen = 32;
-
-    private static byte[] Extract(ReadOnlySpan<byte> salt, ReadOnlySpan<byte> ikm)
+    public sealed class HkdfSha256(ReadOnlySpan<byte> key) : IDisposable
     {
-        try
-        {
-            byte[]? prkBytes;
-            if (salt.IsEmpty)
-            {
-                Span<byte> zeroSalt = stackalloc byte[HashLen];
-                byte[] ikmBytes = ikm.ToArray();
-                prkBytes = SecretKeyAuth.SignHmacSha256(zeroSalt.ToArray(), ikmBytes);
-                Array.Clear(ikmBytes, 0, ikmBytes.Length);
-            }
-            else
-            {
-                byte[] saltBytes = salt.ToArray();
-                byte[] ikmBytes = ikm.ToArray();
-                prkBytes = SecretKeyAuth.SignHmacSha256(saltBytes, ikmBytes);
-                Array.Clear(saltBytes, 0, saltBytes.Length);
-                Array.Clear(ikmBytes, 0, ikmBytes.Length);
-            }
-            if (prkBytes is not { Length: HashLen })
-            {
-                throw new SecurityException("Invalid HMAC result.");
-            }
-            return prkBytes;
-        }
-        catch (Exception ex) when (ex is KeyOutOfRangeException or SEHException or DllNotFoundException)
-        {
-            throw new InvalidOperationException("HKDF-Extract phase failed.", ex);
-        }
-    }
+        private readonly byte[] _key = key.ToArray();
+        private bool _disposed = false;
 
-    private static void ExpandInternal(byte[] prk, ReadOnlySpan<byte> info, Span<byte> okm)
-    {
-        if (okm.Length > 255 * HashLen)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Expand(ReadOnlySpan<byte> info, Span<byte> output)
         {
-            throw new ArgumentException("Output length too long.", nameof(okm));
-        }
-        
-        if (prk is not { Length: HashLen })
-        {
-            throw new ArgumentException("Invalid PRK.", nameof(prk));
-        }
-        
-        byte[] currentT = [];
-        int generated = 0;
-        byte counter = 1;
-        byte[] infoBytes = info.ToArray();
-        byte[]? buffer = null;
-        try
-        {
-            while (generated < okm.Length)
-            {
-                int bufferLen = currentT.Length + infoBytes.Length + 1;
-                buffer = new byte[bufferLen];
-                Buffer.BlockCopy(currentT, 0, buffer, 0, currentT.Length);
-                Buffer.BlockCopy(infoBytes, 0, buffer, currentT.Length, infoBytes.Length);
-                buffer[bufferLen - 1] = counter;
-                byte[] hmacResult = SecretKeyAuth.SignHmacSha256(prk, buffer);
-                if (hmacResult.Length != HashLen)
-                {
-                    throw new Exception("Invalid HMAC result.");
-                }
-                int bytesToCopy = Math.Min(HashLen, okm.Length - generated);
-                hmacResult.AsSpan(0, bytesToCopy).CopyTo(okm.Slice(generated, bytesToCopy));
-                generated += bytesToCopy;
-                currentT = hmacResult;
-                Array.Clear(buffer, 0, buffer.Length);
-                buffer = null;
-                counter++;
-                if (counter == 0) throw new OverflowException("Counter overflow.");
-            }
-        }
-        catch (Exception ex) when (
-            ex is MacOutOfRangeException or KeyOutOfRangeException or SEHException or DllNotFoundException or OverflowException
-        )
-        {
-            throw new InvalidOperationException("HKDF-Expand phase failed.", ex);
-        }
-        finally
-        {
-            Array.Clear(currentT, 0, currentT.Length);
-            Array.Clear(infoBytes, 0, infoBytes.Length);
-            if (buffer != null) Array.Clear(buffer, 0, buffer.Length);
-        }
-    }
+            if (_disposed) throw new ObjectDisposedException(nameof(HkdfSha256));
 
-    public void Expand(ReadOnlySpan<byte> info, Span<byte> output)
-    {
-        ObjectDisposedException.ThrowIf(_disposed || _ikm is null, this);
-        byte[]? prk = null;
-        try
-        {
-            prk = Extract(ReadOnlySpan<byte>.Empty, _ikm);
-            ExpandInternal(prk, info, output);
-        }
-        finally
-        {
-            if (prk != null) Array.Clear(prk, 0, prk.Length);
-        }
-    }
+            // Extract PRK (pseudorandom key)
+            Span<byte> prk = stackalloc byte[32];
+            Sodium.SecretKeyAuth.SignHmacSha256([], _key).AsSpan().CopyTo(prk);
 
-    public void Dispose()
-    {
-        if (!_disposed)
-        {
-            if (_ikm != null)
+            // Expand PRK into output
+            byte counter = 1;
+            int bytesWritten = 0;
+            Span<byte> input = stackalloc byte[32 + info.Length + 1];
+            Span<byte> hash = stackalloc byte[32];
+
+            while (bytesWritten < output.Length)
             {
-                Array.Clear(_ikm, 0, _ikm.Length);
-                _ikm = null;
+                if (bytesWritten > 0) hash[..32].CopyTo(input);
+                info.CopyTo(input[hash.Length..]);
+                input[hash.Length + info.Length] = counter++;
+
+                // Use SignHmacSha256 with byte[] and copy result to hash
+                Sodium.SecretKeyAuth.SignHmacSha256(input.ToArray(), prk.ToArray()).AsSpan().CopyTo(hash);
+
+                int bytesToCopy = Math.Min(hash.Length, output.Length - bytesWritten);
+                hash[..bytesToCopy].CopyTo(output[bytesWritten..]);
+                bytesWritten += bytesToCopy;
             }
-            _disposed = true;
-            GC.SuppressFinalize(this);
+
+            prk.Clear();
+            input.Clear();
+            hash.Clear();
+        }
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                Array.Clear(_key, 0, _key.Length);
+                _disposed = true;
+            }
         }
     }
 }

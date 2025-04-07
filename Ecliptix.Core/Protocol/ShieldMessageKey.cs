@@ -1,3 +1,5 @@
+using Ecliptix.Core.Protocol.Utilities;
+
 namespace Ecliptix.Core.Protocol;
 
 public readonly struct ShieldMessageKey : IEquatable<ShieldMessageKey>
