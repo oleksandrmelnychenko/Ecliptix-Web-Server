@@ -15,4 +15,9 @@ public static class Constants
     public const int Ed25519SignatureSize = 64; // Sodium.PublicKeyAuth.SignatureBytes
     public const int X25519PublicKeySize = 32; // Sodium.ScalarMult.Bytes
     public const int X25519PrivateKeySize = 32; // Sodium.ScalarMult.ScalarBytes
+    
+    // AEAD Constants (Using System.Security.Cryptography.AesGcm)
+    public const int AesKeySize = 32; // AES-256 requires a 32-byte key
+    public const int AesGcmNonceSize = 12; // Recommended nonce size for AesGcm
+    public const int AesGcmTagSize = 16; // 128-bit tag is common (16 bytes)
 }

@@ -1,40 +1,8 @@
 using System.IO.Compression;
 using Ecliptix.Core.Interceptors;
-using Ecliptix.Core.Protocol;
-using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Core.Services;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using OpenTelemetry.Metrics;
-using Sodium;
-
-byte[] key = SodiumCore.GetRandomBytes(Constants.X25519KeySize);
-using var hkdf = new HkdfSha256(key.AsSpan());
-Span<byte> info = [1, 2, 3];
-Span<byte> output = stackalloc byte[32];
-hkdf.Expand(info, output);
-Console.WriteLine(BitConverter.ToString(output.ToArray()));
-
-Result<OneTimePreKeyLocal, ShieldError> result = OneTimePreKeyLocal.Generate(5);
-if (result.IsOk)
-{
-    var opk = result.Unwrap();
-    Console.WriteLine($"ID: {opk.PreKeyId}, Pub: {BitConverter.ToString(opk.PublicKey)}");
-}
-else
-{
-    Console.WriteLine($"Error: {result.UnwrapErr()}");
-}
-
-LocalKeyMaterial localKeyMaterial = new LocalKeyMaterial(3);
-byte[] k = localKeyMaterial.GenerateEphemeralKeyPair();
-LocalPublicKeyBundle publicKeyBundle = localKeyMaterial.CreatePublicBundle(k);
-
-
-
-
-
-
-
 
 var builder = WebApplication.CreateBuilder(args);
 

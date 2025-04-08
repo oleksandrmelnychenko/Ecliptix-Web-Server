@@ -51,6 +51,20 @@ public sealed class ShieldChainStep : IDisposable
             return (byte[])_dhPublicKey.Clone();
         }
     }
+    
+    /// <summary>
+    /// Indicates if any message keys have been derived by this step yet.
+    /// Used by ShieldSession to determine if it's the first message.
+    /// Access should be externally synchronized if ShieldChainStep is used standalone.
+    /// </summary>
+    internal bool HasDerivedKeys
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _currentIndex > 0;
+        }
+    }
 
     public ShieldChainStep(
         ChainStepType stepType,

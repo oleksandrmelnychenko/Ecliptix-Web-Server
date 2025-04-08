@@ -2,10 +2,9 @@ using System.Runtime.CompilerServices;
 
 namespace Ecliptix.Core.Protocol.Utilities;
 
-public class ShieldFailure
+public class ShieldFailure(string message) : Exception
 {
-    public string Message { get; }
-    public ShieldFailure(string message) => Message = string.IsNullOrWhiteSpace(message) ? "Unknown error" : message;
+    public override string Message { get; } = string.IsNullOrWhiteSpace(message) ? "Unknown error" : message;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)] public static ShieldFailure DeriveKeyFailed(string details) => new($"Key derivation failed: {details}");
     [MethodImpl(MethodImplOptions.AggressiveInlining)] public static ShieldFailure KeyRotationFailed(string details) => new($"Key rotation failed: {details}");

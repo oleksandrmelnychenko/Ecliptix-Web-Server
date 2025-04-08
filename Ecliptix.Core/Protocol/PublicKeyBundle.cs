@@ -1,4 +1,5 @@
 using Ecliptix.Core.Protocol.Utilities;
+using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 
 namespace Ecliptix.Core.Protocol;
@@ -23,13 +24,9 @@ public record LocalPublicKeyBundle
     byte[]? EphemeralX25519        // 32 bytes, optional
 )
 {
-    // Constants for validation consistency
-
-
-    /// <summary>Converts this local record TO the Protobuf message used for EXCHANGE.</summary>
-    public Protobuf.PubKeyExchange.PublicKeyBundle ToProtobufExchange()
+    public PublicKeyBundle ToProtobufExchange()
     {
-        var proto = new Protobuf.PubKeyExchange.PublicKeyBundle
+        PublicKeyBundle proto = new()
         {
             IdentityPublicKey = ByteString.CopyFrom(IdentityEd25519), // Map local name to proto name
             IdentityX25519PublicKey = ByteString.CopyFrom(IdentityX25519),
@@ -42,9 +39,8 @@ public record LocalPublicKeyBundle
             proto.EphemeralX25519PublicKey = ByteString.CopyFrom(EphemeralX25519);
         }
 
-        foreach (var opkRecord in OneTimePreKeys) {
-            // Note the nested type name from the PubKeyExchange.proto definition
-            proto.OneTimePreKeys.Add(new Ecliptix.Protobuf.PubKeyExchange.PublicKeyBundle.Types.OneTimePreKey {
+        foreach (OneTimePreKeyRecord opkRecord in OneTimePreKeys) {
+            proto.OneTimePreKeys.Add(new PublicKeyBundle.Types.OneTimePreKey {
                 PreKeyId = opkRecord.PreKeyId,
                 PublicKey = ByteString.CopyFrom(opkRecord.PublicKey)
             });
@@ -52,19 +48,18 @@ public record LocalPublicKeyBundle
         return proto;
     }
 
-    /// <summary>Creates this local record FROM the Protobuf message used for EXCHANGE.</summary>
-    public static Result<LocalPublicKeyBundle, ShieldError> FromProtobufExchange(Ecliptix.Protobuf.PubKeyExchange.PublicKeyBundle proto)
+    public static Result<LocalPublicKeyBundle, ShieldError> FromProtobufExchange(PublicKeyBundle proto)
     {
-        if (proto == null) throw new ArgumentNullException(nameof(proto)); // Programming error
+        if (proto == null) throw new ArgumentNullException(nameof(proto)); 
 
         try
         {
-            var opkRecords = proto.OneTimePreKeys
+            List<OneTimePreKeyRecord> opkRecords = proto.OneTimePreKeys
                 .Select(pOpk => new OneTimePreKeyRecord(pOpk.PreKeyId, pOpk.PublicKey.ToByteArray()))
-                .ToList(); // Materialize the list for the record
+                .ToList();
 
-            var bundle = new LocalPublicKeyBundle(
-                IdentityEd25519: proto.IdentityPublicKey.ToByteArray(), // Map proto name to local name
+            LocalPublicKeyBundle bundle = new(
+                IdentityEd25519: proto.IdentityPublicKey.ToByteArray(), 
                 IdentityX25519: proto.IdentityX25519PublicKey.ToByteArray(),
                 SignedPreKeyId: proto.SignedPreKeyId,
                 SignedPreKeyPublic: proto.SignedPreKeyPublicKey.ToByteArray(),

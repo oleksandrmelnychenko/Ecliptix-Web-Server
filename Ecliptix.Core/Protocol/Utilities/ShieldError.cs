@@ -3,18 +3,11 @@ namespace Ecliptix.Core.Protocol.Utilities;
 /// <summary>
 /// Represents a detailed error within the Shield protocol layer.
 /// </summary>
-public sealed class ShieldError
+public sealed class ShieldError(ShieldFailureType type, string message, Exception? innerException = null): Exception 
 {
-    public ShieldFailureType Type { get; }
-    public string Message { get; }
-    public Exception? InnerException { get; }
-
-    public ShieldError(ShieldFailureType type, string message, Exception? innerException = null)
-    {
-        Type = type;
-        Message = string.IsNullOrWhiteSpace(message) ? GetDefaultMessage(type) : message;
-        InnerException = innerException;
-    }
+    public ShieldFailureType Type { get; } = type;
+    public string Message { get; } = string.IsNullOrWhiteSpace(message) ? GetDefaultMessage(type) : message;
+    public Exception? InnerException { get; } = innerException;
 
     public ShieldError(ShieldFailureType type, Exception? innerException = null) : this(type, GetDefaultMessage(type), innerException) { }
 
