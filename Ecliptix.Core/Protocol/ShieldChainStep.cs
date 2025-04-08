@@ -7,9 +7,6 @@ public sealed class ShieldChainStep : IDisposable
 {
     private const uint DefaultCacheWindowSize = 1000;
 
-    private static ReadOnlySpan<byte> ChainInfo => [0x01];
-    private static ReadOnlySpan<byte> MsgInfo => [0x02];
-
     private readonly ChainStepType _stepType;
     private readonly uint _cacheWindow;
     private SodiumSecureMemoryHandle _chainKeyHandle;
@@ -170,7 +167,7 @@ public sealed class ShieldChainStep : IDisposable
             // --- Derive New Chain Key ---
             using (var hkdf = new HkdfSha256(sharedSecretBytes, default)) // Pass shared secret heap buffer
             {
-                hkdf.Expand(ChainInfo, newChainKeySpan); // Derive into stack buffer
+                hkdf.Expand(Constants.ChainInfo, newChainKeySpan); // Derive into stack buffer
             }
 
             SodiumInterop.SecureWipe(sharedSecretBytes); // Wipe shared secret heap buffer
@@ -259,7 +256,7 @@ public sealed class ShieldChainStep : IDisposable
                 // If not, use: byte[] tempIKM = currentChainKeySpan.ToArray(); try { using(new HkdfSha256(tempIKM...)) {...} } finally { SodiumInterop.SecureWipe(tempIKM); }
                 using (var hkdfChain = new HkdfSha256(currentChainKeySpan, default))
                 {
-                    hkdfChain.Expand(ChainInfo, nextChainKeySpan);
+                    hkdfChain.Expand(Constants.ChainInfo, nextChainKeySpan);
                 }
 
                 currentChainKeySpan.Clear(); // Wipe temp current key copy
@@ -272,7 +269,7 @@ public sealed class ShieldChainStep : IDisposable
                 // If not, adapt as described above.
                 using (var hkdfMsg = new HkdfSha256(nextChainKeySpan, default))
                 {
-                    hkdfMsg.Expand(MsgInfo, msgKeySpan);
+                    hkdfMsg.Expand(Constants.MsgInfo, msgKeySpan);
                 }
 
                 nextChainKeySpan.Clear(); // Wipe temp next key copy

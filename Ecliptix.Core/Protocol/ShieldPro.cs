@@ -17,8 +17,8 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     // --- Constants ---
     private const uint DefaultOneTimePreKeyCount = 3;
     public static ReadOnlySpan<byte> X3dhInfo => "WhisperText"u8;
-    private static ReadOnlySpan<byte> SenderChainInfo => [0x01];
-    private static ReadOnlySpan<byte> ReceiverChainInfo => [0x02];
+    public static ReadOnlySpan<byte> SenderChainInfo => [0x01];
+    public static ReadOnlySpan<byte> ReceiverChainInfo => [0x02];
 
     // --- Fields ---
     private readonly LocalKeyMaterial _localKeyMaterial;
@@ -129,13 +129,9 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         }
     }
 
-
-    // --- IDataCenterPubKeyExchange Implementation ---
-
     public async Task<(uint SessionId, PubKeyExchange InitialMessage)> BeginDataCenterPubKeyExchangeAsync(
         PubKeyExchangeOfType exchangeType)
     {
-        // ... (checks) ...
         uint sessionId = Helpers.GenerateRandomUInt32(excludeZero: true);
 
         try
