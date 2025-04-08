@@ -496,10 +496,7 @@ public sealed class LocalKeyMaterial : IDisposable
             Console.WriteLine($"Bob DH3 (SPKb, IKa): {Convert.ToHexString(dh3)}");
             if (dh4 != null) Console.WriteLine($"Bob DH4 (OPKb, Ea): {Convert.ToHexString(dh4)}");
             else Console.WriteLine("Bob DH4: null");
-            // *** END LOGGING ***
 
-
-            // Wipe temp secrets immediately after use
             SodiumInterop.SecureWipe(identitySecretCopy);
             identitySecretCopy = null;
             SodiumInterop.SecureWipe(signedPreKeySecretCopy);
@@ -509,23 +506,20 @@ public sealed class LocalKeyMaterial : IDisposable
                 SodiumInterop.SecureWipe(oneTimePreKeySecretCopy);
                 oneTimePreKeySecretCopy = null;
             }
-
-
-            // Concatenate
+           
             int totalDhLength = dh1.Length + dh2.Length + dh3.Length + (dh4?.Length ?? 0);
             dhConcatBytes = new byte[totalDhLength];
             int currentOffset = 0;
             Buffer.BlockCopy(dh1, 0, dhConcatBytes, currentOffset, dh1.Length);
-            currentOffset += dh1.Length; // DH1
+            currentOffset += dh1.Length;
             Buffer.BlockCopy(dh2, 0, dhConcatBytes, currentOffset, dh2.Length);
-            currentOffset += dh2.Length; // DH2
+            currentOffset += dh2.Length; 
             Buffer.BlockCopy(dh3, 0, dhConcatBytes, currentOffset, dh3.Length);
-            currentOffset += dh3.Length; // DH3
+            currentOffset += dh3.Length; 
             if (dh4 != null)
             {
                 Buffer.BlockCopy(dh4, 0, dhConcatBytes, currentOffset, dh4.Length);
-            } // DH4
-
+            }
 
             // *** ADDED LOGGING ***
             Console.WriteLine($"Bob IKM (Concat): {Convert.ToHexString(dhConcatBytes)}");
