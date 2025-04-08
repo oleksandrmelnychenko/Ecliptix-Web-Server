@@ -333,9 +333,9 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
                     RatchetIndex = messageKey.Index,
                     Cipher = ByteString.CopyFrom(ciphertextAndTag),
                     CreatedAt = GetProtoTimestamp(),
-                    DhPublicKey = newSenderDhPublicKey != null ? ByteString.CopyFrom(newSenderDhPublicKey) : null
+                    DhPublicKey = ByteString.Empty
                 };
-                return protoPayload; // Return Protobuf type directly
+                return protoPayload;
             }
             finally
             {
@@ -371,7 +371,9 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
             {
                 session.CheckReplay(cipherPayloadProto.RequestId);
 
-                byte[]? receivedDhKey = cipherPayloadProto.DhPublicKey?.ToByteArray();
+                byte[]? receivedDhKey = cipherPayloadProto.DhPublicKey is { Length: > 0 }
+                    ? cipherPayloadProto.DhPublicKey.ToByteArray()
+                    : null;
 
                 ShieldMessageKey messageKey = session.RotateReceiverKey(cipherPayloadProto.RatchetIndex, receivedDhKey);
 

@@ -311,11 +311,8 @@ public sealed class ShieldSession : IDisposable
                     // Note: RotateReceiverDh returns the *new* public key, which we don't need here.
                     // Logs are inside RotateReceiverDh
                 }
-                else
-                {
-                    // Warn log removed ("Missing dh_public_key...")
-                    // Decide: Error or proceed symmetrically? Current Rust code proceeds. We follow.
-                }
+                // Warn log removed ("Missing dh_public_key...")
+                // Decide: Error or proceed symmetrically? Current Rust code proceeds. We follow.
             }
 
             // 2. Check for missed messages (Compare against CURRENT index *before* deriving target)

@@ -4,6 +4,7 @@ using Ecliptix.Core.Protocol;
 using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Protobuf.PubKeyExchange;
 using Ecliptix.Protobuf.CipherPayload;
+using Google.Protobuf;
 
 namespace ShieldProTests;
 
@@ -342,8 +343,8 @@ public class ShieldProDoubleRatchetTests(ITestOutputHelper _output) : IAsyncDisp
             CipherPayload payload =
                 await _aliceShieldPro.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType, plaintextBytes);
 
-            Assert.Equal((uint)(i + 1), payload.RatchetIndex); // Index should increment
-            Assert.Null(payload.DhPublicKey); // Assuming no rotation trigger yet
+            Assert.Equal((uint)(i + 1), payload.RatchetIndex);
+            Assert.Equal(payload.DhPublicKey,ByteString.Empty);
 
             _output.WriteLine(
                 $"[Test: Ratchet_SendReceiveMultiple] Bob receiving message {i + 1} (Index {payload.RatchetIndex})...");
