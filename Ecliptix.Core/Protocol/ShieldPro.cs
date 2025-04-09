@@ -260,90 +260,65 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         }
     }
 
-    // --- IOutboundMessageService Implementation ---
-
     public async Task<CipherPayload> ProduceOutboundMessageAsync(
-        uint sessionId, PubKeyExchangeOfType exchangeType, byte[] plainPayload)
+    uint sessionId, PubKeyExchangeOfType exchangeType, byte[] plainPayload)
+{
+    ArgumentNullException.ThrowIfNull(plainPayload);
+
+    var cipherPayloadProto = await ExecuteUnderSessionLockAsync(sessionId, exchangeType, (session) =>
     {
-        ArgumentNullException.ThrowIfNull(plainPayload);
+        byte[]? messageKeyBytes = null;
+        byte[]? ad = null;
+        byte[]? ciphertext = null;
+        byte[]? tag = null;
 
-        var cipherPayloadProto = await ExecuteUnderSessionLockAsync(sessionId, exchangeType, (session) =>
+        try
         {
-            byte[]? messageKeyBytes = null;
-            byte[]? ad = null;
-            byte[]? ciphertext = null;
-            byte[]? tag = null;
-            byte[]? newSenderDhPublicKey = null;
-            byte[]? peerReceiverPubKey = null;
+            (ShieldMessageKey messageKey, byte[] nonce, byte[]? newSenderDhPublicKey) = session.RotateSenderKey();
 
+            messageKeyBytes = new byte[Constants.AesKeySize];
             try
             {
-                bool shouldRotateDh = false; // TODO: Implement real rotation logic
-                if (shouldRotateDh)
-                {
-                    try
-                    {
-                        // FIX: Ensure ShieldSession has GetReceiverStepPublicKeyBytes
-                        peerReceiverPubKey = session.GetReceiverStepPublicKeyBytes();
-                        newSenderDhPublicKey = session.RotateSenderDh(peerReceiverPubKey);
-                    }
-                    catch (Exception ex)
-                    {
-                        throw new ShieldChainStepException($"Sender DH rotation failed session {sessionId}.", ex);
-                    }
-                    finally
-                    {
-                        if (peerReceiverPubKey != null) SodiumInterop.SecureWipe(peerReceiverPubKey);
-                    }
-                }
+                messageKey.ReadKeyMaterial(messageKeyBytes);
 
-                (ShieldMessageKey messageKey, byte[] nonce) =
-                    session.RotateSenderKey();
+                byte[] localId = _localKeyMaterial.IdentityX25519PublicKey;
+                byte[] peerId = session.PeerBundle.IdentityX25519PublicKey.ToByteArray();
+                ad = new byte[localId.Length + peerId.Length];
+                Buffer.BlockCopy(localId, 0, ad, 0, localId.Length); // Sender first
+                Buffer.BlockCopy(peerId, 0, ad, localId.Length, peerId.Length); // Receiver second
 
-                messageKeyBytes = new byte[Constants.AesKeySize];
-                try
-                {
-                    messageKey.ReadKeyMaterial(messageKeyBytes);
-
-                    byte[] localId = _localKeyMaterial.IdentityX25519PublicKey;
-                    byte[] peerId = session.PeerBundle.IdentityX25519PublicKey.ToByteArray(); 
-                    ad = new byte[localId.Length + peerId.Length];
-                    Buffer.BlockCopy(localId, 0, ad, 0, localId.Length); 
-                    Buffer.BlockCopy(peerId, 0, ad, localId.Length, peerId.Length);
-
-                    (ciphertext, tag) = AesGcmService.EncryptAllocating(messageKeyBytes, nonce, plainPayload, ad);
-                }
-                finally
-                {
-                    if (messageKeyBytes != null) SodiumInterop.SecureWipe(messageKeyBytes);
-                    if (ad != null) SodiumInterop.SecureWipe(ad);
-                }
-
-                byte[] ciphertextAndTag = new byte[ciphertext.Length + tag.Length];
-                Buffer.BlockCopy(ciphertext, 0, ciphertextAndTag, 0, ciphertext.Length);
-                Buffer.BlockCopy(tag, 0, ciphertextAndTag, ciphertext.Length, tag.Length);
-
-                // FIX: Construct and return Protobuf CipherPayload
-                var protoPayload = new CipherPayload
-                {
-                    RequestId = GenerateRequestId(),
-                    Nonce = ByteString.CopyFrom(nonce),
-                    RatchetIndex = messageKey.Index,
-                    Cipher = ByteString.CopyFrom(ciphertextAndTag),
-                    CreatedAt = GetProtoTimestamp(),
-                    DhPublicKey = ByteString.Empty
-                };
-                return protoPayload;
+                (ciphertext, tag) = AesGcmService.EncryptAllocating(messageKeyBytes, nonce, plainPayload, ad);
             }
             finally
             {
-                if (ciphertext != null) SodiumInterop.SecureWipe(ciphertext);
-                if (tag != null) SodiumInterop.SecureWipe(tag);
+                if (messageKeyBytes != null) SodiumInterop.SecureWipe(messageKeyBytes);
+                if (ad != null) SodiumInterop.SecureWipe(ad);
             }
-        }); // End ExecuteUnderSessionLockAsync
 
-        return cipherPayloadProto;
-    }
+            byte[] ciphertextAndTag = new byte[ciphertext.Length + tag.Length];
+            Buffer.BlockCopy(ciphertext, 0, ciphertextAndTag, 0, ciphertext.Length);
+            Buffer.BlockCopy(tag, 0, ciphertextAndTag, ciphertext.Length, tag.Length);
+
+            var protoPayload = new CipherPayload
+            {
+                RequestId = GenerateRequestId(),
+                Nonce = ByteString.CopyFrom(nonce),
+                RatchetIndex = messageKey.Index,
+                Cipher = ByteString.CopyFrom(ciphertextAndTag),
+                CreatedAt = GetProtoTimestamp(),
+                DhPublicKey = newSenderDhPublicKey != null ? ByteString.CopyFrom(newSenderDhPublicKey) : ByteString.Empty
+            };
+            return protoPayload;
+        }
+        finally
+        {
+            if (ciphertext != null) SodiumInterop.SecureWipe(ciphertext);
+            if (tag != null) SodiumInterop.SecureWipe(tag);
+        }
+    });
+
+    return cipherPayloadProto;
+}
 
     // --- IInboundMessageService Implementation ---
 

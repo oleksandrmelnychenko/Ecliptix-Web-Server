@@ -6,6 +6,7 @@ namespace Ecliptix.Core.Protocol;
 public sealed class ShieldChainStep : IDisposable
 {
     private const uint DefaultCacheWindowSize = 1000;
+    private const uint DhRotationInterval = 1000;
 
     private readonly ChainStepType _stepType;
     private readonly uint _cacheWindow;
@@ -41,19 +42,11 @@ public sealed class ShieldChainStep : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_dhPublicKey == null)
-            {
                 throw new ObjectDisposedException(GetType().FullName, "Public key data is unavailable after disposal.");
-            }
-
             return (byte[])_dhPublicKey.Clone();
         }
     }
-    
-    /// <summary>
-    /// Indicates if any message keys have been derived by this step yet.
-    /// Used by ShieldSession to determine if it's the first message.
-    /// Access should be externally synchronized if ShieldChainStep is used standalone.
-    /// </summary>
+
     internal bool HasDerivedKeys
     {
         get
@@ -63,9 +56,7 @@ public sealed class ShieldChainStep : IDisposable
         }
     }
 
-    public ShieldChainStep(
-        ChainStepType stepType,
-        byte[] initialChainKey,
+    public ShieldChainStep(ChainStepType stepType, byte[] initialChainKey,
         uint cacheWindowSize = DefaultCacheWindowSize)
     {
         if (initialChainKey == null) throw new ArgumentNullException(nameof(initialChainKey));
@@ -88,16 +79,15 @@ public sealed class ShieldChainStep : IDisposable
         }
 
         _dhPrivateKeyHandle = SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
-        // Correctly handle temporary byte[] for random generation
         byte[]? tempPrivateKeyBytes = null;
         byte[]? tempPublicKeyBytes = null;
         try
         {
-            tempPrivateKeyBytes = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize); // Returns byte[]
-            _dhPrivateKeyHandle.Write(tempPrivateKeyBytes); // Copy from heap buffer to secure handle
-            tempPublicKeyBytes = ScalarMult.Base(tempPrivateKeyBytes); // Derive public key from heap buffer
-            _dhPublicKey = tempPublicKeyBytes; // Assign the returned public key array
-            tempPublicKeyBytes = null; // Nullify to prevent wipe in finally if successful
+            tempPrivateKeyBytes = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize);
+            _dhPrivateKeyHandle.Write(tempPrivateKeyBytes);
+            tempPublicKeyBytes = ScalarMult.Base(tempPrivateKeyBytes);
+            _dhPublicKey = tempPublicKeyBytes;
+            tempPublicKeyBytes = null;
         }
         catch
         {
@@ -106,7 +96,6 @@ public sealed class ShieldChainStep : IDisposable
         }
         finally
         {
-            // SecureWipe the temporary heap buffers
             if (tempPrivateKeyBytes != null) SodiumInterop.SecureWipe(tempPrivateKeyBytes);
             if (tempPublicKeyBytes != null) SodiumInterop.SecureWipe(tempPublicKeyBytes);
         }
@@ -118,10 +107,7 @@ public sealed class ShieldChainStep : IDisposable
 
     private void PruneOldKeys()
     {
-        if (_cacheWindow == 0)
-        {
-            return;
-        }
+        if (_cacheWindow == 0) return;
 
         uint minIndex = (_currentIndex >= _cacheWindow) ? _currentIndex - _cacheWindow : 0;
         var keysToRemove = _messageKeys.Keys.Where(k => k < minIndex).ToList();
@@ -143,51 +129,41 @@ public sealed class ShieldChainStep : IDisposable
             throw new ArgumentException($"Peer public key must be {Constants.X25519KeySize} bytes.",
                 nameof(peerPublicKeyBytes));
 
-        // Use byte[] for reading private key as ScalarMult.Mult requires it
         byte[]? dhPrivateKeyBytes = null;
-        // Use stackalloc for HKDF output buffer
         Span<byte> newChainKeySpan = stackalloc byte[Constants.X25519KeySize];
-
         byte[]? sharedSecretBytes = null;
         SodiumSecureMemoryHandle? newChainKeyHandle = null;
-        byte[]? tempNewDhPrivateKeyBytes = null; // Corrected variable name and type
+        byte[]? tempNewDhPrivateKeyBytes = null;
         byte[]? tempNewDhPublicKeyBytes = null;
         SodiumSecureMemoryHandle? newDhPrivateKeyHandle = null;
 
         try
         {
-            // --- Perform Diffie-Hellman ---
-            dhPrivateKeyBytes = new byte[Constants.X25519PrivateKeySize]; // Allocate temp heap buffer
-            _dhPrivateKeyHandle.Read(dhPrivateKeyBytes); // Read private key into heap buffer
-            sharedSecretBytes = ScalarMult.Mult(dhPrivateKeyBytes, peerPublicKeyBytes); // Pass heap buffer
-            // Wipe private key copy immediately
+            dhPrivateKeyBytes = new byte[Constants.X25519PrivateKeySize];
+            _dhPrivateKeyHandle.Read(dhPrivateKeyBytes);
+            sharedSecretBytes = ScalarMult.Mult(dhPrivateKeyBytes, peerPublicKeyBytes);
             SodiumInterop.SecureWipe(dhPrivateKeyBytes);
             dhPrivateKeyBytes = null;
 
-            // --- Derive New Chain Key ---
-            using (var hkdf = new HkdfSha256(sharedSecretBytes, default)) // Pass shared secret heap buffer
+            using (var hkdf = new HkdfSha256(sharedSecretBytes, default))
             {
-                hkdf.Expand(Constants.ChainInfo, newChainKeySpan); // Derive into stack buffer
+                hkdf.Expand(Constants.ChainInfo, newChainKeySpan);
             }
 
-            SodiumInterop.SecureWipe(sharedSecretBytes); // Wipe shared secret heap buffer
+            SodiumInterop.SecureWipe(sharedSecretBytes);
             sharedSecretBytes = null;
 
-            // --- Store New Chain Key Securely ---
             newChainKeyHandle = SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize);
-            newChainKeyHandle.Write(newChainKeySpan); // Copy from stack buffer
-            newChainKeySpan.Clear(); // Wipe stack buffer
+            newChainKeyHandle.Write(newChainKeySpan);
+            newChainKeySpan.Clear();
 
-            // --- Generate New DH Key Pair ---
             newDhPrivateKeyHandle = SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
-            tempNewDhPrivateKeyBytes = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize); // Returns byte[]
-            newDhPrivateKeyHandle.Write(tempNewDhPrivateKeyBytes); // Copy to secure handle
-            tempNewDhPublicKeyBytes = ScalarMult.Base(tempNewDhPrivateKeyBytes); // Derive public key
-            // Wipe temporary private key bytes immediately AFTER deriving public key
+            tempNewDhPrivateKeyBytes = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize);
+            newDhPrivateKeyHandle.Write(tempNewDhPrivateKeyBytes);
+            tempNewDhPublicKeyBytes = ScalarMult.Base(tempNewDhPrivateKeyBytes);
             SodiumInterop.SecureWipe(tempNewDhPrivateKeyBytes);
-            tempNewDhPrivateKeyBytes = null; // Set to null AFTER wipe
+            tempNewDhPrivateKeyBytes = null;
 
-            // --- Update State ---
             _chainKeyHandle?.Dispose();
             _dhPrivateKeyHandle?.Dispose();
 
@@ -213,17 +189,13 @@ public sealed class ShieldChainStep : IDisposable
         }
         finally
         {
-            // Ensure ALL temporary buffers are wiped/cleared
-            if (dhPrivateKeyBytes != null)
-                SodiumInterop.SecureWipe(dhPrivateKeyBytes); // Wipe if error occurred before nulling
+            if (dhPrivateKeyBytes != null) SodiumInterop.SecureWipe(dhPrivateKeyBytes);
             if (sharedSecretBytes != null) SodiumInterop.SecureWipe(sharedSecretBytes);
             newChainKeySpan.Clear();
-            if (tempNewDhPrivateKeyBytes != null)
-                SodiumInterop.SecureWipe(tempNewDhPrivateKeyBytes); // Wipe if error occurred before nulling
+            if (tempNewDhPrivateKeyBytes != null) SodiumInterop.SecureWipe(tempNewDhPrivateKeyBytes);
             if (tempNewDhPublicKeyBytes != null) SodiumInterop.SecureWipe(tempNewDhPublicKeyBytes);
         }
     }
-
 
     public ShieldMessageKey GetOrDeriveKeyFor(uint targetIndex)
     {
@@ -266,19 +238,18 @@ public sealed class ShieldChainStep : IDisposable
                     hkdfMsg.Expand(Constants.MsgInfo, msgKeySpan);
                 }
 
-                nextChainKeySpan.Clear(); 
+                nextChainKeySpan.Clear();
 
                 Console.WriteLine("[GetOrDeriveKeyFor] Deriving message key for index: " + idx);
                 Console.WriteLine("Key: " + Convert.ToHexString(msgKeySpan.ToArray()));
-                
+
                 ShieldMessageKey newMessageKey = new(idx, msgKeySpan);
                 msgKeySpan.Clear();
 
-                // --- Update State ---
                 var oldChainKeyHandle = _chainKeyHandle;
                 _chainKeyHandle = nextChainKeyHandle;
                 oldChainKeyHandle?.Dispose();
-                nextChainKeyHandle = null; // Prevent disposal in finally
+                nextChainKeyHandle = null;
 
                 _messageKeys.Add(idx, newMessageKey);
                 _currentIndex = idx;
@@ -306,16 +277,27 @@ public sealed class ShieldChainStep : IDisposable
         }
 
         throw new ShieldChainStepException(
-            $"Internal error: Failed to derive key for index {targetIndex} after rotation loop."); // Shortened message
+            $"Internal error: Failed to derive key for index {targetIndex} after rotation loop.");
     }
 
-    public ShieldMessageKey AdvanceSenderKey()
+    public (ShieldMessageKey MessageKey, byte[]? NewDhPublicKey) AdvanceSenderKey(byte[] peerPublicKeyBytes)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return GetOrDeriveKeyFor(NextMessageIndex); // Simplified
+        if (peerPublicKeyBytes == null) throw new ArgumentNullException(nameof(peerPublicKeyBytes));
+        if (peerPublicKeyBytes.Length != Constants.X25519KeySize)
+            throw new ArgumentException($"Peer public key must be {Constants.X25519KeySize} bytes.",
+                nameof(peerPublicKeyBytes));
+
+        byte[]? newDhPublicKey = null;
+        if (NextMessageIndex % DhRotationInterval == 0 && HasDerivedKeys)
+        {
+            RotateDhChain(peerPublicKeyBytes);
+            newDhPublicKey = PublicKeyBytes;
+        }
+
+        ShieldMessageKey messageKey = GetOrDeriveKeyFor(NextMessageIndex);
+        return (messageKey, newDhPublicKey);
     }
-    
-    
 
     public void Dispose()
     {

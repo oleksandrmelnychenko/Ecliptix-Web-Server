@@ -252,7 +252,7 @@ public sealed class ShieldSession : IDisposable
     /// <returns>A tuple containing the message key and the nonce.</returns>
     /// <exception cref="InvalidOperationException">Thrown if sender step is not initialized.</exception>
     /// <exception cref="ShieldChainStepException">Thrown if key derivation fails.</exception>
-    public (ShieldMessageKey MessageKey, byte[] Nonce) RotateSenderKey()
+    public (ShieldMessageKey MessageKey, byte[] Nonce, byte[]? NewDhPublicKey) RotateSenderKey()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         EnsureNotExpired();
@@ -260,13 +260,12 @@ public sealed class ShieldSession : IDisposable
 
         try
         {
-            ShieldMessageKey messageKey = sender.AdvanceSenderKey();
+            byte[] peerPublicKeyBytes = GetReceiverStepPublicKeyBytes(); // Use receiver’s current DH key
+            (ShieldMessageKey messageKey, byte[]? newDhPublicKey) = sender.AdvanceSenderKey(peerPublicKeyBytes);
             byte[] nonce = GenerateNextNonce(ChainStepType.Sender);
-            // _directionTracker.record_sent(); // Omitted
-           
-            return (messageKey, nonce);
+            return (messageKey, nonce, newDhPublicKey);
         }
-        catch (Exception ex) when (ex is not ShieldChainStepException) 
+        catch (Exception ex) when (ex is not ShieldChainStepException)
         {
             throw new ShieldChainStepException($"Failed to rotate sender key for session {_id}: {ex.Message}", ex);
         }
