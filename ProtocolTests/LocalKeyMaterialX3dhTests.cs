@@ -41,12 +41,13 @@ public class ShieldProDoubleRatchetTests : IAsyncDisposable
     }
 
     public TestContext TestContext { get; set; }
-    
+
     private static bool CompareSecureHandles(SodiumSecureMemoryHandle? handleA, SodiumSecureMemoryHandle? handleB)
     {
         if (ReferenceEquals(handleA, handleB)) return true;
         if (handleA == null || handleB == null) return false;
-        if (handleA.IsInvalid || handleB.IsInvalid || handleA.Length != handleB.Length || handleA.Length == 0) return false;
+        if (handleA.IsInvalid || handleB.IsInvalid || handleA.Length != handleB.Length ||
+            handleA.Length == 0) return false;
 
         if (handleA.Length > 1024)
         {
@@ -124,12 +125,20 @@ public class ShieldProDoubleRatchetTests : IAsyncDisposable
             ShieldSession aliceSession = new(_aliceSessionId, alicePublicBundleProto);
             _aliceSessionManager.InsertSessionOrThrow(_aliceSessionId, _exchangeType, aliceSession);
 
-            Result<LocalPublicKeyBundle, ShieldError> bobBundleInternalResult = LocalPublicKeyBundle.FromProtobufExchange(bobPublicBundleProto);
-            Assert.IsTrue(bobBundleInternalResult.IsOk, bobBundleInternalResult.IsErr ? $"Failed parsing Bob's bundle: {bobBundleInternalResult.UnwrapErr()}" : "Failed parsing Bob's bundle");
+            Result<LocalPublicKeyBundle, ShieldError> bobBundleInternalResult =
+                LocalPublicKeyBundle.FromProtobufExchange(bobPublicBundleProto);
+            Assert.IsTrue(bobBundleInternalResult.IsOk,
+                bobBundleInternalResult.IsErr
+                    ? $"Failed parsing Bob's bundle: {bobBundleInternalResult.UnwrapErr()}"
+                    : "Failed parsing Bob's bundle");
             LocalPublicKeyBundle bobBundleInternal = bobBundleInternalResult.Unwrap();
 
-            Result<SodiumSecureMemoryHandle, ShieldFailure> aliceDeriveResult = _aliceKeys.X3dhDeriveSharedSecret(bobBundleInternal, ShieldPro.X3dhInfo);
-            Assert.IsTrue(aliceDeriveResult.IsOk, aliceDeriveResult.IsErr ? $"Alice derivation failed: {aliceDeriveResult.UnwrapErr()}" : "Alice derivation failed");
+            Result<SodiumSecureMemoryHandle, ShieldFailure> aliceDeriveResult =
+                _aliceKeys.X3dhDeriveSharedSecret(bobBundleInternal, ShieldPro.X3dhInfo);
+            Assert.IsTrue(aliceDeriveResult.IsOk,
+                aliceDeriveResult.IsErr
+                    ? $"Alice derivation failed: {aliceDeriveResult.UnwrapErr()}"
+                    : "Alice derivation failed");
             aliceRootKeyHandle = aliceDeriveResult.Unwrap();
 
             var aliceHolder = _aliceSessionManager.GetSessionHolderOrThrow(_aliceSessionId, _exchangeType);
@@ -150,10 +159,12 @@ public class ShieldProDoubleRatchetTests : IAsyncDisposable
                     {
                         hkdfSender.Expand(ShieldPro.SenderChainInfo, senderKeyBytes);
                     }
+
                     using (HkdfSha256 hkdfReceiver = new HkdfSha256(rootKeyBytes, default))
                     {
                         hkdfReceiver.Expand(ShieldPro.ReceiverChainInfo, receiverKeyBytes);
                     }
+
                     aliceHolder.Session.FinalizeChainKey(senderKeyBytes.ToArray(), receiverKeyBytes.ToArray());
                 }
                 finally
@@ -162,6 +173,7 @@ public class ShieldProDoubleRatchetTests : IAsyncDisposable
                     senderKeyBytes.Clear();
                     receiverKeyBytes.Clear();
                 }
+
                 aliceHolder.Session.SetConnectionState(PubKeyExchangeState.Complete);
                 _testContext.WriteLine($"[SETUP DR V2] Alice session {_aliceSessionId} finalized.");
             }
@@ -172,7 +184,8 @@ public class ShieldProDoubleRatchetTests : IAsyncDisposable
 
             _bobSessionId = Helpers.GenerateRandomUInt32(true);
             PublicKeyBundle bobLocalBundleProto = _bobKeys.CreatePublicBundle().ToProtobufExchange();
-            if (bobLocalBundleProto == null) throw new InvalidOperationException("Bob failed create bundle for session");
+            if (bobLocalBundleProto == null)
+                throw new InvalidOperationException("Bob failed create bundle for session");
             ShieldSession bobSession = new(_bobSessionId, bobLocalBundleProto);
             _bobSessionManager.InsertSessionOrThrow(_bobSessionId, _exchangeType, bobSession);
 
@@ -184,7 +197,10 @@ public class ShieldProDoubleRatchetTests : IAsyncDisposable
                 opkIdUsedByAlice,
                 ShieldPro.X3dhInfo
             );
-            Assert.IsTrue(bobDeriveResult.IsOk, bobDeriveResult.IsErr ? $"Bob derivation failed: {bobDeriveResult.UnwrapErr()}" : "Bob derivation failed");
+            Assert.IsTrue(bobDeriveResult.IsOk,
+                bobDeriveResult.IsErr
+                    ? $"Bob derivation failed: {bobDeriveResult.UnwrapErr()}"
+                    : "Bob derivation failed");
             bobRootKeyHandle = bobDeriveResult.Unwrap();
 
             var bobHolder = _bobSessionManager.GetSessionHolderOrThrow(_bobSessionId, _exchangeType);
@@ -205,10 +221,12 @@ public class ShieldProDoubleRatchetTests : IAsyncDisposable
                     {
                         hkdfSender.Expand(ShieldPro.SenderChainInfo, senderKeyBytes);
                     }
+
                     using (HkdfSha256 hkdfReceiver = new HkdfSha256(rootKeyBytes, default))
                     {
                         hkdfReceiver.Expand(ShieldPro.ReceiverChainInfo, receiverKeyBytes);
                     }
+
                     bobHolder.Session.FinalizeChainKey(receiverKeyBytes.ToArray(), senderKeyBytes.ToArray()); // Swapped
                 }
                 finally
@@ -217,6 +235,7 @@ public class ShieldProDoubleRatchetTests : IAsyncDisposable
                     senderKeyBytes.Clear();
                     receiverKeyBytes.Clear();
                 }
+
                 bobHolder.Session.SetConnectionState(PubKeyExchangeState.Complete);
                 _testContext.WriteLine($"[SETUP DR V2] Bob session {_bobSessionId} finalized.");
             }
@@ -226,7 +245,8 @@ public class ShieldProDoubleRatchetTests : IAsyncDisposable
             }
 
             _testContext.WriteLine("[SETUP DR V2] Verifying root keys match...");
-            Assert.IsTrue(CompareSecureHandles(aliceRootKeyHandle, bobRootKeyHandle), "Derived root keys do NOT match!");
+            Assert.IsTrue(CompareSecureHandles(aliceRootKeyHandle, bobRootKeyHandle),
+                "Derived root keys do NOT match!");
             _testContext.WriteLine("[SETUP DR V2] Handshake simulation complete & verified.");
         }
         catch (Exception ex)
@@ -250,7 +270,8 @@ public class ShieldProDoubleRatchetTests : IAsyncDisposable
         byte[] plaintextBytes = Encoding.UTF8.GetBytes(message);
 
         _testContext.WriteLine($"[Test: Ratchet_SendReceiveSingle] Alice (Session {_aliceSessionId}) encrypting...");
-        CipherPayload payload = await _aliceShieldPro.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType, plaintextBytes);
+        CipherPayload payload =
+            await _aliceShieldPro.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType, plaintextBytes);
 
         Assert.IsNotNull(payload);
         Assert.AreEqual(1u, payload.RatchetIndex);
@@ -259,11 +280,69 @@ public class ShieldProDoubleRatchetTests : IAsyncDisposable
         _testContext.WriteLine($"[Test: Ratchet_SendReceiveSingle] Bob (Session {_bobSessionId}) decrypting...");
         byte[] decryptedBytes = await _bobShieldPro.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, payload);
         string decrypted = Encoding.UTF8.GetString(decryptedBytes);
-        
-        Assert.AreEqual(decrypted, message);
+
+        Assert.AreEqual(message, decrypted);
         _testContext.WriteLine("[Test: Ratchet_SendReceiveSingle] SUCCESS.");
     }
-    
+
+    [TestMethod]
+    public async Task Ratchet_BidirectionalMessageExchange_100Iterations_Succeeds()
+    {
+        _testContext.WriteLine("[Test: Ratchet_BidirectionalMessageExchange_100Iterations] Running...");
+
+        for (int i = 0; i < 100; i++)
+        {
+            // Alice -> Bob
+            string aliceMessage = $"Message {i + 1} from Alice to Bob";
+            byte[] alicePlaintextBytes = Encoding.UTF8.GetBytes(aliceMessage);
+
+            _testContext.WriteLine(
+                $"[Iteration {i + 1}] Alice (Session {_aliceSessionId}) encrypting message {i + 1}...");
+            CipherPayload alicePayload =
+                await _aliceShieldPro.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType, alicePlaintextBytes);
+
+            Assert.IsNotNull(alicePayload, $"Alice payload null at iteration {i + 1}");
+            Assert.AreEqual((uint)(i + 1), alicePayload.RatchetIndex,
+                $"Alice RatchetIndex mismatch at iteration {i + 1}");
+            Assert.AreEqual(ByteString.Empty, alicePayload.DhPublicKey,
+                $"Alice DhPublicKey not empty at iteration {i + 1}");
+
+            _testContext.WriteLine(
+                $"[Iteration {i + 1}] Bob (Session {_bobSessionId}) decrypting Alice's message {i + 1}...");
+            byte[] bobDecryptedBytes =
+                await _bobShieldPro.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, alicePayload);
+
+            CollectionAssert.AreEqual(alicePlaintextBytes, bobDecryptedBytes,
+                $"Bob decrypted Alice's message mismatch at iteration {i + 1}");
+
+            // Bob -> Alice
+            string bobMessage = $"Response {i + 1} from Bob to Alice";
+            byte[] bobPlaintextBytes = Encoding.UTF8.GetBytes(bobMessage);
+
+            _testContext.WriteLine($"[Iteration {i + 1}] Bob (Session {_bobSessionId}) encrypting response {i + 1}...");
+            CipherPayload bobPayload =
+                await _bobShieldPro.ProduceOutboundMessageAsync(_bobSessionId, _exchangeType, bobPlaintextBytes);
+
+            Assert.IsNotNull(bobPayload, $"Bob payload null at iteration {i + 1}");
+            Assert.AreEqual((uint)(i + 1), bobPayload.RatchetIndex, $"Bob RatchetIndex mismatch at iteration {i + 1}");
+            Assert.AreEqual(ByteString.Empty, bobPayload.DhPublicKey,
+                $"Bob DhPublicKey not empty at iteration {i + 1}");
+
+            _testContext.WriteLine(
+                $"[Iteration {i + 1}] Alice (Session {_aliceSessionId}) decrypting Bob's response {i + 1}...");
+            byte[] aliceDecryptedBytes =
+                await _aliceShieldPro.ProcessInboundMessageAsync(_aliceSessionId, _exchangeType, bobPayload);
+
+            CollectionAssert.AreEqual(bobPlaintextBytes, aliceDecryptedBytes,
+                $"Alice decrypted Bob's response mismatch at iteration {i + 1}");
+
+            _testContext.WriteLine($"[Iteration {i + 1}] Bidirectional exchange completed successfully.");
+        }
+
+        _testContext.WriteLine(
+            "[Test: Ratchet_BidirectionalMessageExchange_100Iterations] SUCCESS - All 100 iterations completed.");
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _aliceShieldPro.DisposeAsync();
