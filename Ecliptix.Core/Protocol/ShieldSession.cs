@@ -260,14 +260,13 @@ public sealed class ShieldSession : IDisposable
 
         try
         {
-            // AdvanceSenderKey derives key for NextMessageIndex
-            var messageKey = sender.AdvanceSenderKey();
-            var nonce = GenerateNextNonce(ChainStepType.Sender);
+            ShieldMessageKey messageKey = sender.AdvanceSenderKey();
+            byte[] nonce = GenerateNextNonce(ChainStepType.Sender);
             // _directionTracker.record_sent(); // Omitted
-            // Info log removed
+           
             return (messageKey, nonce);
         }
-        catch (Exception ex) when (ex is not ShieldChainStepException) // Catch underlying errors
+        catch (Exception ex) when (ex is not ShieldChainStepException) 
         {
             throw new ShieldChainStepException($"Failed to rotate sender key for session {_id}: {ex.Message}", ex);
         }
@@ -329,7 +328,7 @@ public sealed class ShieldSession : IDisposable
             }
 
             // 3. Get/Derive the target message key
-            var messageKey = receiver.GetOrDeriveKeyFor(msgIndex);
+            ShieldMessageKey messageKey = receiver.GetOrDeriveKeyFor(msgIndex);
 
             // 4. Post-derivation actions
             // _directionTracker.record_received(); // Omitted
@@ -392,39 +391,23 @@ public sealed class ShieldSession : IDisposable
 
     private byte[] GenerateNextNonce(ChainStepType stepType)
     {
-        // No dispose check needed here as it's internal after public methods check
         _nonceCounter++;
         byte[] nonce = new byte[12];
-        BitConverter.TryWriteBytes(nonce.AsSpan(0, 4), _id); // Use LE by default
+        BitConverter.TryWriteBytes(nonce.AsSpan(0, 4), _id);
 
         nonce[4] = stepType switch
         {
             ChainStepType.Sender => 1,
             ChainStepType.Receiver => 2,
-            _ => throw new ArgumentOutOfRangeException(nameof(stepType)) // Should not happen
+            _ => throw new ArgumentOutOfRangeException(nameof(stepType))
         };
-
-        // Copy 7 bytes from counter (skip least significant byte of ulong for 12 byte nonce)
-        // Caution: Check if this matches the exact Rust slicing `[1..]` intended behavior
-        // ulong counter = _nonceCounter;
-        // Span<byte> counterBytes = stackalloc byte[8];
-        // BitConverter.TryWriteBytes(counterBytes, counter);
-        // counterBytes.Slice(1, 7).CopyTo(nonce.AsSpan(5, 7)); // Copy bytes 1 through 7
-
-        // Simpler: Use last 7 bytes of counter directly
+        
         Span<byte> counterBytesFull = stackalloc byte[8];
         BitConverter.TryWriteBytes(counterBytesFull, _nonceCounter);
-        counterBytesFull.Slice(0, 7).CopyTo(nonce.AsSpan(5, 7)); // Copy first 7 bytes (0 to 6)
+        counterBytesFull[..7].CopyTo(nonce.AsSpan(5, 7));
 
-        // Debug log removed
         return nonce;
     }
-
-    // Add helper property to ShieldChainStep if needed:
-    // public bool HasDerivedKeys => this.CurrentIndex > 0 || _messageKeys.Count > 0;
-
-
-    // --- IDisposable Implementation ---
 
     public void Dispose()
     {

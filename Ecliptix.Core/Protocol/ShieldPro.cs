@@ -267,7 +267,6 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     {
         ArgumentNullException.ThrowIfNull(plainPayload);
 
-        // FIX: ExecuteUnderSessionLockAsync needs Func<ShieldSession, TResult> returning the Protobuf type
         var cipherPayloadProto = await ExecuteUnderSessionLockAsync(sessionId, exchangeType, (session) =>
         {
             byte[]? messageKeyBytes = null;
@@ -299,7 +298,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
                 }
 
                 (ShieldMessageKey messageKey, byte[] nonce) =
-                    session.RotateSenderKey(); // Nonce must be Constants.AesGcmNonceSize
+                    session.RotateSenderKey();
 
                 messageKeyBytes = new byte[Constants.AesKeySize];
                 try
@@ -307,10 +306,9 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
                     messageKey.ReadKeyMaterial(messageKeyBytes);
 
                     byte[] localId = _localKeyMaterial.IdentityX25519PublicKey;
-                    // FIX: Use correct property from internal PublicKeyBundle record
-                    byte[] peerId = session.PeerBundle.IdentityX25519PublicKey.ToByteArray();
+                    byte[] peerId = session.PeerBundle.IdentityX25519PublicKey.ToByteArray(); 
                     ad = new byte[localId.Length + peerId.Length];
-                    Buffer.BlockCopy(localId, 0, ad, 0, localId.Length);
+                    Buffer.BlockCopy(localId, 0, ad, 0, localId.Length); 
                     Buffer.BlockCopy(peerId, 0, ad, localId.Length, peerId.Length);
 
                     (ciphertext, tag) = AesGcmService.EncryptAllocating(messageKeyBytes, nonce, plainPayload, ad);
@@ -360,7 +358,6 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
             cipherPayloadProto.Nonce.Length != Constants.AesGcmNonceSize)
             throw new ArgumentException("Nonce invalid.", nameof(cipherPayloadProto.Nonce));
 
-        // FIX: ExecuteUnderSessionLockAsync needs Func<ShieldSession, byte[]>
         var plaintextResult = await ExecuteUnderSessionLockAsync(sessionId, exchangeType, (session) =>
         {
             byte[]? messageKeyBytes = null;
@@ -377,17 +374,20 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
 
                 ShieldMessageKey messageKey = session.RotateReceiverKey(cipherPayloadProto.RatchetIndex, receivedDhKey);
 
+                Console.WriteLine("Received message key index: " + messageKey.Index);
+                Console.WriteLine("Received message key: " + messageKey.ToString());
+                
                 messageKeyBytes = new byte[Constants.AesKeySize];
+                
                 try
                 {
                     messageKey.ReadKeyMaterial(messageKeyBytes);
 
-                    byte[] localId = _localKeyMaterial.IdentityX25519PublicKey;
-                    // FIX: Use correct property from internal PublicKeyBundle record
-                    byte[] peerId = session.PeerBundle.IdentityX25519PublicKey.ToByteArray();
-                    ad = new byte[localId.Length + peerId.Length];
-                    Buffer.BlockCopy(localId, 0, ad, 0, localId.Length);
-                    Buffer.BlockCopy(peerId, 0, ad, localId.Length, peerId.Length);
+                    byte[] peerId = session.PeerBundle.IdentityX25519PublicKey.ToByteArray(); 
+                    byte[] localId = _localKeyMaterial.IdentityX25519PublicKey; 
+                    ad = new byte[peerId.Length + localId.Length];
+                    Buffer.BlockCopy(peerId, 0, ad, 0, peerId.Length); 
+                    Buffer.BlockCopy(localId, 0, ad, peerId.Length, localId.Length);
 
                     ReadOnlySpan<byte> cipherWithTagSpan = cipherPayloadProto.Cipher.Span;
                     int cipherLength = cipherWithTagSpan.Length - Constants.AesGcmTagSize;

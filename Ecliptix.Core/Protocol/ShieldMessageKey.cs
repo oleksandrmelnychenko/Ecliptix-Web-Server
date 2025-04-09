@@ -19,7 +19,7 @@ public sealed class ShieldMessageKey : IDisposable, IEquatable<ShieldMessageKey>
 
     // Store the key securely
     private SodiumSecureMemoryHandle _keyHandle;
-    private bool _disposed = false;
+    private bool _disposed;
 
     /// <summary>
     /// Creates a new ShieldMessageKey, copying the key material into secure memory.

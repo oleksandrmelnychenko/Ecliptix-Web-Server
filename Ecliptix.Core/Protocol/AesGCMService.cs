@@ -42,7 +42,6 @@ public static class AesGcmService
         Span<byte> tagDestination,
         ReadOnlySpan<byte> associatedData = default)
     {
-        // Argument Validation
         if (key.Length != Constants.AesKeySize) throw new ArgumentException(ErrInvalidKeyLength, nameof(key));
         if (nonce.Length != Constants.AesGcmNonceSize)
             throw new ArgumentException(ErrInvalidNonceLength, nameof(nonce));
@@ -53,17 +52,15 @@ public static class AesGcmService
 
         try
         {
-            using var aesGcm = new AesGcm(key, Constants.AesGcmTagSize); // Use key, specify tag size
+            using AesGcm aesGcm = new(key, Constants.AesGcmTagSize);
             aesGcm.Encrypt(nonce, plaintext, ciphertextDestination, tagDestination, associatedData);
         }
         catch (CryptographicException cryptoEx)
         {
-            // Log removed
             throw new ShieldChainStepException(ErrEncryptFail, cryptoEx);
         }
-        catch (Exception ex) // Catch other potential issues
+        catch (Exception ex) 
         {
-            // Log removed
             throw new ShieldChainStepException(ErrEncryptFail, ex);
         }
     }

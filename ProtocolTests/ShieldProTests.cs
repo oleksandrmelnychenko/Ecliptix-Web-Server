@@ -1,15 +1,15 @@
 using System.Security.Cryptography;
-using Xunit.Abstractions;
 using Ecliptix.Core.Protocol;
 using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 
-namespace ShieldProTests;
+namespace ProtocolTests;
 
+[TestClass]
 public class ShieldProTests : IAsyncDisposable
 {
-    private readonly ITestOutputHelper _output;
+    private readonly TestContext _testContext;
     private readonly LocalKeyMaterial _aliceKeys;
     private readonly LocalKeyMaterial _bobKeys;
     private readonly ShieldPro _aliceShieldPro;
@@ -28,9 +28,10 @@ public class ShieldProTests : IAsyncDisposable
         }
     }
 
-    public ShieldProTests(ITestOutputHelper output)
+    public ShieldProTests(TestContext testContext)
     {
-        _output = output;
+        TestContext = testContext;
+        _testContext = TestContext; // MSTest provides TestContext automatically
         _aliceKeys = new LocalKeyMaterial(5);
         _bobKeys = new LocalKeyMaterial(5);
         ShieldSessionManager aliceSessionManager = ShieldSessionManager.CreateWithCleanupTask();
@@ -38,6 +39,8 @@ public class ShieldProTests : IAsyncDisposable
         _aliceShieldPro = new ShieldPro(_aliceKeys, aliceSessionManager);
         _bobShieldPro = new ShieldPro(_bobKeys, bobSessionManager);
     }
+
+    public TestContext TestContext { get; set; } // Required property for MSTest to inject TestContext
 
     private static byte[] CorruptBytes(ReadOnlySpan<byte> input)
     {
@@ -116,7 +119,7 @@ public class ShieldProTests : IAsyncDisposable
         };
     }
 
-    [Fact]
+    [TestMethod]
     public void CompleteExchange_Success_Should_FinalizeSessionAndReturnRootKey()
     {
         const PubKeyExchangeOfType exchangeType = PubKeyExchangeOfType.AppDeviceEphemeralConnect;
@@ -134,7 +137,7 @@ public class ShieldProTests : IAsyncDisposable
 
             Result<LocalPublicKeyBundle, ShieldError> bobBundleInternalResult =
                 LocalPublicKeyBundle.FromProtobufExchange(bobPublicBundleProto.ToProtobufExchange());
-            Assert.True(bobBundleInternalResult.IsOk,
+            Assert.IsTrue(bobBundleInternalResult.IsOk,
                 bobBundleInternalResult.IsErr
                     ? $"Failed parsing Bob's bundle: {bobBundleInternalResult.UnwrapErr()}"
                     : "Failed parsing Bob's bundle");
@@ -142,7 +145,7 @@ public class ShieldProTests : IAsyncDisposable
 
             Result<SodiumSecureMemoryHandle, ShieldFailure> aliceDeriveResult =
                 _aliceKeys.X3dhDeriveSharedSecret(bobBundleInternal, ShieldPro.X3dhInfo);
-            Assert.True(aliceDeriveResult.IsOk,
+            Assert.IsTrue(aliceDeriveResult.IsOk,
                 aliceDeriveResult.IsErr
                     ? $"Alice derivation failed: {aliceDeriveResult.UnwrapErr()}"
                     : "Alice derivation failed");
@@ -165,19 +168,19 @@ public class ShieldProTests : IAsyncDisposable
                 opkIdUsedByAlice,
                 ShieldPro.X3dhInfo
             );
-            Assert.True(bobDeriveResult.IsOk,
+            Assert.IsTrue(bobDeriveResult.IsOk,
                 bobDeriveResult.IsErr
                     ? $"Bob derivation failed: {bobDeriveResult.UnwrapErr()}"
                     : "Bob derivation failed");
             bobRootKeyHandle = bobDeriveResult.Unwrap();
 
-            Assert.NotNull(aliceRootKeyHandle);
-            Assert.False(aliceRootKeyHandle.IsInvalid);
-            Assert.NotNull(bobRootKeyHandle);
-            Assert.False(bobRootKeyHandle.IsInvalid);
-            Assert.Equal(Constants.X25519KeySize, aliceRootKeyHandle.Length);
-            Assert.Equal(Constants.X25519KeySize, bobRootKeyHandle.Length);
-            Assert.True(CompareSecureHandles(aliceRootKeyHandle, bobRootKeyHandle), "Derived root keys do NOT match!");
+            Assert.IsNotNull(aliceRootKeyHandle);
+            Assert.IsFalse(aliceRootKeyHandle.IsInvalid);
+            Assert.IsNotNull(bobRootKeyHandle);
+            Assert.IsFalse(bobRootKeyHandle.IsInvalid);
+            Assert.AreEqual(Constants.X25519KeySize, aliceRootKeyHandle.Length);
+            Assert.AreEqual(Constants.X25519KeySize, bobRootKeyHandle.Length);
+            Assert.IsTrue(CompareSecureHandles(aliceRootKeyHandle, bobRootKeyHandle), "Derived root keys do NOT match!");
         }
         finally
         {

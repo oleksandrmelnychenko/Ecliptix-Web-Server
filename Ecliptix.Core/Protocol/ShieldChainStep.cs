@@ -238,7 +238,7 @@ public sealed class ShieldChainStep : IDisposable
         {
             throw new ShieldChainStepException(
                 $"Requested index {targetIndex} is too old (current index: {_currentIndex})...");
-        } // Shortened message
+        }
 
         Span<byte> currentChainKeySpan = stackalloc byte[Constants.X25519KeySize];
         Span<byte> nextChainKeySpan = stackalloc byte[Constants.X25519KeySize];
@@ -251,33 +251,28 @@ public sealed class ShieldChainStep : IDisposable
             {
                 _chainKeyHandle.Read(currentChainKeySpan);
 
-                // --- Derive next chain key ---
-                // CHECK: Ensure HkdfSha256 constructor accepts ReadOnlySpan<byte> for IKM
-                // If not, use: byte[] tempIKM = currentChainKeySpan.ToArray(); try { using(new HkdfSha256(tempIKM...)) {...} } finally { SodiumInterop.SecureWipe(tempIKM); }
-                using (var hkdfChain = new HkdfSha256(currentChainKeySpan, default))
+                using (HkdfSha256 hkdfChain = new(currentChainKeySpan, default))
                 {
                     hkdfChain.Expand(Constants.ChainInfo, nextChainKeySpan);
                 }
 
-                currentChainKeySpan.Clear(); // Wipe temp current key copy
+                currentChainKeySpan.Clear();
 
                 nextChainKeyHandle = SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize);
-                nextChainKeyHandle.Write(nextChainKeySpan); // Store next key securely
+                nextChainKeyHandle.Write(nextChainKeySpan);
 
-                // --- Derive message key ---
-                // CHECK: Ensure HkdfSha256 constructor accepts ReadOnlySpan<byte> for IKM (using nextChainKeySpan here)
-                // If not, adapt as described above.
-                using (var hkdfMsg = new HkdfSha256(nextChainKeySpan, default))
+                using (HkdfSha256 hkdfMsg = new(nextChainKeySpan, default))
                 {
                     hkdfMsg.Expand(Constants.MsgInfo, msgKeySpan);
                 }
 
-                nextChainKeySpan.Clear(); // Wipe temp next key copy
+                nextChainKeySpan.Clear(); 
 
-                // Create secure message key object (constructor takes ReadOnlySpan)
-                // Constructor copies msgKeySpan into its own secure handle
-                var newMessageKey = new ShieldMessageKey(idx, msgKeySpan);
-                msgKeySpan.Clear(); // Wipe temp message key buffer
+                Console.WriteLine("[GetOrDeriveKeyFor] Deriving message key for index: " + idx);
+                Console.WriteLine("Key: " + Convert.ToHexString(msgKeySpan.ToArray()));
+                
+                ShieldMessageKey newMessageKey = new(idx, msgKeySpan);
+                msgKeySpan.Clear();
 
                 // --- Update State ---
                 var oldChainKeyHandle = _chainKeyHandle;
@@ -319,6 +314,8 @@ public sealed class ShieldChainStep : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         return GetOrDeriveKeyFor(NextMessageIndex); // Simplified
     }
+    
+    
 
     public void Dispose()
     {
