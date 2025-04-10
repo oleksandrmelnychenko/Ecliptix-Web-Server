@@ -1,24 +1,35 @@
 using Ecliptix.Core.Protocol.Utilities; // For Constants, ShieldChainStepException, Helpers, ShieldFailure, Result etc.
-using Sodium; // For SodiumCore, SodiumInterop, etc.
+// For SodiumCore, SodiumInterop, etc.
 using System.Security.Cryptography; // For AuthenticationTagMismatchException
 using Ecliptix.Protobuf.CipherPayload; // Protobuf generated class
 using Ecliptix.Protobuf.PubKeyExchange; // Protobuf generated classes
 using Google.Protobuf; // For ByteString
 using Google.Protobuf.WellKnownTypes; // For Timestamp
+// Added for ArgumentNullException, Exception, etc.
+// For BinaryPrimitives if used for AD
+// Added for Task/ValueTask
+
+// Added for Debug.WriteLine (optional)
 
 namespace Ecliptix.Core.Protocol;
+
 // Assuming supporting types (LocalKeyMaterial, ShieldSessionManager, ShieldSession, etc.)
-// and interfaces (IDataCenterPubKeyExchange, etc.) are correctly defined in accessible namespaces.
+// and interfaces are correctly defined in accessible namespaces.
 // Assuming internal LocalPublicKeyBundle record is defined correctly.
+// Assuming Constants class is defined with necessary values (AesGcmKeySize, AesGcmNonceSize, AesGcmTagSize)
 
 public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageService, IInboundMessageService,
     IAsyncDisposable
 {
     // --- Constants ---
     private const uint DefaultOneTimePreKeyCount = 3;
-    public static ReadOnlySpan<byte> X3dhInfo => "WhisperText"u8;
-    public static ReadOnlySpan<byte> SenderChainInfo => [0x01];
-    public static ReadOnlySpan<byte> ReceiverChainInfo => [0x02];
+
+    // Ensure these are defined correctly, potentially in a shared Constants class
+    public static ReadOnlySpan<byte> X3dhInfo => "Ecliptix_X3DH"u8; // Example, ensure it matches usage
+    public static ReadOnlySpan<byte> InitialSenderChainInfo => Constants.InitialSenderChainInfo; // Use shared constant
+
+    public static ReadOnlySpan<byte> InitialReceiverChainInfo =>
+        Constants.InitialReceiverChainInfo; // Use shared constant
 
     // --- Fields ---
     private readonly LocalKeyMaterial _localKeyMaterial;
@@ -27,7 +38,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
 
     public ShieldPro(LocalKeyMaterial localKeyMaterial, ShieldSessionManager? sessionManager = null)
     {
-        SodiumCore.Init(); // Call once at app startup elsewhere ideally
+        // SodiumCore.Init(); // Call once at app startup elsewhere ideally
         _localKeyMaterial = localKeyMaterial ?? throw new ArgumentNullException(nameof(localKeyMaterial));
         _sessionManager = sessionManager ?? ShieldSessionManager.CreateWithCleanupTask();
     }
@@ -36,15 +47,17 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     private static uint GenerateRequestId() => Helpers.GenerateRandomUInt32(true);
     private static Timestamp GetProtoTimestamp() => Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow);
 
-    // --- Locking Helpers (Revised for ConfigureAwait) ---
+    // --- Locking Helpers (Unchanged) ---
     private async ValueTask ExecuteUnderSessionLockAsync(uint sessionId, PubKeyExchangeOfType exchangeType,
         Func<ShieldSession, ValueTask> action)
     {
+        // ... as before ...
         ObjectDisposedException.ThrowIf(_disposed, this);
         SessionHolder holder = _sessionManager.GetSessionHolderOrThrow(sessionId, exchangeType);
         await holder.Lock.WaitAsync().ConfigureAwait(false);
         try
         {
+            // Check state *after* acquiring lock
             if (holder.Session.State != PubKeyExchangeState.Complete)
                 throw new ShieldChainStepException($"Session {sessionId} (Type: {exchangeType}) not Complete.");
             holder.Session.EnsureNotExpired();
@@ -52,7 +65,9 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         }
         catch (Exception ex) when (ex is not ShieldChainStepException and not ObjectDisposedException)
         {
-            throw new ShieldChainStepException($"Locked operation failed session {sessionId}: {ex.Message}", ex);
+            // Wrap unexpected exceptions
+            throw new ShieldChainStepException(
+                $"Locked async ValueTask operation failed session {sessionId}: {ex.Message}", ex);
         }
         finally
         {
@@ -63,6 +78,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     private async ValueTask ExecuteUnderSessionLockAsync(uint sessionId, PubKeyExchangeOfType exchangeType,
         Action<ShieldSession> action)
     {
+        // ... as before ...
         ObjectDisposedException.ThrowIf(_disposed, this);
         SessionHolder holder = _sessionManager.GetSessionHolderOrThrow(sessionId, exchangeType);
         await holder.Lock.WaitAsync().ConfigureAwait(false);
@@ -75,7 +91,8 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         }
         catch (Exception ex) when (ex is not ShieldChainStepException and not ObjectDisposedException)
         {
-            throw new ShieldChainStepException($"Locked operation failed session {sessionId}: {ex.Message}", ex);
+            throw new ShieldChainStepException($"Locked sync Action operation failed session {sessionId}: {ex.Message}",
+                ex);
         }
         finally
         {
@@ -86,6 +103,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     private async Task<TResult> ExecuteUnderSessionLockAsync<TResult>(uint sessionId, PubKeyExchangeOfType exchangeType,
         Func<ShieldSession, Task<TResult>> action)
     {
+        // ... as before ...
         ObjectDisposedException.ThrowIf(_disposed, this);
         SessionHolder holder = _sessionManager.GetSessionHolderOrThrow(sessionId, exchangeType);
         await holder.Lock.WaitAsync().ConfigureAwait(false);
@@ -98,7 +116,8 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         }
         catch (Exception ex) when (ex is not ShieldChainStepException and not ObjectDisposedException)
         {
-            throw new ShieldChainStepException($"Locked operation failed session {sessionId}: {ex.Message}", ex);
+            throw new ShieldChainStepException(
+                $"Locked async Task<TResult> operation failed session {sessionId}: {ex.Message}", ex);
         }
         finally
         {
@@ -109,6 +128,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     private async Task<TResult> ExecuteUnderSessionLockAsync<TResult>(uint sessionId, PubKeyExchangeOfType exchangeType,
         Func<ShieldSession, TResult> action) // Sync lambda overload
     {
+        // ... as before ...
         ObjectDisposedException.ThrowIf(_disposed, this);
         SessionHolder holder = _sessionManager.GetSessionHolderOrThrow(sessionId, exchangeType);
         await holder.Lock.WaitAsync().ConfigureAwait(false);
@@ -121,7 +141,8 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         }
         catch (Exception ex) when (ex is not ShieldChainStepException and not ObjectDisposedException)
         {
-            throw new ShieldChainStepException($"Locked operation failed session {sessionId}: {ex.Message}", ex);
+            throw new ShieldChainStepException(
+                $"Locked sync Func<TResult> operation failed session {sessionId}: {ex.Message}", ex);
         }
         finally
         {
@@ -129,287 +150,462 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         }
     }
 
+
+    // --- IDataCenterPubKeyExchange Implementation (Using Corrected Session Methods) ---
+
     public async Task<(uint SessionId, PubKeyExchange InitialMessage)> BeginDataCenterPubKeyExchangeAsync(
         PubKeyExchangeOfType exchangeType)
     {
+        // This method seems okay - it creates the session but doesn't finalize it yet.
+        // Uses ShieldSession constructor which is fine.
+        ObjectDisposedException.ThrowIf(_disposed, this); // Check disposal state
         uint sessionId = Helpers.GenerateRandomUInt32(excludeZero: true);
+        Console.WriteLine($"[ShieldPro] Beginning exchange {exchangeType}, generated Session ID: {sessionId}");
 
         try
         {
-            _localKeyMaterial.GenerateEphemeralKeyPair();
+            _localKeyMaterial.GenerateEphemeralKeyPair(); // Ensure fresh EK
+            PublicKeyBundle localPublicBundleProto = _localKeyMaterial.CreatePublicBundle().ToProtobufExchange()
+                                                     ?? throw new ShieldChainStepException(
+                                                         "Failed to create local public bundle for handshake.");
 
-            LocalPublicKeyBundle localBundleInternal = _localKeyMaterial.CreatePublicBundle();
+            ShieldSession session = new(sessionId, localPublicBundleProto); // Create session
 
-            PublicKeyBundle? localPublicBundleProto = localBundleInternal.ToProtobufExchange();
-            if (localPublicBundleProto == null) throw new ShieldChainStepException("Failed bundle conversion.");
-
-            ShieldSession session = new(sessionId, localPublicBundleProto);
-
+            // Add session to manager BEFORE sending message
             _sessionManager.InsertSessionOrThrow(sessionId, exchangeType, session);
+            Console.WriteLine($"[ShieldPro] Session {sessionId} inserted into manager.");
+
 
             PubKeyExchange pubKeyExchangeProto = new()
             {
-                RequestId = GenerateRequestId(), State = PubKeyExchangeState.Init, OfType = exchangeType,
-                Payload = localPublicBundleProto.ToByteString(), CreatedAt = GetProtoTimestamp()
+                RequestId = GenerateRequestId(),
+                State = PubKeyExchangeState.Init, // Sent by initiator
+                OfType = exchangeType,
+                Payload = localPublicBundleProto.ToByteString(), // Contains IK, EK, SPK, OPKs
+                CreatedAt = GetProtoTimestamp()
             };
             return (sessionId, pubKeyExchangeProto);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not ShieldChainStepException) // Don't wrap our specific exceptions
         {
+            // Consider removing session if insertion succeeded but something else failed? Needs careful thought.
             throw new ShieldChainStepException($"Begin key exchange failed: {ex.Message}", ex);
         }
     }
 
-    public async Task<(uint SessionId, SodiumSecureMemoryHandle RootKeyHandle)> CompleteDataCenterPubKeyExchangeAsync(
-        uint sessionId, PubKeyExchangeOfType exchangeType, PubKeyExchange peerMessageProto)
+    public Task<(uint SessionId, SodiumSecureMemoryHandle RootKeyHandle)> CompleteDataCenterPubKeyExchangeAsync(
+        uint sessionId, PubKeyExchangeOfType exchangeType,
+        PubKeyExchange peerMessage)
+    {
+        throw new NotImplementedException();
+    }
+
+    public async Task<(uint SessionId, PubKeyExchange ResponseMessage)> ProcessAndRespondToPubKeyExchangeAsync(
+        PubKeyExchange peerInitialMessageProto)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(peerMessageProto);
+        ArgumentNullException.ThrowIfNull(peerInitialMessageProto);
+        if (peerInitialMessageProto.State != PubKeyExchangeState.Init)
+            throw new ArgumentException("Expected peer message state to be Init.", nameof(peerInitialMessageProto));
 
-        SessionHolder holder = _sessionManager.GetSessionHolderOrThrow(sessionId, exchangeType);
-        SodiumSecureMemoryHandle? rootKeyHandle = null; // Declare handle here
+        PubKeyExchangeOfType exchangeType = peerInitialMessageProto.OfType;
+        uint sessionId = Helpers.GenerateRandomUInt32(excludeZero: true);
+        Console.WriteLine($"[ShieldPro] Processing exchange request {exchangeType}, generated Session ID: {sessionId}");
 
-        // Declare spans INSIDE the try block AFTER the await
-        // Span<byte> rootKeyBytes = stackalloc byte[Constants.X25519KeySize];
-        // Span<byte> senderKeyBytes = stackalloc byte[Constants.X25519KeySize];
-        // Span<byte> receiverKeyBytes = stackalloc byte[Constants.X25519KeySize];
-
-        await holder.Lock.WaitAsync().ConfigureAwait(false);
-        // --- Lock Acquired ---
-        Span<byte> rootKeyBytes = stackalloc byte[Constants.X25519KeySize]; // OK to declare here
-        Span<byte> senderKeyBytes = stackalloc byte[Constants.X25519KeySize]; // OK to declare here
-        Span<byte> receiverKeyBytes = stackalloc byte[Constants.X25519KeySize]; // OK to declare here
+        SessionHolder? holder = null;
+        SodiumSecureMemoryHandle? rootKeyHandle = null;
 
         try
         {
-            if (holder.Session.State != PubKeyExchangeState.Init)
-                throw new ShieldChainStepException($"Session {sessionId} not in Init state.");
+            _localKeyMaterial.GenerateEphemeralKeyPair();
+            Console.WriteLine("[ShieldPro Bob] Generated EK for response.");
+
+            PublicKeyBundle localPublicBundleProto = _localKeyMaterial.CreatePublicBundle().ToProtobufExchange()
+                                                     ?? throw new ShieldChainStepException(
+                                                         "Failed to create local public bundle for response.");
+
+            ShieldSession session = new(sessionId, localPublicBundleProto);
+            _sessionManager.InsertSessionOrThrow(sessionId, exchangeType, session);
+            holder = _sessionManager.GetSessionHolderOrThrow(sessionId, exchangeType);
 
             PublicKeyBundle peerBundleProto =
-                Helpers.ParseFromBytes<PublicKeyBundle>(peerMessageProto.Payload
-                    .ToByteArray());
-
+                Helpers.ParseFromBytes<PublicKeyBundle>(peerInitialMessageProto.Payload.ToByteArray());
             Result<LocalPublicKeyBundle, ShieldError> conversionResult =
                 LocalPublicKeyBundle.FromProtobufExchange(peerBundleProto);
-
             if (conversionResult.IsErr) throw conversionResult.UnwrapErr();
             LocalPublicKeyBundle peerBundleInternal = conversionResult.Unwrap();
 
             Result<bool, ShieldFailure> verificationResult = LocalKeyMaterial.VerifyRemoteSpkSignature(
-                peerBundleInternal.IdentityEd25519,
-                peerBundleInternal.SignedPreKeyPublic,
+                peerBundleInternal.IdentityEd25519, peerBundleInternal.SignedPreKeyPublic,
                 peerBundleInternal.SignedPreKeySignature);
-
             if (verificationResult.IsErr) throw verificationResult.UnwrapErr();
             if (!verificationResult.Unwrap()) throw new ShieldChainStepException("SPK signature validation failed.");
 
-            holder.Session.SetPeerBundle(peerBundleInternal.ToProtobufExchange());
-
             Result<SodiumSecureMemoryHandle, ShieldFailure> deriveResult =
-                _localKeyMaterial.X3dhDeriveSharedSecret(peerBundleInternal, X3dhInfo);
-
+                _localKeyMaterial.CalculateSharedSecretAsRecipient(
+                    peerBundleInternal.IdentityX25519,
+                    peerBundleInternal.EphemeralX25519,
+                    peerBundleInternal.OneTimePreKeys?.FirstOrDefault()?.PreKeyId,
+                    X3dhInfo);
             if (deriveResult.IsErr) throw deriveResult.UnwrapErr();
             rootKeyHandle = deriveResult.Unwrap();
 
-            rootKeyHandle.Read(rootKeyBytes);
-            using (HkdfSha256 hkdfSender = new(rootKeyBytes))
-            {
-                hkdfSender.Expand(SenderChainInfo, senderKeyBytes);
-            }
-
-            using (HkdfSha256 hkdfReceiver = new(rootKeyBytes))
-            {
-                hkdfReceiver.Expand(ReceiverChainInfo, receiverKeyBytes);
-            }
-
-            rootKeyBytes.Clear();
-
-            holder.Session.FinalizeChainKey(senderKeyBytes.ToArray(), receiverKeyBytes.ToArray());
-            senderKeyBytes.Clear();
-            receiverKeyBytes.Clear();
-
-            holder.Session.SetConnectionState(PubKeyExchangeState.Complete);
-
-            SodiumSecureMemoryHandle returnHandle = rootKeyHandle;
-            rootKeyHandle = null; // Transfer ownership
-            return (sessionId, returnHandle);
-        }
-        // --- Catch specific protocol exceptions first if needed (e.g., for logging/specific handling) ---
-        catch (ShieldChainStepException)
-        {
-            throw;
-        } // Let specific protocol exceptions propagate
-        catch (ShieldFailure)
-        {
-            throw;
-        } // Let specific protocol exceptions propagate
-        catch (Exception ex)
-        {
-            rootKeyHandle?.Dispose(); // Dispose if created before unexpected error
-            // Wrap the unexpected exception
-            throw new ShieldChainStepException(
-                $"Unexpected error during complete key exchange for session {sessionId}: {ex.Message}", ex);
-        }
-        finally
-        {
-            // Ensure stack buffers cleared IN ALL CASES after try block execution
-            rootKeyBytes.Clear();
-            senderKeyBytes.Clear();
-            receiverKeyBytes.Clear();
-            holder.Lock.Release(); // Release the lock
-        }
-    }
-
-    public async Task<CipherPayload> ProduceOutboundMessageAsync(
-    uint sessionId, PubKeyExchangeOfType exchangeType, byte[] plainPayload)
-{
-    ArgumentNullException.ThrowIfNull(plainPayload);
-
-    var cipherPayloadProto = await ExecuteUnderSessionLockAsync(sessionId, exchangeType, (session) =>
-    {
-        byte[]? messageKeyBytes = null;
-        byte[]? ad = null;
-        byte[]? ciphertext = null;
-        byte[]? tag = null;
-
-        try
-        {
-            (ShieldMessageKey messageKey, byte[] nonce, byte[]? newSenderDhPublicKey) = session.RotateSenderKey();
-
-            messageKeyBytes = new byte[Constants.AesKeySize];
+            await holder.Lock.WaitAsync().ConfigureAwait(false);
             try
             {
-                messageKey.ReadKeyMaterial(messageKeyBytes);
+                byte[] rootKeyBytes = new byte[Constants.X25519KeySize];
+                rootKeyHandle.Read(rootKeyBytes.AsSpan());
 
-                byte[] localId = _localKeyMaterial.IdentityX25519PublicKey;
-                byte[] peerId = session.PeerBundle.IdentityX25519PublicKey.ToByteArray();
-                ad = new byte[localId.Length + peerId.Length];
-                Buffer.BlockCopy(localId, 0, ad, 0, localId.Length); // Sender first
-                Buffer.BlockCopy(peerId, 0, ad, localId.Length, peerId.Length); // Receiver second
+                session.SetPeerBundle(peerBundleProto);
+                session.SetConnectionState(PubKeyExchangeState.Pending); // Set state before finalization
+                session.FinalizeChainAndDhKeys(rootKeyBytes, peerBundleInternal.EphemeralX25519);
+                session.SetConnectionState(PubKeyExchangeState.Complete);
 
-                (ciphertext, tag) = AesGcmService.EncryptAllocating(messageKeyBytes, nonce, plainPayload, ad);
+                SodiumInterop.SecureWipe(rootKeyBytes);
+                Console.WriteLine($"[ShieldPro] Session {sessionId} finalized and ready.");
             }
             finally
             {
-                if (messageKeyBytes != null) SodiumInterop.SecureWipe(messageKeyBytes);
-                if (ad != null) SodiumInterop.SecureWipe(ad);
+                holder.Lock.Release();
             }
 
-            byte[] ciphertextAndTag = new byte[ciphertext.Length + tag.Length];
-            Buffer.BlockCopy(ciphertext, 0, ciphertextAndTag, 0, ciphertext.Length);
-            Buffer.BlockCopy(tag, 0, ciphertextAndTag, ciphertext.Length, tag.Length);
+            rootKeyHandle.Dispose();
+            rootKeyHandle = null;
 
-            var protoPayload = new CipherPayload
+            PubKeyExchange responseMessageProto = new()
             {
                 RequestId = GenerateRequestId(),
-                Nonce = ByteString.CopyFrom(nonce),
-                RatchetIndex = messageKey.Index,
-                Cipher = ByteString.CopyFrom(ciphertextAndTag),
-                CreatedAt = GetProtoTimestamp(),
-                DhPublicKey = newSenderDhPublicKey != null ? ByteString.CopyFrom(newSenderDhPublicKey) : ByteString.Empty
+                State = PubKeyExchangeState.Pending,
+                OfType = exchangeType,
+                Payload = localPublicBundleProto.ToByteString(),
+                CreatedAt = GetProtoTimestamp()
             };
-            return protoPayload;
+            return (sessionId, responseMessageProto);
+        }
+        catch (Exception ex)
+        {
+            rootKeyHandle?.Dispose();
+            if (holder != null)
+            {
+                await _sessionManager.RemoveSessionAsync(sessionId, exchangeType);
+            }
+
+            Console.WriteLine($"[ShieldPro] Error processing/responding to exchange: {ex.Message}");
+            throw new ShieldChainStepException($"Processing/Responding to key exchange failed: {ex.Message}", ex);
+        }
+    }
+
+
+    // Renamed method for clarity (Alice's side)
+    public async Task CompletePubKeyExchangeAsync(uint sessionId, PubKeyExchangeOfType exchangeType,
+        PubKeyExchange peerResponseMessageProto)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(peerResponseMessageProto);
+        if (peerResponseMessageProto.State != PubKeyExchangeState.Pending)
+            throw new ArgumentException("Expected peer message state to be Resp.", nameof(peerResponseMessageProto));
+        if (peerResponseMessageProto.OfType != exchangeType)
+            throw new ArgumentException("Exchange type mismatch.", nameof(peerResponseMessageProto));
+
+
+        Console.WriteLine($"[ShieldPro] Completing exchange for Session {sessionId} ({exchangeType})");
+        SessionHolder holder = _sessionManager.GetSessionHolderOrThrow(sessionId, exchangeType);
+        SodiumSecureMemoryHandle? rootKeyHandle = null; // Declare handle for cleanup
+
+        await holder.Lock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            ShieldSession session = holder.Session;
+            if (session.State != PubKeyExchangeState.Init)
+                throw new ShieldChainStepException($"Session {sessionId} not in Init state.");
+
+            // 1. Parse Peer Bundle & Validate SPK
+            PublicKeyBundle peerBundleProto =
+                Helpers.ParseFromBytes<PublicKeyBundle>(peerResponseMessageProto.Payload.ToByteArray());
+            Result<LocalPublicKeyBundle, ShieldError> conversionResult =
+                LocalPublicKeyBundle.FromProtobufExchange(peerBundleProto);
+            if (conversionResult.IsErr) throw conversionResult.UnwrapErr();
+            LocalPublicKeyBundle peerBundleInternal = conversionResult.Unwrap();
+
+            Result<bool, ShieldFailure> verificationResult = LocalKeyMaterial.VerifyRemoteSpkSignature(
+                peerBundleInternal.IdentityEd25519, peerBundleInternal.SignedPreKeyPublic,
+                peerBundleInternal.SignedPreKeySignature);
+            if (verificationResult.IsErr) throw verificationResult.UnwrapErr();
+            if (!verificationResult.Unwrap()) throw new ShieldChainStepException("SPK signature validation failed.");
+
+            // 2. Derive Shared Secret (as Initiator)
+            Result<SodiumSecureMemoryHandle, ShieldFailure> deriveResult =
+                _localKeyMaterial.X3dhDeriveSharedSecret(peerBundleInternal, X3dhInfo);
+            if (deriveResult.IsErr) throw deriveResult.UnwrapErr();
+            rootKeyHandle = deriveResult.Unwrap(); // Assign for cleanup
+
+            // 3. Finalize Session
+            byte[] rootKeyBytes = new byte[Constants.X25519KeySize];
+            try
+            {
+                rootKeyHandle.Read(rootKeyBytes.AsSpan());
+
+                // Use the corrected Finalize method in ShieldSession
+                session.SetPeerBundle(peerBundleProto); // Store peer's full bundle
+                // Finalize needs the root key and the *peer's initial* DH key (their Ephemeral key)
+                session.FinalizeChainAndDhKeys(rootKeyBytes, peerBundleInternal.EphemeralX25519!);
+            }
+            finally
+            {
+                SodiumInterop.SecureWipe(rootKeyBytes); // Wipe intermediate key
+            }
+
+            rootKeyHandle.Dispose(); // Dispose after use
+            rootKeyHandle = null; // Clear reference
+
+            session.SetConnectionState(PubKeyExchangeState.Complete); // Mark Alice's session as ready
+            Console.WriteLine($"[ShieldPro] Session {sessionId} finalized and ready.");
+        }
+        catch (Exception ex) // Catch broader exceptions
+        {
+            rootKeyHandle?.Dispose(); // Ensure handle is disposed on error
+            // Consider removing session on failure?
+            // await _sessionManager.RemoveSessionAsync(sessionId, exchangeType);
+            Console.WriteLine($"[ShieldPro] Error completing exchange for Session {sessionId}: {ex.Message}");
+            throw new ShieldChainStepException($"Complete key exchange failed for session {sessionId}: {ex.Message}",
+                ex);
         }
         finally
         {
-            if (ciphertext != null) SodiumInterop.SecureWipe(ciphertext);
-            if (tag != null) SodiumInterop.SecureWipe(tag);
+            holder.Lock.Release();
         }
-    });
+    }
 
-    return cipherPayloadProto;
-}
+
+    // --- IOutboundMessageService Implementation ---
+    public async Task<CipherPayload> ProduceOutboundMessageAsync(uint sessionId, PubKeyExchangeOfType exchangeType,
+        byte[] plainPayload)
+    {
+        ArgumentNullException.ThrowIfNull(plainPayload);
+        ObjectDisposedException.ThrowIf(_disposed, this); // Check disposal state
+
+        // Use ExecuteUnderSessionLockAsync to handle locking, state checks, and expiry checks
+        return await ExecuteUnderSessionLockAsync(sessionId, exchangeType, (session) =>
+        {
+            // --- Inside Locked Action ---
+            byte[]? messageKeyBytes = null;
+            byte[]? ad = null;
+            byte[]? ciphertext = null;
+            byte[]? tag = null;
+            ShieldMessageKey? messageKeyClone = null; // Hold the cloned key
+
+            try
+            {
+                // 1. Prepare the next send message (gets key, nonce, potentially new DH PK)
+                (ShieldMessageKey originalMessageKey, byte[] nonce, byte[]? newSenderDhPublicKey) =
+                    session.PrepareNextSendMessage(); // Use the corrected session method
+
+
+                // Clone the key immediately before using it
+                messageKeyBytes = new byte[Constants.AesKeySize];
+                originalMessageKey.ReadKeyMaterial(messageKeyBytes);
+                Console.WriteLine($"[ProduceOutbound] Encryption Key: {Convert.ToHexString(messageKeyBytes)}");
+                messageKeyClone = new ShieldMessageKey(originalMessageKey.Index, messageKeyBytes); // Create clone
+
+                // Wipe the temporary buffer used for cloning
+                SodiumInterop.SecureWipe(messageKeyBytes);
+                messageKeyBytes = null; // Clear reference
+
+
+                byte[] initiatorIdPub = exchangeType == PubKeyExchangeOfType.AppDeviceEphemeralConnect 
+                    ? _localKeyMaterial.IdentityX25519PublicKey 
+                    : session.PeerBundle.IdentityX25519PublicKey.ToByteArray();
+                byte[] responderIdPub = exchangeType == PubKeyExchangeOfType.AppDeviceEphemeralConnect 
+                    ? session.PeerBundle.IdentityX25519PublicKey.ToByteArray() 
+                    : _localKeyMaterial.IdentityX25519PublicKey;
+                ad = new byte[initiatorIdPub.Length + responderIdPub.Length];
+                Buffer.BlockCopy(initiatorIdPub, 0, ad, 0, initiatorIdPub.Length);
+                Buffer.BlockCopy(responderIdPub, 0, ad, initiatorIdPub.Length, responderIdPub.Length);
+
+
+                // 3. Encrypt using the CLONED key material
+                byte[] clonedKeyMaterial = new byte[Constants.AesKeySize];
+                try
+                {
+                    messageKeyClone.ReadKeyMaterial(clonedKeyMaterial); // Read from clone
+                    (ciphertext, tag) = AesGcmService.EncryptAllocating(clonedKeyMaterial, nonce, plainPayload, ad);
+                }
+                finally
+                {
+                    SodiumInterop.SecureWipe(clonedKeyMaterial); // Wipe material read from clone
+                }
+
+
+                // 4. Construct CipherPayload Protobuf
+                // Combine ciphertext and tag
+                byte[] ciphertextAndTag = new byte[ciphertext.Length + tag.Length];
+                Buffer.BlockCopy(ciphertext, 0, ciphertextAndTag, 0, ciphertext.Length);
+                Buffer.BlockCopy(tag, 0, ciphertextAndTag, ciphertext.Length, tag.Length);
+
+
+                var protoPayload = new CipherPayload
+                {
+                    RequestId = GenerateRequestId(), // Or use a sequence number if needed
+                    Nonce = ByteString.CopyFrom(nonce),
+                    RatchetIndex = messageKeyClone.Index, // Use index from clone
+                    // Rename 'Cipher' field in proto if possible, e.g., to CiphertextAndTag
+                    Cipher = ByteString.CopyFrom(ciphertextAndTag), // Store combined CT+Tag
+                    CreatedAt = GetProtoTimestamp(),
+                    DhPublicKey = newSenderDhPublicKey != null
+                        ? ByteString.CopyFrom(newSenderDhPublicKey)
+                        : ByteString.Empty
+                };
+
+
+                // Note: originalMessageKey from PrepareNextSendMessage is NOT disposed here,
+                // it might still be in the session cache. Only the clone is used and disposed below.
+
+                return Task.FromResult(protoPayload); // Return Task<CipherPayload>
+            }
+            finally // Ensure cleanup of sensitive byte arrays and the cloned key
+            {
+                messageKeyClone?.Dispose(); // Dispose the cloned key
+                if (ad != null) SodiumInterop.SecureWipe(ad);
+                // ciphertext and tag are part of ciphertextAndTag now, which goes into proto
+                // Wiping them separately isn't strictly needed if ciphertextAndTag is handled correctly.
+                // if (ciphertext != null) SodiumInterop.SecureWipe(ciphertext);
+                // if (tag != null) SodiumInterop.SecureWipe(tag);
+                // messageKeyBytes was wiped earlier or nulled
+            }
+            // --- End Locked Action ---
+        });
+    }
+
 
     // --- IInboundMessageService Implementation ---
-
-    public async Task<byte[]> ProcessInboundMessageAsync(
-        uint sessionId, PubKeyExchangeOfType exchangeType, CipherPayload cipherPayloadProto) // Takes Protobuf
+    public async Task<byte[]> ProcessInboundMessageAsync(uint sessionId, PubKeyExchangeOfType exchangeType,
+        CipherPayload cipherPayloadProto)
     {
         ArgumentNullException.ThrowIfNull(cipherPayloadProto);
-        if (cipherPayloadProto.Cipher == null || cipherPayloadProto.Cipher.IsEmpty ||
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        // Basic structural validation
+        if (cipherPayloadProto.Cipher == null || cipherPayloadProto.Cipher.IsEmpty || // Use correct field name
             cipherPayloadProto.Cipher.Length < Constants.AesGcmTagSize)
-            throw new ArgumentException("Cipher invalid.", nameof(cipherPayloadProto.Cipher));
+            throw new ArgumentException("Ciphertext invalid.", nameof(cipherPayloadProto.Cipher));
         if (cipherPayloadProto.Nonce == null || cipherPayloadProto.Nonce.IsEmpty ||
             cipherPayloadProto.Nonce.Length != Constants.AesGcmNonceSize)
             throw new ArgumentException("Nonce invalid.", nameof(cipherPayloadProto.Nonce));
 
-        var plaintextResult = await ExecuteUnderSessionLockAsync(sessionId, exchangeType, (session) =>
+
+        // Use ExecuteUnderSessionLockAsync for locking and checks
+        return await ExecuteUnderSessionLockAsync(sessionId, exchangeType, (session) =>
         {
+            // --- Inside Locked Action ---
             byte[]? messageKeyBytes = null;
             byte[]? ad = null;
             byte[]? plaintext = null;
+            ShieldMessageKey? messageKeyClone = null; // Hold the cloned key
 
             try
             {
-                session.CheckReplay(cipherPayloadProto.RequestId);
+                // 1. Application-level Anti-Replay Check (Optional, if RequestId is reliable)
+                // session.CheckReplay(cipherPayloadProto.RequestId);
 
-                byte[]? receivedDhKey = cipherPayloadProto.DhPublicKey is { Length: > 0 }
+                // 2. Process Ratchet/Keys (handles DH, skips, gets key)
+                byte[]? receivedDhKey = cipherPayloadProto.DhPublicKey.Length > 0
                     ? cipherPayloadProto.DhPublicKey.ToByteArray()
                     : null;
+                ShieldMessageKey originalMessageKey =
+                    session.ProcessReceivedMessage(cipherPayloadProto.RatchetIndex,
+                        receivedDhKey); // Use corrected session method
 
-                ShieldMessageKey messageKey = session.RotateReceiverKey(cipherPayloadProto.RatchetIndex, receivedDhKey);
-
-                Console.WriteLine("Received message key index: " + messageKey.Index);
-                Console.WriteLine("Received message key: " + messageKey.ToString());
-                
+                // Clone the key immediately before using it
                 messageKeyBytes = new byte[Constants.AesKeySize];
-                
+                originalMessageKey.ReadKeyMaterial(messageKeyBytes);
+                messageKeyClone = new ShieldMessageKey(originalMessageKey.Index, messageKeyBytes);
+
+                // Wipe the temporary buffer used for cloning
+                SodiumInterop.SecureWipe(messageKeyBytes);
+                messageKeyBytes = null; // Clear reference
+
+                Console.WriteLine(
+                    $"[ProcessInbound] Session: {sessionId}, Received Index: {cipherPayloadProto.RatchetIndex}, Processed Key Index: {messageKeyClone.Index}"); // Use clone's index
+
+                byte[] initiatorIdPub = exchangeType == PubKeyExchangeOfType.AppDeviceEphemeralConnect 
+                    ? session.PeerBundle.IdentityX25519PublicKey.ToByteArray() 
+                    : _localKeyMaterial.IdentityX25519PublicKey;
+                byte[] responderIdPub = exchangeType == PubKeyExchangeOfType.AppDeviceEphemeralConnect 
+                    ? _localKeyMaterial.IdentityX25519PublicKey 
+                    : session.PeerBundle.IdentityX25519PublicKey.ToByteArray();
+                ad = new byte[initiatorIdPub.Length + responderIdPub.Length];
+                Buffer.BlockCopy(initiatorIdPub, 0, ad, 0, initiatorIdPub.Length);
+                Buffer.BlockCopy(responderIdPub, 0, ad, initiatorIdPub.Length, responderIdPub.Length);
+
+                // 4. Decrypt using the CLONED key material
+                byte[] clonedKeyMaterial = new byte[Constants.AesKeySize];
                 try
                 {
-                    messageKey.ReadKeyMaterial(messageKeyBytes);
+                    messageKeyClone.ReadKeyMaterial(clonedKeyMaterial); // Read from clone
+                    Console.WriteLine(
+                        $"[ProcessInbound] Decryption Key: {Convert.ToHexString(clonedKeyMaterial)}"); // DEBUG ONLY
 
-                    byte[] peerId = session.PeerBundle.IdentityX25519PublicKey.ToByteArray(); 
-                    byte[] localId = _localKeyMaterial.IdentityX25519PublicKey; 
-                    ad = new byte[peerId.Length + localId.Length];
-                    Buffer.BlockCopy(peerId, 0, ad, 0, peerId.Length); 
-                    Buffer.BlockCopy(localId, 0, ad, peerId.Length, localId.Length);
-
+                    // Extract Ciphertext and Tag from the combined field
                     ReadOnlySpan<byte> cipherWithTagSpan = cipherPayloadProto.Cipher.Span;
+                    if (cipherWithTagSpan.Length < Constants.AesGcmTagSize)
+                        throw new ArgumentException("Ciphertext field too short to contain tag.");
+
                     int cipherLength = cipherWithTagSpan.Length - Constants.AesGcmTagSize;
                     ReadOnlySpan<byte> cipherOnlySpan = cipherWithTagSpan[..cipherLength];
                     ReadOnlySpan<byte> tagSpan = cipherWithTagSpan[cipherLength..];
 
+                    // Use DecryptAllocating which returns byte[]
                     plaintext = AesGcmService.DecryptAllocating(
-                        messageKeyBytes, cipherPayloadProto.Nonce.ToByteArray(),
-                        cipherOnlySpan.ToArray(), tagSpan.ToArray(), ad);
+                        clonedKeyMaterial,
+                        cipherPayloadProto.Nonce.ToByteArray(),
+                        cipherOnlySpan.ToArray(), // Convert spans back to arrays if needed by service
+                        tagSpan.ToArray(),
+                        ad);
                 }
-                catch (ShieldChainStepException ex) when (ex.InnerException is AuthenticationTagMismatchException)
+                catch (AuthenticationTagMismatchException authEx) // Catch specific exception from AesGcmService
                 {
-                    throw new ShieldChainStepException($"Decryption failed session {sessionId} (MAC mismatch).", ex);
+                    Console.WriteLine(
+                        $"[ProcessInbound] MAC Mismatch for RatchetIndex: {cipherPayloadProto.RatchetIndex}");
+                    // Wrap in our specific exception type
+                    throw new ShieldChainStepException($"Decryption failed session {sessionId} (MAC mismatch).",
+                        authEx);
                 }
                 finally
                 {
-                    if (messageKeyBytes != null) SodiumInterop.SecureWipe(messageKeyBytes);
-                    if (ad != null) SodiumInterop.SecureWipe(ad);
+                    SodiumInterop.SecureWipe(clonedKeyMaterial); // Wipe material read from clone
                 }
 
-                // session.RequestMissedMessages();
-
+                // Transfer ownership of plaintext if successful
                 var returnPlaintext = plaintext;
-                plaintext = null;
-                return returnPlaintext; // Return byte[] directly
+                plaintext = null; // Prevent disposal in finally block if returning
+                return Task.FromResult(returnPlaintext); // Return Task<byte[]>
             }
-            finally
+            finally // Ensure cleanup
             {
-                if (plaintext != null) SodiumInterop.SecureWipe(plaintext);
+                messageKeyClone?.Dispose(); // Dispose the cloned key
+                if (ad != null) SodiumInterop.SecureWipe(ad);
+                // messageKeyBytes was wiped or nulled earlier
+                if (plaintext != null) SodiumInterop.SecureWipe(plaintext); // Wipe if not returned
             }
-        }); // End ExecuteUnderSessionLockAsync
-
-        return plaintextResult;
+            // --- End Locked Action ---
+        });
     }
+
 
     // --- IAsyncDisposable Implementation ---
     public async ValueTask DisposeAsync()
     {
         if (!_disposed)
         {
+            _disposed = true; // Mark early
+            Console.WriteLine("[ShieldPro] Disposing...");
             await _sessionManager.DisposeAsync().ConfigureAwait(false);
-            if (_localKeyMaterial is IDisposable d)
-            {
-                d.Dispose();
-            }
-
-            _disposed = true;
+            // Dispose LocalKeyMaterial only if ShieldPro owns it (depends on DI setup)
+            // if (_localKeyMaterial is IDisposable d)
+            // {
+            //     d.Dispose();
+            // }
+            Console.WriteLine("[ShieldPro] Disposed.");
             GC.SuppressFinalize(this);
         }
     }
