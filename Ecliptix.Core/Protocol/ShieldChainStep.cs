@@ -1,4 +1,5 @@
 using Ecliptix.Core.Protocol.Utilities;
+using Sodium;
 
 namespace Ecliptix.Core.Protocol;
 
@@ -15,7 +16,8 @@ public sealed class ShieldChainStep : IDisposable
     private uint _currentIndex;
     private DateTimeOffset _lastUpdate;
     private bool _disposed;
-
+    public bool IsNewChain { get; set; }
+    
     public ChainStepType StepType => _stepType;
 
     public uint CurrentIndex
@@ -25,29 +27,14 @@ public sealed class ShieldChainStep : IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             return _currentIndex;
         }
+        internal set // Allow internal setter for explicit control
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _currentIndex = value;
+        }
     }
 
     public uint NextMessageIndex => CurrentIndex + 1;
-
-    public byte[] PublicKeyBytes
-    {
-        get
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_dhPublicKey == null)
-                throw new ObjectDisposedException(GetType().FullName, "Public key data unavailable.");
-            return (byte[])_dhPublicKey.Clone();
-        }
-    }
-
-    internal SodiumSecureMemoryHandle DhPrivateKeyHandle
-    {
-        get
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            return _dhPrivateKeyHandle;
-        }
-    }
 
     internal ShieldChainStep(ChainStepType stepType, byte[] initialChainKey, byte[] initialDhPrivateKey,
         byte[] initialDhPublicKey, uint cacheWindowSize = DefaultCacheWindowSize)
@@ -65,7 +52,7 @@ public sealed class ShieldChainStep : IDisposable
 
         _chainKeyHandle = SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize);
         _dhPrivateKeyHandle = SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
-
+        IsNewChain = false;
         bool success = false;
         try
         {
@@ -90,7 +77,7 @@ public sealed class ShieldChainStep : IDisposable
     internal void PruneOldKeys(SortedDictionary<uint, ShieldMessageKey> messageKeys)
     {
         if (_cacheWindow == 0 || messageKeys == null || !messageKeys.Any()) return;
-        uint minIndexToKeep = (_currentIndex >= _cacheWindow) ? _currentIndex - _cacheWindow + 1 : 0;
+        uint minIndexToKeep = _currentIndex >= _cacheWindow ? _currentIndex - _cacheWindow + 1 : 0;
         var keysToRemove = messageKeys.Keys.Where(k => k < minIndexToKeep).ToList();
         foreach (var keyIndex in keysToRemove)
         {
@@ -113,18 +100,18 @@ public sealed class ShieldChainStep : IDisposable
         }
     }
 
-    internal void UpdateKeysAfterDhRatchet(byte[] newChainKey, byte[]? newDhPrivateKey = null,
-        byte[]? newDhPublicKey = null)
+    internal void UpdateKeysAfterDhRatchet(byte[] newChainKey, byte[]? newDhPrivateKey = null, byte[]? newDhPublicKey = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (newChainKey is not { Length: Constants.X25519KeySize })
+        if (newChainKey == null || newChainKey.Length != Constants.X25519KeySize)
             throw new ArgumentException("New chain key invalid.", nameof(newChainKey));
 
         Console.WriteLine(
             $"[{_stepType}] Updating after DH Ratchet. Old Index: {_currentIndex}. Resetting Index to 0.");
         _chainKeyHandle.Write(newChainKey);
-        _currentIndex = 0;
-
+        _currentIndex = 0; // Reset to 0 after rotation
+        IsNewChain = true;
+        
         if (newDhPrivateKey != null && newDhPublicKey != null)
         {
             if (newDhPrivateKey.Length != Constants.X25519PrivateKeySize)
@@ -146,9 +133,10 @@ public sealed class ShieldChainStep : IDisposable
         _lastUpdate = DateTimeOffset.UtcNow;
     }
 
-    public ShieldMessageKey GetOrDeriveKeyFor(uint targetIndex, SortedDictionary<uint, ShieldMessageKey> messageKeys)
+    internal ShieldMessageKey GetOrDeriveKeyFor(uint targetIndex, SortedDictionary<uint, ShieldMessageKey> messageKeys)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(messageKeys);
 
         if (messageKeys.TryGetValue(targetIndex, out var cachedKey))
         {
@@ -164,30 +152,34 @@ public sealed class ShieldChainStep : IDisposable
         if (targetIndex > _currentIndex + 1)
         {
             Console.WriteLine(
-                $"[WARN][{_stepType}] Deriving key for future index {targetIndex} from {(_currentIndex + 1)}, implying skipped messages. Session should ideally call UpdateCurrentIndex first.");
+                $"[WARN][{_stepType}] Deriving key for future index {targetIndex} from {_currentIndex + 1}, implying skipped messages.");
         }
 
-        Span<byte> currentChainKeySpan = stackalloc byte[Constants.X25519KeySize];
-        Span<byte> nextChainKeySpan = stackalloc byte[Constants.X25519KeySize];
-        Span<byte> msgKeySpan = stackalloc byte[Constants.AesKeySize];
+        byte[]? currentChainKey = null;
+        byte[]? nextChainKey = null;
+        byte[]? msgKey = null;
 
         try
         {
-            _chainKeyHandle.Read(currentChainKeySpan);
+            currentChainKey = new byte[Constants.X25519KeySize];
+            nextChainKey = new byte[Constants.X25519KeySize];
+            msgKey = new byte[Constants.AesKeySize];
+
+            _chainKeyHandle.Read(currentChainKey.AsSpan());
 
             for (uint idx = _currentIndex + 1; idx <= targetIndex; idx++)
             {
-                using (HkdfSha256 hkdfMsg = new(currentChainKeySpan, default))
+                using (HkdfSha256 hkdfMsg = new HkdfSha256(currentChainKey, null))
                 {
-                    hkdfMsg.Expand(Constants.MsgInfo, msgKeySpan);
+                    hkdfMsg.Expand(Constants.MsgInfo, msgKey.AsSpan());
                 }
 
-                using (HkdfSha256 hkdfChain = new(currentChainKeySpan, default))
+                using (HkdfSha256 hkdfChain = new HkdfSha256(currentChainKey, null))
                 {
-                    hkdfChain.Expand(Constants.ChainInfo, nextChainKeySpan);
+                    hkdfChain.Expand(Constants.ChainInfo, nextChainKey.AsSpan());
                 }
 
-                var messageKey = new ShieldMessageKey(idx, msgKeySpan);
+                var messageKey = new ShieldMessageKey(idx, msgKey);
                 if (!messageKeys.TryAdd(idx, messageKey))
                 {
                     messageKey.Dispose();
@@ -195,8 +187,8 @@ public sealed class ShieldChainStep : IDisposable
                         $"Key for index {idx} appeared in cache during derivation loop.");
                 }
 
-                _chainKeyHandle.Write(nextChainKeySpan);
-                nextChainKeySpan.CopyTo(currentChainKeySpan);
+                _chainKeyHandle.Write(nextChainKey);
+                Array.Copy(nextChainKey, currentChainKey, nextChainKey.Length);
                 _currentIndex = idx;
             }
 
@@ -204,30 +196,36 @@ public sealed class ShieldChainStep : IDisposable
             PruneOldKeys(messageKeys);
             return messageKeys[targetIndex];
         }
-        catch (Exception ex) when (ex is not ShieldChainStepException)
-        {
-            currentChainKeySpan.Clear();
-            nextChainKeySpan.Clear();
-            msgKeySpan.Clear();
-            throw new ShieldChainStepException(
-                $"[{_stepType}] Key derivation loop failed. Target: {targetIndex}, Current: {_currentIndex}. Error: {ex.Message}",
-                ex);
-        }
         finally
         {
-            currentChainKeySpan.Clear();
-            nextChainKeySpan.Clear();
-            msgKeySpan.Clear();
+            SodiumInterop.SecureWipe(currentChainKey);
+            SodiumInterop.SecureWipe(nextChainKey);
+            SodiumInterop.SecureWipe(msgKey);
         }
     }
 
-    // Added ReadChainKey method
     internal byte[] ReadChainKey()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         byte[] chainKey = new byte[Constants.X25519KeySize];
         _chainKeyHandle.Read(chainKey.AsSpan());
         return chainKey;
+    }
+
+    internal byte[] ReadDhPrivateKey()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        byte[] privateKey = new byte[Constants.X25519PrivateKeySize];
+        _dhPrivateKeyHandle.Read(privateKey.AsSpan());
+        return privateKey;
+    }
+
+    internal byte[] ReadDhPublicKey()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_dhPublicKey == null)
+            throw new ObjectDisposedException(GetType().FullName, "Public key data unavailable.");
+        return (byte[])_dhPublicKey.Clone();
     }
 
     public void Dispose()
