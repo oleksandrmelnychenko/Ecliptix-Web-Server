@@ -11,7 +11,7 @@ public sealed class ShieldSession : IDisposable
     #region Constants
 
     private const int MaxProcessedIds = 6000;
-    private const int DhRotationInterval = 50;
+    private const int DhRotationInterval = 10;
     private static readonly TimeSpan SessionTimeout = TimeSpan.FromHours(24);
 
     #endregion

@@ -72,7 +72,7 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
     public async Task Ratchet_BidirectionalMessageExchange_153Iterations_WithMultipleDHRotations_Succeeds()
     {
         WriteLine("[Test: Ratchet_BidirectionalMessageExchange_153Iterations_WithMultipleDHRotations] Running...");
-        const int iterationCount = 70;
+        const int iterationCount = 506;
 
         uint aliceMessagesSent = 0;
         uint bobMessagesSent = 0;
