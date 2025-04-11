@@ -276,6 +276,13 @@ public sealed class ShieldSession : IDisposable
             _rootKeyHandle.Write(newRootKey);
             sendingStep.UpdateKeysAfterDhRatchet(newChainKey, newDhPrivateKey, newDhPublicKey);
             sendingStep.CurrentIndex = 0;
+
+            // Update persistent DH keys
+            WipeIfNotNull(_currentDhPrivateKey);
+            WipeIfNotNull(_currentDhPublicKey);
+            _currentDhPrivateKey = (byte[])newDhPrivateKey.Clone();
+            _currentDhPublicKey = (byte[])newDhPublicKey.Clone();
+            _isFirstReceivingRatchet = false;
             ClearMessageKeyCache();
 
             Console.WriteLine($"[Sender] DH Ratchet: New Chain Key = {Convert.ToHexString(newChainKey)}");
@@ -307,10 +314,9 @@ public sealed class ShieldSession : IDisposable
         try
         {
             byte[] privateKeyToUse = _isFirstReceivingRatchet ? _initialSendingDhPrivateKey : _currentDhPrivateKey;
-            
             dhSecret = ScalarMult.Mult(privateKeyToUse, receivedDhPublicKeyBytes);
 
-            Console.WriteLine($"[Receiver] Using Private Key for: {(_peerDhPublicKey == null ? "Initial" : "Persistent")}");
+            Console.WriteLine($"[Receiver] Using Private Key for: {(_isFirstReceivingRatchet ? "Initial" : "Persistent")}");
             Console.WriteLine($"[Receiver] Received DH PK: {Convert.ToHexString(receivedDhPublicKeyBytes)}");
             Console.WriteLine($"[Receiver] DH Secret: {Convert.ToHexString(dhSecret)}");
 
@@ -329,8 +335,7 @@ public sealed class ShieldSession : IDisposable
             receivingStep.CurrentIndex = 0;
             _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes.Clone();
             _receivedNewDhKey = true;
-            _isFirstReceivingRatchet = false; 
-                
+            _isFirstReceivingRatchet = false;
             ClearMessageKeyCache();
 
             Console.WriteLine($"[Receiver] DH Ratchet: New Chain Key = {Convert.ToHexString(newChainKey)}");
