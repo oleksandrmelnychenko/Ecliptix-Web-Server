@@ -117,6 +117,9 @@ public sealed class ShieldSession : IDisposable
             PerformDhRatchet();
             _receivedNewDhKey = false;
             includeDhKey = true; // Include DH key only when ratcheting
+        }else if (_receivedNewDhKey)
+        {
+            Console.WriteLine($"[{sendingStep.StepType}] Skipping DH Ratchet: ReceivedNewKey=True but not at interval.");
         }
 
         uint nextIndex = sendingStep.CurrentIndex + 1;
@@ -204,23 +207,21 @@ public sealed class ShieldSession : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         EnsureNotExpired();
-        var receivingStep =
-            _receivingStep ?? throw new InvalidOperationException("Receiving chain step not initialized.");
+        var receivingStep = _receivingStep ?? throw new InvalidOperationException("Receiving chain step not initialized.");
 
         Console.WriteLine(
             $"[{receivingStep.StepType}] Processing received message #{receivedIndex}. Current Index: {receivingStep.CurrentIndex}");
 
-        // If this is the first message and _peerDhPublicKey is null, set it
+        // Handle initial peer DH key
         if (_peerDhPublicKey == null && receivedDhPublicKeyBytes != null)
         {
             _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes.Clone();
             Console.WriteLine($"[{receivingStep.StepType}] Initialized _peerDhPublicKey with first message key.");
         }
-        // Perform receiving ratchet if a new DH key is received
+        // Perform receiving ratchet only if at interval or first message
         else if (receivedDhPublicKeyBytes != null && !receivedDhPublicKeyBytes.SequenceEqual(_peerDhPublicKey))
         {
             PerformReceivingRatchet(receivedDhPublicKeyBytes);
-            Console.WriteLine($"[{receivingStep.StepType}] Updated _peerDhPublicKey after receiving ratchet.");
         }
 
         ShieldMessageKey messageKey = receivingStep.GetOrDeriveKeyFor(receivedIndex, _messageKeys);
@@ -301,10 +302,13 @@ public sealed class ShieldSession : IDisposable
     }
 
     internal void PerformReceivingRatchet(byte[] receivedDhPublicKeyBytes)
-    {
-        var receivingStep = _receivingStep ?? throw new InvalidOperationException("Receiving chain step not initialized.");
-        if (_rootKeyHandle == null) throw new InvalidOperationException("Root key handle not initialized.");
+{
+    var receivingStep = _receivingStep ?? throw new InvalidOperationException("Receiving chain step not initialized.");
+    if (_rootKeyHandle == null) throw new InvalidOperationException("Root key handle not initialized.");
 
+    // Only perform ratchet if at interval or first message
+    if (_isFirstReceivingRatchet || (receivingStep.CurrentIndex + 1) % DhRotationInterval == 0)
+    {
         byte[]? dhSecret = null;
         byte[]? currentRootKey = null;
         byte[]? newRootKey = null;
@@ -334,7 +338,7 @@ public sealed class ShieldSession : IDisposable
             receivingStep.UpdateKeysAfterDhRatchet(newChainKey);
             receivingStep.CurrentIndex = 0;
             _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes.Clone();
-            _receivedNewDhKey = true;
+            _receivedNewDhKey = false; // Reset only when we actually ratchet
             _isFirstReceivingRatchet = false;
             ClearMessageKeyCache();
 
@@ -349,6 +353,14 @@ public sealed class ShieldSession : IDisposable
             WipeIfNotNull(hkdfOutput);
         }
     }
+    else
+    {
+        // Store the new key but don’t ratchet yet
+        _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes.Clone();
+        _receivedNewDhKey = true;
+        Console.WriteLine($"[Receiver] Deferred DH Ratchet: New key received but waiting for interval.");
+    }
+}
 
     #endregion
 
