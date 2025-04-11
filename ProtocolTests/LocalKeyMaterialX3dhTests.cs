@@ -119,74 +119,89 @@ public class ShieldProDoubleRatchetTests : IAsyncDisposable
     }
 
     [TestMethod]
-public async Task Ratchet_BidirectionalMessageExchange_153Iterations_WithMultipleDHRotations_Succeeds()
-{
-    WriteLine("[Test: Ratchet_BidirectionalMessageExchange_153Iterations_WithMultipleDHRotations] Running...");
-    const int iterationCount = 153;
-    const uint DhRotationInterval = 50;
-
-    uint aliceMessagesSent = 0;
-    uint bobMessagesSent = 0;
-    uint expectedAliceIndex = 0;
-    uint expectedBobIndex = 0;
-
-    for (int i = 1; i <= iterationCount; i++)
+    public async Task Ratchet_BidirectionalMessageExchange_153Iterations_WithMultipleDHRotations_Succeeds()
     {
-        WriteLine($"\n--- Starting Iteration {i} ---");
+        WriteLine("[Test: Ratchet_BidirectionalMessageExchange_153Iterations_WithMultipleDHRotations] Running...");
+        const int iterationCount = 153;
+        const uint DhRotationInterval = 50;
 
-        // Alice sends to Bob
-        string aliceMessage = $"Message {i} from Alice to Bob (Overall #{aliceMessagesSent + 1})";
-        byte[] alicePlaintextBytes = Encoding.UTF8.GetBytes(aliceMessage);
-        WriteLine($"[Iteration {i}] Alice (Session {_aliceSessionId}) encrypting #{aliceMessagesSent + 1}...");
+        uint aliceMessagesSent = 0;
+        uint bobMessagesSent = 0;
+        uint expectedAliceIndex = 0;
+        uint expectedBobIndex = 0;
 
-        CipherPayload alicePayload = await _aliceShieldPro.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType, alicePlaintextBytes);
-        bool aliceRotationOccurred = !alicePayload.DhPublicKey.IsEmpty;
-
-        // Update expected index for Alice
-        expectedAliceIndex++;
-        if (aliceRotationOccurred)
+        for (int i = 1; i <= iterationCount; i++)
         {
-            expectedAliceIndex = 1;
+            WriteLine($"\n--- Starting Iteration {i} ---");
+
+            // Alice sends to Bob
+            string aliceMessage = $"Message {i} from Alice to Bob (Overall #{aliceMessagesSent + 1})";
+            byte[] alicePlaintextBytes = Encoding.UTF8.GetBytes(aliceMessage);
+            WriteLine($"[Iteration {i}] Alice (Session {_aliceSessionId}) encrypting #{aliceMessagesSent + 1}...");
+
+            CipherPayload alicePayload =
+                await _aliceShieldPro.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType, alicePlaintextBytes);
+            bool aliceRotationOccurred = !alicePayload.DhPublicKey.IsEmpty;
+
+            // Update expected index for Alice
+            expectedAliceIndex++;
+            if (aliceRotationOccurred)
+            {
+                expectedAliceIndex = 1;
+            }
+
+            WriteLine(
+                $"[Iteration {i}] Alice Payload Details - Index: {alicePayload.RatchetIndex}, DH Key Sent: {aliceRotationOccurred}");
+            Assert.AreEqual(expectedAliceIndex, alicePayload.RatchetIndex,
+                $"Alice index mismatch at message #{aliceMessagesSent + 1}. Expected: {expectedAliceIndex}");
+
+            WriteLine(
+                $"[Iteration {i}] Bob (Session {_bobSessionId}) decrypting Alice's message {i} (Payload Index {alicePayload.RatchetIndex})...");
+            byte[] bobDecryptedBytes =
+                await _bobShieldPro.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, alicePayload);
+            CollectionAssert.AreEqual(alicePlaintextBytes, bobDecryptedBytes,
+                $"Bob decrypted Alice's message mismatch at iteration {i}");
+            WriteLine($"[Iteration {i}] Bob successfully decrypted Alice's message {i}.");
+            aliceMessagesSent++;
+
+            // Bob sends to Alice
+            string bobMessage = $"Response {i} from Bob to Alice (Overall #{bobMessagesSent + 1})";
+            byte[] bobPlaintextBytes = Encoding.UTF8.GetBytes(bobMessage);
+            WriteLine($"[Iteration {i}] Bob (Session {_bobSessionId}) encrypting #{bobMessagesSent + 1}...");
+
+            CipherPayload bobPayload =
+                await _bobShieldPro.ProduceOutboundMessageAsync(_bobSessionId, _exchangeType, bobPlaintextBytes);
+            bool bobRotationOccurred = !bobPayload.DhPublicKey.IsEmpty;
+
+            // Update expected index for Bob
+            expectedBobIndex++;
+            if (bobRotationOccurred)
+            {
+                expectedBobIndex = 1;
+            }
+
+            WriteLine(
+                $"[Iteration {i}] Bob Payload Details - Index: {bobPayload.RatchetIndex}, DH Key Sent: {bobRotationOccurred}");
+            Assert.AreEqual(expectedBobIndex, bobPayload.RatchetIndex,
+                $"Bob index mismatch at message #{bobMessagesSent + 1}. Expected: {expectedBobIndex}");
+
+            WriteLine(
+                $"[Iteration {i}] Alice (Session {_aliceSessionId}) decrypting Bob's response {i} (Payload Index {bobPayload.RatchetIndex})...");
+            byte[] aliceDecryptedBytes =
+                await _aliceShieldPro.ProcessInboundMessageAsync(_aliceSessionId, _exchangeType, bobPayload);
+            CollectionAssert.AreEqual(bobPlaintextBytes, aliceDecryptedBytes,
+                $"Alice decrypted Bob's response mismatch at iteration {i}");
+            WriteLine($"[Iteration {i}] Alice successfully decrypted Bob's response {i}.");
+            bobMessagesSent++;
+
+            WriteLine($"[Iteration {i}] Bidirectional exchange completed.");
         }
-        WriteLine($"[Iteration {i}] Alice Payload Details - Index: {alicePayload.RatchetIndex}, DH Key Sent: {aliceRotationOccurred}");
-        Assert.AreEqual(expectedAliceIndex, alicePayload.RatchetIndex, $"Alice index mismatch at message #{aliceMessagesSent + 1}. Expected: {expectedAliceIndex}");
 
-        WriteLine($"[Iteration {i}] Bob (Session {_bobSessionId}) decrypting Alice's message {i} (Payload Index {alicePayload.RatchetIndex})...");
-        byte[] bobDecryptedBytes = await _bobShieldPro.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, alicePayload);
-        CollectionAssert.AreEqual(alicePlaintextBytes, bobDecryptedBytes, $"Bob decrypted Alice's message mismatch at iteration {i}");
-        WriteLine($"[Iteration {i}] Bob successfully decrypted Alice's message {i}.");
-        aliceMessagesSent++;
-
-        // Bob sends to Alice
-        string bobMessage = $"Response {i} from Bob to Alice (Overall #{bobMessagesSent + 1})";
-        byte[] bobPlaintextBytes = Encoding.UTF8.GetBytes(bobMessage);
-        WriteLine($"[Iteration {i}] Bob (Session {_bobSessionId}) encrypting #{bobMessagesSent + 1}...");
-
-        CipherPayload bobPayload = await _bobShieldPro.ProduceOutboundMessageAsync(_bobSessionId, _exchangeType, bobPlaintextBytes);
-        bool bobRotationOccurred = !bobPayload.DhPublicKey.IsEmpty;
-
-        // Update expected index for Bob
-        expectedBobIndex++;
-        if (bobRotationOccurred)
-        {
-            expectedBobIndex = 1;
-        }
-        WriteLine($"[Iteration {i}] Bob Payload Details - Index: {bobPayload.RatchetIndex}, DH Key Sent: {bobRotationOccurred}");
-        Assert.AreEqual(expectedBobIndex, bobPayload.RatchetIndex, $"Bob index mismatch at message #{bobMessagesSent + 1}. Expected: {expectedBobIndex}");
-
-        WriteLine($"[Iteration {i}] Alice (Session {_aliceSessionId}) decrypting Bob's response {i} (Payload Index {bobPayload.RatchetIndex})...");
-        byte[] aliceDecryptedBytes = await _aliceShieldPro.ProcessInboundMessageAsync(_aliceSessionId, _exchangeType, bobPayload);
-        CollectionAssert.AreEqual(bobPlaintextBytes, aliceDecryptedBytes, $"Alice decrypted Bob's response mismatch at iteration {i}");
-        WriteLine($"[Iteration {i}] Alice successfully decrypted Bob's response {i}.");
-        bobMessagesSent++;
-
-        WriteLine($"[Iteration {i}] Bidirectional exchange completed.");
+        Assert.AreEqual((uint)iterationCount, aliceMessagesSent, "Alice message count mismatch.");
+        Assert.AreEqual((uint)iterationCount, bobMessagesSent, "Bob message count mismatch.");
+        WriteLine(
+            $"\n[Test: Ratchet_BidirectionalMessageExchange_153Iterations_WithMultipleDHRotations] SUCCESS - All {iterationCount} iterations completed.");
     }
-
-    Assert.AreEqual((uint)iterationCount, aliceMessagesSent, "Alice message count mismatch.");
-    Assert.AreEqual((uint)iterationCount, bobMessagesSent, "Bob message count mismatch.");
-    WriteLine($"\n[Test: Ratchet_BidirectionalMessageExchange_153Iterations_WithMultipleDHRotations] SUCCESS - All {iterationCount} iterations completed.");
-}
 
     [TestMethod]
     public async Task Ratchet_ChaoticParallelMessageExchange_500MessagesEach_WithDHRotation_Succeeds()

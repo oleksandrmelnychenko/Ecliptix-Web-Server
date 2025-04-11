@@ -254,78 +254,80 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     }
 
     public async Task<CipherPayload> ProduceOutboundMessageAsync(uint sessionId, PubKeyExchangeOfType exchangeType,
-    byte[] plainPayload)
-{
-    ArgumentNullException.ThrowIfNull(plainPayload);
-    ObjectDisposedException.ThrowIf(_disposed, this);
-
-    return await ExecuteUnderSessionLockAsync(sessionId, exchangeType, async session =>
+        byte[] plainPayload)
     {
-        byte[]? messageKeyBytes = null;
-        byte[]? ad = null;
-        byte[]? ciphertext = null;
-        byte[]? tag = null;
-        ShieldMessageKey? messageKeyClone = null;
+        ArgumentNullException.ThrowIfNull(plainPayload);
+        ObjectDisposedException.ThrowIf(_disposed, this);
 
-        try
+        return await ExecuteUnderSessionLockAsync(sessionId, exchangeType, async session =>
         {
-            var (messageKey, includeDhKey) = session.PrepareNextSendMessage();
-            byte[] nonce = session.GenerateNextNonce(ChainStepType.Sender);
-            byte[]? newSenderDhPublicKey = includeDhKey ? session.GetCurrentSenderDhPublicKey() : null;
+            byte[]? messageKeyBytes = null;
+            byte[]? ad = null;
+            byte[]? ciphertext = null;
+            byte[]? tag = null;
+            ShieldMessageKey? messageKeyClone = null;
 
-            messageKeyBytes = new byte[Constants.AesKeySize];
-            messageKey.ReadKeyMaterial(messageKeyBytes);
-            Console.WriteLine($"[ProduceOutbound] Encryption Key: {Convert.ToHexString(messageKeyBytes)}");
-            messageKeyClone = new ShieldMessageKey(messageKey.Index, messageKeyBytes);
-            SodiumInterop.SecureWipe(messageKeyBytes);
-            messageKeyBytes = null;
-
-            byte[] initiatorIdPub = exchangeType == PubKeyExchangeOfType.AppDeviceEphemeralConnect
-                ? _localKeyMaterial.IdentityX25519PublicKey
-                : session.PeerBundle.IdentityX25519PublicKey.ToByteArray();
-            byte[] responderIdPub = exchangeType == PubKeyExchangeOfType.AppDeviceEphemeralConnect
-                ? session.PeerBundle.IdentityX25519PublicKey.ToByteArray()
-                : _localKeyMaterial.IdentityX25519PublicKey;
-            ad = new byte[initiatorIdPub.Length + responderIdPub.Length];
-            Buffer.BlockCopy(initiatorIdPub, 0, ad, 0, initiatorIdPub.Length);
-            Buffer.BlockCopy(responderIdPub, 0, ad, initiatorIdPub.Length, responderIdPub.Length);
-
-            byte[] clonedKeyMaterial = new byte[Constants.AesKeySize];
             try
             {
-                messageKeyClone.ReadKeyMaterial(clonedKeyMaterial);
-                (ciphertext, tag) = AesGcmService.EncryptAllocating(clonedKeyMaterial, nonce, plainPayload, ad);
+                var (messageKey, includeDhKey) = session.PrepareNextSendMessage();
+                byte[] nonce = session.GenerateNextNonce(ChainStepType.Sender);
+                byte[]? newSenderDhPublicKey = includeDhKey ? session.GetCurrentSenderDhPublicKey() : null;
+
+                messageKeyBytes = new byte[Constants.AesKeySize];
+                messageKey.ReadKeyMaterial(messageKeyBytes);
+                Console.WriteLine($"[ProduceOutbound] Encryption Key: {Convert.ToHexString(messageKeyBytes)}");
+                messageKeyClone = new ShieldMessageKey(messageKey.Index, messageKeyBytes);
+                SodiumInterop.SecureWipe(messageKeyBytes);
+                messageKeyBytes = null;
+
+                byte[] initiatorIdPub = exchangeType == PubKeyExchangeOfType.AppDeviceEphemeralConnect
+                    ? _localKeyMaterial.IdentityX25519PublicKey
+                    : session.PeerBundle.IdentityX25519PublicKey.ToByteArray();
+                byte[] responderIdPub = exchangeType == PubKeyExchangeOfType.AppDeviceEphemeralConnect
+                    ? session.PeerBundle.IdentityX25519PublicKey.ToByteArray()
+                    : _localKeyMaterial.IdentityX25519PublicKey;
+                ad = new byte[initiatorIdPub.Length + responderIdPub.Length];
+                Buffer.BlockCopy(initiatorIdPub, 0, ad, 0, initiatorIdPub.Length);
+                Buffer.BlockCopy(responderIdPub, 0, ad, initiatorIdPub.Length, responderIdPub.Length);
+
+                byte[] clonedKeyMaterial = new byte[Constants.AesKeySize];
+                try
+                {
+                    messageKeyClone.ReadKeyMaterial(clonedKeyMaterial);
+                    (ciphertext, tag) = AesGcmService.EncryptAllocating(clonedKeyMaterial, nonce, plainPayload, ad);
+                }
+                finally
+                {
+                    SodiumInterop.SecureWipe(clonedKeyMaterial);
+                }
+
+                byte[] ciphertextAndTag = new byte[ciphertext.Length + tag.Length];
+                Buffer.BlockCopy(ciphertext, 0, ciphertextAndTag, 0, ciphertext.Length);
+                Buffer.BlockCopy(tag, 0, ciphertextAndTag, ciphertext.Length, tag.Length);
+
+                var protoPayload = new CipherPayload
+                {
+                    RequestId = GenerateRequestId(),
+                    Nonce = ByteString.CopyFrom(nonce),
+                    RatchetIndex = messageKeyClone.Index,
+                    Cipher = ByteString.CopyFrom(ciphertextAndTag),
+                    CreatedAt = GetProtoTimestamp(),
+                    DhPublicKey = newSenderDhPublicKey != null
+                        ? ByteString.CopyFrom(newSenderDhPublicKey)
+                        : ByteString.Empty
+                };
+
+                return protoPayload;
             }
             finally
             {
-                SodiumInterop.SecureWipe(clonedKeyMaterial);
+                messageKeyClone?.Dispose();
+                SodiumInterop.SecureWipe(ad);
+                SodiumInterop.SecureWipe(ciphertext);
+                SodiumInterop.SecureWipe(tag);
             }
-
-            byte[] ciphertextAndTag = new byte[ciphertext.Length + tag.Length];
-            Buffer.BlockCopy(ciphertext, 0, ciphertextAndTag, 0, ciphertext.Length);
-            Buffer.BlockCopy(tag, 0, ciphertextAndTag, ciphertext.Length, tag.Length);
-
-            var protoPayload = new CipherPayload
-            {
-                RequestId = GenerateRequestId(),
-                Nonce = ByteString.CopyFrom(nonce),
-                RatchetIndex = messageKeyClone.Index,
-                Cipher = ByteString.CopyFrom(ciphertextAndTag),
-                CreatedAt = GetProtoTimestamp(),
-                DhPublicKey = newSenderDhPublicKey != null ? ByteString.CopyFrom(newSenderDhPublicKey) : ByteString.Empty
-            };
-
-            return protoPayload;
-        }
-        finally
-        {
-            messageKeyClone?.Dispose();
-            SodiumInterop.SecureWipe(ad);
-            SodiumInterop.SecureWipe(ciphertext);
-            SodiumInterop.SecureWipe(tag);
-        }
-    });
-}
+        });
+    }
 
     // IInboundMessageService Implementation
     public async Task<byte[]> ProcessInboundMessageAsync(uint sessionId, PubKeyExchangeOfType exchangeType,
