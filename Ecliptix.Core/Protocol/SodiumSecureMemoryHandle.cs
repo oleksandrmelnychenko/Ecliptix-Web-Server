@@ -96,6 +96,33 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
             throw new ObjectDisposedException(nameof(SodiumSecureMemoryHandle));
         }
     }
+    
+    public byte[] ReadBytes(int length)
+    {
+        if (IsInvalid || IsClosed)
+            throw new ObjectDisposedException(nameof(SodiumSecureMemoryHandle));
+        if (length > Length)
+            throw new ArgumentException("Requested length exceeds allocated size.", nameof(length));
+
+        byte[] buffer = new byte[length];
+        bool success = false;
+        DangerousAddRef(ref success);
+        try
+        {
+            unsafe
+            {
+                fixed (byte* pBuffer = buffer)
+                {
+                    Buffer.MemoryCopy((void*)handle, pBuffer, length, length);
+                }
+            }
+        }
+        finally
+        {
+            DangerousRelease();
+        }
+        return buffer;
+    }
 
     protected override bool ReleaseHandle()
     {

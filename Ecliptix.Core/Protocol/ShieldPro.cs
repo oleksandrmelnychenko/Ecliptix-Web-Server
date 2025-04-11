@@ -9,29 +9,23 @@ using System.Threading.Tasks;
 
 namespace Ecliptix.Core.Protocol;
 
-public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageService, IInboundMessageService,
-    IAsyncDisposable
+public sealed class ShieldPro(LocalKeyMaterial localKeyMaterial, ShieldSessionManager? sessionManager = null)
+    : IDataCenterPubKeyExchange, IOutboundMessageService, IInboundMessageService,
+        IAsyncDisposable
 {
-    private const uint DefaultOneTimePreKeyCount = 3;
-
     public static ReadOnlySpan<byte> X3dhInfo => "Ecliptix_X3DH"u8;
-    public static ReadOnlySpan<byte> InitialSenderChainInfo => Constants.InitialSenderChainInfo;
-    public static ReadOnlySpan<byte> InitialReceiverChainInfo => Constants.InitialReceiverChainInfo;
 
-    private readonly LocalKeyMaterial _localKeyMaterial;
-    private readonly ShieldSessionManager _sessionManager;
-    private bool _disposed = false;
+    private readonly LocalKeyMaterial _localKeyMaterial =
+        localKeyMaterial ?? throw new ArgumentNullException(nameof(localKeyMaterial));
 
-    public ShieldPro(LocalKeyMaterial localKeyMaterial, ShieldSessionManager? sessionManager = null)
-    {
-        _localKeyMaterial = localKeyMaterial ?? throw new ArgumentNullException(nameof(localKeyMaterial));
-        _sessionManager = sessionManager ?? ShieldSessionManager.CreateWithCleanupTask();
-    }
+    private readonly ShieldSessionManager _sessionManager =
+        sessionManager ?? ShieldSessionManager.CreateWithCleanupTask();
+
+    private bool _disposed;
 
     private static uint GenerateRequestId() => Helpers.GenerateRandomUInt32(true);
     private static Timestamp GetProtoTimestamp() => Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow);
 
-    // Locking Helpers (unchanged)
     private async ValueTask ExecuteUnderSessionLockAsync(uint sessionId, PubKeyExchangeOfType exchangeType,
         Func<ShieldSession, ValueTask> action)
     {
@@ -89,13 +83,16 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
             _sessionManager.InsertSessionOrThrow(sessionId, exchangeType, session);
             Console.WriteLine($"[ShieldPro] Session {sessionId} inserted into manager.");
 
+            byte[] initialDhPublicKey = session.GetCurrentSenderDhPublicKey() ??
+                                        throw new InvalidOperationException("Sender DH key not initialized.");
             PubKeyExchange pubKeyExchangeProto = new()
             {
                 RequestId = GenerateRequestId(),
                 State = PubKeyExchangeState.Init,
                 OfType = exchangeType,
                 Payload = localPublicBundleProto.ToByteString(),
-                CreatedAt = GetProtoTimestamp()
+                CreatedAt = GetProtoTimestamp(),
+                InitialDhPublicKey = ByteString.CopyFrom(initialDhPublicKey)
             };
             return (sessionId, pubKeyExchangeProto);
         }
@@ -144,6 +141,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
             if (conversionResult.IsErr) throw conversionResult.UnwrapErr();
             LocalPublicKeyBundle peerBundleInternal = conversionResult.Unwrap();
 
+
             Result<bool, ShieldFailure> verificationResult = LocalKeyMaterial.VerifyRemoteSpkSignature(
                 peerBundleInternal.IdentityEd25519, peerBundleInternal.SignedPreKeyPublic,
                 peerBundleInternal.SignedPreKeySignature);
@@ -163,7 +161,8 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
 
             session.SetPeerBundle(peerBundleProto);
             session.SetConnectionState(PubKeyExchangeState.Pending);
-            session.FinalizeChainAndDhKeys(rootKeyBytes, peerBundleInternal.EphemeralX25519);
+            byte[] peerInitialDhPublicKey = peerInitialMessageProto.InitialDhPublicKey.ToByteArray();
+            session.FinalizeChainAndDhKeys(rootKeyBytes, peerInitialDhPublicKey);
             session.SetConnectionState(PubKeyExchangeState.Complete);
 
             SodiumInterop.SecureWipe(rootKeyBytes);
@@ -178,7 +177,8 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
                 State = PubKeyExchangeState.Pending,
                 OfType = exchangeType,
                 Payload = localPublicBundleProto.ToByteString(),
-                CreatedAt = GetProtoTimestamp()
+                CreatedAt = GetProtoTimestamp(),
+                InitialDhPublicKey = ByteString.CopyFrom(session.GetCurrentSenderDhPublicKey())
             };
             return (sessionId, responseMessageProto);
         }
@@ -233,7 +233,8 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
             {
                 rootKeyHandle.Read(rootKeyBytes.AsSpan());
                 session.SetPeerBundle(peerBundleProto);
-                session.FinalizeChainAndDhKeys(rootKeyBytes, peerBundleInternal.EphemeralX25519);
+                byte[] peerInitialDhPublicKey = peerResponseMessageProto.InitialDhPublicKey.ToByteArray();
+                session.FinalizeChainAndDhKeys(rootKeyBytes, peerInitialDhPublicKey);
                 session.SetConnectionState(PubKeyExchangeState.Complete);
             }
             finally
@@ -329,7 +330,6 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         });
     }
 
-    // IInboundMessageService Implementation
     public async Task<byte[]> ProcessInboundMessageAsync(uint sessionId, PubKeyExchangeOfType exchangeType,
         CipherPayload cipherPayloadProto)
     {
@@ -353,8 +353,18 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
                 byte[]? receivedDhKey = cipherPayloadProto.DhPublicKey.Length > 0
                     ? cipherPayloadProto.DhPublicKey.ToByteArray()
                     : null;
+
+                if (receivedDhKey != null &&
+                    !receivedDhKey.SequenceEqual(session.GetCurrentPeerDhPublicKey() ?? Array.Empty<byte>()))
+                {
+                    session.PerformReceivingRatchet(receivedDhKey);
+                    Console.WriteLine(
+                        $"[Receiver] Performed DH Ratchet with new peer key: {Convert.ToHexString(receivedDhKey)}");
+                }
+
+                // Derive the message key from the (potentially updated) receiving chain
                 ShieldMessageKey originalMessageKey =
-                    session.ProcessReceivedMessage(cipherPayloadProto.RatchetIndex, receivedDhKey);
+                    session.ProcessReceivedMessage(cipherPayloadProto.RatchetIndex, null);
 
                 messageKeyBytes = new byte[Constants.AesKeySize];
                 originalMessageKey.ReadKeyMaterial(messageKeyBytes);
@@ -365,6 +375,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
                 Console.WriteLine(
                     $"[ProcessInbound] Session: {sessionId}, Received Index: {cipherPayloadProto.RatchetIndex}, Processed Key Index: {messageKeyClone.Index}");
 
+                // Compute associated data (AD) for AEAD
                 byte[] initiatorIdPub = exchangeType == PubKeyExchangeOfType.AppDeviceEphemeralConnect
                     ? session.PeerBundle.IdentityX25519PublicKey.ToByteArray()
                     : _localKeyMaterial.IdentityX25519PublicKey;
@@ -392,11 +403,8 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
                         cipherOnlySpan.ToArray(),
                         tagSpan.ToArray(),
                         ad);
-                }
-                catch (AuthenticationTagMismatchException authEx)
-                {
-                    throw new ShieldChainStepException($"Decryption failed session {sessionId} (MAC mismatch).",
-                        authEx);
+
+                    Console.WriteLine($"[ProcessInbound] Decryption succeeded with key index {messageKeyClone.Index}");
                 }
                 finally
                 {

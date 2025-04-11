@@ -22,6 +22,7 @@ message PubKeyExchange {
   PubKeyExchangeOfType of_type = 3;
   bytes payload = 4;
   google.protobuf.Timestamp created_at = 5;
+  bytes initial_Dh_public_Key = 6;
 }
 
 message PublicKeyBundle {
