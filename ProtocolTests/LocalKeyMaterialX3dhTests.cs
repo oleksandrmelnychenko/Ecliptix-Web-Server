@@ -1,5 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
+using System.Collections.Concurrent;
 using System.Security.Cryptography; // For AuthenticationTagMismatchException
 using System.Text;
 using System.Threading.Tasks;
@@ -65,7 +66,113 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
         if (_bobShieldPro != null) await _bobShieldPro.DisposeAsync();
         WriteLine("[Cleanup] Test resources disposed.");
     }
-    // --- End [TestCleanup] ---
+   
+   [TestMethod]
+    [Timeout(60000)] // 1 minute
+    public async Task Ratchet_Parallel50Sessions_ConversationLike_Succeeds()
+    {
+        WriteLine("[Test: Ratchet_Parallel50Sessions_ConversationLike] Running...");
+        const int sessionCount = 50;
+        const int messagesPerParty = 20; // 20 Alice + 20 Bob = 40 per session
+        const int burstSize = 5; // Alternate every 5 messages to trigger DH ratchets
+        var results = new ConcurrentBag<(int SessionId, string Error)>();
+
+        var sessionTasks = Enumerable.Range(1, sessionCount).Select(async sessionId =>
+        {
+            try
+            {
+                // Initialize key materials
+                var aliceMaterial = new LocalKeyMaterial((uint)sessionId * 2 - 1);
+                var bobMaterial = new LocalKeyMaterial((uint)sessionId * 2);
+
+                // Create ShieldPro instances
+                 var aliceShieldPro = new ShieldPro(aliceMaterial);
+                 var bobShieldPro = new ShieldPro(bobMaterial);
+
+                // Perform X3DH handshake
+                var (aliceSessionId, aliceInitialMsg) = await aliceShieldPro.BeginDataCenterPubKeyExchangeAsync(_exchangeType);
+                var (bobSessionId, bobResponseMsg) = await bobShieldPro.ProcessAndRespondToPubKeyExchangeAsync(aliceInitialMsg);
+                await aliceShieldPro.CompletePubKeyExchangeAsync(aliceSessionId, _exchangeType, bobResponseMsg);
+
+                // Track DH ratchets and messages
+                int aliceDhRatchetCount = 0;
+                int bobDhRatchetCount = 0;
+                var aliceMessages = new List<(int Id, byte[] Plaintext, CipherPayload Payload)>(messagesPerParty);
+                var bobMessages = new List<(int Id, byte[] Plaintext, CipherPayload Payload)>(messagesPerParty);
+
+                // Simulate conversation with alternating bursts
+                while (aliceMessages.Count < messagesPerParty || bobMessages.Count < messagesPerParty)
+                {
+                    // Alice sends up to burstSize messages
+                    for (int i = 0; i < burstSize && aliceMessages.Count < messagesPerParty; i++)
+                    {
+                        int msgId = aliceMessages.Count + 1;
+                        var plaintext = Encoding.UTF8.GetBytes($"Session {sessionId}: Alice msg {msgId}");
+                        var payload = await aliceShieldPro.ProduceOutboundMessageAsync(aliceSessionId, _exchangeType, plaintext);
+                        if (!payload.DhPublicKey.IsEmpty) aliceDhRatchetCount++;
+                        aliceMessages.Add((msgId, plaintext, payload));
+                    }
+
+                    // Bob decrypts Alice’s latest burst
+                    var aliceBurst = aliceMessages.TakeLast(Math.Min(burstSize, aliceMessages.Count)).ToList();
+                    foreach (var (id, plaintext, payload) in aliceBurst)
+                    {
+                        var decrypted = await bobShieldPro.ProcessInboundMessageAsync(bobSessionId, _exchangeType, payload);
+                        CollectionAssert.AreEqual(plaintext, decrypted, $"Session {sessionId}: Bob decrypt failed at Alice msg {id}");
+                    }
+
+                    // Bob sends up to burstSize messages
+                    for (int i = 0; i < burstSize && bobMessages.Count < messagesPerParty; i++)
+                    {
+                        int msgId = bobMessages.Count + 1;
+                        var plaintext = Encoding.UTF8.GetBytes($"Session {sessionId}: Bob msg {msgId}");
+                        var payload = await bobShieldPro.ProduceOutboundMessageAsync(bobSessionId, _exchangeType, plaintext);
+                        if (!payload.DhPublicKey.IsEmpty) bobDhRatchetCount++;
+                        bobMessages.Add((msgId, plaintext, payload));
+                    }
+
+                    // Alice decrypts Bob’s latest burst
+                    var bobBurst = bobMessages.TakeLast(Math.Min(burstSize, bobMessages.Count)).ToList();
+                    foreach (var (id, plaintext, payload) in bobBurst)
+                    {
+                        var decrypted = await aliceShieldPro.ProcessInboundMessageAsync(aliceSessionId, _exchangeType, payload);
+                        CollectionAssert.AreEqual(plaintext, decrypted, $"Session {sessionId}: Alice decrypt failed at Bob msg {id}");
+                    }
+                }
+
+                // Verify DH ratchets
+                if (aliceDhRatchetCount == 0 || bobDhRatchetCount == 0)
+                {
+                    results.Add((sessionId, $"No DH ratchet in session {sessionId} (Alice: {aliceDhRatchetCount}, Bob: {bobDhRatchetCount})"));
+                }
+
+                // Verify message counts
+                if (aliceMessages.Count != messagesPerParty || bobMessages.Count != messagesPerParty)
+                {
+                    results.Add((sessionId, $"Message count mismatch in session {sessionId} (Alice: {aliceMessages.Count}, Bob: {bobMessages.Count})"));
+                }
+            }
+            catch (Exception ex)
+            {
+                results.Add((sessionId, $"Session {sessionId} failed: {ex.Message}"));
+            }
+        }).ToList();
+
+        // Run sessions with controlled parallelism
+        await Parallel.ForEachAsync(sessionTasks, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, async (task, ct) => await task);
+
+        // Check results
+        if (results.Any())
+        {
+            foreach (var (id, error) in results)
+            {
+                WriteLine($"[Error] {error}");
+            }
+            Assert.Fail($"Parallel test failed with {results.Count} errors.");
+        }
+
+        WriteLine($"[Test] SUCCESS - All {sessionCount} sessions completed {messagesPerParty * 2} messages each without errors.");
+    }
 
 
     [TestMethod]
