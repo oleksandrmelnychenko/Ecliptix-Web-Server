@@ -20,7 +20,7 @@ public sealed class LocalKeyMaterial : IDisposable
     public readonly byte[] SignedPreKeySignature;
 
     private List<OneTimePreKeyLocal> _oneTimePreKeysInternal;
-    public IReadOnlyList<OneTimePreKeyLocal> OneTimePreKeys => _oneTimePreKeysInternal.AsReadOnly();
+    //public IReadOnlyList<OneTimePreKeyLocal> OneTimePreKeys => _oneTimePreKeysInternal.AsReadOnly();
 
     private SodiumSecureMemoryHandle? _ephemeralSecretKeyHandle;
     public byte[]? EphemeralX25519PublicKey { get; private set; }

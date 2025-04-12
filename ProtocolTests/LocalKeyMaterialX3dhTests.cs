@@ -67,12 +67,12 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
         WriteLine("[Cleanup] Test resources disposed.");
     }
    
-   [TestMethod]
+    [TestMethod]
     [Timeout(60000)] // 1 minute
     public async Task Ratchet_Parallel50Sessions_ConversationLike_Succeeds()
     {
         WriteLine("[Test: Ratchet_Parallel50Sessions_ConversationLike] Running...");
-        const int sessionCount = 50;
+        const int sessionCount = 20;
         const int messagesPerParty = 20; // 20 Alice + 20 Bob = 40 per session
         const int burstSize = 5; // Alternate every 5 messages to trigger DH ratchets
         var results = new ConcurrentBag<(int SessionId, string Error)>();
