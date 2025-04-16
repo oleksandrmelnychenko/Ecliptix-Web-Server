@@ -22,16 +22,15 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Protobuf Include="Protobuf\AppDevice.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
-        <Protobuf Include="Protobuf\AppDeviceServiceActions.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
-        <Protobuf Include="Protobuf\CipherPayload.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
-        <Protobuf Include="Protobuf\PubKeyExchange.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
+        <Protobuf Include="Protobuf\AppDevice.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+        <Protobuf Include="Protobuf\AppDeviceServiceActions.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+        <Protobuf Include="Protobuf\CipherPayload.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+        <Protobuf Include="Protobuf\PubKeyExchange.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
 
-        <Protobuf Include="Protobuf\HealthCheck.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
-        <Protobuf Include="Protobuf\KeyMaterials.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
-        <Protobuf Include="Protobuf\Verification.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
-        <Protobuf Include="Protobuf\VerificationServiceActions.proto" GrpcServices="Server" ProtoRoot="Protobuf\"/>
-        
+        <Protobuf Include="Protobuf\HealthCheck.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+        <Protobuf Include="Protobuf\KeyMaterials.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+        <Protobuf Include="Protobuf\Verification.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+        <Protobuf Include="Protobuf\VerificationServiceActions.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
     </ItemGroup>
 
 </Project>

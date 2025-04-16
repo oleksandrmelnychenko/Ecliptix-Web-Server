@@ -4,9 +4,8 @@ using Ecliptix.Core.Services;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using OpenTelemetry.Metrics;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// Build configuration
 IConfiguration configuration = builder.Configuration
     .SetBasePath(builder.Environment.ContentRootPath)
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
