@@ -36,8 +36,8 @@ public class ShieldProTests : IAsyncDisposable
         _bobKeys =LocalKeyMaterial.Create(5).Unwrap();
         ShieldSessionManager aliceSessionManager = ShieldSessionManager.Create();
         ShieldSessionManager bobSessionManager = ShieldSessionManager.Create();
-        _aliceShieldPro = new ShieldPro(_aliceKeys, aliceSessionManager);
-        _bobShieldPro = new ShieldPro(_bobKeys, bobSessionManager);
+        _aliceShieldPro = new ShieldPro(_aliceKeys,HashAlgorithmType.Sha3256, aliceSessionManager);
+        _bobShieldPro = new ShieldPro(_bobKeys,HashAlgorithmType.Sha3256, bobSessionManager);
     }
 
     public TestContext TestContext { get; set; } // Required property for MSTest to inject TestContext

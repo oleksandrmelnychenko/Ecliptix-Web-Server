@@ -7,7 +7,6 @@ namespace Ecliptix.Core.Protocol;
 
 public sealed class ShieldSessionManager : IAsyncDisposable
 {
-    private static readonly TimeSpan DefaultCleanupInterval = TimeSpan.FromMinutes(15);
     private readonly ConcurrentDictionary<(PubKeyExchangeOfType, uint), SessionHolder> _sessions;
     private readonly CancellationTokenSource _cleanupCts;
     private readonly Task _cleanupTask;
@@ -24,14 +23,9 @@ public sealed class ShieldSessionManager : IAsyncDisposable
                 TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
                 TaskScheduler.Default)
             : Task.CompletedTask;
-        Logger.WriteLine(
-            $"[ShieldSessionManager] Manager created {(cleanupInterval.HasValue ? "with" : "without")} cleanup task.");
     }
 
-    public static ShieldSessionManager Create() => new ShieldSessionManager();
-
-    public static ShieldSessionManager CreateWithCleanup(TimeSpan cleanupInterval) =>
-        new ShieldSessionManager(cleanupInterval);
+    public static ShieldSessionManager Create() => new();
 
     public async ValueTask<Result<ShieldSession, string>> FindSession(uint sessionId, PubKeyExchangeOfType exchangeType)
     {
@@ -42,11 +36,9 @@ public sealed class ShieldSessionManager : IAsyncDisposable
         {
             if (_sessions.TryGetValue(key, out var holder))
             {
-                Logger.WriteLine($"[ShieldSessionManager] Found session for {key}.");
                 return Result<ShieldSession, string>.Ok(holder.Session);
             }
 
-            Logger.WriteLine($"[ShieldSessionManager] Session not found for {key}.");
             return Result<ShieldSession, string>.Err($"Session not found for type {exchangeType} and ID {sessionId}.");
         });
     }
@@ -64,16 +56,11 @@ public sealed class ShieldSessionManager : IAsyncDisposable
     {
         if (_disposed)
             return Result<bool, string>.Err("Session manager is disposed.");
-        if (session == null)
-            return Result<bool, string>.Err("Session cannot be null.");
         (PubKeyExchangeOfType exchangeType, uint sessionId) key = (exchangeType, sessionId);
         SessionHolder holder = new(session);
         return await Task.Run(() =>
         {
             bool added = _sessions.TryAdd(key, holder);
-            Logger.WriteLine(added
-                ? $"[ShieldSessionManager] Inserted session {key}. Count: {_sessions.Count}"
-                : $"[ShieldSessionManager] Failed to insert session {key} - Key already exists.");
             return Result<bool, string>.Ok(added);
         });
     }
@@ -96,11 +83,9 @@ public sealed class ShieldSessionManager : IAsyncDisposable
         {
             if (_sessions.TryRemove(key, out var holder))
             {
-                Logger.WriteLine($"[ShieldSessionManager] Removing session {key}. Count: {_sessions.Count}");
                 return DisposeHolderAsync(holder, key);
             }
 
-            Logger.WriteLine($"[ShieldSessionManager] Session {key} not found for removal.");
             return Task.FromResult(
                 Result<Unit, string>.Err($"Session not found for type {exchangeType} and ID {sessionId}."));
         });
@@ -123,8 +108,6 @@ public sealed class ShieldSessionManager : IAsyncDisposable
                 () =>
                 {
                     session.SetConnectionState(state);
-                    Logger.WriteLine(
-                        $"[ShieldSessionManager] Updated session ({exchangeType}, {sessionId}) state to {state}.");
                     return Unit.Value;
                 },
                 ex => $"Failed to update session state: {ex.Message}");
@@ -133,14 +116,9 @@ public sealed class ShieldSessionManager : IAsyncDisposable
         {
             if (acquiredLock)
             {
-                try
-                {
+                
                     session.Lock.Release();
-                }
-                catch (ObjectDisposedException)
-                {
-                    Logger.WriteLine($"[ShieldSessionManager] Lock for session {sessionId} was already disposed.");
-                }
+               
             }
         }
     }
@@ -165,14 +143,12 @@ public sealed class ShieldSessionManager : IAsyncDisposable
 
     private async Task CleanupTaskLoop(CancellationToken cancellationToken, TimeSpan interval)
     {
-        Logger.WriteLine("[ShieldSessionManager] Cleanup task starting.");
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
                 await Task.Delay(interval, cancellationToken);
-                int removedCount = 0;
-                foreach (var key in _sessions.Keys.ToList())
+                foreach ((PubKeyExchangeOfType, uint) key in _sessions.Keys.ToList())
                 {
                     if (cancellationToken.IsCancellationRequested) break;
                     if (_sessions.TryGetValue(key, out var holder))
@@ -180,26 +156,16 @@ public sealed class ShieldSessionManager : IAsyncDisposable
                         var expiredResult = await CheckExpirationAsync(holder, key, cancellationToken);
                         if (expiredResult.IsOk && expiredResult.Unwrap() && _sessions.TryRemove(key, out _))
                         {
-                            removedCount++;
                             _ = Task.Run(() => DisposeHolderAsync(holder, key), cancellationToken);
                         }
                     }
                 }
-
-                if (removedCount > 0)
-                    Logger.WriteLine($"[ShieldSessionManager] Cleanup removed {removedCount} expired sessions.");
             }
             catch (OperationCanceledException)
             {
                 break;
             }
-            catch (Exception ex)
-            {
-                Logger.WriteLine($"[ShieldSessionManager] Cleanup task error: {ex.Message}");
-            }
         }
-
-        Logger.WriteLine("[ShieldSessionManager] Cleanup task stopped.");
     }
 
     private async Task<Result<bool, string>> CheckExpirationAsync(SessionHolder holder,
@@ -214,12 +180,9 @@ public sealed class ShieldSessionManager : IAsyncDisposable
             var expiredResult = holder.Session.IsExpired();
             if (!expiredResult.IsOk)
             {
-                Logger.WriteLine(
-                    $"[ShieldSessionManager] Error checking expiration for session {key}: {expiredResult.UnwrapErr()}");
                 return Result<bool, string>.Err(expiredResult.UnwrapErr().Message);
             }
 
-            Logger.WriteLine($"[ShieldSessionManager] Checking session {key}. Expired: {expiredResult.Unwrap()}");
             return Result<bool, string>.Ok(expiredResult.Unwrap());
         }
         catch (OperationCanceledException)
@@ -228,21 +191,15 @@ public sealed class ShieldSessionManager : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Logger.WriteLine($"[ShieldSessionManager] Error checking expiration for session {key}: {ex.Message}");
             return Result<bool, string>.Err($"Error checking expiration: {ex.Message}");
         }
         finally
         {
             if (acquiredLock)
             {
-                try
-                {
+               
                     holder.Lock.Release();
-                }
-                catch (ObjectDisposedException)
-                {
-                    Logger.WriteLine($"[ShieldSessionManager] Lock for session {key} was already disposed.");
-                }
+               
             }
         }
     }
@@ -257,33 +214,19 @@ public sealed class ShieldSessionManager : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Logger.WriteLine($"[ShieldSessionManager] Error acquiring lock for session {key}: {ex.Message}");
             return Result<Unit, string>.Err($"Error disposing session: {ex.Message}");
         }
         finally
         {
             if (acquiredLock)
             {
-                try
-                {
-                    holder.Lock.Release();
-                }
-                catch (ObjectDisposedException)
-                {
-                    Logger.WriteLine($"[ShieldSessionManager] Lock for session {key} was already disposed.");
-                }
+               holder.Lock.Release();
+                
             }
 
-            try
-            {
                 holder.Session.Dispose();
-                Logger.WriteLine($"[ShieldSessionManager] Disposed session {key}.");
                 holder.Lock.Dispose();
-            }
-            catch (ObjectDisposedException)
-            {
-                Logger.WriteLine($"[ShieldSessionManager] Session or lock for {key} was already disposed.");
-            }
+           
         }
     }
 
@@ -291,29 +234,22 @@ public sealed class ShieldSessionManager : IAsyncDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        Logger.WriteLine("[ShieldSessionManager] DisposeAsync called.");
 
         if (!_cleanupCts.IsCancellationRequested)
         {
-            Logger.WriteLine("[ShieldSessionManager] Cancelling cleanup task...");
-            _cleanupCts.Cancel();
+            await _cleanupCts.CancelAsync();
         }
 
         try
         {
             await _cleanupTask.WaitAsync(TimeSpan.FromSeconds(5));
-            Logger.WriteLine("[ShieldSessionManager] Cleanup task completed.");
-        }
-        catch (Exception ex)
-        {
-            Logger.WriteLine($"[ShieldSessionManager] Error waiting for cleanup task: {ex.Message}");
         }
         finally
         {
             _cleanupCts.Dispose();
         }
 
-        foreach (var kvp in _sessions.ToList())
+        foreach (KeyValuePair<(PubKeyExchangeOfType, uint), SessionHolder> kvp in _sessions.ToList())
         {
             if (_sessions.TryRemove(kvp.Key, out var holder))
             {
@@ -322,20 +258,6 @@ public sealed class ShieldSessionManager : IAsyncDisposable
         }
 
         _sessions.Clear();
-        Logger.WriteLine("[ShieldSessionManager] Disposed all sessions.");
         GC.SuppressFinalize(this);
-    }
-
-    private static class Logger
-    {
-        private static readonly object Lock = new();
-
-        public static void WriteLine(string message)
-        {
-            lock (Lock)
-            {
-                Debug.WriteLine($"[{DateTime.UtcNow:HH:mm:ss.fff}] {message}");
-            }
-        }
     }
 }

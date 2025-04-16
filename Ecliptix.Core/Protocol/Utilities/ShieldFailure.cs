@@ -11,7 +11,7 @@ public class ShieldFailure
     private ShieldFailure(ShieldFailureType type, string message, Exception? innerException = null)
     {
         Type = type;
-        Message = message ?? GetDefaultMessage(type);
+        Message = message;
         InnerException = innerException;
     }
 
