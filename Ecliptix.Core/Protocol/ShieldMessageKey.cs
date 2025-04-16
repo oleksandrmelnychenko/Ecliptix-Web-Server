@@ -1,78 +1,61 @@
-// For MemoryMarshal
+using Ecliptix.Core.Protocol.Utilities;
 
-// For SodiumInterop
+namespace Ecliptix.Core.Protocol;
 
-namespace Ecliptix.Core.Protocol; // Or your namespace
-
-/// <summary>
-/// Holds a derived message key securely using SodiumSecureMemoryHandle.
-/// Implements IDisposable to manage the secure handle.
-/// </summary>
 public sealed class ShieldMessageKey : IDisposable, IEquatable<ShieldMessageKey>
 {
-    public const int KeySize = 32; // X25519_KEY_SIZE
-
-    /// <summary>
-    /// The index of this key in the ratchet chain.
-    /// </summary>
     public uint Index { get; }
 
-    // Store the key securely
     private SodiumSecureMemoryHandle _keyHandle;
     private bool _disposed;
 
-    /// <summary>
-    /// Creates a new ShieldMessageKey, copying the key material into secure memory.
-    /// </summary>
-    /// <param name="index">The key index.</param>
-    /// <param name="keyMaterial">The 32-byte key material. This will be wiped after copying.</param>
-    /// <exception cref="ArgumentException">Thrown if keyMaterial is not 32 bytes.</exception>
-    /// <exception cref="ObjectDisposedException">Thrown if called after disposal.</exception>
-    public ShieldMessageKey(uint index, Span<byte> keyMaterial) // Accept Span for flexibility
+    private ShieldMessageKey(uint index, SodiumSecureMemoryHandle keyHandle)
     {
-        if (keyMaterial.Length != KeySize)
-        {
-            // Wipe input before throwing if possible (might already be wiped by caller)
-            SodiumInterop.SecureWipe(keyMaterial.ToArray()); // Needs ToArray for SecureWipe signature
-            throw new ArgumentException($"Key material must be {KeySize} bytes long.", nameof(keyMaterial));
-        }
-
         Index = index;
-        _keyHandle = SodiumSecureMemoryHandle.Allocate(KeySize);
-        try
-        {
-            _keyHandle.Write(keyMaterial); // Copy into secure memory
-        }
-        catch
-        {
-            _keyHandle.Dispose(); // Clean up if write fails
-            throw;
-        }
-        finally
-        {
-            // Wipe the source buffer provided by the caller
-            // Assuming the caller expects this behavior or passed a temp buffer
-            // Be cautious if caller might need the buffer afterwards.
-            // Let's rely on the caller (ShieldChainStep) to wipe its temp buffers.
-            // SodiumInterop.SecureWipe(keyMaterial.ToArray()); // Might double-wipe or wipe needed data
-        }
+        _keyHandle = keyHandle;
+        _disposed = false;
     }
 
-    /// <summary>
-    /// Securely reads the key material into the provided destination buffer.
-    /// The destination buffer should be wiped by the caller after use.
-    /// </summary>
-    /// <param name="destination">Span to copy the key into. Must be at least KeySize.</param>
-    /// <exception cref="ObjectDisposedException">Thrown if called after disposal.</exception>
-    /// <exception cref="ArgumentException">Thrown if destination is too small.</exception>
-    public void ReadKeyMaterial(Span<byte> destination)
+    public static Result<ShieldMessageKey, ShieldFailure> New(uint index, ReadOnlySpan<byte> keyMaterial)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (destination.Length < KeySize)
+        if (keyMaterial.Length != Constants.X25519KeySize)
         {
-            throw new ArgumentException($"Destination buffer must be at least {KeySize} bytes.", nameof(destination));
+            return Result<ShieldMessageKey, ShieldFailure>.Err(
+                ShieldFailure.InvalidInput(
+                    $"Key material must be exactly {Constants.X25519KeySize} bytes long, but was {keyMaterial.Length}."));
         }
-        _keyHandle.Read(destination.Slice(0, KeySize)); // Read into the start of the destination
+
+        Result<SodiumSecureMemoryHandle, ShieldFailure> allocateResult =
+            SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize);
+        if (allocateResult.IsErr)
+        {
+            return Result<ShieldMessageKey, ShieldFailure>.Err(allocateResult.UnwrapErr());
+        }
+
+        SodiumSecureMemoryHandle keyHandle = allocateResult.Unwrap();
+
+        Result<Unit, ShieldFailure> writeResult = keyHandle.Write(keyMaterial);
+        if (writeResult.IsErr)
+        {
+            keyHandle.Dispose();
+            return Result<ShieldMessageKey, ShieldFailure>.Err(writeResult.UnwrapErr());
+        }
+
+        ShieldMessageKey messageKey = new(index, keyHandle);
+        return Result<ShieldMessageKey, ShieldFailure>.Ok(messageKey);
+    }
+
+    public Result<Unit, ShieldFailure> ReadKeyMaterial(Span<byte> destination)
+    {
+        if (_disposed)
+            return Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(ShieldMessageKey)));
+
+        if (destination.Length < Constants.X25519KeySize)
+            return Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.BufferTooSmall(
+                    $"Destination buffer must be at least {Constants.X25519KeySize} bytes, but was {destination.Length}."));
+
+        return _keyHandle.Read(destination[..Constants.X25519KeySize]);
     }
 
     public void Dispose()
@@ -88,32 +71,32 @@ public sealed class ShieldMessageKey : IDisposable, IEquatable<ShieldMessageKey>
             if (disposing)
             {
                 _keyHandle?.Dispose();
-                _keyHandle = null!; // Ensure it's nullified
+                _keyHandle = null!;
             }
+
             _disposed = true;
         }
     }
 
-    // --- Equality Implementation (Based on Index only for dictionary key purposes) ---
-    // WARNING: Comparing actual key content requires reading it out securely.
-    // This equality is suitable for identifying keys by index in the cache.
+    ~ShieldMessageKey()
+    {
+        Dispose(false);
+    }
+
     public bool Equals(ShieldMessageKey? other)
     {
         if (other is null) return false;
-        // If comparing secure handles is needed, it's complex.
-        // For cache lookup, index equality is sufficient.
-        return Index == other.Index;
+        return
+            Index == other.Index &&
+            _disposed ==
+            other._disposed;
     }
 
-    public override bool Equals(object? obj)
-    {
-        return obj is ShieldMessageKey other && Equals(other);
-    }
+    public override bool Equals(object? obj) =>
+        obj is ShieldMessageKey other && Equals(other);
 
-    public override int GetHashCode()
-    {
-        return Index.GetHashCode();
-    }
+    public override int GetHashCode() =>
+        Index.GetHashCode();
 
     public static bool operator ==(ShieldMessageKey? left, ShieldMessageKey? right)
     {

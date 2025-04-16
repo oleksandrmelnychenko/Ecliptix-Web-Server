@@ -1,4 +1,4 @@
-namespace Ecliptix.Core.Protocol;
+namespace Ecliptix.Core.Protocol.Utilities;
 
 public readonly struct Unit : IEquatable<Unit>
 {

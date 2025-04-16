@@ -1,437 +1,341 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Protobuf.PubKeyExchange;
-// Added for ArgumentNullException, etc.
-// Added for Any(), FirstOrDefault()
-
-// Added for Task/ValueTask
 
 namespace Ecliptix.Core.Protocol;
 
-// Define the key type explicitly for clarity
-using SessionKey = ValueTuple<PubKeyExchangeOfType, uint>;
-
-/// <summary>
-/// Manages a collection of ShieldSessions, providing thread-safe access and lifecycle management.
-/// Uses ConcurrentDictionary for map operations and SemaphoreSlim for per-session locking.
-/// </summary>
 public sealed class ShieldSessionManager : IAsyncDisposable
 {
-    private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(15); // Adjusted interval
-    private readonly ConcurrentDictionary<SessionKey, SessionHolder> _sessions;
+    private static readonly TimeSpan DefaultCleanupInterval = TimeSpan.FromMinutes(15);
+    private readonly ConcurrentDictionary<(PubKeyExchangeOfType, uint), SessionHolder> _sessions;
     private readonly CancellationTokenSource _cleanupCts;
     private readonly Task _cleanupTask;
-    private bool _disposed = false; // Added disposal tracker
+    private bool _disposed;
 
-    public ShieldSessionManager()
+    public ShieldSessionManager(TimeSpan? cleanupInterval = null)
     {
-        _sessions = new ConcurrentDictionary<SessionKey, SessionHolder>();
+        _sessions = new ConcurrentDictionary<(PubKeyExchangeOfType, uint), SessionHolder>();
         _cleanupCts = new CancellationTokenSource();
-        _cleanupTask = Task.Factory.StartNew(
-            () => CleanupTaskLoop(_sessions, _cleanupCts.Token),
-            _cleanupCts.Token,
-            TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
-            TaskScheduler.Default);
-        Debug.WriteLine("[ShieldSessionManager] Manager created and cleanup task started."); // Added log
+        _cleanupTask = cleanupInterval.HasValue
+            ? Task.Factory.StartNew(
+                () => CleanupTaskLoop(_cleanupCts.Token, cleanupInterval.Value).GetAwaiter().GetResult(),
+                _cleanupCts.Token,
+                TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default)
+            : Task.CompletedTask;
+        Logger.WriteLine(
+            $"[ShieldSessionManager] Manager created {(cleanupInterval.HasValue ? "with" : "without")} cleanup task.");
     }
 
-    public static ShieldSessionManager CreateWithCleanupTask()
-    {
-        return new ShieldSessionManager();
-    }
+    public static ShieldSessionManager Create() => new ShieldSessionManager();
 
-    private SessionHolder? FindSessionHolder(uint sessionId, PubKeyExchangeOfType exchangeType)
+    public static ShieldSessionManager CreateWithCleanup(TimeSpan cleanupInterval) =>
+        new ShieldSessionManager(cleanupInterval);
+
+    public async ValueTask<Result<ShieldSession, string>> FindSession(uint sessionId, PubKeyExchangeOfType exchangeType)
     {
-        // *** ADD Disposal Check ***
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_disposed)
+            return Result<ShieldSession, string>.Err("Session manager is disposed.");
         var key = (exchangeType, sessionId);
-        _sessions.TryGetValue(key, out var holder);
-        return holder;
-    }
-
-    public SessionHolder GetSessionHolderOrThrow(uint sessionId, PubKeyExchangeOfType exchangeType)
-    {
-        // *** ADD Disposal Check ***
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        var holder = FindSessionHolder(sessionId, exchangeType);
-        if (holder == null)
+        return await Task.Run(() =>
         {
-            // Use Debug.WriteLine or proper logging
-            Debug.WriteLine(
-                $"[ERROR][ShieldSessionManager] Session not found for type {exchangeType} and ID {sessionId}");
-            throw new ShieldChainStepException(
-                $"Session not found for type {exchangeType} and ID {sessionId}");
-        }
+            if (_sessions.TryGetValue(key, out var holder))
+            {
+                Logger.WriteLine($"[ShieldSessionManager] Found session for {key}.");
+                return Result<ShieldSession, string>.Ok(holder.Session);
+            }
 
-        return holder;
+            Logger.WriteLine($"[ShieldSessionManager] Session not found for {key}.");
+            return Result<ShieldSession, string>.Err($"Session not found for type {exchangeType} and ID {sessionId}.");
+        });
     }
 
-    public ShieldSession? FindSession(uint sessionId, PubKeyExchangeOfType exchangeType)
+    public async ValueTask<Result<bool, string>> HasSessionForType(PubKeyExchangeOfType exchangeType)
     {
-        // *** ADD Disposal Check ***
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return FindSessionHolder(sessionId, exchangeType)?.Session;
+        if (_disposed)
+            return Result<bool, string>.Err("Session manager is disposed.");
+        return await Task.Run(() =>
+            Result<bool, string>.Ok(_sessions.Keys.Any(key => key.Item1 == exchangeType)));
     }
 
-    public bool HasSessionForType(PubKeyExchangeOfType exchangeType)
+    public async ValueTask<Result<bool, string>> TryInsertSession(uint sessionId, PubKeyExchangeOfType exchangeType,
+        ShieldSession session)
     {
-        // *** ADD Disposal Check ***
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return _sessions.Keys.Any(key => key.Item1 == exchangeType);
-    }
-
-    public bool TryInsertSession(uint sessionId, PubKeyExchangeOfType exchangeType, ShieldSession session)
-    {
-        // *** ADD Disposal Check ***
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(session);
-        var key = (exchangeType, sessionId);
-        var holder = new SessionHolder(session);
-        bool added = _sessions.TryAdd(key, holder);
-        if (added)
-            Debug.WriteLine(
-                $"[INFO][ShieldSessionManager] Inserted session ({exchangeType}, {sessionId}). Count: {_sessions.Count}");
-        else // Log if insertion failed (e.g., key already exists)
-            Debug.WriteLine(
-                $"[WARN][ShieldSessionManager] Failed to insert session ({exchangeType}, {sessionId}) - Key already exists?");
-        return added;
-    }
-
-    public void InsertSessionOrThrow(uint sessionId, PubKeyExchangeOfType exchangeType, ShieldSession session)
-    {
-        // *** ADD Disposal Check ***
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!TryInsertSession(sessionId, exchangeType, session))
+        if (_disposed)
+            return Result<bool, string>.Err("Session manager is disposed.");
+        if (session == null)
+            return Result<bool, string>.Err("Session cannot be null.");
+        (PubKeyExchangeOfType exchangeType, uint sessionId) key = (exchangeType, sessionId);
+        SessionHolder holder = new(session);
+        return await Task.Run(() =>
         {
-            throw new ShieldChainStepException($"Session already exists for type {exchangeType} and ID {sessionId}");
-        }
+            bool added = _sessions.TryAdd(key, holder);
+            Logger.WriteLine(added
+                ? $"[ShieldSessionManager] Inserted session {key}. Count: {_sessions.Count}"
+                : $"[ShieldSessionManager] Failed to insert session {key} - Key already exists.");
+            return Result<bool, string>.Ok(added);
+        });
     }
 
-    // *** ADDED RemoveSessionAsync Method ***
-    /// <summary>
-    /// Removes a session and disposes it along with its lock. Safe to call even if session doesn't exist.
-    /// </summary>
-    public async Task RemoveSessionAsync(uint sessionId, PubKeyExchangeOfType exchangeType)
+    public async ValueTask<Result<Unit, string>> InsertSession(uint sessionId, PubKeyExchangeOfType exchangeType,
+        ShieldSession session)
     {
-        // *** ADD Disposal Check ***
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        var key = (exchangeType, sessionId);
-        if (_sessions.TryRemove(key, out SessionHolder? removedHolder))
-        {
-            Debug.WriteLine(
-                $"[INFO][ShieldSessionManager] Removing session ({exchangeType}, {sessionId}). Count: {_sessions.Count}");
-            // Safely dispose the session and its lock
-            bool lockAcquired = false;
-            try
-            {
-                // Don't wait indefinitely, maybe the session is stuck? 100ms is reasonable.
-                lockAcquired = await removedHolder.Lock.WaitAsync(TimeSpan.FromMilliseconds(100));
-                if (lockAcquired)
-                {
-                    removedHolder.Session.Dispose();
-                    Debug.WriteLine($"[DEBUG][ShieldSessionManager] Disposed removed session {key} under lock.");
-                }
-                else
-                {
-                    // If lock not acquired, maybe it's already being disposed or stuck. Dispose anyway.
-                    Debug.WriteLine(
-                        $"[WARN][ShieldSessionManager] Could not acquire lock quickly for removed session {key}. Disposing session anyway.");
-                    removedHolder.Session.Dispose(); // Dispose session directly
-                }
-            }
-            catch (ObjectDisposedException)
-            {
-                Debug.WriteLine(
-                    $"[DEBUG][ShieldSessionManager] Session {key} or lock was already disposed during removal.");
-                // Ignore, goal is removal/disposal
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine(
-                    $"[ERROR][ShieldSessionManager] Error during disposal of removed session {key}: {ex.Message}");
-                // Attempt to dispose session again if lock wasn't acquired
-                if (!lockAcquired)
-                {
-                    try
-                    {
-                        removedHolder.Session.Dispose();
-                    }
-                    catch
-                    {
-                        /* Ignore secondary disposal error */
-                    }
-                }
-            }
-            finally
-            {
-                if (lockAcquired) removedHolder.Lock.Release();
-                // Always dispose the semaphore itself after removing the holder
-                try
-                {
-                    removedHolder.Lock.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine(
-                        $"[ERROR][ShieldSessionManager] Error disposing semaphore for removed session {key}: {ex.Message}");
-                }
-            }
-        }
-        else
-        {
-            Debug.WriteLine(
-                $"[DEBUG][ShieldSessionManager] Session ({exchangeType}, {sessionId}) not found for removal (already removed?).");
-        }
+        var tryInsertResult = await TryInsertSession(sessionId, exchangeType, session);
+        return tryInsertResult.Bind(added => added
+            ? Result<Unit, string>.Ok(Unit.Value)
+            : Result<Unit, string>.Err($"Session already exists for type {exchangeType} and ID {sessionId}."));
     }
 
-
-    public async ValueTask UpdateSessionStateAsync(uint sessionId, PubKeyExchangeOfType exchangeType,
-        PubKeyExchangeState state)
+    public async ValueTask<Result<Unit, string>> RemoveSessionAsync(uint sessionId, PubKeyExchangeOfType exchangeType)
     {
-        // *** ADD Disposal Check ***
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        var holder = GetSessionHolderOrThrow(sessionId, exchangeType);
-        await holder.Lock.WaitAsync().ConfigureAwait(false); // Use ConfigureAwait
+        if (_disposed)
+            return Result<Unit, string>.Err("Session manager is disposed.");
+        (PubKeyExchangeOfType exchangeType, uint sessionId) key = (exchangeType, sessionId);
+        return await Task.Run(() =>
+        {
+            if (_sessions.TryRemove(key, out var holder))
+            {
+                Logger.WriteLine($"[ShieldSessionManager] Removing session {key}. Count: {_sessions.Count}");
+                return DisposeHolderAsync(holder, key);
+            }
+
+            Logger.WriteLine($"[ShieldSessionManager] Session {key} not found for removal.");
+            return Task.FromResult(
+                Result<Unit, string>.Err($"Session not found for type {exchangeType} and ID {sessionId}."));
+        });
+    }
+
+    public async ValueTask<Result<Unit, string>> UpdateSessionStateAsync(uint sessionId,
+        PubKeyExchangeOfType exchangeType, PubKeyExchangeState state)
+    {
+        var holderResult = await FindSession(sessionId, exchangeType);
+        if (!holderResult.IsOk)
+            return Result<Unit, string>.Err(holderResult.UnwrapErr());
+        var session = holderResult.Unwrap();
+        bool acquiredLock = false;
         try
         {
-            holder.Session.SetConnectionState(state);
-            // Debug.WriteLine($"[DEBUG][ShieldSessionManager] Updated session {key} state to {state}."); // Use Debug or proper log
+            acquiredLock = await session.Lock.WaitAsync(TimeSpan.FromSeconds(1));
+            if (!acquiredLock)
+                return Result<Unit, string>.Err($"Failed to acquire lock for session {sessionId}.");
+            return Result<Unit, string>.Try(
+                () =>
+                {
+                    session.SetConnectionState(state);
+                    Logger.WriteLine(
+                        $"[ShieldSessionManager] Updated session ({exchangeType}, {sessionId}) state to {state}.");
+                    return Unit.Value;
+                },
+                ex => $"Failed to update session state: {ex.Message}");
         }
         finally
         {
-            holder.Lock.Release();
+            if (acquiredLock)
+            {
+                try
+                {
+                    session.Lock.Release();
+                }
+                catch (ObjectDisposedException)
+                {
+                    Logger.WriteLine($"[ShieldSessionManager] Lock for session {sessionId} was already disposed.");
+                }
+            }
         }
     }
 
-    public ShieldSession? FirstSessionByType(PubKeyExchangeOfType exchangeType)
+    public async ValueTask<Result<ShieldSession, string>> FirstSessionByType(PubKeyExchangeOfType exchangeType)
     {
-        // *** ADD Disposal Check ***
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        // Use FirstOrDefault on the KVP collection directly
-        var kvp = _sessions.FirstOrDefault(kvp => kvp.Key.Item1 == exchangeType);
-        return kvp.Value?.Session; // Return session from the Value (SessionHolder)
+        if (_disposed)
+            return Result<ShieldSession, string>.Err("Session manager is disposed.");
+        return await Task.Run(() =>
+        {
+            var session = _sessions.FirstOrDefault(kvp => kvp.Key.Item1 == exchangeType).Value?.Session;
+            return session != null
+                ? Result<ShieldSession, string>.Ok(session)
+                : Result<ShieldSession, string>.Err($"No session found for type {exchangeType}.");
+        });
     }
 
-    public ShieldSession GetSessionOrThrow(uint sessionId, PubKeyExchangeOfType exchangeType)
+    public async ValueTask<Result<ShieldSession, string>> GetSession(uint sessionId, PubKeyExchangeOfType exchangeType)
     {
-        // *** ADD Disposal Check ***
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return GetSessionHolderOrThrow(sessionId, exchangeType).Session;
+        return await FindSession(sessionId, exchangeType);
     }
 
-    // --- Cleanup Task ---
-    private static async Task CleanupTaskLoop(
-        ConcurrentDictionary<SessionKey, SessionHolder> sessions,
-        CancellationToken cancellationToken)
+    private async Task CleanupTaskLoop(CancellationToken cancellationToken, TimeSpan interval)
     {
-        Debug.WriteLine("[INFO][ShieldSessionManager] Cleanup task starting."); // Log start
-
+        Logger.WriteLine("[ShieldSessionManager] Cleanup task starting.");
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                await Task.Delay(CleanupInterval, cancellationToken);
+                await Task.Delay(interval, cancellationToken);
+                int removedCount = 0;
+                foreach (var key in _sessions.Keys.ToList())
+                {
+                    if (cancellationToken.IsCancellationRequested) break;
+                    if (_sessions.TryGetValue(key, out var holder))
+                    {
+                        var expiredResult = await CheckExpirationAsync(holder, key, cancellationToken);
+                        if (expiredResult.IsOk && expiredResult.Unwrap() && _sessions.TryRemove(key, out _))
+                        {
+                            removedCount++;
+                            _ = Task.Run(() => DisposeHolderAsync(holder, key), cancellationToken);
+                        }
+                    }
+                }
+
+                if (removedCount > 0)
+                    Logger.WriteLine($"[ShieldSessionManager] Cleanup removed {removedCount} expired sessions.");
             }
             catch (OperationCanceledException)
             {
-                Debug.WriteLine(
-                    "[INFO][ShieldSessionManager] Cleanup task cancelled via CancellationToken."); // Log cancellation
                 break;
             }
-
-            if (cancellationToken.IsCancellationRequested) break; // Check again after delay
-
-            int removedCount = 0;
-            var keys = sessions.Keys.ToList(); // Copy keys for safe iteration during removal attempts
-            // Debug.WriteLine($"[DEBUG][ShieldSessionManager] Cleanup check running on {keys.Count} sessions...");
-
-            foreach (var key in keys)
+            catch (Exception ex)
             {
-                if (cancellationToken.IsCancellationRequested) break;
-
-                if (sessions.TryGetValue(key, out var holder))
-                {
-                    bool requiresRemoval = false;
-                    bool acquiredLock = false;
-                    try
-                    {
-                        // Try lock very briefly, don't block cleanup thread
-                        acquiredLock =
-                            await holder.Lock.WaitAsync(TimeSpan.FromMilliseconds(50),
-                                cancellationToken); // Short timeout
-                        if (acquiredLock)
-                        {
-                            if (holder.Session.IsExpired())
-                            {
-                                Debug.WriteLine(
-                                    $"[DEBUG][ShieldSessionManager] Session {key} marked as expired by cleanup.");
-                                requiresRemoval = true;
-                            }
-                        }
-                        // else: Session busy, skip check this cycle
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        requiresRemoval = true;
-                    } // Already disposed? Remove.
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    } // Task cancelled
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine(
-                            $"[WARN][ShieldSessionManager] Error checking session {key} expiration: {ex.Message}");
-                        requiresRemoval = false; // Skip removal on error
-                    }
-                    finally
-                    {
-                        if (acquiredLock) holder.Lock.Release();
-                    }
-
-                    if (requiresRemoval)
-                    {
-                        // Attempt removal - use the dedicated RemoveSessionAsync logic? No, do it here directly
-                        // to avoid re-acquiring lock and potential races within cleanup itself.
-                        if (sessions.TryRemove(key, out var removedHolder))
-                        {
-                            Debug.WriteLine(
-                                $"[INFO][ShieldSessionManager] Cleanup removing expired session {key}. Count: {sessions.Count}");
-                            removedCount++;
-                            // Dispose session and lock asynchronously *after* removal
-                            Task.Run(() =>
-                            {
-                                try
-                                {
-                                    // No need to acquire lock again, just dispose
-                                    removedHolder.Session.Dispose();
-                                    removedHolder.Lock.Dispose(); // Dispose semaphore too
-                                    // Debug.WriteLine($"[DEBUG][ShieldSessionManager] Background disposal of session {key} completed.");
-                                }
-                                catch (Exception ex)
-                                {
-                                    Debug.WriteLine(
-                                        $"[ERROR][ShieldSessionManager] Exception during background disposal of session {key}: {ex.Message}");
-                                }
-                            }); // Fire and forget disposal
-                        }
-                        // else: Already removed by another thread (e.g., RemoveSessionAsync call)
-                    }
-                }
-                // else: Key in list but not dict -> removed concurrently.
+                Logger.WriteLine($"[ShieldSessionManager] Cleanup task error: {ex.Message}");
             }
-
-            if (removedCount > 0)
-            {
-                Debug.WriteLine(
-                    $"[INFO][ShieldSessionManager] Background cleanup removed {removedCount} expired sessions.");
-            }
-            // else { Debug.WriteLine("[DEBUG] No expired sessions found during cleanup"); } // Less verbose
         }
 
-        Debug.WriteLine("[INFO][ShieldSessionManager] Cleanup task stopped."); // Log stop
+        Logger.WriteLine("[ShieldSessionManager] Cleanup task stopped.");
     }
 
-    /// <summary>
-    /// Signals the background cleanup task to stop and waits for it to complete.
-    /// Also disposes remaining sessions and locks.
-    /// </summary>
-    public async ValueTask DisposeAsync()
+    private async Task<Result<bool, string>> CheckExpirationAsync(SessionHolder holder,
+        (PubKeyExchangeOfType, uint) key, CancellationToken cancellationToken)
     {
-        if (_disposed) return;
-        _disposed = true; // Mark disposed early
-
-        Debug.WriteLine("[ShieldSessionManager] DisposeAsync called.");
-
-        // 1. Signal cancellation
-        if (!_cleanupCts.IsCancellationRequested)
-        {
-            Debug.WriteLine("[ShieldSessionManager] Cancelling cleanup task...");
-            _cleanupCts.Cancel();
-        }
-
-        // 2. Wait for the cleanup task with timeout
+        bool acquiredLock = false;
         try
         {
-            Debug.WriteLine("[ShieldSessionManager] Waiting for cleanup task to finish...");
-            // Give cleanup a chance to finish, but don't wait forever
-            await _cleanupTask.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ConfigureAwait(false);
-            Debug.WriteLine("[ShieldSessionManager] Cleanup task finished or timed out.");
-        }
-        catch (TimeoutException)
-        {
-            Debug.WriteLine("[WARN][ShieldSessionManager] Timeout waiting for cleanup task during disposal.");
+            acquiredLock = await holder.Lock.WaitAsync(TimeSpan.FromMilliseconds(50), cancellationToken);
+            if (!acquiredLock)
+                return Result<bool, string>.Err("Could not acquire lock for expiration check.");
+            var expiredResult = holder.Session.IsExpired();
+            if (!expiredResult.IsOk)
+            {
+                Logger.WriteLine(
+                    $"[ShieldSessionManager] Error checking expiration for session {key}: {expiredResult.UnwrapErr()}");
+                return Result<bool, string>.Err(expiredResult.UnwrapErr().Message);
+            }
+
+            Logger.WriteLine($"[ShieldSessionManager] Checking session {key}. Expired: {expiredResult.Unwrap()}");
+            return Result<bool, string>.Ok(expiredResult.Unwrap());
         }
         catch (OperationCanceledException)
         {
-            Debug.WriteLine("[INFO][ShieldSessionManager] Cleanup task already cancelled during disposal wait.");
+            return Result<bool, string>.Err("Expiration check cancelled.");
         }
         catch (Exception ex)
         {
-            Debug.WriteLine(
-                $"[ERROR][ShieldSessionManager] Exception waiting for cleanup task during disposal: {ex.Message}");
+            Logger.WriteLine($"[ShieldSessionManager] Error checking expiration for session {key}: {ex.Message}");
+            return Result<bool, string>.Err($"Error checking expiration: {ex.Message}");
         }
         finally
         {
-            // 3. Dispose CancellationTokenSource
-            _cleanupCts.Dispose();
-            Debug.WriteLine("[ShieldSessionManager] Cleanup CancellationTokenSource disposed.");
-
-            // 4. Force dispose all remaining sessions and locks
-            // This ensures resources are released even if cleanup didn't remove everything
-            Debug.WriteLine($"[ShieldSessionManager] Disposing {_sessions.Count} remaining sessions...");
-            var remainingKeys = _sessions.Keys.ToList(); // Get keys before clearing
-            _sessions.Clear(); // Clear the dictionary
-
-            foreach (var key in remainingKeys) // Iterate over copied keys, dictionary is now empty
-            {
-                // TryGetValue shouldn't be necessary if we just cleared, but safer? No, iterate holders directly.
-                // Let's get holders before clearing instead.
-            }
-
-            // --- Revised approach for remaining sessions ---
-            var remainingHolders = _sessions.Values.ToList(); // Get holders before clearing
-            _sessions.Clear(); // Clear the dictionary
-
-            foreach (var holder in remainingHolders)
+            if (acquiredLock)
             {
                 try
                 {
-                    // Dispose session and lock directly, don't wait
-                    holder.Session.Dispose();
-                    holder.Lock.Dispose();
+                    holder.Lock.Release();
                 }
-                catch (Exception ex)
+                catch (ObjectDisposedException)
                 {
-                    // Log error but continue disposing others
-                    Debug.WriteLine(
-                        $"[ERROR][ShieldSessionManager] Error disposing remaining session {holder.Session.SessionId} during manager disposal: {ex.Message}");
+                    Logger.WriteLine($"[ShieldSessionManager] Lock for session {key} was already disposed.");
+                }
+            }
+        }
+    }
+
+    private async Task<Result<Unit, string>> DisposeHolderAsync(SessionHolder holder, (PubKeyExchangeOfType, uint) key)
+    {
+        bool acquiredLock = false;
+        try
+        {
+            acquiredLock = await holder.Lock.WaitAsync(TimeSpan.FromSeconds(1));
+            return Result<Unit, string>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            Logger.WriteLine($"[ShieldSessionManager] Error acquiring lock for session {key}: {ex.Message}");
+            return Result<Unit, string>.Err($"Error disposing session: {ex.Message}");
+        }
+        finally
+        {
+            if (acquiredLock)
+            {
+                try
+                {
+                    holder.Lock.Release();
+                }
+                catch (ObjectDisposedException)
+                {
+                    Logger.WriteLine($"[ShieldSessionManager] Lock for session {key} was already disposed.");
                 }
             }
 
-            Debug.WriteLine("[ShieldSessionManager] Finished disposing remaining sessions.");
+            try
+            {
+                holder.Session.Dispose();
+                Logger.WriteLine($"[ShieldSessionManager] Disposed session {key}.");
+                holder.Lock.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+                Logger.WriteLine($"[ShieldSessionManager] Session or lock for {key} was already disposed.");
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        Logger.WriteLine("[ShieldSessionManager] DisposeAsync called.");
+
+        if (!_cleanupCts.IsCancellationRequested)
+        {
+            Logger.WriteLine("[ShieldSessionManager] Cancelling cleanup task...");
+            _cleanupCts.Cancel();
         }
 
+        try
+        {
+            await _cleanupTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Logger.WriteLine("[ShieldSessionManager] Cleanup task completed.");
+        }
+        catch (Exception ex)
+        {
+            Logger.WriteLine($"[ShieldSessionManager] Error waiting for cleanup task: {ex.Message}");
+        }
+        finally
+        {
+            _cleanupCts.Dispose();
+        }
+
+        foreach (var kvp in _sessions.ToList())
+        {
+            if (_sessions.TryRemove(kvp.Key, out var holder))
+            {
+                (await DisposeHolderAsync(holder, kvp.Key)).IgnoreResult();
+            }
+        }
+
+        _sessions.Clear();
+        Logger.WriteLine("[ShieldSessionManager] Disposed all sessions.");
         GC.SuppressFinalize(this);
     }
 
-    // Finalizer as a safety net (optional but good practice)
-    ~ShieldSessionManager()
+    private static class Logger
     {
-        Debug.WriteLine(
-            $"[WARN][ShieldSessionManager] Finalizer reached for {this.GetType().Name}. DisposeAsync should be called explicitly.");
-        // Avoid async calls. Try to cancel if not already disposed.
-        if (!_disposed)
+        private static readonly object Lock = new();
+
+        public static void WriteLine(string message)
         {
-            try
+            lock (Lock)
             {
-                _cleanupCts?.Cancel();
+                Debug.WriteLine($"[{DateTime.UtcNow:HH:mm:ss.fff}] {message}");
             }
-            catch
-            {
-                /* Ignore */
-            }
-            // Don't dispose managed resources here (like _sessions, holders)
         }
     }
 }

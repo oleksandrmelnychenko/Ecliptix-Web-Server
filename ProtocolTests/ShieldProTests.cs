@@ -32,10 +32,10 @@ public class ShieldProTests : IAsyncDisposable
     {
         TestContext = testContext;
         _testContext = TestContext; // MSTest provides TestContext automatically
-        _aliceKeys = new LocalKeyMaterial(5);
-        _bobKeys = new LocalKeyMaterial(5);
-        ShieldSessionManager aliceSessionManager = ShieldSessionManager.CreateWithCleanupTask();
-        ShieldSessionManager bobSessionManager = ShieldSessionManager.CreateWithCleanupTask();
+        _aliceKeys =  LocalKeyMaterial.Create(5).Unwrap();
+        _bobKeys =LocalKeyMaterial.Create(5).Unwrap();
+        ShieldSessionManager aliceSessionManager = ShieldSessionManager.Create();
+        ShieldSessionManager bobSessionManager = ShieldSessionManager.Create();
         _aliceShieldPro = new ShieldPro(_aliceKeys, aliceSessionManager);
         _bobShieldPro = new ShieldPro(_bobKeys, bobSessionManager);
     }
@@ -128,14 +128,14 @@ public class ShieldProTests : IAsyncDisposable
 
         try
         {
-            LocalPublicKeyBundle? bobPublicBundleProto = _bobKeys.CreatePublicBundle();
+            LocalPublicKeyBundle? bobPublicBundleProto = _bobKeys.CreatePublicBundle().Unwrap();
             if (bobPublicBundleProto == null) throw new InvalidOperationException("Bob failed to create public bundle");
 
             _aliceKeys.GenerateEphemeralKeyPair();
-            LocalPublicKeyBundle? alicePublicBundleProto = _aliceKeys.CreatePublicBundle();
+            LocalPublicKeyBundle? alicePublicBundleProto = _aliceKeys.CreatePublicBundle().Unwrap();
             if (alicePublicBundleProto == null) throw new InvalidOperationException("Alice failed to create bundle");
 
-            Result<LocalPublicKeyBundle, ShieldError> bobBundleInternalResult =
+            Result<LocalPublicKeyBundle, ShieldFailure> bobBundleInternalResult =
                 LocalPublicKeyBundle.FromProtobufExchange(bobPublicBundleProto.ToProtobufExchange());
             Assert.IsTrue(bobBundleInternalResult.IsOk,
                 bobBundleInternalResult.IsErr

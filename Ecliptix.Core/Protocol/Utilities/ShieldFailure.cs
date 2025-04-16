@@ -2,25 +2,22 @@ using System.Runtime.CompilerServices;
 
 namespace Ecliptix.Core.Protocol.Utilities;
 
-/// <summary>
-/// Represents an error within the Shield protocol layer.
-/// </summary>
-public sealed class ShieldFailure : Exception
+public class ShieldFailure
 {
     public ShieldFailureType Type { get; }
-    public override string Message { get; }
+    public string Message { get; }
     public Exception? InnerException { get; }
 
     private ShieldFailure(ShieldFailureType type, string message, Exception? innerException = null)
     {
         Type = type;
-        Message = string.IsNullOrWhiteSpace(message) ? GetDefaultMessage(type) : message;
+        Message = message ?? GetDefaultMessage(type);
         InnerException = innerException;
     }
 
     private static string GetDefaultMessage(ShieldFailureType type) => type switch
     {
-        ShieldFailureType.Generic => "An unspecified error occurred in the Shield protocol.",
+        ShieldFailureType.Generic => "An unspecified error occurred.",
         ShieldFailureType.DecodeFailed => "Failed to decode or deserialize data.",
         ShieldFailureType.EphemeralMissing => "Ephemeral secret missing during operation.",
         ShieldFailureType.ConversionFailed => "Failed to convert data between types.",
@@ -39,10 +36,16 @@ public sealed class ShieldFailure : Exception
         ShieldFailureType.HkdfInfoEmpty => "HKDF info parameter cannot be empty.",
         ShieldFailureType.KeyGenerationFailed => "Failed to generate cryptographic key.",
         ShieldFailureType.EncryptionFailed => "Failed to encrypt data.",
+        ShieldFailureType.InvalidInput => "Invalid input provided.",
+        ShieldFailureType.ObjectDisposed => "Cannot access a disposed object.",
+        ShieldFailureType.AllocationFailed => "Memory allocation failed.",
+        ShieldFailureType.PinningFailure => "Failed to pin memory.",
+        ShieldFailureType.BufferTooSmall => "Provided buffer is too small.",
+        ShieldFailureType.DataTooLarge => "Provided data exceeds buffer capacity.",
+        ShieldFailureType.DataAccessError => "Error accessing data.",
         _ => $"Unknown Shield protocol error: {type}"
     };
 
-    // Factory methods for common errors
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure Generic(string? details = null, Exception? inner = null) =>
         new(ShieldFailureType.Generic, details ?? GetDefaultMessage(ShieldFailureType.Generic), inner);
@@ -68,23 +71,57 @@ public sealed class ShieldFailure : Exception
         new(ShieldFailureType.PeerPubKeyFailed, details, inner);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ShieldFailure InvalidInput(string details, Exception? inner = null) =>
-        new(ShieldFailureType.Generic, $"Invalid input: {details}", inner);
+    public static ShieldFailure InvalidInput(string details) =>
+        new(ShieldFailureType.InvalidInput, details);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ShieldFailure Disposed(Exception? inner = null) =>
-        new(ShieldFailureType.Generic, "Object disposed", inner);
+    public static ShieldFailure ObjectDisposed(string resourceName) =>
+        new(ShieldFailureType.ObjectDisposed, $"Cannot access disposed resource '{resourceName}'.");
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ShieldFailure AllocationFailed(string details, Exception? inner = null) =>
+        new(ShieldFailureType.AllocationFailed, details, inner);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ShieldFailure PinningFailure(string details, Exception? inner = null) =>
+        new(ShieldFailureType.PinningFailure, details, inner);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ShieldFailure BufferTooSmall(string details) =>
+        new(ShieldFailureType.BufferTooSmall, details);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ShieldFailure DataTooLarge(string details) =>
+        new(ShieldFailureType.DataTooLarge, details);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ShieldFailure DataAccess(string details, Exception? inner = null) =>
+        new(ShieldFailureType.DataAccessError, details, inner);
+    
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ShieldFailure KeyGeneration(string details, Exception? inner = null) =>
+        new(ShieldFailureType.KeyGenerationFailed, details, inner);
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ShieldFailure PrepareLocal(string details, Exception? inner = null) =>
+        new(ShieldFailureType.KeyGenerationFailed, details, inner);
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ShieldFailure SessionExpired(string details, Exception? inner = null) =>
+        new(ShieldFailureType.SessionExpired, details, inner);
+  
     public override string ToString() =>
         $"ShieldFailure(Type={Type}, Message='{Message}'{(InnerException != null ? $", InnerException='{InnerException.GetType().Name}: {InnerException.Message}'" : "")})";
 
-    // For equality comparison in Result<T, ShieldFailure>
     public override bool Equals(object? obj) =>
         obj is ShieldFailure other &&
         Type == other.Type &&
         Message == other.Message &&
-        ReferenceEquals(InnerException, other.InnerException);
+        Equals(InnerException, other.InnerException);
 
     public override int GetHashCode() =>
         HashCode.Combine(Type, Message, InnerException);
+
+   
 }

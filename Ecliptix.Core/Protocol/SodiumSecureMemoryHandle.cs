@@ -1,5 +1,6 @@
-using System.Runtime.ConstrainedExecution;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Ecliptix.Core.Protocol.Utilities;
 
 namespace Ecliptix.Core.Protocol;
 
@@ -14,123 +15,205 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
         Length = length;
     }
 
-    public static SodiumSecureMemoryHandle Allocate(int length)
+    public static Result<SodiumSecureMemoryHandle, ShieldFailure> Allocate(int length)
     {
         switch (length)
         {
             case < 0:
-                throw new ArgumentOutOfRangeException(nameof(length));
+                return Result<SodiumSecureMemoryHandle, ShieldFailure>.Err(
+                    ShieldFailure.InvalidInput($"Requested allocation length cannot be negative ({length})."));
             case 0:
-                return new SodiumSecureMemoryHandle(IntPtr.Zero, 0, true);
+                return Result<SodiumSecureMemoryHandle, ShieldFailure>.Ok(
+                    new SodiumSecureMemoryHandle(IntPtr.Zero, 0, true));
         }
+
+        if (!SodiumInterop.IsInitialized)
+            return Result<SodiumSecureMemoryHandle, ShieldFailure>.Err(
+                ShieldFailure.Generic("SodiumInterop is not initialized."));
 
         UIntPtr size = (UIntPtr)length;
-        IntPtr ptr = SodiumInterop.sodium_malloc(size);
-        if (ptr == IntPtr.Zero)
-        {
-            throw new OutOfMemoryException($"sodium_malloc failed to allocate {length} bytes.");
-        }
+        IntPtr ptr = IntPtr.Zero;
 
-        return new SodiumSecureMemoryHandle(ptr, length, true);
+        try
+        {
+            ptr = SodiumInterop.sodium_malloc(size);
+            if (ptr == IntPtr.Zero)
+                return Result<SodiumSecureMemoryHandle, ShieldFailure>.Err(
+                    ShieldFailure.AllocationFailed($"sodium_malloc failed to allocate {length} bytes."));
+
+            return Result<SodiumSecureMemoryHandle, ShieldFailure>.Ok(
+                new SodiumSecureMemoryHandle(ptr, length, true));
+        }
+        catch (Exception ex)
+        {
+            if (ptr != IntPtr.Zero)
+                SodiumInterop.sodium_free(ptr);
+
+            return Result<SodiumSecureMemoryHandle, ShieldFailure>.Err(
+                ShieldFailure.AllocationFailed($"Unexpected error during allocation ({length} bytes).", ex));
+        }
     }
 
     public override bool IsInvalid => handle == IntPtr.Zero;
 
-    public void Write(ReadOnlySpan<byte> data)
-    {
-        if (!IsInvalid && !IsClosed)
-        {
-            if (data.Length > Length)
-                throw new ArgumentException("Data length exceeds allocated buffer size.", nameof(data));
-
-            bool success = false;
-            DangerousAddRef(ref success);
-            try
-            {
-                unsafe
-                {
-                    fixed (byte* pData = data)
-                    {
-                        Buffer.MemoryCopy(pData, (void*)handle, Length, data.Length);
-                    }
-                }
-            }
-            finally
-            {
-                DangerousRelease();
-            }
-        }
-        else
-        {
-            throw new ObjectDisposedException(nameof(SodiumSecureMemoryHandle));
-        }
-    }
-
-    public void Read(Span<byte> destination)
-    {
-        if (!IsInvalid && !IsClosed)
-        {
-            if (destination.Length < Length)
-                throw new ArgumentException("Destination buffer is smaller than the allocated size.",
-                    nameof(destination));
-
-            bool success = false;
-            DangerousAddRef(ref success);
-            try
-            {
-                unsafe
-                {
-                    fixed (byte* pDest = destination)
-                    {
-                        Buffer.MemoryCopy((void*)handle, pDest, destination.Length, Length);
-                    }
-                }
-            }
-            finally
-            {
-                DangerousRelease();
-            }
-        }
-        else
-        {
-            throw new ObjectDisposedException(nameof(SodiumSecureMemoryHandle));
-        }
-    }
-    
-    public byte[] ReadBytes(int length)
+    public Result<Unit, ShieldFailure> Write(ReadOnlySpan<byte> data)
     {
         if (IsInvalid || IsClosed)
-            throw new ObjectDisposedException(nameof(SodiumSecureMemoryHandle));
-        if (length > Length)
-            throw new ArgumentException("Requested length exceeds allocated size.", nameof(length));
+            return Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(SodiumSecureMemoryHandle)));
 
-        byte[] buffer = new byte[length];
+        if (data.Length > Length)
+            return Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.DataTooLarge($"Data length ({data.Length}) exceeds allocated buffer size ({Length})."));
+
+        if (data.IsEmpty)
+            return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+
         bool success = false;
-        DangerousAddRef(ref success);
         try
         {
+            DangerousAddRef(ref success);
+            if (!success)
+                return Result<Unit, ShieldFailure>.Err(ShieldFailure.Generic("Failed to increment reference count."));
+
+            if (IsInvalid || IsClosed)
+                return Result<Unit, ShieldFailure>.Err(
+                    ShieldFailure.ObjectDisposed($"{nameof(SodiumSecureMemoryHandle)} disposed after AddRef."));
+
             unsafe
             {
-                fixed (byte* pBuffer = buffer)
-                {
-                    Buffer.MemoryCopy((void*)handle, pBuffer, length, length);
-                }
+                Buffer.MemoryCopy(
+                    source: Unsafe.AsPointer(ref MemoryMarshal.GetReference(data)),
+                    destination: (void*)handle,
+                    destinationSizeInBytes: (ulong)Length,
+                    sourceBytesToCopy: (ulong)data.Length);
             }
+
+            return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.DataAccess("Unexpected error during write operation.", ex));
         }
         finally
         {
-            DangerousRelease();
+            if (success)
+                DangerousRelease();
         }
-        return buffer;
+    }
+
+    public Result<Unit, ShieldFailure> Read(Span<byte> destination)
+    {
+        if (IsInvalid || IsClosed)
+            return Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(SodiumSecureMemoryHandle)));
+
+        if (destination.Length < Length)
+            return Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.BufferTooSmall(
+                    $"Destination buffer size ({destination.Length}) is smaller than the allocated size ({Length})."));
+
+        if (Length == 0)
+            return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+
+        bool success = false;
+        try
+        {
+            DangerousAddRef(ref success);
+            if (!success)
+                return Result<Unit, ShieldFailure>.Err(ShieldFailure.Generic("Failed to increment reference count."));
+
+            if (IsInvalid || IsClosed)
+                return Result<Unit, ShieldFailure>.Err(
+                    ShieldFailure.ObjectDisposed($"{nameof(SodiumSecureMemoryHandle)} disposed after AddRef."));
+
+            unsafe
+            {
+                Buffer.MemoryCopy(
+                    source: (void*)handle,
+                    destination: Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination)),
+                    destinationSizeInBytes: (ulong)destination.Length,
+                    sourceBytesToCopy: (ulong)Length);
+            }
+
+            return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.DataAccess("Unexpected error during read operation.", ex));
+        }
+        finally
+        {
+            if (success)
+                DangerousRelease();
+        }
+    }
+
+    public Result<byte[], ShieldFailure> ReadBytes(int length)
+    {
+        if (IsInvalid || IsClosed)
+            return Result<byte[], ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(SodiumSecureMemoryHandle)));
+
+        if (length < 0)
+            return Result<byte[], ShieldFailure>.Err(
+                ShieldFailure.InvalidInput($"Requested read length cannot be negative ({length})."));
+
+        if (length > Length)
+            return Result<byte[], ShieldFailure>.Err(
+                ShieldFailure.BufferTooSmall($"Requested read length ({length}) exceeds allocated size ({Length})."));
+
+        if (length == 0)
+            return Result<byte[], ShieldFailure>.Ok(Array.Empty<byte>());
+
+        byte[] buffer = new byte[length];
+        bool success = false;
+        try
+        {
+            DangerousAddRef(ref success);
+            if (!success)
+                return Result<byte[], ShieldFailure>.Err(ShieldFailure.Generic("Failed to increment reference count."));
+
+            if (IsInvalid || IsClosed)
+                return Result<byte[], ShieldFailure>.Err(
+                    ShieldFailure.ObjectDisposed($"{nameof(SodiumSecureMemoryHandle)} disposed after AddRef."));
+
+            unsafe
+            {
+                Buffer.MemoryCopy(
+                    source: (void*)handle,
+                    destination: Unsafe.AsPointer(ref MemoryMarshal.GetReference(buffer.AsSpan())),
+                    destinationSizeInBytes: (ulong)length,
+                    sourceBytesToCopy: (ulong)length);
+            }
+
+            return Result<byte[], ShieldFailure>.Ok(buffer);
+        }
+        catch (Exception ex)
+        {
+            return Result<byte[], ShieldFailure>.Err(
+                ShieldFailure.DataAccess($"Unexpected error reading {length} bytes.", ex));
+        }
+        finally
+        {
+            if (success)
+                DangerousRelease();
+        }
     }
 
     protected override bool ReleaseHandle()
     {
-        if (!IsInvalid)
+        if (IsInvalid)
         {
-            SodiumInterop.sodium_free(handle);
+            return true;
         }
 
+        if (!SodiumInterop.IsInitialized)
+        {
+            return false;
+        }
+
+        SodiumInterop.sodium_free(handle);
+        SetHandleAsInvalid();
         return true;
     }
 }

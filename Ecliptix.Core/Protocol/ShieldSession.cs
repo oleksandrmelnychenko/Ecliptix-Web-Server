@@ -1,440 +1,859 @@
+using System.Buffers.Binary;
+using System.Diagnostics;
+using System.Security.Cryptography;
 using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Protobuf.PubKeyExchange;
 using Sodium;
-using System.Buffers.Binary;
-using System;
 
 namespace Ecliptix.Core.Protocol;
 
 public sealed class ShieldSession : IDisposable
 {
-    #region Constants
-
     private const int MaxProcessedIds = 6000;
     private const int DhRotationInterval = 10;
     private static readonly TimeSpan SessionTimeout = TimeSpan.FromHours(24);
-
-    #endregion
-
-    #region Fields
+    private static readonly byte[] InitialSenderChainInfo = System.Text.Encoding.UTF8.GetBytes("ShieldInitSend");
+    private static readonly byte[] InitialReceiverChainInfo = System.Text.Encoding.UTF8.GetBytes("ShieldInitRecv");
+    private static readonly byte[] DhRatchetInfo = System.Text.Encoding.UTF8.GetBytes("ShieldDhRatchet");
+    private const int AesGcmNonceSize = 12;
 
     private readonly uint _id;
-    private readonly PublicKeyBundle _localBundle;
-    private PublicKeyBundle? _peerBundle;
+    private readonly LocalPublicKeyBundle _localBundle;
+    private LocalPublicKeyBundle? _peerBundle;
     private ShieldChainStep? _sendingStep;
     private ShieldChainStep? _receivingStep;
     private SodiumSecureMemoryHandle? _rootKeyHandle;
-
     private readonly SortedDictionary<uint, ShieldMessageKey> _messageKeys;
     private PubKeyExchangeState _state;
     private ulong _nonceCounter;
     private readonly DateTimeOffset _createdAt;
     private readonly SortedSet<uint> _missedReceiverIndices;
-    private readonly SortedSet<uint> _processedMessageIds;
-    private byte[]? _peerDhPublicKey; // Peer’s current DH public key
+    private readonly SortedSet<ulong> _processedMessageNonces;
+    private byte[]? _peerDhPublicKey;
+    private readonly bool _isInitiator;
+    private bool _receivedNewDhKey;
+    private SodiumSecureMemoryHandle? _persistentDhPrivateKeyHandle;
+    private byte[]? _persistentDhPublicKey;
+    private SodiumSecureMemoryHandle? _initialSendingDhPrivateKeyHandle;
+    private SodiumSecureMemoryHandle? _currentSendingDhPrivateKeyHandle; // New field
+    private volatile bool _disposed;
+    private bool _isFirstReceivingRatchet;
 
-    private bool _isInitiator; // True for Alice, false for Bob
-    private bool _receivedNewDhKey = false;
+    private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
 
-    private byte[] _currentDhPrivateKey; // Persistent DH private key for this session
-    private byte[] _currentDhPublicKey; // Persistent DH public key for this session
+    public SemaphoreSlim Lock => _lock;
 
-    private volatile bool _disposed = false;
-
-    #endregion
-
-    #region Constructor
-    private byte[] _initialSendingDhPrivateKey; // Add to store initial sending private key
-    private bool _isFirstReceivingRatchet = true;
-    
-    public ShieldSession(uint id, PublicKeyBundle localBundle, bool isInitiator)
+    private ShieldSession(
+        uint id,
+        LocalPublicKeyBundle localBundle,
+        bool isInitiator,
+        SodiumSecureMemoryHandle initialSendingDhPrivateKeyHandle,
+        ShieldChainStep sendingStep,
+        SodiumSecureMemoryHandle persistentDhPrivateKeyHandle,
+        byte[] persistentDhPublicKey)
     {
         _id = id;
-        _localBundle = localBundle ?? throw new ArgumentNullException(nameof(localBundle));
+        _localBundle = localBundle;
+        _isInitiator = isInitiator;
+        _initialSendingDhPrivateKeyHandle = initialSendingDhPrivateKeyHandle;
+        _currentSendingDhPrivateKeyHandle = initialSendingDhPrivateKeyHandle;
+        _sendingStep = sendingStep;
+        _persistentDhPrivateKeyHandle = persistentDhPrivateKeyHandle;
+        _persistentDhPublicKey = persistentDhPublicKey;
         _peerBundle = null;
+        _receivingStep = null;
+        _rootKeyHandle = null;
         _messageKeys = new SortedDictionary<uint, ShieldMessageKey>();
         _state = PubKeyExchangeState.Init;
         _nonceCounter = 0;
         _createdAt = DateTimeOffset.UtcNow;
         _missedReceiverIndices = new SortedSet<uint>();
-        _processedMessageIds = new SortedSet<uint>();
+        _processedMessageNonces = new SortedSet<ulong>();
         _peerDhPublicKey = null;
-        _isInitiator = isInitiator;
         _receivedNewDhKey = false;
+        _disposed = false;
         _isFirstReceivingRatchet = true;
-        // Initialize persistent DH key pair
-        _currentDhPrivateKey = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize);
-        _currentDhPublicKey = ScalarMult.Base(_currentDhPrivateKey);
-
-        _initialSendingDhPrivateKey = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize);
-        byte[] initialSendingDhPublicKey = ScalarMult.Base(_initialSendingDhPrivateKey);
-        _sendingStep = new ShieldChainStep(ChainStepType.Sender, new byte[Constants.X25519KeySize],
-            _initialSendingDhPrivateKey, initialSendingDhPublicKey);
-        
-        _receivingStep = null;
-        _rootKeyHandle = null;
-
-        Console.WriteLine($"[Session {_id}] Initial Sender DH PK: {Convert.ToHexString(initialSendingDhPublicKey)}");
+        Debug.WriteLine($"[ShieldSession] Created session {id}, Initiator: {isInitiator}");
     }
 
-    #endregion
-
-    #region Properties
-
-    public uint SessionId => _id;
-    public PubKeyExchangeState State => _state;
-    public PublicKeyBundle LocalBundle => _localBundle;
-    public PublicKeyBundle PeerBundle => _peerBundle ?? throw new InvalidOperationException("Peer bundle not set.");
-    public bool IsInitiator => _isInitiator;
-
-    #endregion
-
-    #region Internal Setters
-
-    internal void SetConnectionState(PubKeyExchangeState newState) => _state = newState;
-
-    internal void SetPeerBundle(PublicKeyBundle peerBundle) =>
-        _peerBundle = peerBundle ?? throw new ArgumentNullException(nameof(peerBundle));
-
-    #endregion
-
-    #region Message Preparation
-
-    internal (ShieldMessageKey MessageKey, bool IncludeDhKey) PrepareNextSendMessage()
+    public static Result<ShieldSession, ShieldFailure> Create(uint id, LocalPublicKeyBundle localBundle,
+        bool isInitiator)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        EnsureNotExpired();
-        var sendingStep = _sendingStep ?? throw new InvalidOperationException("Sending chain step not initialized.");
+        if (localBundle == null)
+            return Result<ShieldSession, ShieldFailure>.Err(ShieldFailure.InvalidInput("Local bundle cannot be null."));
 
-        // Trigger DH ratchet only on specific conditions (e.g., interval or new peer key)
-        bool shouldRatchet = _receivedNewDhKey || ((sendingStep.CurrentIndex + 1) % DhRotationInterval == 0);
-        bool includeDhKey = false; // Default to not including DH key
+        SodiumSecureMemoryHandle? initialSendingDhPrivateKeyHandle = null;
+        byte[]? initialSendingDhPublicKey = null;
+        byte[]? initialSendingDhPrivateKeyBytes = null;
+        ShieldChainStep? sendingStep = null;
+        SodiumSecureMemoryHandle? persistentDhPrivateKeyHandle = null;
+        byte[]? persistentDhPublicKey = null;
 
-        if (shouldRatchet)
-        {
-            Console.WriteLine(
-                $"[{sendingStep.StepType}] Triggering DH Ratchet before message preparation. ReceivedNewKey={_receivedNewDhKey}, Interval={((sendingStep.CurrentIndex + 1) % DhRotationInterval == 0)}");
-            PerformDhRatchet();
-            _receivedNewDhKey = false;
-            includeDhKey = true; // Include DH key only when ratcheting
-        }else if (_receivedNewDhKey)
-        {
-            Console.WriteLine($"[{sendingStep.StepType}] Skipping DH Ratchet: ReceivedNewKey=True but not at interval.");
-        }
-
-        uint nextIndex = sendingStep.CurrentIndex + 1;
-        ShieldMessageKey messageKey = sendingStep.GetOrDeriveKeyFor(nextIndex, _messageKeys);
-        sendingStep.CurrentIndex = nextIndex;
-
-        byte[]? keyMaterial = null;
-        ShieldMessageKey? clonedMessageKey = null;
         try
         {
-            keyMaterial = new byte[Constants.AesKeySize];
-            messageKey.ReadKeyMaterial(keyMaterial);
-            clonedMessageKey = new ShieldMessageKey(messageKey.Index, keyMaterial);
-            Console.WriteLine($"[{sendingStep.StepType}] Prepared message key for index {clonedMessageKey.Index}");
-            sendingStep.PruneOldKeys(_messageKeys);
-        }
-        finally
-        {
-            WipeIfNotNull(keyMaterial);
-        }
+            Debug.WriteLine($"[ShieldSession] Creating session {id}, Initiator: {isInitiator}");
+            var overallResult = GenerateX25519KeyPair("Initial Sending DH")
+                .Bind(initialSendKeys =>
+                {
+                    (initialSendingDhPrivateKeyHandle, initialSendingDhPublicKey) = initialSendKeys;
+                    Debug.WriteLine(
+                        $"[ShieldSession] Generated Initial Sending DH Public Key: {Convert.ToHexString(initialSendingDhPublicKey)}");
+                    return initialSendingDhPrivateKeyHandle.ReadBytes(Constants.X25519PrivateKeySize)
+                        .Map(bytes =>
+                        {
+                            initialSendingDhPrivateKeyBytes = bytes;
+                            Debug.WriteLine(
+                                $"[ShieldSession] Initial Sending DH Private Key: {Convert.ToHexString(initialSendingDhPrivateKeyBytes)}");
+                            return Unit.Value;
+                        });
+                })
+                .Bind(_ => GenerateX25519KeyPair("Persistent DH"))
+                .Bind(persistentKeys =>
+                {
+                    (persistentDhPrivateKeyHandle, persistentDhPublicKey) = persistentKeys;
+                    Debug.WriteLine(
+                        $"[ShieldSession] Generated Persistent DH Public Key: {Convert.ToHexString(persistentDhPublicKey)}");
+                    byte[] tempChainKey = new byte[Constants.X25519KeySize];
+                    var stepResult = ShieldChainStep.Create(
+                        ChainStepType.Sender,
+                        tempChainKey,
+                        initialSendingDhPrivateKeyBytes,
+                        initialSendingDhPublicKey);
+                    SodiumInterop.SecureWipe(tempChainKey).IgnoreResult();
+                    WipeIfNotNull(initialSendingDhPrivateKeyBytes).IgnoreResult();
+                    initialSendingDhPrivateKeyBytes = null;
+                    return stepResult;
+                })
+                .Bind(createdSendingStep =>
+                {
+                    sendingStep = createdSendingStep;
+                    Debug.WriteLine($"[ShieldSession] Sending step created for session {id}");
+                    var session = new ShieldSession(
+                        id,
+                        localBundle,
+                        isInitiator,
+                        initialSendingDhPrivateKeyHandle!,
+                        sendingStep,
+                        persistentDhPrivateKeyHandle!,
+                        persistentDhPublicKey!);
+                    initialSendingDhPrivateKeyHandle = null;
+                    persistentDhPrivateKeyHandle = null;
+                    sendingStep = null;
+                    return Result<ShieldSession, ShieldFailure>.Ok(session);
+                });
 
-        return (clonedMessageKey, includeDhKey);
+            if (overallResult.IsErr)
+            {
+                Debug.WriteLine($"[ShieldSession] Failed to create session {id}: {overallResult.UnwrapErr().Message}");
+                initialSendingDhPrivateKeyHandle?.Dispose();
+                sendingStep?.Dispose();
+                persistentDhPrivateKeyHandle?.Dispose();
+                WipeIfNotNull(initialSendingDhPrivateKeyBytes).IgnoreResult();
+            }
+
+            return overallResult;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ShieldSession] Unexpected error creating session {id}: {ex.Message}");
+            initialSendingDhPrivateKeyHandle?.Dispose();
+            sendingStep?.Dispose();
+            persistentDhPrivateKeyHandle?.Dispose();
+            WipeIfNotNull(initialSendingDhPrivateKeyBytes).IgnoreResult();
+            return Result<ShieldSession, ShieldFailure>.Err(
+                ShieldFailure.Generic($"Unexpected error creating session {id}.", ex));
+        }
     }
 
-    #endregion
-
-    #region Session Initialization
-
-    internal void FinalizeChainAndDhKeys(byte[] initialRootKey, byte[] initialPeerDhPublicKey)
+    private static Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), ShieldFailure> GenerateX25519KeyPair(
+        string keyPurpose)
     {
-        if (_rootKeyHandle != null || _receivingStep != null)
-            throw new InvalidOperationException("Session already finalized.");
+        SodiumSecureMemoryHandle? skHandle = null;
+        byte[]? skBytes = null;
+        byte[]? pkBytes = null;
+        byte[]? tempPrivCopy = null;
+        try
+        {
+            Debug.WriteLine($"[ShieldSession] Generating X25519 key pair for {keyPurpose}");
+            var allocResult = SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
+            if (allocResult.IsErr)
+                return Result<(SodiumSecureMemoryHandle, byte[]), ShieldFailure>.Err(allocResult.UnwrapErr());
+            skHandle = allocResult.Unwrap();
+            skBytes = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize);
+            var writeResult = skHandle.Write(skBytes);
+            if (writeResult.IsErr)
+            {
+                skHandle.Dispose();
+                return Result<(SodiumSecureMemoryHandle, byte[]), ShieldFailure>.Err(writeResult.UnwrapErr());
+            }
 
+            SodiumInterop.SecureWipe(skBytes).IgnoreResult();
+            skBytes = null;
+            tempPrivCopy = new byte[Constants.X25519PrivateKeySize];
+            var readResult = skHandle.Read(tempPrivCopy);
+            if (readResult.IsErr)
+            {
+                skHandle.Dispose();
+                SodiumInterop.SecureWipe(tempPrivCopy).IgnoreResult();
+                return Result<(SodiumSecureMemoryHandle, byte[]), ShieldFailure>.Err(readResult.UnwrapErr());
+            }
+
+            var deriveResult = Result<byte[], ShieldFailure>.Try(() => ScalarMult.Base(tempPrivCopy),
+                ex => ShieldFailure.Generic($"Failed to derive {keyPurpose} public key.", ex));
+            SodiumInterop.SecureWipe(tempPrivCopy).IgnoreResult();
+            tempPrivCopy = null;
+            if (deriveResult.IsErr)
+            {
+                skHandle.Dispose();
+                return Result<(SodiumSecureMemoryHandle, byte[]), ShieldFailure>.Err(deriveResult.UnwrapErr());
+            }
+
+            pkBytes = deriveResult.Unwrap();
+            if (pkBytes.Length != Constants.X25519PublicKeySize)
+            {
+                skHandle.Dispose();
+                SodiumInterop.SecureWipe(pkBytes).IgnoreResult();
+                return Result<(SodiumSecureMemoryHandle, byte[]), ShieldFailure>.Err(
+                    ShieldFailure.Generic($"Derived {keyPurpose} public key has incorrect size."));
+            }
+
+            Debug.WriteLine($"[ShieldSession] Generated {keyPurpose} Public Key: {Convert.ToHexString(pkBytes)}");
+            return Result<(SodiumSecureMemoryHandle, byte[]), ShieldFailure>.Ok((skHandle, pkBytes));
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ShieldSession] Error generating {keyPurpose} key pair: {ex.Message}");
+            skHandle?.Dispose();
+            if (skBytes != null) SodiumInterop.SecureWipe(skBytes).IgnoreResult();
+            if (tempPrivCopy != null) SodiumInterop.SecureWipe(tempPrivCopy).IgnoreResult();
+            return Result<(SodiumSecureMemoryHandle, byte[]), ShieldFailure>.Err(
+                ShieldFailure.Generic($"Unexpected error generating {keyPurpose} key pair.", ex));
+        }
+    }
+
+    public uint SessionId => _id;
+
+    public Result<PubKeyExchangeState, ShieldFailure> GetState() =>
+        CheckDisposed().Map(_ => _state);
+
+    public Result<LocalPublicKeyBundle, ShieldFailure> GetLocalBundle() =>
+        CheckDisposed().Map(_ => _localBundle);
+
+    public Result<LocalPublicKeyBundle, ShieldFailure> GetPeerBundle() =>
+        CheckDisposed().Bind(_ =>
+            _peerBundle != null
+                ? Result<LocalPublicKeyBundle, ShieldFailure>.Ok(_peerBundle)
+                : Result<LocalPublicKeyBundle, ShieldFailure>.Err(
+                    ShieldFailure.Generic("Peer bundle has not been set.")));
+
+    public Result<bool, ShieldFailure> GetIsInitiator() =>
+        CheckDisposed().Map(_ => _isInitiator);
+
+    internal Result<Unit, ShieldFailure> SetConnectionState(PubKeyExchangeState newState) =>
+        CheckDisposed().Map(u =>
+        {
+            Debug.WriteLine($"[ShieldSession] Setting state for session {_id} to {newState}");
+            _state = newState;
+            return u;
+        });
+
+    internal void SetPeerBundle(LocalPublicKeyBundle peerBundle)
+    {
+        if (peerBundle == null)
+            throw new ArgumentNullException(nameof(peerBundle));
+        Debug.WriteLine($"[ShieldSession] Setting peer bundle for session {_id}");
+        _peerBundle = peerBundle;
+    }
+
+    internal Result<Unit, ShieldFailure> FinalizeChainAndDhKeys(byte[] initialRootKey, byte[] initialPeerDhPublicKey)
+    {
         SodiumSecureMemoryHandle? tempRootHandle = null;
         ShieldChainStep? tempReceivingStep = null;
         byte[]? initialRootKeyCopy = null;
         byte[]? localSenderCk = null;
         byte[]? localReceiverCk = null;
+        byte[]? peerDhPublicCopy = null;
+        byte[]? persistentPrivKeyBytes = null;
 
         try
         {
-            initialRootKeyCopy = (byte[])initialRootKey.Clone();
-            tempRootHandle = SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize);
-            tempRootHandle.Write(initialRootKeyCopy);
-
-            _peerDhPublicKey = (byte[])initialPeerDhPublicKey.Clone();
-
-            Span<byte> initiatorSenderChainKey = stackalloc byte[Constants.X25519KeySize];
-            Span<byte> responderSenderChainKey = stackalloc byte[Constants.X25519KeySize];
-
-            using (HkdfSha256 hkdfSend = new(initialRootKeyCopy, null))
-                hkdfSend.Expand(Constants.InitialSenderChainInfo, initiatorSenderChainKey);
-            using (HkdfSha256 hkdfRecv = new(initialRootKeyCopy, null))
-                hkdfRecv.Expand(Constants.InitialReceiverChainInfo, responderSenderChainKey);
-
-            localSenderCk = _isInitiator ? initiatorSenderChainKey.ToArray() : responderSenderChainKey.ToArray();
-            localReceiverCk = _isInitiator ? responderSenderChainKey.ToArray() : initiatorSenderChainKey.ToArray();
-
-            // Update sending chain with real chain key
-            _sendingStep.UpdateKeysAfterDhRatchet(localSenderCk);
-            tempReceivingStep = new ShieldChainStep(ChainStepType.Receiver, localReceiverCk, _currentDhPrivateKey, _currentDhPublicKey);
-
-            _rootKeyHandle = tempRootHandle;
-            tempRootHandle = null;
-            _receivingStep = tempReceivingStep;
-            tempReceivingStep = null;
-
-            Console.WriteLine($"[Session {_id}] Initial Peer DH PK: {Convert.ToHexString(_peerDhPublicKey)}");
+            Debug.WriteLine($"[ShieldSession] Finalizing chain and DH keys for session {_id}");
+            return CheckDisposed()
+                .Bind(_ => CheckIfNotFinalized())
+                .Bind(_ => ValidateInitialKeys(initialRootKey, initialPeerDhPublicKey))
+                .Bind(_ =>
+                {
+                    initialRootKeyCopy = (byte[])initialRootKey.Clone();
+                    peerDhPublicCopy = (byte[])initialPeerDhPublicKey.Clone();
+                    Debug.WriteLine($"[ShieldSession] Initial Root Key: {Convert.ToHexString(initialRootKeyCopy)}");
+                    Debug.WriteLine(
+                        $"[ShieldSession] Initial Peer DH Public Key: {Convert.ToHexString(peerDhPublicCopy)}");
+                    return SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize).Bind(handle =>
+                    {
+                        tempRootHandle = handle;
+                        return handle.Write(initialRootKeyCopy);
+                    });
+                })
+                .Bind(_ => DeriveInitialChainKeys(initialRootKeyCopy!))
+                .Bind(derivedKeys =>
+                {
+                    (localSenderCk, localReceiverCk) = derivedKeys;
+                    Debug.WriteLine($"[ShieldSession] Local Sender Chain Key: {Convert.ToHexString(localSenderCk)}");
+                    Debug.WriteLine(
+                        $"[ShieldSession] Local Receiver Chain Key: {Convert.ToHexString(localReceiverCk)}");
+                    return _persistentDhPrivateKeyHandle!.ReadBytes(Constants.X25519PrivateKeySize)
+                        .Map(bytes =>
+                        {
+                            persistentPrivKeyBytes = bytes;
+                            Debug.WriteLine(
+                                $"[ShieldSession] Persistent DH Private Key: {Convert.ToHexString(persistentPrivKeyBytes)}");
+                            return Unit.Value;
+                        });
+                })
+                .Bind(_ => _sendingStep!.UpdateKeysAfterDhRatchet(localSenderCk!))
+                .Bind(_ => ShieldChainStep.Create(ChainStepType.Receiver, localReceiverCk!, persistentPrivKeyBytes,
+                    _persistentDhPublicKey))
+                .Map(receivingStep =>
+                {
+                    _rootKeyHandle = tempRootHandle;
+                    tempRootHandle = null;
+                    _receivingStep = receivingStep;
+                    tempReceivingStep = null;
+                    _peerDhPublicKey = peerDhPublicCopy;
+                    peerDhPublicCopy = null;
+                    Debug.WriteLine($"[ShieldSession] Chain and DH keys finalized for session {_id}");
+                    return Unit.Value;
+                })
+                .MapErr(err =>
+                {
+                    Debug.WriteLine($"[ShieldSession] Error finalizing chain and DH keys: {err.Message}");
+                    tempRootHandle?.Dispose();
+                    tempReceivingStep?.Dispose();
+                    return err;
+                });
         }
         finally
         {
-            WipeIfNotNull(initialRootKeyCopy);
-            WipeIfNotNull(localSenderCk);
-            WipeIfNotNull(localReceiverCk);
+            WipeIfNotNull(initialRootKeyCopy).IgnoreResult();
+            WipeIfNotNull(localSenderCk).IgnoreResult();
+            WipeIfNotNull(localReceiverCk).IgnoreResult();
+            WipeIfNotNull(peerDhPublicCopy).IgnoreResult();
+            WipeIfNotNull(persistentPrivKeyBytes).IgnoreResult();
             tempRootHandle?.Dispose();
             tempReceivingStep?.Dispose();
         }
     }
 
-    #endregion
+    private Result<Unit, ShieldFailure> CheckIfNotFinalized() =>
+        CheckDisposed().Bind(_ =>
+            (_rootKeyHandle != null || _receivingStep != null)
+                ? Result<Unit, ShieldFailure>.Err(ShieldFailure.Generic("Session has already been finalized."))
+                : Result<Unit, ShieldFailure>.Ok(Unit.Value));
 
-    #region Message Processing
-
-    internal ShieldMessageKey ProcessReceivedMessage(uint receivedIndex, byte[]? receivedDhPublicKeyBytes)
+    private static Result<Unit, ShieldFailure> ValidateInitialKeys(byte[] rootKey, byte[] peerDhKey)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        EnsureNotExpired();
-        var receivingStep = _receivingStep ?? throw new InvalidOperationException("Receiving chain step not initialized.");
-
-        Console.WriteLine(
-            $"[{receivingStep.StepType}] Processing received message #{receivedIndex}. Current Index: {receivingStep.CurrentIndex}");
-
-        // Handle initial peer DH key
-        if (_peerDhPublicKey == null && receivedDhPublicKeyBytes != null)
-        {
-            _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes.Clone();
-            Console.WriteLine($"[{receivingStep.StepType}] Initialized _peerDhPublicKey with first message key.");
-        }
-        // Perform receiving ratchet only if at interval or first message
-        else if (receivedDhPublicKeyBytes != null && !receivedDhPublicKeyBytes.SequenceEqual(_peerDhPublicKey))
-        {
-            PerformReceivingRatchet(receivedDhPublicKeyBytes);
-        }
-
-        ShieldMessageKey messageKey = receivingStep.GetOrDeriveKeyFor(receivedIndex, _messageKeys);
-        receivingStep.CurrentIndex = messageKey.Index;
-
-        Console.WriteLine($"[{receivingStep.StepType}] Derived key for index {messageKey.Index}.");
-        receivingStep.PruneOldKeys(_messageKeys);
-
-        _processedMessageIds.Add(messageKey.Index);
-        if (_processedMessageIds.Count > MaxProcessedIds)
-            _processedMessageIds.Remove(_processedMessageIds.Min);
-
-        return messageKey;
+        if (rootKey == null || rootKey.Length != Constants.X25519KeySize)
+            return Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.InvalidInput($"Initial root key must be {Constants.X25519KeySize} bytes."));
+        if (peerDhKey == null || peerDhKey.Length != Constants.X25519PublicKeySize)
+            return Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.InvalidInput(
+                    $"Initial peer DH public key must be {Constants.X25519PublicKeySize} bytes."));
+        return Result<Unit, ShieldFailure>.Ok(Unit.Value);
     }
 
-    #endregion
-
-    #region DH Ratchet Logic
-
-    internal void PerformDhRatchet()
+    private Result<(byte[] senderCk, byte[] receiverCk), ShieldFailure> DeriveInitialChainKeys(byte[] rootKey)
     {
-        var sendingStep = _sendingStep ?? throw new InvalidOperationException("Sending chain step not initialized.");
-        if (_rootKeyHandle == null) throw new InvalidOperationException("Root key handle not initialized.");
-
-        byte[]? newDhPrivateKey = null;
-        byte[]? newDhPublicKey = null;
-        byte[]? dhSecret = null;
-        byte[]? currentRootKey = null;
-        byte[]? newRootKey = null;
-        byte[]? newChainKey = null;
-        byte[]? hkdfOutput = null;
-
+        byte[]? initiatorSenderChainKey = null;
+        byte[]? responderSenderChainKey = null;
         try
         {
-            newDhPrivateKey = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize);
-            newDhPublicKey = ScalarMult.Base(newDhPrivateKey);
-            dhSecret = ScalarMult.Mult(newDhPrivateKey, _peerDhPublicKey);
+            Debug.WriteLine(
+                $"[ShieldSession] Deriving initial chain keys from root key: {Convert.ToHexString(rootKey)}");
+            return Result<(byte[], byte[]), ShieldFailure>.Try(() =>
+            {
+                Span<byte> sendSpan = stackalloc byte[Constants.X25519KeySize];
+                Span<byte> recvSpan = stackalloc byte[Constants.X25519KeySize];
+                using (var hkdfSend = new HkdfSha256(rootKey, null))
+                {
+                    hkdfSend.Expand(InitialSenderChainInfo, sendSpan);
+                }
 
-            Console.WriteLine($"[Sender] Using Peer DH PK: {Convert.ToHexString(_peerDhPublicKey)}");
-            Console.WriteLine($"[Sender] New DH PK: {Convert.ToHexString(newDhPublicKey)}");
-            Console.WriteLine($"[Sender] DH Secret: {Convert.ToHexString(dhSecret)}");
+                using (var hkdfRecv = new HkdfSha256(rootKey, null))
+                {
+                    hkdfRecv.Expand(InitialReceiverChainInfo, recvSpan);
+                }
 
-            currentRootKey = new byte[Constants.X25519KeySize];
-            _rootKeyHandle.Read(currentRootKey.AsSpan());
-
-            hkdfOutput = new byte[Constants.X25519KeySize * 2];
-            using (HkdfSha256 hkdf = new HkdfSha256(dhSecret, currentRootKey))
-                hkdf.Expand(Constants.DhRatchetInfo, hkdfOutput);
-
-            newRootKey = hkdfOutput.Take(Constants.X25519KeySize).ToArray();
-            newChainKey = hkdfOutput.Skip(Constants.X25519KeySize).Take(Constants.X25519KeySize).ToArray();
-
-            _rootKeyHandle.Write(newRootKey);
-            sendingStep.UpdateKeysAfterDhRatchet(newChainKey, newDhPrivateKey, newDhPublicKey);
-            sendingStep.CurrentIndex = 0;
-
-            // Update persistent DH keys
-            WipeIfNotNull(_currentDhPrivateKey);
-            WipeIfNotNull(_currentDhPublicKey);
-            _currentDhPrivateKey = (byte[])newDhPrivateKey.Clone();
-            _currentDhPublicKey = (byte[])newDhPublicKey.Clone();
-            _isFirstReceivingRatchet = false;
-            ClearMessageKeyCache();
-
-            Console.WriteLine($"[Sender] DH Ratchet: New Chain Key = {Convert.ToHexString(newChainKey)}");
-            Console.WriteLine($"[Sender] Updated DH Keys: PK = {Convert.ToHexString(newDhPublicKey)}");
+                initiatorSenderChainKey = sendSpan.ToArray();
+                responderSenderChainKey = recvSpan.ToArray();
+                byte[] localSenderCk = _isInitiator ? initiatorSenderChainKey : responderSenderChainKey;
+                byte[] localReceiverCk = _isInitiator ? responderSenderChainKey : initiatorSenderChainKey;
+                initiatorSenderChainKey = null;
+                responderSenderChainKey = null;
+                return (localSenderCk, localReceiverCk);
+            }, ex => ShieldFailure.DeriveKey("Failed to derive initial chain keys.", ex));
         }
         finally
         {
-            WipeIfNotNull(newDhPrivateKey);
-            WipeIfNotNull(newDhPublicKey);
-            WipeIfNotNull(dhSecret);
-            WipeIfNotNull(currentRootKey);
-            WipeIfNotNull(newRootKey);
-            WipeIfNotNull(newChainKey);
-            WipeIfNotNull(hkdfOutput);
+            WipeIfNotNull(initiatorSenderChainKey).IgnoreResult();
+            WipeIfNotNull(responderSenderChainKey).IgnoreResult();
         }
     }
 
-    internal void PerformReceivingRatchet(byte[] receivedDhPublicKeyBytes)
-{
-    var receivingStep = _receivingStep ?? throw new InvalidOperationException("Receiving chain step not initialized.");
-    if (_rootKeyHandle == null) throw new InvalidOperationException("Root key handle not initialized.");
+    internal Result<(ShieldMessageKey MessageKey, bool IncludeDhKey), ShieldFailure> PrepareNextSendMessage()
+    {
+        ShieldChainStep? sendingStepLocal = null;
+        ShieldMessageKey? messageKey = null;
+        ShieldMessageKey? clonedMessageKey = null;
+        byte[]? keyMaterial = null;
+        bool includeDhKey = false;
 
-    // Only perform ratchet if at interval or first message
-    if (_isFirstReceivingRatchet || (receivingStep.CurrentIndex + 1) % DhRotationInterval == 0)
+        try
+        {
+            Debug.WriteLine($"[ShieldSession] Preparing next send message for session {_id}");
+            return CheckDisposed()
+                .Bind(_ => EnsureNotExpired())
+                .Bind(_ => EnsureSendingStepInitialized())
+                .Bind(step =>
+                {
+                    sendingStepLocal = step;
+                    return MaybePerformSendingDhRatchet(sendingStepLocal);
+                })
+                .Bind(ratchetInfo =>
+                {
+                    includeDhKey = ratchetInfo.performedRatchet;
+                    Debug.WriteLine($"[ShieldSession] DH Ratchet performed: {includeDhKey}");
+                    return sendingStepLocal!.GetCurrentIndex()
+                        .Map(currentIndex =>
+                        {
+                            uint nextIndex = currentIndex + 1;
+                            Debug.WriteLine($"[ShieldSession] Preparing message for next index: {nextIndex}");
+                            return nextIndex;
+                        });
+                })
+                .Bind(nextIndex => sendingStepLocal!.GetOrDeriveKeyFor(nextIndex, _messageKeys)
+                    .Bind(derivedKey =>
+                    {
+                        messageKey = derivedKey;
+                        return sendingStepLocal!.SetCurrentIndex(nextIndex)
+                            .Map(_ => messageKey);
+                    }))
+                .Bind(originalKey =>
+                {
+                    keyMaterial = new byte[Constants.AesKeySize];
+                    return originalKey.ReadKeyMaterial(keyMaterial)
+                        .Bind(_ => ShieldMessageKey.New(originalKey.Index, keyMaterial))
+                        .Map(clone =>
+                        {
+                            clonedMessageKey = clone;
+                            Debug.WriteLine($"[ShieldSession] Derived message key for index: {clonedMessageKey.Index}");
+                            sendingStepLocal!.PruneOldKeys(_messageKeys);
+                            return (clonedMessageKey, includeDhKey);
+                        });
+                });
+        }
+        finally
+        {
+            WipeIfNotNull(keyMaterial).IgnoreResult();
+        }
+    }
+
+    internal Result<ShieldMessageKey, ShieldFailure> ProcessReceivedMessage(uint receivedIndex,
+        byte[]? receivedDhPublicKeyBytes)
+    {
+        ShieldChainStep? receivingStepLocal = null;
+        byte[]? peerDhPublicCopy = null;
+        ShieldMessageKey? messageKey = null;
+
+        try
+        {
+            Debug.WriteLine($"[ShieldSession] Processing received message for session {_id}, Index: {receivedIndex}");
+            if (receivedDhPublicKeyBytes != null)
+            {
+                peerDhPublicCopy = (byte[])receivedDhPublicKeyBytes.Clone();
+                Debug.WriteLine($"[ShieldSession] Received DH Public Key: {Convert.ToHexString(peerDhPublicCopy)}");
+            }
+
+            return CheckDisposed()
+                .Bind(_ => EnsureNotExpired())
+                .Bind(_ => EnsureReceivingStepInitialized())
+                .Bind(step =>
+                {
+                    receivingStepLocal = step;
+                    return MaybePerformReceivingDhRatchet(step, peerDhPublicCopy);
+                })
+                .Bind(_ => receivingStepLocal!.GetOrDeriveKeyFor(receivedIndex, _messageKeys))
+                .Bind(derivedKey =>
+                {
+                    messageKey = derivedKey;
+                    Debug.WriteLine($"[ShieldSession] Derived message key for received index: {receivedIndex}");
+                    return receivingStepLocal!.SetCurrentIndex(messageKey.Index)
+                        .Map(_ => messageKey);
+                })
+                .Map(finalKey =>
+                {
+                    receivingStepLocal!.PruneOldKeys(_messageKeys);
+                    return finalKey;
+                });
+        }
+        finally
+        {
+            WipeIfNotNull(peerDhPublicCopy).IgnoreResult();
+        }
+    }
+
+    private Result<ShieldChainStep, ShieldFailure> EnsureSendingStepInitialized() =>
+        CheckDisposed().Bind(_ =>
+            _sendingStep != null
+                ? Result<ShieldChainStep, ShieldFailure>.Ok(_sendingStep)
+                : Result<ShieldChainStep, ShieldFailure>.Err(
+                    ShieldFailure.Generic("Sending chain step not initialized.")));
+
+    private Result<ShieldChainStep, ShieldFailure> EnsureReceivingStepInitialized() =>
+        CheckDisposed().Bind(_ =>
+            _receivingStep != null
+                ? Result<ShieldChainStep, ShieldFailure>.Ok(_receivingStep)
+                : Result<ShieldChainStep, ShieldFailure>.Err(
+                    ShieldFailure.Generic("Receiving chain step not initialized.")));
+
+    private Result<(bool performedRatchet, bool receivedNewKey), ShieldFailure> MaybePerformSendingDhRatchet(
+        ShieldChainStep sendingStep)
+    {
+        return sendingStep.GetCurrentIndex().Bind(currentIndex =>
+        {
+            bool shouldRatchet = (currentIndex + 1) % DhRotationInterval == 0 || _receivedNewDhKey;
+            bool currentReceivedNewDhKey = _receivedNewDhKey;
+            Debug.WriteLine(
+                $"[ShieldSession] Checking if DH ratchet needed. Current Index: {currentIndex}, Received New DH Key: {_receivedNewDhKey}, Should Ratchet: {shouldRatchet}");
+            if (shouldRatchet)
+            {
+                return PerformDhRatchet(isSender: true)
+                    .Map(_ =>
+                    {
+                        _receivedNewDhKey = false;
+                        Debug.WriteLine("[ShieldSession] DH ratchet performed for sending.");
+                        return (performedRatchet: true, receivedNewKey: currentReceivedNewDhKey);
+                    });
+            }
+
+            return Result<(bool, bool), ShieldFailure>.Ok((false, currentReceivedNewDhKey));
+        });
+    }
+
+    private Result<Unit, ShieldFailure> MaybePerformReceivingDhRatchet(ShieldChainStep receivingStep,
+        byte[]? receivedDhPublicKeyBytes)
+    {
+        if (receivedDhPublicKeyBytes != null)
+        {
+            bool keysDiffer = (_peerDhPublicKey == null || !receivedDhPublicKeyBytes.SequenceEqual(_peerDhPublicKey));
+            Debug.WriteLine(
+                $"[ShieldSession] Checking DH key difference. Peer DH Key: {Convert.ToHexString(_peerDhPublicKey)}, Received: {Convert.ToHexString(receivedDhPublicKeyBytes)}");
+            if (keysDiffer)
+            {
+                var currentIndexResult = receivingStep.GetCurrentIndex();
+                if (currentIndexResult.IsErr)
+                    return Result<Unit, ShieldFailure>.Err(currentIndexResult.UnwrapErr());
+                uint currentIndex = currentIndexResult.Unwrap();
+                bool shouldRatchet = _isFirstReceivingRatchet || ((currentIndex + 1) % DhRotationInterval == 0);
+                if (shouldRatchet)
+                {
+                    return PerformDhRatchet(isSender: false, receivedDhPublicKeyBytes);
+                }
+                else
+                {
+                    WipeIfNotNull(_peerDhPublicKey).IgnoreResult();
+                    _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes.Clone();
+                    _receivedNewDhKey = true;
+                    Debug.WriteLine($"[ShieldSession] Deferred DH ratchet: New key received but waiting for interval.");
+                    return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+                }
+            }
+        }
+
+        return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+    }
+
+    public Result<Unit, ShieldFailure> PerformReceivingRatchet(byte[] receivedDhKey)
+    {
+        Debug.WriteLine($"[ShieldSession] Performing receiving ratchet for session {_id}");
+        return PerformDhRatchet(isSender: false, receivedDhPublicKeyBytes: receivedDhKey);
+    }
+
+    internal Result<Unit, ShieldFailure> PerformDhRatchet(bool isSender, byte[]? receivedDhPublicKeyBytes = null)
     {
         byte[]? dhSecret = null;
         byte[]? currentRootKey = null;
         byte[]? newRootKey = null;
-        byte[]? newChainKey = null;
+        byte[]? newChainKeyForTargetStep = null;
         byte[]? hkdfOutput = null;
+        byte[]? localPrivateKeyBytes = null;
+        SodiumSecureMemoryHandle? newEphemeralSkHandle = null;
+        byte[]? newEphemeralPublicKey = null;
 
         try
         {
-            byte[] privateKeyToUse = _isFirstReceivingRatchet ? _initialSendingDhPrivateKey : _currentDhPrivateKey;
-            dhSecret = ScalarMult.Mult(privateKeyToUse, receivedDhPublicKeyBytes);
+            Debug.WriteLine($"[ShieldSession] Performing DH ratchet for session {_id}, IsSender: {isSender}");
+            var initialCheck = CheckDisposed().Bind(_ =>
+                _rootKeyHandle != null && !_rootKeyHandle.IsInvalid
+                    ? Result<Unit, ShieldFailure>.Ok(Unit.Value)
+                    : Result<Unit, ShieldFailure>.Err(
+                        ShieldFailure.Generic("Root key handle not initialized or invalid.")));
+            if (initialCheck.IsErr) return initialCheck;
 
-            Console.WriteLine($"[Receiver] Using Private Key for: {(_isFirstReceivingRatchet ? "Initial" : "Persistent")}");
-            Console.WriteLine($"[Receiver] Received DH PK: {Convert.ToHexString(receivedDhPublicKeyBytes)}");
-            Console.WriteLine($"[Receiver] DH Secret: {Convert.ToHexString(dhSecret)}");
+            Result<byte[], ShieldFailure> dhResult;
 
-            currentRootKey = new byte[Constants.X25519KeySize];
-            _rootKeyHandle.Read(currentRootKey.AsSpan());
+            if (isSender)
+            {
+                if (_sendingStep == null)
+                    return Result<Unit, ShieldFailure>.Err(
+                        ShieldFailure.Generic("Sending step not initialized for DH ratchet."));
+                if (_peerDhPublicKey == null)
+                    return Result<Unit, ShieldFailure>.Err(
+                        ShieldFailure.Generic("Peer DH public key not available for sender DH ratchet."));
 
-            hkdfOutput = new byte[Constants.X25519KeySize * 2];
-            using (HkdfSha256 hkdf = new HkdfSha256(dhSecret, currentRootKey))
-                hkdf.Expand(Constants.DhRatchetInfo, hkdfOutput);
+                var ephResult = GenerateX25519KeyPair("Ephemeral DH Ratchet");
+                if (ephResult.IsErr)
+                    return Result<Unit, ShieldFailure>.Err(ephResult.UnwrapErr());
+                (newEphemeralSkHandle, newEphemeralPublicKey) = ephResult.Unwrap();
+                Debug.WriteLine(
+                    $"[ShieldSession] New Ephemeral Public Key: {Convert.ToHexString(newEphemeralPublicKey)}");
 
-            newRootKey = hkdfOutput.Take(Constants.X25519KeySize).ToArray();
-            newChainKey = hkdfOutput.Skip(Constants.X25519KeySize).Take(Constants.X25519KeySize).ToArray();
+                dhResult = newEphemeralSkHandle.ReadBytes(Constants.X25519PrivateKeySize)
+                    .Bind(ephPrivBytes =>
+                    {
+                        localPrivateKeyBytes = ephPrivBytes;
+                        Debug.WriteLine(
+                            $"[ShieldSession] Ephemeral Private Key: {Convert.ToHexString(localPrivateKeyBytes)}");
+                        return Result<byte[], ShieldFailure>.Try(
+                            () => ScalarMult.Mult(localPrivateKeyBytes, _peerDhPublicKey),
+                            ex => ShieldFailure.DeriveKey("Sender DH calculation failed.", ex));
+                    });
+            }
+            else
+            {
+                if (_receivingStep == null)
+                    return Result<Unit, ShieldFailure>.Err(
+                        ShieldFailure.Generic("Receiving step not initialized for DH ratchet."));
+                if (receivedDhPublicKeyBytes == null ||
+                    receivedDhPublicKeyBytes.Length != Constants.X25519PublicKeySize)
+                    return Result<Unit, ShieldFailure>.Err(
+                        ShieldFailure.InvalidInput(
+                            "Received DH public key is missing or invalid for receiver DH ratchet."));
 
-            _rootKeyHandle.Write(newRootKey);
-            receivingStep.UpdateKeysAfterDhRatchet(newChainKey);
-            receivingStep.CurrentIndex = 0;
-            _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes.Clone();
-            _receivedNewDhKey = false; // Reset only when we actually ratchet
-            _isFirstReceivingRatchet = false;
-            ClearMessageKeyCache();
+                Debug.WriteLine($"[ShieldSession] Using current sending DH private key for receiver ratchet.");
+                dhResult = _currentSendingDhPrivateKeyHandle!.ReadBytes(Constants.X25519PrivateKeySize)
+                    .Bind(persistPrivBytes =>
+                    {
+                        localPrivateKeyBytes = persistPrivBytes;
+                        Debug.WriteLine($"[ShieldSession] Private Key: {Convert.ToHexString(localPrivateKeyBytes)}");
+                        return Result<byte[], ShieldFailure>.Try(
+                            () => ScalarMult.Mult(localPrivateKeyBytes, receivedDhPublicKeyBytes),
+                            ex => ShieldFailure.DeriveKey("Receiver DH calculation failed.", ex));
+                    });
+            }
 
-            Console.WriteLine($"[Receiver] DH Ratchet: New Chain Key = {Convert.ToHexString(newChainKey)}");
+            WipeIfNotNull(localPrivateKeyBytes).IgnoreResult();
+            localPrivateKeyBytes = null;
+            if (dhResult.IsErr)
+            {
+                newEphemeralSkHandle?.Dispose();
+                return Result<Unit, ShieldFailure>.Err(dhResult.UnwrapErr());
+            }
+
+            dhSecret = dhResult.Unwrap();
+            Debug.WriteLine($"[ShieldSession] DH Secret: {Convert.ToHexString(dhSecret)}");
+
+            Result<Unit, ShieldFailure> finalResult = _rootKeyHandle!.ReadBytes(Constants.X25519KeySize)
+                .Bind(rkBytes =>
+                {
+                    currentRootKey = rkBytes;
+                    Debug.WriteLine($"[ShieldSession] Current Root Key: {Convert.ToHexString(currentRootKey)}");
+                    hkdfOutput = new byte[Constants.X25519KeySize * 2];
+                    return Result<Unit, ShieldFailure>.Try(() =>
+                    {
+                        using var hkdf = new HkdfSha256(dhSecret!, currentRootKey);
+                        hkdf.Expand(DhRatchetInfo, hkdfOutput);
+                    }, ex => ShieldFailure.DeriveKey("HKDF expansion failed during DH ratchet.", ex));
+                })
+                .Bind(_ =>
+                {
+                    newRootKey = hkdfOutput!.Take(Constants.X25519KeySize).ToArray();
+                    newChainKeyForTargetStep = hkdfOutput!.Skip(Constants.X25519KeySize).Take(Constants.X25519KeySize)
+                        .ToArray();
+                    Debug.WriteLine($"[ShieldSession] New Root Key: {Convert.ToHexString(newRootKey)}");
+                    Debug.WriteLine($"[ShieldSession] New Chain Key: {Convert.ToHexString(newChainKeyForTargetStep)}");
+                    return _rootKeyHandle.Write(newRootKey);
+                })
+                .Bind(_ =>
+                {
+                    if (isSender)
+                    {
+                        Result<byte[], ShieldFailure> privateKeyResult =
+                            newEphemeralSkHandle!.ReadBytes(Constants.X25519PrivateKeySize);
+                        if (privateKeyResult.IsErr)
+                            return Result<Unit, ShieldFailure>.Err(privateKeyResult.UnwrapErr());
+                        byte[] newDhPrivateKeyBytes = privateKeyResult.Unwrap();
+                        Debug.WriteLine($"[ShieldSession] Updating sending step with new DH keys.");
+                        _currentSendingDhPrivateKeyHandle?.Dispose();
+                        _currentSendingDhPrivateKeyHandle = newEphemeralSkHandle;
+                        newEphemeralSkHandle = null;
+                        return _sendingStep!.UpdateKeysAfterDhRatchet(newChainKeyForTargetStep!, newDhPrivateKeyBytes,
+                            newEphemeralPublicKey!);
+                    }
+
+                    Debug.WriteLine($"[ShieldSession] Updating receiving step.");
+                    return _receivingStep!.UpdateKeysAfterDhRatchet(newChainKeyForTargetStep!);
+                })
+                .Map(_ =>
+                {
+                    if (isSender)
+                    {
+                        _receivedNewDhKey = false;
+                    }
+                    else
+                    {
+                        WipeIfNotNull(_peerDhPublicKey).IgnoreResult();
+                        _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes!.Clone();
+                        _receivedNewDhKey = false;
+                    }
+
+                    ClearMessageKeyCache();
+                    Debug.WriteLine($"[ShieldSession] DH ratchet completed.");
+                    return Unit.Value;
+                })
+                .MapErr(err =>
+                {
+                    Debug.WriteLine($"[ShieldSession] Error during DH ratchet: {err.Message}");
+                    if (isSender) newEphemeralSkHandle?.Dispose();
+                    return err;
+                });
+
+            return finalResult;
         }
         finally
         {
-            WipeIfNotNull(dhSecret);
-            WipeIfNotNull(currentRootKey);
-            WipeIfNotNull(newRootKey);
-            WipeIfNotNull(newChainKey);
-            WipeIfNotNull(hkdfOutput);
+            WipeIfNotNull(dhSecret).IgnoreResult();
+            WipeIfNotNull(currentRootKey).IgnoreResult();
+            WipeIfNotNull(newRootKey).IgnoreResult();
+            WipeIfNotNull(hkdfOutput).IgnoreResult();
+            WipeIfNotNull(localPrivateKeyBytes).IgnoreResult();
+            WipeIfNotNull(newEphemeralPublicKey).IgnoreResult();
+            newEphemeralSkHandle?.Dispose();
         }
     }
-    else
+
+    internal Result<byte[], ShieldFailure> GenerateNextNonce() => CheckDisposed().Map(_ =>
     {
-        // Store the new key but don’t ratchet yet
-        _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes.Clone();
-        _receivedNewDhKey = true;
-        Console.WriteLine($"[Receiver] Deferred DH Ratchet: New key received but waiting for interval.");
-    }
-}
-
-    #endregion
-
-    #region Utility Methods
-
-    internal byte[] GenerateNextNonce(ChainStepType chainStepType)
-    {
-        byte[] nonce = new byte[Constants.AesGcmNonceSize];
-        BinaryPrimitives.WriteUInt64LittleEndian(nonce, Interlocked.Increment(ref _nonceCounter));
+        Span<byte> nonceBuffer = stackalloc byte[AesGcmNonceSize];
+        RandomNumberGenerator.Fill(nonceBuffer[..8]);
+        uint currentNonce = (uint)Interlocked.Increment(ref _nonceCounter) - 1;
+        BinaryPrimitives.WriteUInt32LittleEndian(nonceBuffer[8..], currentNonce);
+        byte[] nonce = nonceBuffer.ToArray();
+        Debug.WriteLine($"[ShieldSession] Generated nonce: {Convert.ToHexString(nonce)} for counter: {currentNonce}");
+        nonceBuffer.Clear();
         return nonce;
-    }
+    });
 
-    public byte[]? GetCurrentPeerDhPublicKey()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return _peerDhPublicKey != null ? (byte[])_peerDhPublicKey.Clone() : null;
-    }
+    public Result<byte[]?, ShieldFailure> GetCurrentPeerDhPublicKey() =>
+        CheckDisposed().Map(_ => _peerDhPublicKey != null ? (byte[])_peerDhPublicKey.Clone() : null);
 
-    public byte[]? GetCurrentSenderDhPublicKey()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return _sendingStep?.ReadDhPublicKey(); // Returns ephemeral public key
-    }
+    public Result<byte[]?, ShieldFailure> GetCurrentSenderDhPublicKey() =>
+        CheckDisposed().Bind(_ => EnsureSendingStepInitialized()).Bind(step => step.ReadDhPublicKey());
 
-    internal void EnsureNotExpired()
+    internal Result<Unit, ShieldFailure> EnsureNotExpired() => CheckDisposed().Bind(_ =>
     {
-        if (DateTimeOffset.UtcNow - _createdAt > SessionTimeout)
-            throw new ShieldChainStepException($"Session {_id} has expired.");
-    }
+        bool expired = DateTimeOffset.UtcNow - _createdAt > SessionTimeout;
+        Debug.WriteLine($"[ShieldSession] Checking expiration for session {_id}. Expired: {expired}");
+        return expired
+            ? Result<Unit, ShieldFailure>.Err(ShieldFailure.Generic($"Session {_id} has expired."))
+            : Result<Unit, ShieldFailure>.Ok(Unit.Value);
+    });
 
-    internal bool IsExpired()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return DateTimeOffset.UtcNow - _createdAt > SessionTimeout;
-    }
+    public Result<bool, ShieldFailure> IsExpired() =>
+        CheckDisposed().Map(_ => DateTimeOffset.UtcNow - _createdAt > SessionTimeout);
 
     private void ClearMessageKeyCache()
     {
-        Console.WriteLine($"[Session {_id}] Clearing message key cache ({_messageKeys.Count} items).");
-        foreach (var kvp in _messageKeys)
-            kvp.Value.Dispose();
+        Debug.WriteLine($"[ShieldSession] Clearing message key cache for session {_id}");
+        foreach (var kvp in _messageKeys.ToList())
+        {
+            try
+            {
+                kvp.Value?.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+                Debug.WriteLine($"[ShieldSession] Message key {kvp.Key} already disposed.");
+            }
+        }
+
         _messageKeys.Clear();
     }
 
-    private static void WipeIfNotNull(byte[]? data)
-    {
-        if (data != null)
-            SodiumInterop.SecureWipe(data);
-    }
+    private Result<Unit, ShieldFailure> CheckDisposed() =>
+        _disposed
+            ? Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(ShieldSession)))
+            : Result<Unit, ShieldFailure>.Ok(Unit.Value);
 
-    #endregion
-
-    #region Disposal
+    private static Result<Unit, ShieldFailure> WipeIfNotNull(byte[]? data) =>
+        data == null ? Result<Unit, ShieldFailure>.Ok(Unit.Value) : SodiumInterop.SecureWipe(data);
 
     public void Dispose()
     {
-        if (!_disposed)
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (_disposed)
+            return;
+
+        Debug.WriteLine($"[ShieldSession] Disposing session {_id}");
+        _disposed = true;
+
+        if (disposing)
         {
-            _disposed = true;
+            SecureCleanupLogic();
+            try
+            {
+                _lock.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+                Debug.WriteLine($"[ShieldSession] Lock for session {_id} already disposed.");
+            }
+        }
+    }
+
+    private void SecureCleanupLogic()
+    {
+        try
+        {
             _rootKeyHandle?.Dispose();
             _sendingStep?.Dispose();
             _receivingStep?.Dispose();
             ClearMessageKeyCache();
-            WipeIfNotNull(_peerDhPublicKey);
+            _persistentDhPrivateKeyHandle?.Dispose();
+            _initialSendingDhPrivateKeyHandle?.Dispose();
+            _currentSendingDhPrivateKeyHandle?.Dispose();
+            WipeIfNotNull(_peerDhPublicKey).IgnoreResult();
+            WipeIfNotNull(_persistentDhPublicKey).IgnoreResult();
             _peerDhPublicKey = null;
-            WipeIfNotNull(_currentDhPrivateKey);
-            _currentDhPrivateKey = null;
-            WipeIfNotNull(_currentDhPublicKey);
-            _currentDhPublicKey = null;
-            WipeIfNotNull(_initialSendingDhPrivateKey); // Wipe new field
-            _initialSendingDhPrivateKey = null;
-            GC.SuppressFinalize(this);
+            _persistentDhPublicKey = null;
+            _initialSendingDhPrivateKeyHandle = null;
+            _persistentDhPrivateKeyHandle = null;
+            _currentSendingDhPrivateKeyHandle = null;
+            Debug.WriteLine($"[ShieldSession] Session {_id} disposed.");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ShieldSession] Error during cleanup for session {_id}: {ex.Message}");
         }
     }
 
-    #endregion
+    ~ShieldSession()
+    {
+        Dispose(false);
+    }
 }

@@ -15,9 +15,7 @@ public static class Constants
     // Ensure these are distinct from DhRatchetInfo and each other
     public static readonly byte[] InitialSenderChainInfo = { 0x11 };
     public static readonly byte[] InitialReceiverChainInfo = { 0x12 };
-    
-    public const uint DhRotationInterval = 50;
-    public const int Ed25519SeedSize = 32;
+
     public const int Ed25519PublicKeySize = 32;
     public const int Ed25519SecretKeySize = 64;
     public const int Ed25519SignatureSize = 64;
