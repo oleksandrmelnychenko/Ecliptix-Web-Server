@@ -1,7 +1,6 @@
 using System.Diagnostics;
+using Ecliptix.Core.Protocol;
 using Ecliptix.Core.Protocol.Utilities;
-
-namespace Ecliptix.Core.Protocol;
 
 public sealed class ShieldChainStep : IDisposable
 {
@@ -9,7 +8,6 @@ public sealed class ShieldChainStep : IDisposable
 
     private readonly ChainStepType _stepType;
     private readonly uint _cacheWindow;
-    private readonly HashAlgorithmType _hashAlgorithm;
     private SodiumSecureMemoryHandle _chainKeyHandle;
     private SodiumSecureMemoryHandle? _dhPrivateKeyHandle;
     private byte[]? _dhPublicKey;
@@ -45,14 +43,13 @@ public sealed class ShieldChainStep : IDisposable
         SodiumSecureMemoryHandle chainKeyHandle,
         SodiumSecureMemoryHandle? dhPrivateKeyHandle,
         byte[]? dhPublicKey,
-        uint cacheWindowSize,HashAlgorithmType hashAlgorithm)
+        uint cacheWindowSize)
     {
         _stepType = stepType;
         _chainKeyHandle = chainKeyHandle;
         _dhPrivateKeyHandle = dhPrivateKeyHandle;
         _dhPublicKey = dhPublicKey;
         _cacheWindow = cacheWindowSize;
-        _hashAlgorithm = hashAlgorithm;
         _currentIndex = 0;
         _lastUpdate = DateTimeOffset.UtcNow;
         IsNewChain = false;
@@ -65,7 +62,6 @@ public sealed class ShieldChainStep : IDisposable
         byte[] initialChainKey,
         byte[]? initialDhPrivateKey,
         byte[]? initialDhPublicKey,
-        HashAlgorithmType hashAlgorithm,
         uint cacheWindowSize = DefaultCacheWindowSize)
     {
         Debug.WriteLine($"[ShieldChainStep] Creating chain step of type {stepType}");
@@ -82,7 +78,7 @@ public sealed class ShieldChainStep : IDisposable
                             chainKeyHandle,
                             dhInfo.dhPrivateKeyHandle,
                             dhInfo.dhPublicKeyCloned,
-                            actualCacheWindow,hashAlgorithm);
+                            actualCacheWindow);
                         Debug.WriteLine($"[ShieldChainStep] Chain step created successfully.");
                         return Result<ShieldChainStep, ShieldFailure>.Ok(step);
                     })
@@ -221,9 +217,9 @@ public sealed class ShieldChainStep : IDisposable
                     Result<Unit, ShieldFailure>.Try(
                         action: () =>
                         {
-                            using Hkdf hkdfMsg = new(currentChainKey, _hashAlgorithm,null);
+                            using HkdfSha256 hkdfMsg = new(currentChainKey, null);
                             hkdfMsg.Expand(Constants.MsgInfo, msgKey.AsSpan());
-                            using Hkdf hkdfChain = new(currentChainKey, _hashAlgorithm,null);
+                            using HkdfSha256 hkdfChain = new(currentChainKey, null);
                             hkdfChain.Expand(Constants.ChainInfo, nextChainKey.AsSpan());
                         },
                         errorMapper: ex =>
@@ -277,7 +273,7 @@ public sealed class ShieldChainStep : IDisposable
                 for (uint idx = indexBeforeDerivation + 1; idx < targetIndex; idx++)
                 {
                     if (messageKeys.Remove(idx, out ShieldMessageKey? keyToRemove))
-                        keyToRemove.Dispose();
+                        keyToRemove?.Dispose();
                 }
 
                 return Result<ShieldMessageKey, ShieldFailure>.Err(overallResult.UnwrapErr());
@@ -419,7 +415,7 @@ public sealed class ShieldChainStep : IDisposable
         _disposed = true;
         Debug.WriteLine($"[ShieldChainStep] Disposing chain step of type {_stepType}");
 
-        _chainKeyHandle.Dispose();
+        _chainKeyHandle?.Dispose();
         _dhPrivateKeyHandle?.Dispose();
         WipeIfNotNull(_dhPublicKey).IgnoreResult();
 

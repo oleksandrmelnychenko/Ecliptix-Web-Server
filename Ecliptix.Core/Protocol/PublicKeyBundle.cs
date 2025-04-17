@@ -6,11 +6,14 @@ namespace Ecliptix.Core.Protocol;
 
 public record OneTimePreKeyRecord(uint PreKeyId, byte[] PublicKey)
 {
+    // Consider adding validation constants if needed elsewhere
+    private const int ExpectedPublicKeySize = 32; // Example size
+
     public static Result<OneTimePreKeyRecord, ShieldFailure> Create(uint preKeyId, byte[] publicKey)
     {
-        if (publicKey.Length != Constants.X25519PublicKeySize)
+        if (publicKey.Length != ExpectedPublicKeySize)
             return Result<OneTimePreKeyRecord, ShieldFailure>.Err(
-                ShieldFailure.Decode($"One-time prekey public key must be {Constants.X25519PublicKeySize} bytes."));
+                ShieldFailure.Decode($"One-time prekey public key must be {ExpectedPublicKeySize} bytes."));
 
         return Result<OneTimePreKeyRecord, ShieldFailure>.Ok(new OneTimePreKeyRecord(preKeyId, publicKey));
     }

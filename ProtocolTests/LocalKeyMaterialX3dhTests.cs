@@ -1,19 +1,16 @@
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
 using System.Collections.Concurrent;
+using System.Security.Cryptography; // For AuthenticationTagMismatchException
 using System.Text;
-using Ecliptix.Core.Protocol;
-using Ecliptix.Protobuf.CipherPayload;
-using Ecliptix.Protobuf.PubKeyExchange;
-// For AuthenticationTagMismatchException
-// Your ShieldPro namespace
-// For ShieldChainStepException if needed
-// Your CipherPayload namespace
-
-// Your PubKeyExchange namespace
+using System.Threading.Tasks;
+using Ecliptix.Core.Protocol; // Your ShieldPro namespace
+using Ecliptix.Core.Protocol.Utilities; // For ShieldChainStepException if needed
+using Ecliptix.Protobuf.CipherPayload; // Your CipherPayload namespace
+using Ecliptix.Protobuf.PubKeyExchange; // Your PubKeyExchange namespace
 
 // Assuming your test class setup initializes _aliceShieldPro, _bobShieldPro,
 // _aliceSessionId, _bobSessionId, and _exchangeType correctly via [TestInitialize]
-
-namespace ProtocolTests;
 
 [TestClass]
 public class ShieldProDoubleRatchetTests // Or your actual test class name
@@ -41,8 +38,8 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
         var bobMaterial = LocalKeyMaterial.Create(2).Unwrap();
 
         // Create ShieldPro instances
-        _aliceShieldPro = new ShieldPro(aliceMaterial,HashAlgorithmType.Sha3256);
-        _bobShieldPro = new ShieldPro(bobMaterial,HashAlgorithmType.Sha3256);
+        _aliceShieldPro = new ShieldPro(aliceMaterial);
+        _bobShieldPro = new ShieldPro(bobMaterial);
 
         // Perform X3DH handshake
         WriteLine("[TestInitialize] Performing X3DH Handshake...");
@@ -62,8 +59,8 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
     [TestMethod]
     public async Task SingleSession_DHRatchet_TriggersAtInterval()
     {
-        var alice = new ShieldPro(LocalKeyMaterial.Create(1).Unwrap(),HashAlgorithmType.Sha3256);
-        var bob = new ShieldPro(LocalKeyMaterial.Create(2).Unwrap(),HashAlgorithmType.Sha3256);
+        var alice = new ShieldPro(LocalKeyMaterial.Create(1).Unwrap());
+        var bob = new ShieldPro(LocalKeyMaterial.Create(2).Unwrap());
         var (aliceId, aliceMsg) =
             await alice.BeginDataCenterPubKeyExchangeAsync(PubKeyExchangeOfType.AppDeviceEphemeralConnect);
         var (bobId, bobMsg) = await bob.ProcessAndRespondToPubKeyExchangeAsync(aliceMsg);
@@ -122,8 +119,8 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
             {
                 var aliceMaterial = LocalKeyMaterial.Create((uint)(i * 2 + 1)).Unwrap();
                 var bobMaterial = LocalKeyMaterial.Create((uint)(i * 2 + 2)).Unwrap();
-                var alice = new ShieldPro(aliceMaterial,HashAlgorithmType.Sha3256);
-                var bob = new ShieldPro(bobMaterial,HashAlgorithmType.Sha3256);
+                var alice = new ShieldPro(aliceMaterial);
+                var bob = new ShieldPro(bobMaterial);
 
                 var (aliceSessionId, aliceInitialMsg) =
                     await alice.BeginDataCenterPubKeyExchangeAsync(PubKeyExchangeOfType.AppDeviceEphemeralConnect);

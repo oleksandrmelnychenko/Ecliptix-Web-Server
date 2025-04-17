@@ -38,8 +38,8 @@ public class ShieldProProtocolBenchmarks
         var aliceMaterial = aliceMaterialResult.Unwrap();
         var bobMaterial = bobMaterialResult.Unwrap();
 
-        _aliceShieldPro = new ShieldPro(aliceMaterial,HashAlgorithmType.Sha3256);
-        _bobShieldPro = new ShieldPro(bobMaterial,HashAlgorithmType.Sha3256);
+        _aliceShieldPro = new ShieldPro(aliceMaterial);
+        _bobShieldPro = new ShieldPro(bobMaterial);
 
         (uint SessionId, PubKeyExchange InitialMessage) aliceResult = await _aliceShieldPro.BeginDataCenterPubKeyExchangeAsync(_exchangeType);
         _aliceSessionId = aliceResult.SessionId;
@@ -58,8 +58,8 @@ public class ShieldProProtocolBenchmarks
     {
         var aliceMaterial = LocalKeyMaterial.Create(3).Unwrap();
         var bobMaterial = LocalKeyMaterial.Create(4).Unwrap();
-        var alice = new ShieldPro(aliceMaterial,HashAlgorithmType.Sha3256);
-        var bob = new ShieldPro(bobMaterial,HashAlgorithmType.Sha3256);
+        var alice = new ShieldPro(aliceMaterial);
+        var bob = new ShieldPro(bobMaterial);
 
         try
         {
@@ -79,8 +79,8 @@ public class ShieldProProtocolBenchmarks
     {
         var aliceMaterial = LocalKeyMaterial.Create(5).Unwrap();
         var bobMaterial = LocalKeyMaterial.Create(6).Unwrap();
-        var alice = new ShieldPro(aliceMaterial,HashAlgorithmType.Sha3256);
-        var bob = new ShieldPro(bobMaterial,HashAlgorithmType.Sha3256);
+        var alice = new ShieldPro(aliceMaterial);
+        var bob = new ShieldPro(bobMaterial);
 
         try
         {
@@ -148,8 +148,8 @@ public class ShieldProProtocolBenchmarks
             {
                 var aliceMaterial = LocalKeyMaterial.Create((uint)(sessionId * 2 + 7)).Unwrap();
                 var bobMaterial = LocalKeyMaterial.Create((uint)(sessionId * 2 + 8)).Unwrap();
-                var alice = new ShieldPro(aliceMaterial,HashAlgorithmType.Sha3256);
-                var bob = new ShieldPro(bobMaterial,HashAlgorithmType.Sha3256);
+                var alice = new ShieldPro(aliceMaterial);
+                var bob = new ShieldPro(bobMaterial);
 
                 try
                 {

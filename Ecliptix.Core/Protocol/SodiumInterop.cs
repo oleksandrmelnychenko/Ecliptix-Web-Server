@@ -93,10 +93,8 @@ public static class SodiumInterop
                     "Insufficient memory to pin buffer (GCHandle.Alloc).", oomEx),
                 InvalidOperationException opEx when opEx.Message.Contains("AddrOfPinnedObject returned IntPtr.Zero") =>
                     ShieldFailure.PinningFailure("Failed to get address of pinned buffer.", opEx),
-                not null => ShieldFailure.PinningFailure(
-                    $"Unexpected error during secure wipe via sodium_memzero ({buffer.Length} bytes).", ex),
-                _ => ShieldFailure.PinningFailure(
-                    $"Not implemented exception handler", ex),
+                not null => ShieldFailure.DataAccess(
+                    $"Unexpected error during secure wipe via sodium_memzero ({buffer.Length} bytes).", ex)
             },
             cleanup: () =>
             {
