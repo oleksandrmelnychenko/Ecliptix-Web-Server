@@ -15,7 +15,7 @@ public interface IDataCenterPubKeyExchange
     /// <returns>A tuple containing the new Session ID and the initial PubKeyExchange message to send.</returns>
     /// <exception cref="ShieldChainStepException">Throws if setup fails (e.g., session type already exists).</exception>
     Task<(uint SessionId, PubKeyExchange InitialMessage)> BeginDataCenterPubKeyExchangeAsync(
-        PubKeyExchangeOfType exchangeType);
+        PubKeyExchangeType exchangeType);
 
     /// <summary>
     /// Completes the handshake using the peer's bundle, derives the shared secret (root key),
@@ -28,7 +28,7 @@ public interface IDataCenterPubKeyExchange
     /// <exception cref="ShieldChainStepException">Throws if handshake fails (e.g., invalid signature, key derivation error, session not found).</exception>
     Task<(uint SessionId, SodiumSecureMemoryHandle RootKeyHandle)> CompleteDataCenterPubKeyExchangeAsync(
         uint sessionId,
-        PubKeyExchangeOfType exchangeType,
+        PubKeyExchangeType exchangeType,
         PubKeyExchange peerMessage);
 
     // Note: rotate_dh_chain from Rust seems specific to reacting to a peer's key.

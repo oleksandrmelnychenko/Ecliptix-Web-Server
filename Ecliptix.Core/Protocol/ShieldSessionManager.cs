@@ -8,14 +8,14 @@ namespace Ecliptix.Core.Protocol;
 public sealed class ShieldSessionManager : IAsyncDisposable
 {
     private static readonly TimeSpan DefaultCleanupInterval = TimeSpan.FromMinutes(15);
-    private readonly ConcurrentDictionary<(PubKeyExchangeOfType, uint), SessionHolder> _sessions;
+    private readonly ConcurrentDictionary<(PubKeyExchangeType, uint), SessionHolder> _sessions;
     private readonly CancellationTokenSource _cleanupCts;
     private readonly Task _cleanupTask;
     private bool _disposed;
 
     public ShieldSessionManager(TimeSpan? cleanupInterval = null)
     {
-        _sessions = new ConcurrentDictionary<(PubKeyExchangeOfType, uint), SessionHolder>();
+        _sessions = new ConcurrentDictionary<(PubKeyExchangeType, uint), SessionHolder>();
         _cleanupCts = new CancellationTokenSource();
         _cleanupTask = cleanupInterval.HasValue
             ? Task.Factory.StartNew(
@@ -33,7 +33,7 @@ public sealed class ShieldSessionManager : IAsyncDisposable
     public static ShieldSessionManager CreateWithCleanup(TimeSpan cleanupInterval) =>
         new ShieldSessionManager(cleanupInterval);
 
-    public async ValueTask<Result<ShieldSession, string>> FindSession(uint sessionId, PubKeyExchangeOfType exchangeType)
+    public async ValueTask<Result<ShieldSession, string>> FindSession(uint sessionId, PubKeyExchangeType exchangeType)
     {
         if (_disposed)
             return Result<ShieldSession, string>.Err("Session manager is disposed.");
@@ -51,7 +51,7 @@ public sealed class ShieldSessionManager : IAsyncDisposable
         });
     }
 
-    public async ValueTask<Result<bool, string>> HasSessionForType(PubKeyExchangeOfType exchangeType)
+    public async ValueTask<Result<bool, string>> HasSessionForType(PubKeyExchangeType exchangeType)
     {
         if (_disposed)
             return Result<bool, string>.Err("Session manager is disposed.");
@@ -59,14 +59,14 @@ public sealed class ShieldSessionManager : IAsyncDisposable
             Result<bool, string>.Ok(_sessions.Keys.Any(key => key.Item1 == exchangeType)));
     }
 
-    public async ValueTask<Result<bool, string>> TryInsertSession(uint sessionId, PubKeyExchangeOfType exchangeType,
+    public async ValueTask<Result<bool, string>> TryInsertSession(uint sessionId, PubKeyExchangeType exchangeType,
         ShieldSession session)
     {
         if (_disposed)
             return Result<bool, string>.Err("Session manager is disposed.");
         if (session == null)
             return Result<bool, string>.Err("Session cannot be null.");
-        (PubKeyExchangeOfType exchangeType, uint sessionId) key = (exchangeType, sessionId);
+        (PubKeyExchangeType exchangeType, uint sessionId) key = (exchangeType, sessionId);
         SessionHolder holder = new(session);
         return await Task.Run(() =>
         {
@@ -78,7 +78,7 @@ public sealed class ShieldSessionManager : IAsyncDisposable
         });
     }
 
-    public async ValueTask<Result<Unit, string>> InsertSession(uint sessionId, PubKeyExchangeOfType exchangeType,
+    public async ValueTask<Result<Unit, string>> InsertSession(uint sessionId, PubKeyExchangeType exchangeType,
         ShieldSession session)
     {
         var tryInsertResult = await TryInsertSession(sessionId, exchangeType, session);
@@ -87,11 +87,11 @@ public sealed class ShieldSessionManager : IAsyncDisposable
             : Result<Unit, string>.Err($"Session already exists for type {exchangeType} and ID {sessionId}."));
     }
 
-    public async ValueTask<Result<Unit, string>> RemoveSessionAsync(uint sessionId, PubKeyExchangeOfType exchangeType)
+    public async ValueTask<Result<Unit, string>> RemoveSessionAsync(uint sessionId, PubKeyExchangeType exchangeType)
     {
         if (_disposed)
             return Result<Unit, string>.Err("Session manager is disposed.");
-        (PubKeyExchangeOfType exchangeType, uint sessionId) key = (exchangeType, sessionId);
+        (PubKeyExchangeType exchangeType, uint sessionId) key = (exchangeType, sessionId);
         return await Task.Run(() =>
         {
             if (_sessions.TryRemove(key, out var holder))
@@ -107,7 +107,7 @@ public sealed class ShieldSessionManager : IAsyncDisposable
     }
 
     public async ValueTask<Result<Unit, string>> UpdateSessionStateAsync(uint sessionId,
-        PubKeyExchangeOfType exchangeType, PubKeyExchangeState state)
+        PubKeyExchangeType exchangeType, PubKeyExchangeState state)
     {
         var holderResult = await FindSession(sessionId, exchangeType);
         if (!holderResult.IsOk)
@@ -145,7 +145,7 @@ public sealed class ShieldSessionManager : IAsyncDisposable
         }
     }
 
-    public async ValueTask<Result<ShieldSession, string>> FirstSessionByType(PubKeyExchangeOfType exchangeType)
+    public async ValueTask<Result<ShieldSession, string>> FirstSessionByType(PubKeyExchangeType exchangeType)
     {
         if (_disposed)
             return Result<ShieldSession, string>.Err("Session manager is disposed.");
@@ -158,7 +158,7 @@ public sealed class ShieldSessionManager : IAsyncDisposable
         });
     }
 
-    public async ValueTask<Result<ShieldSession, string>> GetSession(uint sessionId, PubKeyExchangeOfType exchangeType)
+    public async ValueTask<Result<ShieldSession, string>> GetSession(uint sessionId, PubKeyExchangeType exchangeType)
     {
         return await FindSession(sessionId, exchangeType);
     }
@@ -203,7 +203,7 @@ public sealed class ShieldSessionManager : IAsyncDisposable
     }
 
     private async Task<Result<bool, string>> CheckExpirationAsync(SessionHolder holder,
-        (PubKeyExchangeOfType, uint) key, CancellationToken cancellationToken)
+        (PubKeyExchangeType, uint) key, CancellationToken cancellationToken)
     {
         bool acquiredLock = false;
         try
@@ -247,7 +247,7 @@ public sealed class ShieldSessionManager : IAsyncDisposable
         }
     }
 
-    private async Task<Result<Unit, string>> DisposeHolderAsync(SessionHolder holder, (PubKeyExchangeOfType, uint) key)
+    private async Task<Result<Unit, string>> DisposeHolderAsync(SessionHolder holder, (PubKeyExchangeType, uint) key)
     {
         bool acquiredLock = false;
         try

@@ -20,7 +20,7 @@ public class ShieldProProtocolBenchmarks
     private ShieldPro _bobShieldPro;
     private uint _aliceSessionId;
     private uint _bobSessionId;
-    private readonly PubKeyExchangeOfType _exchangeType = PubKeyExchangeOfType.AppDeviceEphemeralConnect;
+    private readonly PubKeyExchangeType _exchangeType = PubKeyExchangeType.AppDeviceEphemeralConnect;
     private byte[] _sampleMessage;
     private const int MessageSize = 64;
     private const int MessageCount = 1000;
@@ -30,8 +30,8 @@ public class ShieldProProtocolBenchmarks
     [GlobalSetup]
     public async Task GlobalSetup()
     {
-        var aliceMaterialResult = LocalKeyMaterial.Create(1);
-        var bobMaterialResult = LocalKeyMaterial.Create(2);
+        var aliceMaterialResult = EcliptixSystemIdentityKeys.Create(1);
+        var bobMaterialResult = EcliptixSystemIdentityKeys.Create(2);
         if (aliceMaterialResult.IsErr || bobMaterialResult.IsErr)
             throw new InvalidOperationException("Failed to create key materials.");
 
@@ -56,8 +56,8 @@ public class ShieldProProtocolBenchmarks
     [Benchmark(Description = "X3DH Handshake")]
     public async Task X3DH_Handshake()
     {
-        var aliceMaterial = LocalKeyMaterial.Create(3).Unwrap();
-        var bobMaterial = LocalKeyMaterial.Create(4).Unwrap();
+        var aliceMaterial = EcliptixSystemIdentityKeys.Create(3).Unwrap();
+        var bobMaterial = EcliptixSystemIdentityKeys.Create(4).Unwrap();
         var alice = new ShieldPro(aliceMaterial);
         var bob = new ShieldPro(bobMaterial);
 
@@ -77,8 +77,8 @@ public class ShieldProProtocolBenchmarks
     [Benchmark(Description = "Symmetric Ratchet")]
     public async Task Symmetric_Ratchet()
     {
-        var aliceMaterial = LocalKeyMaterial.Create(5).Unwrap();
-        var bobMaterial = LocalKeyMaterial.Create(6).Unwrap();
+        var aliceMaterial = EcliptixSystemIdentityKeys.Create(5).Unwrap();
+        var bobMaterial = EcliptixSystemIdentityKeys.Create(6).Unwrap();
         var alice = new ShieldPro(aliceMaterial);
         var bob = new ShieldPro(bobMaterial);
 
@@ -146,8 +146,8 @@ public class ShieldProProtocolBenchmarks
             var sessionId = s;
             tasks[s] = Task.Run(async () =>
             {
-                var aliceMaterial = LocalKeyMaterial.Create((uint)(sessionId * 2 + 7)).Unwrap();
-                var bobMaterial = LocalKeyMaterial.Create((uint)(sessionId * 2 + 8)).Unwrap();
+                var aliceMaterial = EcliptixSystemIdentityKeys.Create((uint)(sessionId * 2 + 7)).Unwrap();
+                var bobMaterial = EcliptixSystemIdentityKeys.Create((uint)(sessionId * 2 + 8)).Unwrap();
                 var alice = new ShieldPro(aliceMaterial);
                 var bob = new ShieldPro(bobMaterial);
 

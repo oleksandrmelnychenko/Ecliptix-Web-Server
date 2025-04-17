@@ -21,7 +21,7 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
     private ShieldPro _bobShieldPro;
     private uint _aliceSessionId;
     private uint _bobSessionId;
-    private PubKeyExchangeOfType _exchangeType = PubKeyExchangeOfType.AppDeviceEphemeralConnect; // Example
+    private PubKeyExchangeType _exchangeType = PubKeyExchangeType.AppDeviceEphemeralConnect; // Example
     // --- End Fields ---
 
     public TestContext TestContext { get; set; }
@@ -34,8 +34,8 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
     {
         WriteLine("[TestInitialize] Setting up Alice and Bob...");
         // Create key materials (replace with your LocalKeyMaterial setup)
-        var aliceMaterial = LocalKeyMaterial.Create(1).Unwrap();
-        var bobMaterial = LocalKeyMaterial.Create(2).Unwrap();
+        var aliceMaterial = EcliptixSystemIdentityKeys.Create(1).Unwrap();
+        var bobMaterial = EcliptixSystemIdentityKeys.Create(2).Unwrap();
 
         // Create ShieldPro instances
         _aliceShieldPro = new ShieldPro(aliceMaterial);
@@ -59,12 +59,12 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
     [TestMethod]
     public async Task SingleSession_DHRatchet_TriggersAtInterval()
     {
-        var alice = new ShieldPro(LocalKeyMaterial.Create(1).Unwrap());
-        var bob = new ShieldPro(LocalKeyMaterial.Create(2).Unwrap());
+        var alice = new ShieldPro(EcliptixSystemIdentityKeys.Create(1).Unwrap());
+        var bob = new ShieldPro(EcliptixSystemIdentityKeys.Create(2).Unwrap());
         var (aliceId, aliceMsg) =
-            await alice.BeginDataCenterPubKeyExchangeAsync(PubKeyExchangeOfType.AppDeviceEphemeralConnect);
+            await alice.BeginDataCenterPubKeyExchangeAsync(PubKeyExchangeType.AppDeviceEphemeralConnect);
         var (bobId, bobMsg) = await bob.ProcessAndRespondToPubKeyExchangeAsync(aliceMsg);
-        await alice.CompleteDataCenterPubKeyExchangeAsync(aliceId, PubKeyExchangeOfType.AppDeviceEphemeralConnect,
+        await alice.CompleteDataCenterPubKeyExchangeAsync(aliceId, PubKeyExchangeType.AppDeviceEphemeralConnect,
             bobMsg);
 
         bool ratchetTriggered = false;
@@ -72,14 +72,14 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
         {
             var msg = Encoding.UTF8.GetBytes($"Msg {i}");
             var cipher =
-                await alice.ProduceOutboundMessageAsync(aliceId, PubKeyExchangeOfType.AppDeviceEphemeralConnect, msg);
+                await alice.ProduceOutboundMessageAsync(aliceId, PubKeyExchangeType.AppDeviceEphemeralConnect, msg);
             if (!cipher.DhPublicKey.IsEmpty)
             {
                 ratchetTriggered = true;
                 WriteLine($"Ratchet triggered at message {i}");
             }
 
-            await bob.ProcessInboundMessageAsync(bobId, PubKeyExchangeOfType.AppDeviceEphemeralConnect, cipher);
+            await bob.ProcessInboundMessageAsync(bobId, PubKeyExchangeType.AppDeviceEphemeralConnect, cipher);
         }
 
         Assert.IsTrue(ratchetTriggered, "DH ratchet did not trigger at interval 10.");
@@ -117,16 +117,16 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
 
             try
             {
-                var aliceMaterial = LocalKeyMaterial.Create((uint)(i * 2 + 1)).Unwrap();
-                var bobMaterial = LocalKeyMaterial.Create((uint)(i * 2 + 2)).Unwrap();
+                var aliceMaterial = EcliptixSystemIdentityKeys.Create((uint)(i * 2 + 1)).Unwrap();
+                var bobMaterial = EcliptixSystemIdentityKeys.Create((uint)(i * 2 + 2)).Unwrap();
                 var alice = new ShieldPro(aliceMaterial);
                 var bob = new ShieldPro(bobMaterial);
 
                 var (aliceSessionId, aliceInitialMsg) =
-                    await alice.BeginDataCenterPubKeyExchangeAsync(PubKeyExchangeOfType.AppDeviceEphemeralConnect);
+                    await alice.BeginDataCenterPubKeyExchangeAsync(PubKeyExchangeType.AppDeviceEphemeralConnect);
                 var (bobSessionId, bobResponseMsg) = await bob.ProcessAndRespondToPubKeyExchangeAsync(aliceInitialMsg);
                 await alice.CompleteDataCenterPubKeyExchangeAsync(aliceSessionId,
-                    PubKeyExchangeOfType.AppDeviceEphemeralConnect, bobResponseMsg);
+                    PubKeyExchangeType.AppDeviceEphemeralConnect, bobResponseMsg);
 
                 WriteLine($"[Setup] Pair {testSessionId}: Alice Session {aliceSessionId}, Bob Session {bobSessionId}");
                 sessionPairs.Add((alice, bob, aliceSessionId, bobSessionId));
@@ -158,7 +158,7 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
                         var aliceMsg = Encoding.UTF8.GetBytes($"Session {testSessionId}: Alice msg {msgNumber}");
                         WriteLine($"[Session {testSessionId}] Alice sending msg {msgNumber}...");
                         var aliceCipher = await alice.ProduceOutboundMessageAsync(aliceSessionId,
-                            PubKeyExchangeOfType.AppDeviceEphemeralConnect, aliceMsg);
+                            PubKeyExchangeType.AppDeviceEphemeralConnect, aliceMsg);
                         WriteLine(
                             $"[Session {testSessionId}] Alice msg {msgNumber}: Index={aliceCipher.RatchetIndex}, DHKey={(aliceCipher.DhPublicKey.IsEmpty ? "None" : Convert.ToHexString(aliceCipher.DhPublicKey.ToByteArray()))}");
                         if (!aliceCipher.DhPublicKey.IsEmpty)
@@ -169,7 +169,7 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
                         }
 
                         var bobPlaintext = await bob.ProcessInboundMessageAsync(bobSessionId,
-                            PubKeyExchangeOfType.AppDeviceEphemeralConnect, aliceCipher);
+                            PubKeyExchangeType.AppDeviceEphemeralConnect, aliceCipher);
                         CollectionAssert.AreEqual(aliceMsg, bobPlaintext,
                             $"[Session {testSessionId}] Bob failed to decrypt Alice msg {msgNumber}");
 
@@ -177,7 +177,7 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
                         var bobMsg = Encoding.UTF8.GetBytes($"Session {testSessionId}: Bob msg {msgNumber}");
                         WriteLine($"[Session {testSessionId}] Bob sending msg {msgNumber}...");
                         var bobCipher = await bob.ProduceOutboundMessageAsync(bobSessionId,
-                            PubKeyExchangeOfType.AppDeviceEphemeralConnect, bobMsg);
+                            PubKeyExchangeType.AppDeviceEphemeralConnect, bobMsg);
                         WriteLine(
                             $"[Session {testSessionId}] Bob msg {msgNumber}: Index={bobCipher.RatchetIndex}, DHKey={(bobCipher.DhPublicKey.IsEmpty ? "None" : Convert.ToHexString(bobCipher.DhPublicKey.ToByteArray()))}");
                         if (!bobCipher.DhPublicKey.IsEmpty)
@@ -188,7 +188,7 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
                         }
 
                         var alicePlaintext = await alice.ProcessInboundMessageAsync(aliceSessionId,
-                            PubKeyExchangeOfType.AppDeviceEphemeralConnect, bobCipher);
+                            PubKeyExchangeType.AppDeviceEphemeralConnect, bobCipher);
                         CollectionAssert.AreEqual(bobMsg, alicePlaintext,
                             $"[Session {testSessionId}] Alice failed to decrypt Bob msg {msgNumber}");
                     }

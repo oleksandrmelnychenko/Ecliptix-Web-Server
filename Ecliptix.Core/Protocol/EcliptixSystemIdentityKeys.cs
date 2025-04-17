@@ -3,7 +3,7 @@ using Sodium;
 
 namespace Ecliptix.Core.Protocol;
 
-public sealed class LocalKeyMaterial : IDisposable
+public sealed class EcliptixSystemIdentityKeys : IDisposable
 {
     private readonly SodiumSecureMemoryHandle _ed25519SecretKeyHandle;
     public byte[] Ed25519PublicKey { get; }
@@ -23,7 +23,7 @@ public sealed class LocalKeyMaterial : IDisposable
 
     private bool _disposed;
 
-    private LocalKeyMaterial(
+    private EcliptixSystemIdentityKeys(
         SodiumSecureMemoryHandle edSk, byte[] edPk,
         SodiumSecureMemoryHandle idSk, byte[] idPk,
         uint spkId, SodiumSecureMemoryHandle spkSk, byte[] spkPk, byte[] spkSig,
@@ -41,10 +41,10 @@ public sealed class LocalKeyMaterial : IDisposable
         _disposed = false;
     }
 
-    public static Result<LocalKeyMaterial, ShieldFailure> Create(uint oneTimeKeyCount)
+    public static Result<EcliptixSystemIdentityKeys, ShieldFailure> Create(uint oneTimeKeyCount)
     {
         if (oneTimeKeyCount > int.MaxValue)
-            return Result<LocalKeyMaterial, ShieldFailure>.Err(
+            return Result<EcliptixSystemIdentityKeys, ShieldFailure>.Err(
                 ShieldFailure.InvalidInput("Requested one-time key count exceeds practical limits."));
 
         SodiumSecureMemoryHandle? edSkHandle = null;
@@ -84,9 +84,9 @@ public sealed class LocalKeyMaterial : IDisposable
                 .Bind(generatedOpks =>
                 {
                     opks = generatedOpks;
-                    var material = new LocalKeyMaterial(edSkHandle!, edPk!, idXSkHandle!, idXPk!, spkId, spkSkHandle!,
+                    var material = new EcliptixSystemIdentityKeys(edSkHandle!, edPk!, idXSkHandle!, idXPk!, spkId, spkSkHandle!,
                         spkPk!, spkSig!, opks);
-                    return Result<LocalKeyMaterial, ShieldFailure>.Ok(material);
+                    return Result<EcliptixSystemIdentityKeys, ShieldFailure>.Ok(material);
                 });
 
             if (overallResult.IsErr)
@@ -109,7 +109,7 @@ public sealed class LocalKeyMaterial : IDisposable
             if (opks != null)
                 foreach (var opk in opks)
                     opk.Dispose();
-            return Result<LocalKeyMaterial, ShieldFailure>.Err(
+            return Result<EcliptixSystemIdentityKeys, ShieldFailure>.Err(
                 ShieldFailure.Generic($"Unexpected error initializing LocalKeyMaterial: {ex.Message}", ex));
         }
     }
@@ -282,7 +282,7 @@ public sealed class LocalKeyMaterial : IDisposable
     {
         if (_disposed)
             return Result<LocalPublicKeyBundle, ShieldFailure>.Err(
-                ShieldFailure.ObjectDisposed(nameof(LocalKeyMaterial)));
+                ShieldFailure.ObjectDisposed(nameof(EcliptixSystemIdentityKeys)));
 
         return Result<LocalPublicKeyBundle, ShieldFailure>.Try(
             func: () =>
@@ -309,7 +309,7 @@ public sealed class LocalKeyMaterial : IDisposable
     public Result<Unit, ShieldFailure> GenerateEphemeralKeyPair()
     {
         if (_disposed)
-            return Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(LocalKeyMaterial)));
+            return Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(EcliptixSystemIdentityKeys)));
 
         _ephemeralSecretKeyHandle?.Dispose();
         _ephemeralSecretKeyHandle = null;
@@ -453,7 +453,7 @@ public sealed class LocalKeyMaterial : IDisposable
     }
 
     private Result<Unit, ShieldFailure> CheckDisposed() => _disposed
-        ? Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(LocalKeyMaterial)))
+        ? Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(EcliptixSystemIdentityKeys)))
         : Result<Unit, ShieldFailure>.Ok(Unit.Value);
 
     private static Result<Unit, ShieldFailure> ValidateHkdfInfo(byte[]? infoCopy) =>
@@ -794,7 +794,7 @@ public sealed class LocalKeyMaterial : IDisposable
         _ephemeralSecretKeyHandle = null;
     }
 
-    ~LocalKeyMaterial()
+    ~EcliptixSystemIdentityKeys()
     {
         Dispose(false);
     }

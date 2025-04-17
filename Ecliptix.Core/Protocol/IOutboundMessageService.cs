@@ -19,6 +19,6 @@ public interface IOutboundMessageService
     /// <exception cref="ShieldChainStepException">Throws if session not found, not ready, or encryption fails.</exception>
     Task<CipherPayload> ProduceOutboundMessageAsync(
         uint sessionId, // Added Session ID for lookup
-        PubKeyExchangeOfType exchangeType,
+        PubKeyExchangeType exchangeType,
         byte[] plainPayload); // Use byte[] for payload
 }

@@ -19,6 +19,10 @@
         </PackageReference>
         <PackageReference Include="Pixelbin" Version="1.0.1"/>
         <PackageReference Include="protobuf-net.Grpc.AspNetCore" Version="1.1.1"/>
+        <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
+        <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+        <PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />
+        <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
     </ItemGroup>
 
     <ItemGroup>

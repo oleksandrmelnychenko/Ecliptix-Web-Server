@@ -19,6 +19,6 @@ public interface IInboundMessageService
     /// <exception cref="ShieldChainStepException">Throws if session not found, decryption fails (bad MAC, replay, etc.).</exception>
     Task<byte[]> ProcessInboundMessageAsync(
         uint sessionId, // Added Session ID for lookup
-        PubKeyExchangeOfType exchangeType,
+        PubKeyExchangeType exchangeType,
         CipherPayload cipherPayload); // Use CipherPayload class
 }

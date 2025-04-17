@@ -10,8 +10,8 @@ namespace ProtocolTests;
 public class ShieldProTests : IAsyncDisposable
 {
     private readonly TestContext _testContext;
-    private readonly LocalKeyMaterial _aliceKeys;
-    private readonly LocalKeyMaterial _bobKeys;
+    private readonly EcliptixSystemIdentityKeys _aliceKeys;
+    private readonly EcliptixSystemIdentityKeys _bobKeys;
     private readonly ShieldPro _aliceShieldPro;
     private readonly ShieldPro _bobShieldPro;
 
@@ -32,8 +32,8 @@ public class ShieldProTests : IAsyncDisposable
     {
         TestContext = testContext;
         _testContext = TestContext; // MSTest provides TestContext automatically
-        _aliceKeys =  LocalKeyMaterial.Create(5).Unwrap();
-        _bobKeys =LocalKeyMaterial.Create(5).Unwrap();
+        _aliceKeys =  EcliptixSystemIdentityKeys.Create(5).Unwrap();
+        _bobKeys =EcliptixSystemIdentityKeys.Create(5).Unwrap();
         ShieldSessionManager aliceSessionManager = ShieldSessionManager.Create();
         ShieldSessionManager bobSessionManager = ShieldSessionManager.Create();
         _aliceShieldPro = new ShieldPro(_aliceKeys, aliceSessionManager);
@@ -122,7 +122,7 @@ public class ShieldProTests : IAsyncDisposable
     [TestMethod]
     public void CompleteExchange_Success_Should_FinalizeSessionAndReturnRootKey()
     {
-        const PubKeyExchangeOfType exchangeType = PubKeyExchangeOfType.AppDeviceEphemeralConnect;
+        const PubKeyExchangeType exchangeType = PubKeyExchangeType.AppDeviceEphemeralConnect;
         SodiumSecureMemoryHandle? aliceRootKeyHandle = null;
         SodiumSecureMemoryHandle? bobRootKeyHandle = null;
 

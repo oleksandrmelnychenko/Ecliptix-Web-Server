@@ -16,7 +16,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     IAsyncDisposable
 {
     public static ReadOnlySpan<byte> X3dhInfo => "Ecliptix_X3DH"u8;
-    private readonly LocalKeyMaterial _localKeyMaterial;
+    private readonly EcliptixSystemIdentityKeys _ecliptixSystemIdentityKeys;
     private readonly ShieldSessionManager _sessionManager;
     private bool _disposed;
 
@@ -28,15 +28,15 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     private static long _requestIdCounter = 0;
     private static Timestamp GetProtoTimestamp() => Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow);
 
-    public ShieldPro(LocalKeyMaterial localKeyMaterial, ShieldSessionManager? sessionManager = null)
+    public ShieldPro(EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys, ShieldSessionManager? sessionManager = null)
     {
-        _localKeyMaterial = localKeyMaterial ?? throw new ArgumentNullException(nameof(localKeyMaterial));
+        _ecliptixSystemIdentityKeys = ecliptixSystemIdentityKeys ?? throw new ArgumentNullException(nameof(ecliptixSystemIdentityKeys));
         _sessionManager = sessionManager ?? ShieldSessionManager.Create();
         Logger.WriteLine("[ShieldPro] Initialized ShieldPro instance.");
     }
 
     private async ValueTask<T> ExecuteUnderSessionLockAsync<T>(
-        uint sessionId, PubKeyExchangeOfType exchangeType, Func<ShieldSession, ValueTask<T>> action,
+        uint sessionId, PubKeyExchangeType exchangeType, Func<ShieldSession, ValueTask<T>> action,
         bool allowInitOrPending = false)
     {
         var holderResult = await _sessionManager.FindSession(sessionId, exchangeType);
@@ -86,7 +86,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     }
 
     public async Task<(uint SessionId, PubKeyExchange InitialMessage)> BeginDataCenterPubKeyExchangeAsync(
-        PubKeyExchangeOfType exchangeType)
+        PubKeyExchangeType exchangeType)
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(ShieldPro));
@@ -95,9 +95,9 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         Logger.WriteLine($"[ShieldPro] Beginning exchange {exchangeType}, generated Session ID: {sessionId}");
 
         Logger.WriteLine("[ShieldPro] Generating ephemeral key pair.");
-        _localKeyMaterial.GenerateEphemeralKeyPair();
+        _ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
 
-        var localBundleResult = _localKeyMaterial.CreatePublicBundle();
+        var localBundleResult = _ecliptixSystemIdentityKeys.CreatePublicBundle();
         if (!localBundleResult.IsOk)
             throw new ShieldChainStepException(
                 $"Failed to create local public bundle: {localBundleResult.UnwrapErr()}");
@@ -145,7 +145,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         if (peerInitialMessageProto.State != PubKeyExchangeState.Init)
             throw new ArgumentException("Expected peer message state to be Init.", nameof(peerInitialMessageProto));
 
-        PubKeyExchangeOfType exchangeType = peerInitialMessageProto.OfType;
+        PubKeyExchangeType exchangeType = peerInitialMessageProto.OfType;
         uint sessionId = GenerateRequestId();
         Logger.WriteLine($"[ShieldPro] Processing exchange request {exchangeType}, generated Session ID: {sessionId}");
 
@@ -153,9 +153,9 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         try
         {
             Logger.WriteLine("[ShieldPro] Generating ephemeral key for response.");
-            _localKeyMaterial.GenerateEphemeralKeyPair();
+            _ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
 
-            var localBundleResult = _localKeyMaterial.CreatePublicBundle();
+            var localBundleResult = _ecliptixSystemIdentityKeys.CreatePublicBundle();
             if (!localBundleResult.IsOk)
                 throw new ShieldChainStepException(
                     $"Failed to create local public bundle: {localBundleResult.UnwrapErr()}");
@@ -182,7 +182,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
             var peerBundle = peerBundleResult.Unwrap();
 
             Logger.WriteLine("[ShieldPro] Verifying remote SPK signature.");
-            var spkValidResult = LocalKeyMaterial.VerifyRemoteSpkSignature(
+            var spkValidResult = EcliptixSystemIdentityKeys.VerifyRemoteSpkSignature(
                 peerBundle.IdentityEd25519,
                 peerBundle.SignedPreKeyPublic,
                 peerBundle.SignedPreKeySignature);
@@ -191,7 +191,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
                     $"SPK signature validation failed: {(spkValidResult.IsOk ? "Invalid signature" : spkValidResult.UnwrapErr())}");
 
             Logger.WriteLine("[ShieldPro] Deriving shared secret as recipient.");
-            var deriveResult = _localKeyMaterial.CalculateSharedSecretAsRecipient(
+            var deriveResult = _ecliptixSystemIdentityKeys.CalculateSharedSecretAsRecipient(
                 peerBundle.IdentityX25519,
                 peerBundle.EphemeralX25519,
                 peerBundle.OneTimePreKeys?.FirstOrDefault()?.PreKeyId,
@@ -251,7 +251,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     }
 
     public async Task<(uint SessionId, SodiumSecureMemoryHandle RootKeyHandle)> CompleteDataCenterPubKeyExchangeAsync(
-        uint sessionId, PubKeyExchangeOfType exchangeType, PubKeyExchange peerMessage)
+        uint sessionId, PubKeyExchangeType exchangeType, PubKeyExchange peerMessage)
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(ShieldPro));
@@ -269,7 +269,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
             var peerBundle = peerBundleResult.Unwrap();
 
             Logger.WriteLine("[ShieldPro] Verifying remote SPK signature for completion.");
-            var spkValidResult = LocalKeyMaterial.VerifyRemoteSpkSignature(
+            var spkValidResult = EcliptixSystemIdentityKeys.VerifyRemoteSpkSignature(
                 peerBundle.IdentityEd25519,
                 peerBundle.SignedPreKeyPublic,
                 peerBundle.SignedPreKeySignature);
@@ -278,7 +278,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
                     $"SPK signature validation failed: {(spkValidResult.IsOk ? "Invalid signature" : spkValidResult.UnwrapErr())}");
 
             Logger.WriteLine("[ShieldPro] Deriving X3DH shared secret.");
-            var deriveResult = _localKeyMaterial.X3dhDeriveSharedSecret(peerBundle, X3dhInfo);
+            var deriveResult = _ecliptixSystemIdentityKeys.X3dhDeriveSharedSecret(peerBundle, X3dhInfo);
             if (!deriveResult.IsOk)
                 throw new ShieldChainStepException($"Shared secret derivation failed: {deriveResult.UnwrapErr()}");
             var rootKeyHandle = deriveResult.Unwrap();
@@ -303,7 +303,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     }
 
     public async Task<CipherPayload> ProduceOutboundMessageAsync(
-        uint sessionId, PubKeyExchangeOfType exchangeType, byte[] plainPayload)
+        uint sessionId, PubKeyExchangeType exchangeType, byte[] plainPayload)
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(ShieldPro));
@@ -360,7 +360,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
                     throw new ShieldChainStepException($"Failed to get peer bundle: {peerBundleResult.UnwrapErr()}");
                 var peerBundle = peerBundleResult.Unwrap();
 
-                byte[] localId = _localKeyMaterial.IdentityX25519PublicKey;
+                byte[] localId = _ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
                 byte[] peerId = peerBundle.IdentityX25519;
                 byte[] ad = new byte[localId.Length + peerId.Length];
                 Buffer.BlockCopy(localId, 0, ad, 0, localId.Length);
@@ -410,7 +410,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     }
 
     public async Task<byte[]> ProcessInboundMessageAsync(
-        uint sessionId, PubKeyExchangeOfType exchangeType, CipherPayload cipherPayloadProto)
+        uint sessionId, PubKeyExchangeType exchangeType, CipherPayload cipherPayloadProto)
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(ShieldPro));
@@ -483,7 +483,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
                 var peerBundle = peerBundleResult.Unwrap();
 
                 byte[] senderId = peerBundle.IdentityX25519;
-                byte[] receiverId = _localKeyMaterial.IdentityX25519PublicKey;
+                byte[] receiverId = _ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
                 ad = new byte[senderId.Length + receiverId.Length];
                 Buffer.BlockCopy(senderId, 0, ad, 0, senderId.Length);
                 Buffer.BlockCopy(receiverId, 0, ad, senderId.Length, receiverId.Length);
