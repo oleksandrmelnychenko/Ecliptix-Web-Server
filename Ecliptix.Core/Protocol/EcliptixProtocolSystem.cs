@@ -12,7 +12,7 @@ using Sodium;
 
 namespace Ecliptix.Core.Protocol;
 
-public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageService, IInboundMessageService,
+public sealed class EcliptixProtocolSystem : IDataCenterPubKeyExchange, IOutboundMessageService, IInboundMessageService,
     IAsyncDisposable
 {
     public static ReadOnlySpan<byte> X3dhInfo => "Ecliptix_X3DH"u8;
@@ -28,7 +28,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
     private static long _requestIdCounter = 0;
     private static Timestamp GetProtoTimestamp() => Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow);
 
-    public ShieldPro(EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys, ShieldSessionManager? sessionManager = null)
+    public EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys, ShieldSessionManager? sessionManager = null)
     {
         _ecliptixSystemIdentityKeys = ecliptixSystemIdentityKeys ?? throw new ArgumentNullException(nameof(ecliptixSystemIdentityKeys));
         _sessionManager = sessionManager ?? ShieldSessionManager.Create();
@@ -89,7 +89,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         PubKeyExchangeType exchangeType)
     {
         if (_disposed)
-            throw new ObjectDisposedException(nameof(ShieldPro));
+            throw new ObjectDisposedException(nameof(EcliptixProtocolSystem));
 
         uint sessionId = GenerateRequestId();
         Logger.WriteLine($"[ShieldPro] Beginning exchange {exchangeType}, generated Session ID: {sessionId}");
@@ -124,11 +124,9 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
 
         var pubKeyExchange = new PubKeyExchange
         {
-            RequestId = GenerateRequestId(),
             State = PubKeyExchangeState.Init,
             OfType = exchangeType,
             Payload = protoBundle.ToByteString(),
-            CreatedAt = GetProtoTimestamp(),
             InitialDhPublicKey = ByteString.CopyFrom(dhPublicKey)
         };
 
@@ -139,7 +137,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         PubKeyExchange peerInitialMessageProto)
     {
         if (_disposed)
-            throw new ObjectDisposedException(nameof(ShieldPro));
+            throw new ObjectDisposedException(nameof(EcliptixProtocolSystem));
         if (peerInitialMessageProto == null)
             throw new ArgumentNullException(nameof(peerInitialMessageProto));
         if (peerInitialMessageProto.State != PubKeyExchangeState.Init)
@@ -228,11 +226,9 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
             Logger.WriteLine($"[ShieldPro] Sender DH Public Key: {Convert.ToHexString(dhPublicKey)}");
             var response = new PubKeyExchange
             {
-                RequestId = GenerateRequestId(),
                 State = PubKeyExchangeState.Pending,
                 OfType = exchangeType,
                 Payload = protoBundle.ToByteString(),
-                CreatedAt = GetProtoTimestamp(),
                 InitialDhPublicKey = ByteString.CopyFrom(dhPublicKey)
             };
 
@@ -254,7 +250,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         uint sessionId, PubKeyExchangeType exchangeType, PubKeyExchange peerMessage)
     {
         if (_disposed)
-            throw new ObjectDisposedException(nameof(ShieldPro));
+            throw new ObjectDisposedException(nameof(EcliptixProtocolSystem));
         if (peerMessage == null)
             throw new ArgumentNullException(nameof(peerMessage));
 
@@ -306,7 +302,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         uint sessionId, PubKeyExchangeType exchangeType, byte[] plainPayload)
     {
         if (_disposed)
-            throw new ObjectDisposedException(nameof(ShieldPro));
+            throw new ObjectDisposedException(nameof(EcliptixProtocolSystem));
         if (plainPayload == null)
             throw new ArgumentNullException(nameof(plainPayload));
 
@@ -413,7 +409,7 @@ public sealed class ShieldPro : IDataCenterPubKeyExchange, IOutboundMessageServi
         uint sessionId, PubKeyExchangeType exchangeType, CipherPayload cipherPayloadProto)
     {
         if (_disposed)
-            throw new ObjectDisposedException(nameof(ShieldPro));
+            throw new ObjectDisposedException(nameof(EcliptixProtocolSystem));
         if (cipherPayloadProto == null)
             throw new ArgumentNullException(nameof(cipherPayloadProto));
         if (cipherPayloadProto.Cipher.Length < Constants.AesGcmTagSize)

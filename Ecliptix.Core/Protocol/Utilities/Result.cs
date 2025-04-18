@@ -4,7 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Ecliptix.Core.Protocol.Utilities;
 
-public readonly struct Result<T, TE> : IEquatable<Result<T, TE>> where TE : notnull
+public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
 {
     private readonly T? _value;
     private readonly TE? _error;
@@ -106,6 +106,50 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>> where TE : notn
         }
     }
 
+    public static async ValueTask<Result<Unit, TError>> TryAsync<TError>(
+        Func<ValueTask> action,
+        Func<Exception, TError> errorMapper,
+        Action? cleanup = null)
+    {
+        ArgumentNullException.ThrowIfNull(action, nameof(action));
+        ArgumentNullException.ThrowIfNull(errorMapper, nameof(errorMapper));
+
+        try
+        {
+            await action().ConfigureAwait(false);
+            return Result<Unit, TError>.Ok(Unit.Value);
+        }
+        catch (Exception ex) when (ex is not ThreadAbortException and not StackOverflowException)
+        {
+            TError? error = errorMapper(ex);
+            if (error == null)
+                throw new InvalidOperationException("Error mapper returned null, violating TError : notnull");
+            return Result<Unit, TError>.Err(error);
+        }
+        finally
+        {
+            cleanup?.Invoke();
+        }
+    }
+
+    public static async ValueTask<Result<T, TError>> TryAsync<T, TError>(
+        Func<ValueTask<T>> action,
+        Func<ShieldFailure, TError> errorMapper,
+        Action? cleanup = null)
+    {
+        ArgumentNullException.ThrowIfNull(action, nameof(action));
+        ArgumentNullException.ThrowIfNull(errorMapper, nameof(errorMapper));
+
+        try
+        {
+            T result = await action().ConfigureAwait(false);
+            return Result<T, TError>.Ok(result);
+        }
+        finally
+        {
+            cleanup?.Invoke();
+        }
+    }
 
     [MemberNotNullWhen(true, nameof(_value))]
     [MemberNotNullWhen(false, nameof(_error))]
@@ -144,6 +188,7 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>> where TE : notn
         if (IsOk) onOk(_value!);
         else onErr(_error!);
     }
+
 
     public bool IsOkAnd(Func<T, bool> predicate) => IsOk && predicate(_value!);
 

@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Grpc.Core;
 
 namespace Ecliptix.Core.Protocol.Utilities;
 
@@ -11,8 +12,24 @@ public class ShieldFailure
     private ShieldFailure(ShieldFailureType type, string message, Exception? innerException = null)
     {
         Type = type;
-        Message = message ?? GetDefaultMessage(type);
+        Message = message;
         InnerException = innerException;
+    }
+
+    public static Status ToGrpcStatus(ShieldFailure failure)
+    {
+        StatusCode code = failure.Type switch
+        {
+            ShieldFailureType.InvalidInput => StatusCode.InvalidArgument,
+            ShieldFailureType.ObjectDisposed => StatusCode.FailedPrecondition,
+            ShieldFailureType.EphemeralMissing => StatusCode.FailedPrecondition,
+            ShieldFailureType.StateMissing => StatusCode.FailedPrecondition,
+            _ => StatusCode.Internal
+        };
+
+        string message = code == StatusCode.Internal ? "An internal error occurred." : failure.Message;
+
+        return new Status(code, message);
     }
 
     private static string GetDefaultMessage(ShieldFailureType type) => type switch
@@ -97,20 +114,19 @@ public class ShieldFailure
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure DataAccess(string details, Exception? inner = null) =>
         new(ShieldFailureType.DataAccessError, details, inner);
-    
-    
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure KeyGeneration(string details, Exception? inner = null) =>
         new(ShieldFailureType.KeyGenerationFailed, details, inner);
-    
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure PrepareLocal(string details, Exception? inner = null) =>
         new(ShieldFailureType.KeyGenerationFailed, details, inner);
-    
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure SessionExpired(string details, Exception? inner = null) =>
         new(ShieldFailureType.SessionExpired, details, inner);
-  
+
     public override string ToString() =>
         $"ShieldFailure(Type={Type}, Message='{Message}'{(InnerException != null ? $", InnerException='{InnerException.GetType().Name}: {InnerException.Message}'" : "")})";
 
@@ -122,6 +138,4 @@ public class ShieldFailure
 
     public override int GetHashCode() =>
         HashCode.Combine(Type, Message, InnerException);
-
-   
 }

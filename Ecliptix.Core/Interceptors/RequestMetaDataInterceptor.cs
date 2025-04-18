@@ -1,4 +1,5 @@
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Core.Protocol.Utilities;
+using Ecliptix.Core.Services.Utilities;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 
@@ -9,10 +10,33 @@ public sealed class RequestMetaDataInterceptor : Interceptor
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(TRequest request,
         ServerCallContext context, UnaryServerMethod<TRequest, TResponse> continuation)
     {
-        GrpcMetadataHandler.ValidateRequiredMetaDataParams(context.RequestHeaders);
+        Result<Unit, MetaDataSystemFailure> validationResult =
+            GrpcMetadataHandler.ValidateRequiredMetaDataParams(context.RequestHeaders);
+        if (validationResult.IsErr)
+        {
+            MetaDataSystemFailure metaDataSystemFailure = validationResult.UnwrapErr();
+            string? errorMessage = metaDataSystemFailure.Message;
+            if (errorMessage is not null)
+            {
+                context.Status = new Status(StatusCode.Internal, errorMessage);
+            }
 
-        string mobileDeviceAppId = GrpcMetadataHandler.GetMobileDeviceAppId(context.RequestHeaders);
-        context.UserState[GrpcMetadataHandler.MobileDeviceAppId] = mobileDeviceAppId;
+            throw new RpcException(context.Status);
+        }
+
+        GrpcMetadataHandler.ComputeUniqueConnectId(context.RequestHeaders)
+            .Match(
+                uniqueConnectId =>
+                {
+                    context.UserState[GrpcMetadataHandler.UniqueConnectId] = uniqueConnectId;
+                    return Unit.Value;
+                },
+                error =>
+                {
+                    context.Status = new Status(StatusCode.Internal, error.Message!);
+                    throw new RpcException(context.Status);
+                }
+            );
 
         return await continuation(request, context);
     }

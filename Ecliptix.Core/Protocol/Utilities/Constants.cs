@@ -10,7 +10,7 @@ public static class Constants
     public static readonly byte[] MsgInfo = { 0x01 };
     public static readonly byte[] ChainInfo = { 0x02 };
     public static readonly byte[] DhRatchetInfo = { 0x03 }; // For Root Key + Chain Key derivation post-DH
-
+    public static ReadOnlySpan<byte> X3dhInfo => "Ecliptix_X3DH"u8;
     // Info constants for initial chain key derivation from root key
     // Ensure these are distinct from DhRatchetInfo and each other
     public static readonly byte[] InitialSenderChainInfo = { 0x11 };

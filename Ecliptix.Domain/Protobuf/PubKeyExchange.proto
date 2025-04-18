@@ -17,12 +17,10 @@ enum PubKeyExchangeType {
 }
 
 message PubKeyExchange {
-  uint32 request_id = 1;
-  PubKeyExchangeState state = 2;
-  PubKeyExchangeType of_type = 3;
-  bytes payload = 4;
-  google.protobuf.Timestamp created_at = 5;
-  bytes initial_Dh_public_Key = 6;
+  PubKeyExchangeState state = 1;
+  PubKeyExchangeType of_type = 2;
+  bytes payload = 3;
+  bytes initial_Dh_public_Key = 4;
 }
 
 message PublicKeyBundle {

@@ -68,18 +68,28 @@ try
         EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys = sp.GetRequiredService<EcliptixSystemIdentityKeys>();
         config.WithActors((system, registry) =>
         {
-            var logger = sp.GetRequiredService<ILogger<Program>>();
+            ILogger<Program> logger = sp.GetRequiredService<ILogger<Program>>();
             using (LogContext.PushProperty("SystemName", systemActorName))
             {
                 logger.LogInformation("Actor system {SystemName} is running");
             }
 
-            IActorRef? shieldPro = system.ActorOf(
-                EcliptixProtocolSystemActor.Props1(
+            TimeSpan defaultCleanupInterval = TimeSpan.FromMinutes(15);
+            IActorRef connectionsManagerActor = system.ActorOf(
+                EcliptixProtocolConnectionsManagerActor.Build(
+                    sp.GetRequiredService<ILogger<EcliptixProtocolConnectionsManagerActor>>(), 
+                    defaultCleanupInterval),
+                "ConnectionsManager");
+
+            IActorRef protocolSystemActor = system.ActorOf(
+                EcliptixProtocolSystemActor.Build(
                     ecliptixSystemIdentityKeys,
+                    connectionsManagerActor, 
                     sp.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>()),
-                systemActorName);
-            registry.Register<EcliptixProtocolSystemActor>(shieldPro);
+                "ProtocolSystem");
+
+            registry.Register<EcliptixProtocolConnectionsManagerActor>(connectionsManagerActor);
+            registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
         });
     });
 
@@ -119,10 +129,7 @@ finally
 static void RegisterLocalization(IServiceCollection services)
 {
     services.AddLocalization();
-    services.Configure<RequestLocalizationOptions>(options =>
-    {
-        options.FallBackToParentUICultures = true;
-    });
+    services.Configure<RequestLocalizationOptions>(options => { options.FallBackToParentUICultures = true; });
 }
 
 static void RegisterValidators(IServiceCollection services)
@@ -141,7 +148,8 @@ static void RegisterGrpc(IServiceCollection services)
     });
 }
 
-internal class ActorSystemHostedService(ActorSystem actorSystem, ILogger<ActorSystemHostedService> logger) : IHostedService
+internal class ActorSystemHostedService(ActorSystem actorSystem, ILogger<ActorSystemHostedService> logger)
+    : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {

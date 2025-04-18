@@ -7,15 +7,15 @@ using Google.Protobuf;
 namespace ProtocolTests;
 
 [TestClass]
-public class ShieldProTests : IAsyncDisposable
+public class EcliptixProtocolSystemTests : IAsyncDisposable
 {
     private readonly TestContext _testContext;
     private readonly EcliptixSystemIdentityKeys _aliceKeys;
     private readonly EcliptixSystemIdentityKeys _bobKeys;
-    private readonly ShieldPro _aliceShieldPro;
-    private readonly ShieldPro _bobShieldPro;
+    private readonly EcliptixProtocolSystem _aliceEcliptixProtocolSystem;
+    private readonly EcliptixProtocolSystem _bobEcliptixProtocolSystem;
 
-    static ShieldProTests()
+    static EcliptixProtocolSystemTests()
     {
         try
         {
@@ -28,7 +28,7 @@ public class ShieldProTests : IAsyncDisposable
         }
     }
 
-    public ShieldProTests(TestContext testContext)
+    public EcliptixProtocolSystemTests(TestContext testContext)
     {
         TestContext = testContext;
         _testContext = TestContext; // MSTest provides TestContext automatically
@@ -36,8 +36,8 @@ public class ShieldProTests : IAsyncDisposable
         _bobKeys =EcliptixSystemIdentityKeys.Create(5).Unwrap();
         ShieldSessionManager aliceSessionManager = ShieldSessionManager.Create();
         ShieldSessionManager bobSessionManager = ShieldSessionManager.Create();
-        _aliceShieldPro = new ShieldPro(_aliceKeys, aliceSessionManager);
-        _bobShieldPro = new ShieldPro(_bobKeys, bobSessionManager);
+        _aliceEcliptixProtocolSystem = new EcliptixProtocolSystem(_aliceKeys, aliceSessionManager);
+        _bobEcliptixProtocolSystem = new EcliptixProtocolSystem(_bobKeys, bobSessionManager);
     }
 
     public TestContext TestContext { get; set; } // Required property for MSTest to inject TestContext
@@ -144,7 +144,7 @@ public class ShieldProTests : IAsyncDisposable
             LocalPublicKeyBundle bobBundleInternal = bobBundleInternalResult.Unwrap();
 
             Result<SodiumSecureMemoryHandle, ShieldFailure> aliceDeriveResult =
-                _aliceKeys.X3dhDeriveSharedSecret(bobBundleInternal, ShieldPro.X3dhInfo);
+                _aliceKeys.X3dhDeriveSharedSecret(bobBundleInternal, EcliptixProtocolSystem.X3dhInfo);
             Assert.IsTrue(aliceDeriveResult.IsOk,
                 aliceDeriveResult.IsErr
                     ? $"Alice derivation failed: {aliceDeriveResult.UnwrapErr()}"
@@ -153,7 +153,6 @@ public class ShieldProTests : IAsyncDisposable
 
             PubKeyExchange initialMessageToBob = new()
             {
-                RequestId = Helpers.GenerateRandomUInt32(true),
                 State = PubKeyExchangeState.Init,
                 OfType = exchangeType,
                 Payload = alicePublicBundleProto.ToProtobufExchange().ToByteString(),
@@ -166,7 +165,7 @@ public class ShieldProTests : IAsyncDisposable
                 receivedAliceBundleProto.IdentityX25519PublicKey.ToByteArray(),
                 receivedAliceBundleProto.EphemeralX25519PublicKey.ToByteArray(),
                 opkIdUsedByAlice,
-                ShieldPro.X3dhInfo
+                EcliptixProtocolSystem.X3dhInfo
             );
             Assert.IsTrue(bobDeriveResult.IsOk,
                 bobDeriveResult.IsErr
@@ -191,8 +190,8 @@ public class ShieldProTests : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await _aliceShieldPro.DisposeAsync();
-        await _bobShieldPro.DisposeAsync();
+        await _aliceEcliptixProtocolSystem.DisposeAsync();
+        await _bobEcliptixProtocolSystem.DisposeAsync();
         _aliceKeys.Dispose();
         _bobKeys.Dispose();
         GC.SuppressFinalize(this);
