@@ -12,9 +12,9 @@ public sealed class ShieldSession : IDisposable
     private const int MaxProcessedIds = 6000;
     private const int DhRotationInterval = 10;
     private static readonly TimeSpan SessionTimeout = TimeSpan.FromHours(24);
-    private static readonly byte[] InitialSenderChainInfo = System.Text.Encoding.UTF8.GetBytes("ShieldInitSend");
-    private static readonly byte[] InitialReceiverChainInfo = System.Text.Encoding.UTF8.GetBytes("ShieldInitRecv");
-    private static readonly byte[] DhRatchetInfo = System.Text.Encoding.UTF8.GetBytes("ShieldDhRatchet");
+    private static readonly byte[] InitialSenderChainInfo = "ShieldInitSend"u8.ToArray();
+    private static readonly byte[] InitialReceiverChainInfo = "ShieldInitRecv"u8.ToArray();
+    private static readonly byte[] DhRatchetInfo = "ShieldDhRatchet"u8.ToArray();
     private const int AesGcmNonceSize = 12;
 
     private readonly uint _id;

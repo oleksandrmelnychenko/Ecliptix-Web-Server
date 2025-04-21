@@ -6,21 +6,24 @@ namespace Ecliptix.Core.Protocol;
 public sealed class EcliptixSystemIdentityKeys : IDisposable
 {
     private readonly SodiumSecureMemoryHandle _ed25519SecretKeyHandle;
-    public byte[] Ed25519PublicKey { get; }
-
     private readonly SodiumSecureMemoryHandle _identityX25519SecretKeyHandle;
-    public byte[] IdentityX25519PublicKey { get; }
-
-    public uint SignedPreKeyId { get; }
     private readonly SodiumSecureMemoryHandle _signedPreKeySecretKeyHandle;
-    public byte[] SignedPreKeyPublic { get; }
-    public byte[] SignedPreKeySignature { get; }
+    
+    private SodiumSecureMemoryHandle? _ephemeralSecretKeyHandle;
+
+    private readonly byte[] _ed25519PublicKey;
+    
+    private readonly uint _signedPreKeyId;
+    
+    private readonly byte[] _signedPreKeyPublic;
+    
+    private readonly byte[] _signedPreKeySignature;
 
     private List<OneTimePreKeyLocal> _oneTimePreKeysInternal;
-
-    private SodiumSecureMemoryHandle? _ephemeralSecretKeyHandle;
-    public byte[]? EphemeralX25519PublicKey { get; private set; }
-
+   
+    private byte[]? _ephemeralX25519PublicKey;
+    public byte[] IdentityX25519PublicKey { get; }
+    
     private bool _disposed;
 
     private EcliptixSystemIdentityKeys(
@@ -30,13 +33,13 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
         List<OneTimePreKeyLocal> opks)
     {
         _ed25519SecretKeyHandle = edSk;
-        Ed25519PublicKey = edPk;
+        _ed25519PublicKey = edPk;
         _identityX25519SecretKeyHandle = idSk;
         IdentityX25519PublicKey = idPk;
-        SignedPreKeyId = spkId;
+        _signedPreKeyId = spkId;
         _signedPreKeySecretKeyHandle = spkSk;
-        SignedPreKeyPublic = spkPk;
-        SignedPreKeySignature = spkSig;
+        _signedPreKeyPublic = spkPk;
+        _signedPreKeySignature = spkSig;
         _oneTimePreKeysInternal = opks;
         _disposed = false;
     }
@@ -44,8 +47,10 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
     public static Result<EcliptixSystemIdentityKeys, ShieldFailure> Create(uint oneTimeKeyCount)
     {
         if (oneTimeKeyCount > int.MaxValue)
+        {
             return Result<EcliptixSystemIdentityKeys, ShieldFailure>.Err(
                 ShieldFailure.InvalidInput("Requested one-time key count exceeds practical limits."));
+        }
 
         SodiumSecureMemoryHandle? edSkHandle = null;
         byte[]? edPk = null;
@@ -59,7 +64,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
         try
         {
-            var overallResult = GenerateEd25519Keys()
+            Result<EcliptixSystemIdentityKeys, ShieldFailure> overallResult = GenerateEd25519Keys()
                 .Bind(edKeys =>
                 {
                     (edSkHandle, edPk) = edKeys;
@@ -84,7 +89,8 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 .Bind(generatedOpks =>
                 {
                     opks = generatedOpks;
-                    var material = new EcliptixSystemIdentityKeys(edSkHandle!, edPk!, idXSkHandle!, idXPk!, spkId, spkSkHandle!,
+                    EcliptixSystemIdentityKeys material = new(edSkHandle!, edPk!, idXSkHandle!, idXPk!, spkId,
+                        spkSkHandle!,
                         spkPk!, spkSig!, opks);
                     return Result<EcliptixSystemIdentityKeys, ShieldFailure>.Ok(material);
                 });
@@ -95,8 +101,12 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 idXSkHandle?.Dispose();
                 spkSkHandle?.Dispose();
                 if (opks != null)
-                    foreach (var opk in opks)
+                {
+                    foreach (OneTimePreKeyLocal opk in opks)
+                    {
                         opk.Dispose();
+                    }
+                }
             }
 
             return overallResult;
@@ -107,8 +117,13 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             idXSkHandle?.Dispose();
             spkSkHandle?.Dispose();
             if (opks != null)
-                foreach (var opk in opks)
+            {
+                foreach (OneTimePreKeyLocal opk in opks)
+                {
                     opk.Dispose();
+                }
+            }
+
             return Result<EcliptixSystemIdentityKeys, ShieldFailure>.Err(
                 ShieldFailure.Generic($"Unexpected error initializing LocalKeyMaterial: {ex.Message}", ex));
         }
@@ -292,13 +307,13 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                     .ToList();
 
                 var bundle = new LocalPublicKeyBundle(
-                    IdentityEd25519: this.Ed25519PublicKey,
+                    IdentityEd25519: this._ed25519PublicKey,
                     IdentityX25519: this.IdentityX25519PublicKey,
-                    SignedPreKeyId: this.SignedPreKeyId,
-                    SignedPreKeyPublic: this.SignedPreKeyPublic,
-                    SignedPreKeySignature: this.SignedPreKeySignature,
+                    SignedPreKeyId: this._signedPreKeyId,
+                    SignedPreKeyPublic: this._signedPreKeyPublic,
+                    SignedPreKeySignature: this._signedPreKeySignature,
                     OneTimePreKeys: opkRecords,
-                    EphemeralX25519: this.EphemeralX25519PublicKey
+                    EphemeralX25519: this._ephemeralX25519PublicKey
                 );
                 return bundle;
             },
@@ -313,16 +328,16 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
         _ephemeralSecretKeyHandle?.Dispose();
         _ephemeralSecretKeyHandle = null;
-        if (EphemeralX25519PublicKey != null)
-            SodiumInterop.SecureWipe(EphemeralX25519PublicKey).IgnoreResult();
-        EphemeralX25519PublicKey = null;
+        if (_ephemeralX25519PublicKey != null)
+            SodiumInterop.SecureWipe(_ephemeralX25519PublicKey).IgnoreResult();
+        _ephemeralX25519PublicKey = null;
 
         var generationResult = GenerateX25519KeyPair("Ephemeral");
 
         return generationResult.Map(keys =>
         {
             _ephemeralSecretKeyHandle = keys.skHandle;
-            EphemeralX25519PublicKey = keys.pk;
+            _ephemeralX25519PublicKey = keys.pk;
             return Unit.Value;
         });
     }
@@ -425,13 +440,13 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             // --- End Corrected Final Bind ---
 
             // Alice -> keypair ->extract_public bundle ----> 3DH server (process it) shared_key 32 bytes.
-            
+
             // Unterval -> 100 keys. 4 hours realod.
             // ROOT key -> CHAIN SENDER | CHINE RECIEVER ( 2 object ) -> KEY -> iter +1 index upgrade, Create new Message KEY.[] index
             // Dh
-            
+
             // CLIENT -> reload CHAIN -> NEW ALL KEYS, reset index-> generate new MessageKey. -> New (PrivaTEkEY) DHPublicKey
-            
+
             if (processResult.IsErr)
             {
                 return processResult;

@@ -30,33 +30,25 @@ try
         .AddEnvironmentVariables()
         .Build();
 
-    // Configure services
-    builder.Services.AddSingleton<EcliptixSystemIdentityKeys>(sp =>
-        EcliptixSystemIdentityKeys.Create(10)
-            .Unwrap());
-
-    // Configure services
     RegisterLocalization(builder.Services);
     RegisterValidators(builder.Services);
     RegisterGrpc(builder.Services);
 
-    // Replace default logging with Serilog
     builder.Host.UseSerilog();
 
-    // Add OpenTelemetry with console exporter for testing
     builder.Services.AddOpenTelemetry()
         .WithMetrics(metrics =>
         {
             metrics.AddAspNetCoreInstrumentation();
-            metrics.AddConsoleExporter(); // For debugging; replace with OTLP in production
+            metrics.AddConsoleExporter();
         });
 
     builder.Services.AddRateLimiter(options =>
     {
         options.AddFixedWindowLimiter(policyName: "grpc", limiterOptions =>
         {
-            limiterOptions.PermitLimit = 100; // Allow 100 requests
-            limiterOptions.Window = TimeSpan.FromSeconds(10); // Per 10 seconds
+            limiterOptions.PermitLimit = 100; 
+            limiterOptions.Window = TimeSpan.FromSeconds(10);
             limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
             limiterOptions.QueueLimit = 0;
         });
@@ -65,7 +57,6 @@ try
 
     builder.Services.AddAkka(systemActorName, (config, sp) =>
     {
-        EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys = sp.GetRequiredService<EcliptixSystemIdentityKeys>();
         config.WithActors((system, registry) =>
         {
             ILogger<Program> logger = sp.GetRequiredService<ILogger<Program>>();
@@ -75,37 +66,35 @@ try
             }
 
             TimeSpan defaultCleanupInterval = TimeSpan.FromMinutes(15);
-            IActorRef connectionsManagerActor = system.ActorOf(
-                EcliptixProtocolConnectionsManagerActor.Build(
-                    sp.GetRequiredService<ILogger<EcliptixProtocolConnectionsManagerActor>>(), 
+            
+            IActorRef connectsManagerActor = system.ActorOf(
+                EcliptixProtocolConnectsManagerActor.Build(
+                    sp.GetRequiredService<ILogger<EcliptixProtocolConnectsManagerActor>>(), 
                     defaultCleanupInterval),
                 "ConnectionsManager");
 
-            // IActorRef protocolSystemActor = system.ActorOf(
-            //     EcliptixProtocolSystemActor.Build(
-            //         ecliptixSystemIdentityKeys,
-            //         connectionsManagerActor, 
-            //         sp.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>()),
-            //     "ProtocolSystem");
-            //
-            // registry.Register<EcliptixProtocolConnectionsManagerActor>(connectionsManagerActor);
-            // registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
+             IActorRef protocolSystemActor = system.ActorOf(
+                 EcliptixProtocolSystemActor.Build(
+                     connectsManagerActor, 
+                     sp.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>()),
+                 "ProtocolSystem");
+            
+             registry.Register<EcliptixProtocolConnectsManagerActor>(connectsManagerActor);
+             registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
         });
     });
 
     builder.Services.AddHostedService<ActorSystemHostedService>();
 
-    // Configure Kestrel for HTTP/2
     builder.WebHost.ConfigureKestrel(options =>
     {
         options.ListenAnyIP(5001, listenOptions =>
         {
-            listenOptions.Protocols = HttpProtocols.Http2; // Support HTTP/2 only
-            // Note: Requires TLS certificate in production
+            listenOptions.Protocols = HttpProtocols.Http2;
         });
     });
 
-    var app = builder.Build();
+    WebApplication app = builder.Build();
 
     app.UseRateLimiter();
     app.UseHttpsRedirection();
@@ -113,8 +102,7 @@ try
     app.UseDefaultFiles();
     app.UseResponseCompression();
 
-    // Top-level route registrations
-   // app.MapGrpcService<AppDeviceServices>();
+    app.MapGrpcService<AppDeviceServices>();
     app.MapGet("/", () => Results.Ok("Service up and running"));
     app.MapHealthChecks("/health");
 
@@ -125,7 +113,6 @@ finally
     Log.CloseAndFlush();
 }
 
-// Service registration methods
 static void RegisterLocalization(IServiceCollection services)
 {
     services.AddLocalization();
