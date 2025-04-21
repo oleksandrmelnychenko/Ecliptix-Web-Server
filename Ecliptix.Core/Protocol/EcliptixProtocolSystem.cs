@@ -36,10 +36,10 @@ public sealed class EcliptixProtocolSystem : IDataCenterPubKeyExchange, IOutboun
     }
 
     private async ValueTask<T> ExecuteUnderSessionLockAsync<T>(
-        uint sessionId, PubKeyExchangeType exchangeType, Func<ShieldSession, ValueTask<T>> action,
+        uint sessionId, PubKeyExchangeType exchangeType, Func<ConnectSession, ValueTask<T>> action,
         bool allowInitOrPending = false)
     {
-        var holderResult = await _sessionManager.FindSession(sessionId, exchangeType);
+        Result<ConnectSession, string> holderResult = await _sessionManager.FindSession(sessionId, exchangeType);
         if (!holderResult.IsOk)
             throw new ShieldChainStepException(holderResult.UnwrapErr());
 
@@ -106,7 +106,7 @@ public sealed class EcliptixProtocolSystem : IDataCenterPubKeyExchange, IOutboun
         var protoBundle = localBundle.ToProtobufExchange()
                           ?? throw new ShieldChainStepException("Failed to convert local public bundle to protobuf.");
 
-        var sessionResult = ShieldSession.Create(sessionId, localBundle, true);
+        var sessionResult = ConnectSession.Create(sessionId, localBundle, true);
         if (!sessionResult.IsOk)
             throw new ShieldChainStepException($"Failed to create session: {sessionResult.UnwrapErr()}");
         var session = sessionResult.Unwrap();
@@ -163,7 +163,7 @@ public sealed class EcliptixProtocolSystem : IDataCenterPubKeyExchange, IOutboun
                               ?? throw new ShieldChainStepException(
                                   "Failed to convert local public bundle to protobuf.");
 
-            var sessionResult = ShieldSession.Create(sessionId, localBundle, false);
+            var sessionResult = ConnectSession.Create(sessionId, localBundle, false);
             if (!sessionResult.IsOk)
                 throw new ShieldChainStepException($"Failed to create session: {sessionResult.UnwrapErr()}");
             var session = sessionResult.Unwrap();

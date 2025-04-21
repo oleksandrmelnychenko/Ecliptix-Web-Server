@@ -7,7 +7,7 @@ using Sodium;
 
 namespace Ecliptix.Core.Protocol;
 
-public sealed class ShieldSession : IDisposable
+public sealed class ConnectSession : IDisposable
 {
     private const int MaxProcessedIds = 6000;
     private const int DhRotationInterval = 10;
@@ -43,7 +43,7 @@ public sealed class ShieldSession : IDisposable
 
     public SemaphoreSlim Lock => _lock;
 
-    private ShieldSession(
+    private ConnectSession(
         uint id,
         LocalPublicKeyBundle localBundle,
         bool isInitiator,
@@ -76,11 +76,11 @@ public sealed class ShieldSession : IDisposable
         Debug.WriteLine($"[ShieldSession] Created session {id}, Initiator: {isInitiator}");
     }
 
-    public static Result<ShieldSession, ShieldFailure> Create(uint id, LocalPublicKeyBundle localBundle,
+    public static Result<ConnectSession, ShieldFailure> Create(uint id, LocalPublicKeyBundle localBundle,
         bool isInitiator)
     {
         if (localBundle == null)
-            return Result<ShieldSession, ShieldFailure>.Err(ShieldFailure.InvalidInput("Local bundle cannot be null."));
+            return Result<ConnectSession, ShieldFailure>.Err(ShieldFailure.InvalidInput("Local bundle cannot be null."));
 
         SodiumSecureMemoryHandle? initialSendingDhPrivateKeyHandle = null;
         byte[]? initialSendingDhPublicKey = null;
@@ -128,7 +128,7 @@ public sealed class ShieldSession : IDisposable
                 {
                     sendingStep = createdSendingStep;
                     Debug.WriteLine($"[ShieldSession] Sending step created for session {id}");
-                    var session = new ShieldSession(
+                    var session = new ConnectSession(
                         id,
                         localBundle,
                         isInitiator,
@@ -139,7 +139,7 @@ public sealed class ShieldSession : IDisposable
                     initialSendingDhPrivateKeyHandle = null;
                     persistentDhPrivateKeyHandle = null;
                     sendingStep = null;
-                    return Result<ShieldSession, ShieldFailure>.Ok(session);
+                    return Result<ConnectSession, ShieldFailure>.Ok(session);
                 });
 
             if (overallResult.IsErr)
@@ -160,7 +160,7 @@ public sealed class ShieldSession : IDisposable
             sendingStep?.Dispose();
             persistentDhPrivateKeyHandle?.Dispose();
             WipeIfNotNull(initialSendingDhPrivateKeyBytes).IgnoreResult();
-            return Result<ShieldSession, ShieldFailure>.Err(
+            return Result<ConnectSession, ShieldFailure>.Err(
                 ShieldFailure.Generic($"Unexpected error creating session {id}.", ex));
         }
     }
@@ -792,7 +792,7 @@ public sealed class ShieldSession : IDisposable
 
     private Result<Unit, ShieldFailure> CheckDisposed() =>
         _disposed
-            ? Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(ShieldSession)))
+            ? Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(ConnectSession)))
             : Result<Unit, ShieldFailure>.Ok(Unit.Value);
 
     private static Result<Unit, ShieldFailure> WipeIfNotNull(byte[]? data) =>
@@ -852,7 +852,7 @@ public sealed class ShieldSession : IDisposable
         }
     }
 
-    ~ShieldSession()
+    ~ConnectSession()
     {
         Dispose(false);
     }

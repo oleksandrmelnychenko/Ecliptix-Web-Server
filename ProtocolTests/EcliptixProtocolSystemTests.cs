@@ -145,6 +145,7 @@ public class EcliptixProtocolSystemTests : IAsyncDisposable
 
             Result<SodiumSecureMemoryHandle, ShieldFailure> aliceDeriveResult =
                 _aliceKeys.X3dhDeriveSharedSecret(bobBundleInternal, EcliptixProtocolSystem.X3dhInfo);
+            
             Assert.IsTrue(aliceDeriveResult.IsOk,
                 aliceDeriveResult.IsErr
                     ? $"Alice derivation failed: {aliceDeriveResult.UnwrapErr()}"
