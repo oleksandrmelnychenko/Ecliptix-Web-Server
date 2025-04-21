@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Akka.Actor;
 using Ecliptix.Core.Actors.Messages;
 using Ecliptix.Core.Protocol;
+using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
 using Serilog.Context;
@@ -14,12 +15,14 @@ public class EcliptixProtocolSystemActor
     private readonly ILogger<EcliptixProtocolSystemActor> _logger;
     private readonly ConcurrentDictionary<uint, IActorRef> _sessions = new();
 
+    private readonly EcliptixSystemIdentityKeys _ecliptixSystemIdentityKeys;
     private readonly IActorRef _ecliptixProtocolConnectionsManagerActor;
 
     private EcliptixProtocolSystemActor(EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys,
         IActorRef ecliptixProtocolConnectionsManagerActor,
         ILogger<EcliptixProtocolSystemActor> logger)
     {
+        _ecliptixSystemIdentityKeys = ecliptixSystemIdentityKeys;
         _ecliptixProtocolConnectionsManagerActor = ecliptixProtocolConnectionsManagerActor;
         _logger = logger;
         Become(Ready);
@@ -34,26 +37,43 @@ public class EcliptixProtocolSystemActor
         ReceiveAsync<ProcessInboundMessageCommand>(HandleProcessInboundMessageAsync);
     }
 
-    private async Task HandleBeginAppDeviceEphemeralConnectCommand(BeginAppDeviceEphemeralConnectCommand command)
+    private async Task<Result<PubKeyExchange,ShieldFailure>> HandleBeginAppDeviceEphemeralConnectCommand(BeginAppDeviceEphemeralConnectCommand command)
     {
         uint connectId = command.UniqueConnectId;
         PubKeyExchangeState exchangeType = command.PubKeyExchange.State;
         
-        
-        
-        
-        
         _logger.LogInformation($"[ShieldPro] Beginning exchange {exchangeType}, generated Session ID: {connectId}");
 
-        Logger.WriteLine("[ShieldPro] Generating ephemeral key pair.");
+        Result<LocalPublicKeyBundle, ShieldFailure> localBundleResult = _ecliptixSystemIdentityKeys.CreatePublicBundle();
+        if (!localBundleResult.IsOk)
+        {
+            return Task.FromResult(Result<PubKeyExchange, ShieldFailure>(localBundleResult.UnwrapErr()));
+        }
+        
+        LocalPublicKeyBundle localBundle = localBundleResult.Unwrap();
+
+        PublicKeyBundle protoBundle = localBundle.ToProtobufExchange();
+       
         _ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
-
-
+        
+        
+        _ecliptixProtocolConnectionsManagerActor.Ask<CreateConnectCommand>(connectId,PubKeyExchange)
+        
+        
+        Result<ShieldSession, ShieldFailure> sessionResult = ShieldSession.Create(connectId, localBundle, false);
+        if (!sessionResult.IsOk)
+        {
+            
+        }
+        
+        ShieldSession session = sessionResult.Unwrap();
+        
         try
         {
             /*PublicKeyBundle peerPublicKeyBundle =  Utilities.Utilities.ParseFromBytes<PublicKeyBundle>(
                 Utilities.Utilities.ReadMemoryToRetrieveBytes(request.Payload.Memory));*/
 
+            // Create new actor ?
 
             (uint sessionId, PubKeyExchange initialMessage) =
                 await _ecliptixProtocolSystem.BeginDataCenterPubKeyExchangeAsync(command.ExchangeType);
@@ -145,6 +165,51 @@ public class EcliptixProtocolSystemActor
                 Sender.Tell(new ProcessInboundMessageFailure(ex.Message));
             }
         }
+    }
+    
+    public async Task<(uint SessionId, PubKeyExchange InitialMessage)> BeginDataCenterPubKeyExchangeAsync(
+        PubKeyExchangeType exchangeType)
+    {
+        uint sessionId = GenerateRequestId();
+        Logger.WriteLine($"[ShieldPro] Beginning exchange {exchangeType}, generated Session ID: {sessionId}");
+
+        Logger.WriteLine("[ShieldPro] Generating ephemeral key pair.");
+        _ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
+
+        var localBundleResult = _ecliptixSystemIdentityKeys.CreatePublicBundle();
+        if (!localBundleResult.IsOk)
+            throw new ShieldChainStepException(
+                $"Failed to create local public bundle: {localBundleResult.UnwrapErr()}");
+        var localBundle = localBundleResult.Unwrap();
+
+        var protoBundle = localBundle.ToProtobufExchange()
+                          ?? throw new ShieldChainStepException("Failed to convert local public bundle to protobuf.");
+
+        var sessionResult = ShieldSession.Create(sessionId, localBundle, true);
+        if (!sessionResult.IsOk)
+            throw new ShieldChainStepException($"Failed to create session: {sessionResult.UnwrapErr()}");
+        var session = sessionResult.Unwrap();
+
+        var insertResult = await _sessionManager.InsertSession(sessionId, exchangeType, session);
+        if (!insertResult.IsOk)
+            throw new ShieldChainStepException($"Failed to insert session: {insertResult.UnwrapErr()}");
+
+        var dhPublicKeyResult = session.GetCurrentSenderDhPublicKey();
+        if (!dhPublicKeyResult.IsOk)
+            throw new ShieldChainStepException($"Sender DH key not initialized: {dhPublicKeyResult.UnwrapErr()}");
+        var dhPublicKey = dhPublicKeyResult.Unwrap();
+
+        Logger.WriteLine($"[ShieldPro] Initial DH Public Key: {Convert.ToHexString(dhPublicKey)}");
+
+        var pubKeyExchange = new PubKeyExchange
+        {
+            State = PubKeyExchangeState.Init,
+            OfType = exchangeType,
+            Payload = protoBundle.ToByteString(),
+            InitialDhPublicKey = ByteString.CopyFrom(dhPublicKey)
+        };
+
+        return (sessionId, pubKeyExchange);
     }
 
     protected override async void PostStop()

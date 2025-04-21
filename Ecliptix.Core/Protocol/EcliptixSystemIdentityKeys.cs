@@ -424,6 +424,14 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 });
             // --- End Corrected Final Bind ---
 
+            // Alice -> keypair ->extract_public bundle ----> 3DH server (process it) shared_key 32 bytes.
+            
+            // Unterval -> 100 keys. 4 hours realod.
+            // ROOT key -> CHAIN SENDER | CHINE RECIEVER ( 2 object ) -> KEY -> iter +1 index upgrade, Create new Message KEY.[] index
+            // Dh
+            
+            // CLIENT -> reload CHAIN -> NEW ALL KEYS, reset index-> generate new MessageKey. -> New (PrivaTEkEY) DHPublicKey
+            
             if (processResult.IsErr)
             {
                 return processResult;

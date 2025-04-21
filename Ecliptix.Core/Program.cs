@@ -81,15 +81,15 @@ try
                     defaultCleanupInterval),
                 "ConnectionsManager");
 
-            IActorRef protocolSystemActor = system.ActorOf(
-                EcliptixProtocolSystemActor.Build(
-                    ecliptixSystemIdentityKeys,
-                    connectionsManagerActor, 
-                    sp.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>()),
-                "ProtocolSystem");
-
-            registry.Register<EcliptixProtocolConnectionsManagerActor>(connectionsManagerActor);
-            registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
+            // IActorRef protocolSystemActor = system.ActorOf(
+            //     EcliptixProtocolSystemActor.Build(
+            //         ecliptixSystemIdentityKeys,
+            //         connectionsManagerActor, 
+            //         sp.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>()),
+            //     "ProtocolSystem");
+            //
+            // registry.Register<EcliptixProtocolConnectionsManagerActor>(connectionsManagerActor);
+            // registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
         });
     });
 
@@ -114,7 +114,7 @@ try
     app.UseResponseCompression();
 
     // Top-level route registrations
-    app.MapGrpcService<AppDeviceServices>();
+   // app.MapGrpcService<AppDeviceServices>();
     app.MapGet("/", () => Results.Ok("Service up and running"));
     app.MapHealthChecks("/health");
 

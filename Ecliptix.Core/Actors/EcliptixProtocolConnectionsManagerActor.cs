@@ -1,6 +1,9 @@
 using Akka.Actor;
+using Ecliptix.Protobuf.PubKeyExchange;
 
 namespace Ecliptix.Core.Actors;
+
+public record CreateConnectCommand(uint ConnectId,PubKeyExchange PubKeyExchange);
 
 public class EcliptixProtocolConnectionsManagerActor : ReceiveActor
 {

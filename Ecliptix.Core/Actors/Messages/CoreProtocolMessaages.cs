@@ -1,10 +1,11 @@
+using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
 
 namespace Ecliptix.Core.Actors.Messages;
 
 public record BeginAppDeviceEphemeralConnectCommand(PubKeyExchange PubKeyExchange, uint UniqueConnectId = 0);
-public record BeginBeginAppDeviceEphemeralConnectReply(PubKeyExchange PubKeyExchange);
+public record BeginBeginAppDeviceEphemeralConnectReply(Result<PubKeyExchange,ShieldFailure> PubKeyExchange);
 public record BeginExchangeFailure(string ErrorMessage);
 
 public record ProcessExchangeResponseCommand(PubKeyExchange PeerInitialMessage, uint SessionId = 0);
