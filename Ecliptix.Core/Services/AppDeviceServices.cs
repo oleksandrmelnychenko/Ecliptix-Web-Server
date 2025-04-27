@@ -1,5 +1,6 @@
 using Akka.Actor;
 using Akka.Hosting;
+using Ecliptix.Core.Actors;
 using Ecliptix.Core.Actors.Messages;
 using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Core.Services.Utilities;
@@ -18,24 +19,20 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
         Logger.LogInformation("Received EstablishAppDeviceEphemeralConnect request with type {RequestType}",
             request.OfType);
 
-        BeginAppDeviceEphemeralConnectCommand command = new(request, ServiceUtilities.ExtractUniqueConnectId(context));
-        BeginBeginAppDeviceEphemeralConnectReply? response =
-            await ProtocolActor.Ask<BeginBeginAppDeviceEphemeralConnectReply>(
-                command,
-                TimeSpan.FromSeconds(5),
-                context.CancellationToken);
-
-        return response.PubKeyExchange.Match(
-            success =>
-            {
-                Logger.LogInformation("Successfully established ephemeral connection");
-                return success;
-            },
-            failure =>
-            {
-                Logger.LogError("Failed to establish ephemeral connection: {ErrorMessage}", failure.Message);
-                Status status = ShieldFailure.ToGrpcStatus(failure);
-                throw new RpcException(status);
-            });
+        try
+        {
+            BeginAppDeviceEphemeralConnectCommand command = new(request, ServiceUtilities.ExtractUniqueConnectId(context));
+            ProcessAndRespondToPubKeyExchangeReply response =
+                await ProtocolActor.Ask<ProcessAndRespondToPubKeyExchangeReply>(
+                    command,
+                    TimeSpan.FromSeconds(35),
+                    context.CancellationToken);
+            return response.PubKeyExchange;
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
     }
 }

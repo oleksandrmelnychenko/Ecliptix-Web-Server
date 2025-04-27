@@ -150,6 +150,22 @@ public sealed class EcliptixProtocolSystem : IDataCenterPubKeyExchange, IOutboun
         SodiumSecureMemoryHandle? rootKeyHandle = null;
         try
         {
+            PublicKeyBundle peerBundleProto =
+                Helpers.ParseFromBytes<PublicKeyBundle>(peerInitialMessageProto.Payload.ToByteArray());
+            Result<LocalPublicKeyBundle, ShieldFailure> peerBundleResult = LocalPublicKeyBundle.FromProtobufExchange(peerBundleProto);
+            if (!peerBundleResult.IsOk)
+                throw new ShieldChainStepException($"Failed to convert peer bundle: {peerBundleResult.UnwrapErr()}");
+            LocalPublicKeyBundle peerBundle = peerBundleResult.Unwrap();
+            
+            Result<bool, ShieldFailure> spkValidResult = EcliptixSystemIdentityKeys.VerifyRemoteSpkSignature(
+                peerBundle.IdentityEd25519,
+                peerBundle.SignedPreKeyPublic,
+                peerBundle.SignedPreKeySignature);
+            
+            if (!spkValidResult.IsOk || !spkValidResult.Unwrap())
+                throw new ShieldChainStepException(
+                    $"SPK signature validation failed: {(spkValidResult.IsOk ? "Invalid signature" : spkValidResult.UnwrapErr())}");
+            
             Logger.WriteLine("[ShieldPro] Generating ephemeral key for response.");
             _ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
 
@@ -163,6 +179,8 @@ public sealed class EcliptixProtocolSystem : IDataCenterPubKeyExchange, IOutboun
                               ?? throw new ShieldChainStepException(
                                   "Failed to convert local public bundle to protobuf.");
 
+          
+            
             var sessionResult = ConnectSession.Create(sessionId, localBundle, false);
             if (!sessionResult.IsOk)
                 throw new ShieldChainStepException($"Failed to create session: {sessionResult.UnwrapErr()}");
@@ -172,22 +190,9 @@ public sealed class EcliptixProtocolSystem : IDataCenterPubKeyExchange, IOutboun
             if (!insertResult.IsOk)
                 throw new ShieldChainStepException($"Failed to insert session: {insertResult.UnwrapErr()}");
 
-            var peerBundleProto =
-                Helpers.ParseFromBytes<PublicKeyBundle>(peerInitialMessageProto.Payload.ToByteArray());
-            var peerBundleResult = LocalPublicKeyBundle.FromProtobufExchange(peerBundleProto);
-            if (!peerBundleResult.IsOk)
-                throw new ShieldChainStepException($"Failed to convert peer bundle: {peerBundleResult.UnwrapErr()}");
-            var peerBundle = peerBundleResult.Unwrap();
-
+          
             Logger.WriteLine("[ShieldPro] Verifying remote SPK signature.");
-            var spkValidResult = EcliptixSystemIdentityKeys.VerifyRemoteSpkSignature(
-                peerBundle.IdentityEd25519,
-                peerBundle.SignedPreKeyPublic,
-                peerBundle.SignedPreKeySignature);
-            if (!spkValidResult.IsOk || !spkValidResult.Unwrap())
-                throw new ShieldChainStepException(
-                    $"SPK signature validation failed: {(spkValidResult.IsOk ? "Invalid signature" : spkValidResult.UnwrapErr())}");
-
+          
             Logger.WriteLine("[ShieldPro] Deriving shared secret as recipient.");
             var deriveResult = _ecliptixSystemIdentityKeys.CalculateSharedSecretAsRecipient(
                 peerBundle.IdentityX25519,

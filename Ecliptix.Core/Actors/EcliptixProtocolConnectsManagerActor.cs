@@ -32,13 +32,19 @@ public class EcliptixProtocolConnectsManagerActor : ReceiveActor
     {
         uint connectId = command.ConnectId;
         PubKeyExchange exchangeType = command.PubKeyExchange;
-        
+
         IActorRef? actorRef =
             Context.ActorOf(
-                EcliptixProtocolConnectActor.Build(connectId, exchangeType),
+                EcliptixProtocolConnectActor.Build(connectId),
                 $"connect-{connectId}");
-
+        
         _connectActorRefs.TryAdd(connectId, actorRef);
+
+        ProcessAndRespondToPubKeyExchangeCommand processAndRespondToPubKeyExchangeCommand = new(exchangeType);
+        ProcessAndRespondToPubKeyExchangeReply? reply =
+           await  actorRef.Ask<ProcessAndRespondToPubKeyExchangeReply>(processAndRespondToPubKeyExchangeCommand);
+        
+        Sender.Tell(reply);
     }
 
     protected override void PostStop()

@@ -28,10 +28,7 @@ public sealed class ShieldSessionManager : IAsyncDisposable
             $"[ShieldSessionManager] Manager created {(cleanupInterval.HasValue ? "with" : "without")} cleanup task.");
     }
 
-    public static ShieldSessionManager Create() => new ShieldSessionManager();
-
-    public static ShieldSessionManager CreateWithCleanup(TimeSpan cleanupInterval) =>
-        new ShieldSessionManager(cleanupInterval);
+    public static ShieldSessionManager Create() => new();
 
     public async ValueTask<Result<ConnectSession, string>> FindSession(uint sessionId, PubKeyExchangeType exchangeType)
     {

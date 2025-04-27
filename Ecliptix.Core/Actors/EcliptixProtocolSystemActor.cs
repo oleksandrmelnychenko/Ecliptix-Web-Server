@@ -35,8 +35,8 @@ public class EcliptixProtocolSystemActor
         _logger.LogInformation($"[ShieldPro] Beginning exchange {exchangeType}, generated Session ID: {connectId}");
 
         CreateConnectCommand createConnectCommand = new(connectId, peerPubKeyExchange);
-        BeginBeginAppDeviceEphemeralConnectReply? result =
-            await _ecliptixProtocolConnectsManagerActor.Ask<BeginBeginAppDeviceEphemeralConnectReply>(
+        ProcessAndRespondToPubKeyExchangeReply? result =
+            await _ecliptixProtocolConnectsManagerActor.Ask<ProcessAndRespondToPubKeyExchangeReply>(
                 createConnectCommand);
         
         Sender.Tell(result);

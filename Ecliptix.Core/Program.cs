@@ -43,7 +43,7 @@ try
             metrics.AddConsoleExporter();
         });
 
-    builder.Services.AddRateLimiter(options =>
+    /*builder.Services.AddRateLimiter(options =>
     {
         options.AddFixedWindowLimiter(policyName: "grpc", limiterOptions =>
         {
@@ -53,7 +53,7 @@ try
             limiterOptions.QueueLimit = 0;
         });
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    });
+    });*/
 
     builder.Services.AddAkka(systemActorName, (config, sp) =>
     {
@@ -96,7 +96,7 @@ try
 
     WebApplication app = builder.Build();
 
-    app.UseRateLimiter();
+    //app.UseRateLimiter();
     app.UseHttpsRedirection();
     app.UseRequestLocalization();
     app.UseDefaultFiles();
