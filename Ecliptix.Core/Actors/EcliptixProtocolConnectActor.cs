@@ -13,7 +13,7 @@ public class EcliptixProtocolConnectActor : ReceiveActor
     private readonly ILogger<EcliptixProtocolSystemActor> _logger;
 
 
-    private EcliptixProtocolConnectActor(uint connectId, PubKeyExchange peerPubKeyExchange)
+    public EcliptixProtocolConnectActor(uint connectId, PubKeyExchange peerPubKeyExchange)
     {
         _connectId = connectId;
         Result<EcliptixSystemIdentityKeys, ShieldFailure> systemIdentityKeysResult = 

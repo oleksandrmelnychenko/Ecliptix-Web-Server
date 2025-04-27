@@ -9,7 +9,6 @@ namespace Ecliptix.Core.Protocol;
 
 public sealed class ShieldSession : IDisposable
 {
-    private const int MaxProcessedIds = 6000;
     private const int DhRotationInterval = 10;
     private static readonly TimeSpan SessionTimeout = TimeSpan.FromHours(24);
     private static readonly byte[] InitialSenderChainInfo = "ShieldInitSend"u8.ToArray();
@@ -20,28 +19,24 @@ public sealed class ShieldSession : IDisposable
     private readonly uint _id;
     private readonly LocalPublicKeyBundle _localBundle;
     private LocalPublicKeyBundle? _peerBundle;
-    private ShieldChainStep? _sendingStep;
+    private readonly ShieldChainStep? _sendingStep;
     private ShieldChainStep? _receivingStep;
     private SodiumSecureMemoryHandle? _rootKeyHandle;
     private readonly SortedDictionary<uint, ShieldMessageKey> _messageKeys;
     private PubKeyExchangeState _state;
     private ulong _nonceCounter;
     private readonly DateTimeOffset _createdAt;
-    private readonly SortedSet<uint> _missedReceiverIndices;
-    private readonly SortedSet<ulong> _processedMessageNonces;
     private byte[]? _peerDhPublicKey;
     private readonly bool _isInitiator;
     private bool _receivedNewDhKey;
     private SodiumSecureMemoryHandle? _persistentDhPrivateKeyHandle;
     private byte[]? _persistentDhPublicKey;
     private SodiumSecureMemoryHandle? _initialSendingDhPrivateKeyHandle;
-    private SodiumSecureMemoryHandle? _currentSendingDhPrivateKeyHandle; // New field
+    private SodiumSecureMemoryHandle? _currentSendingDhPrivateKeyHandle; 
     private volatile bool _disposed;
-    private bool _isFirstReceivingRatchet;
+    private readonly bool _isFirstReceivingRatchet;
 
-    private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
-
-    public SemaphoreSlim Lock => _lock;
+    public SemaphoreSlim Lock { get; } = new(1, 1);
 
     private ShieldSession(
         uint id,
@@ -67,8 +62,6 @@ public sealed class ShieldSession : IDisposable
         _state = PubKeyExchangeState.Init;
         _nonceCounter = 0;
         _createdAt = DateTimeOffset.UtcNow;
-        _missedReceiverIndices = new SortedSet<uint>();
-        _processedMessageNonces = new SortedSet<ulong>();
         _peerDhPublicKey = null;
         _receivedNewDhKey = false;
         _disposed = false;
@@ -374,12 +367,12 @@ public sealed class ShieldSession : IDisposable
             {
                 Span<byte> sendSpan = stackalloc byte[Constants.X25519KeySize];
                 Span<byte> recvSpan = stackalloc byte[Constants.X25519KeySize];
-                using (var hkdfSend = new HkdfSha256(rootKey, null))
+                using (HkdfSha256 hkdfSend = new HkdfSha256(rootKey, null))
                 {
                     hkdfSend.Expand(InitialSenderChainInfo, sendSpan);
                 }
 
-                using (var hkdfRecv = new HkdfSha256(rootKey, null))
+                using (HkdfSha256 hkdfRecv = new HkdfSha256(rootKey, null))
                 {
                     hkdfRecv.Expand(InitialReceiverChainInfo, recvSpan);
                 }
@@ -817,7 +810,7 @@ public sealed class ShieldSession : IDisposable
             SecureCleanupLogic();
             try
             {
-                _lock.Dispose();
+                Lock.Dispose();
             }
             catch (ObjectDisposedException)
             {

@@ -11,7 +11,7 @@ public class EcliptixProtocolSystemActor
 
     private readonly IActorRef _ecliptixProtocolConnectsManagerActor;
 
-    private EcliptixProtocolSystemActor(
+    public EcliptixProtocolSystemActor(
         IActorRef ecliptixProtocolConnectsManagerActor,
         ILogger<EcliptixProtocolSystemActor> logger)
     {

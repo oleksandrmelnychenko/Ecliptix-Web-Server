@@ -122,8 +122,12 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
                 var alice = new EcliptixProtocolSystem(aliceMaterial);
                 var bob = new EcliptixProtocolSystem(bobMaterial);
 
+                
                 var (aliceSessionId, aliceInitialMsg) =
                     await alice.BeginDataCenterPubKeyExchangeAsync(PubKeyExchangeType.AppDeviceEphemeralConnect);
+                
+                
+                
                 var (bobSessionId, bobResponseMsg) = await bob.ProcessAndRespondToPubKeyExchangeAsync(aliceInitialMsg);
                 await alice.CompleteDataCenterPubKeyExchangeAsync(aliceSessionId,
                     PubKeyExchangeType.AppDeviceEphemeralConnect, bobResponseMsg);

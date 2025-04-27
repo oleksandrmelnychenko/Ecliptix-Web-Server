@@ -13,7 +13,7 @@ public class EcliptixProtocolConnectsManagerActor : ReceiveActor
 
     private readonly ConcurrentDictionary<uint, IActorRef> _connectActorRefs = new();
 
-    private EcliptixProtocolConnectsManagerActor(
+    public EcliptixProtocolConnectsManagerActor(
         ILogger<EcliptixProtocolConnectsManagerActor> logger,
         TimeSpan? cleanupInterval = null)
     {
