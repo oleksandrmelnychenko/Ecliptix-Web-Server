@@ -33,21 +33,21 @@ public sealed class ShieldSessionManager : IAsyncDisposable
     public static ShieldSessionManager CreateWithCleanup(TimeSpan cleanupInterval) =>
         new ShieldSessionManager(cleanupInterval);
 
-    public async ValueTask<Result<ShieldSession, string>> FindSession(uint sessionId, PubKeyExchangeType exchangeType)
+    public async ValueTask<Result<ConnectSession, string>> FindSession(uint sessionId, PubKeyExchangeType exchangeType)
     {
         if (_disposed)
-            return Result<ShieldSession, string>.Err("Session manager is disposed.");
+            return Result<ConnectSession, string>.Err("Session manager is disposed.");
         var key = (exchangeType, sessionId);
         return await Task.Run(() =>
         {
             if (_sessions.TryGetValue(key, out var holder))
             {
                 Logger.WriteLine($"[ShieldSessionManager] Found session for {key}.");
-                return Result<ShieldSession, string>.Ok(holder.Session);
+                return Result<ConnectSession, string>.Ok(holder.Session);
             }
 
             Logger.WriteLine($"[ShieldSessionManager] Session not found for {key}.");
-            return Result<ShieldSession, string>.Err($"Session not found for type {exchangeType} and ID {sessionId}.");
+            return Result<ConnectSession, string>.Err($"Session not found for type {exchangeType} and ID {sessionId}.");
         });
     }
 
@@ -60,7 +60,7 @@ public sealed class ShieldSessionManager : IAsyncDisposable
     }
 
     public async ValueTask<Result<bool, string>> TryInsertSession(uint sessionId, PubKeyExchangeType exchangeType,
-        ShieldSession session)
+        ConnectSession session)
     {
         if (_disposed)
             return Result<bool, string>.Err("Session manager is disposed.");
@@ -79,7 +79,7 @@ public sealed class ShieldSessionManager : IAsyncDisposable
     }
 
     public async ValueTask<Result<Unit, string>> InsertSession(uint sessionId, PubKeyExchangeType exchangeType,
-        ShieldSession session)
+        ConnectSession session)
     {
         var tryInsertResult = await TryInsertSession(sessionId, exchangeType, session);
         return tryInsertResult.Bind(added => added
@@ -145,20 +145,20 @@ public sealed class ShieldSessionManager : IAsyncDisposable
         }
     }
 
-    public async ValueTask<Result<ShieldSession, string>> FirstSessionByType(PubKeyExchangeType exchangeType)
+    public async ValueTask<Result<ConnectSession, string>> FirstSessionByType(PubKeyExchangeType exchangeType)
     {
         if (_disposed)
-            return Result<ShieldSession, string>.Err("Session manager is disposed.");
+            return Result<ConnectSession, string>.Err("Session manager is disposed.");
         return await Task.Run(() =>
         {
             var session = _sessions.FirstOrDefault(kvp => kvp.Key.Item1 == exchangeType).Value?.Session;
             return session != null
-                ? Result<ShieldSession, string>.Ok(session)
-                : Result<ShieldSession, string>.Err($"No session found for type {exchangeType}.");
+                ? Result<ConnectSession, string>.Ok(session)
+                : Result<ConnectSession, string>.Err($"No session found for type {exchangeType}.");
         });
     }
 
-    public async ValueTask<Result<ShieldSession, string>> GetSession(uint sessionId, PubKeyExchangeType exchangeType)
+    public async ValueTask<Result<ConnectSession, string>> GetSession(uint sessionId, PubKeyExchangeType exchangeType)
     {
         return await FindSession(sessionId, exchangeType);
     }

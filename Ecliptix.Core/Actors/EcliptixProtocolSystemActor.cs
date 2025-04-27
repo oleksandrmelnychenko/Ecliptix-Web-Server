@@ -42,7 +42,7 @@ public class EcliptixProtocolSystemActor
         Sender.Tell(result);
     }
 
-    protected override async void PostStop()
+    protected override void PostStop()
     {
         base.PostStop();
     }
