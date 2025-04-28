@@ -25,6 +25,18 @@ public class EcliptixProtocolConnectsManagerActor : ReceiveActor
     private void Ready()
     {
         ReceiveAsync<CreateConnectCommand>(HandleCreateConnectCommand);
+        ReceiveAsync<DecryptCipherPayloadCommand>(HandleDecryptCipherPayloadCommand);
+    }
+    
+    private async Task HandleDecryptCipherPayloadCommand(DecryptCipherPayloadCommand command)
+    {
+        uint connectId = command.UniqueConnectId;
+
+        if (_connectActorRefs.TryGetValue(connectId, out IActorRef? actorRef))
+        {
+            byte[] result = await actorRef.Ask<byte[]>(command);
+            Sender.Tell(result);
+        }
     }
 
     private async Task
@@ -35,12 +47,12 @@ public class EcliptixProtocolConnectsManagerActor : ReceiveActor
 
         IActorRef? actorRef =
             Context.ActorOf(
-                EcliptixProtocolConnectActor.Build(connectId),
+                EcliptixProtocolConnectActor.Build(),
                 $"connect-{connectId}");
         
         _connectActorRefs.TryAdd(connectId, actorRef);
 
-        ProcessAndRespondToPubKeyExchangeCommand processAndRespondToPubKeyExchangeCommand = new(exchangeType);
+        ProcessAndRespondToPubKeyExchangeCommand processAndRespondToPubKeyExchangeCommand = new(connectId,exchangeType);
         ProcessAndRespondToPubKeyExchangeReply? reply =
            await  actorRef.Ask<ProcessAndRespondToPubKeyExchangeReply>(processAndRespondToPubKeyExchangeCommand);
         

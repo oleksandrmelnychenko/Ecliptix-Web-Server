@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+/*using System.Collections.Concurrent;
 using System.Diagnostics;
 using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Protobuf.PubKeyExchange;
@@ -335,4 +335,4 @@ public sealed class ShieldSessionManager : IAsyncDisposable
             }
         }
     }
-}
+}*/

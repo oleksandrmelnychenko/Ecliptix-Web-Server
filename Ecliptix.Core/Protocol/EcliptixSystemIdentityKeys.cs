@@ -167,12 +167,13 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
         byte[]? tempPrivCopy = null;
         try
         {
-            var allocResult = SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
+            Result<SodiumSecureMemoryHandle, ShieldFailure> allocResult =
+                SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
             if (allocResult.IsErr)
                 return Result<(SodiumSecureMemoryHandle, byte[]), ShieldFailure>.Err(allocResult.UnwrapErr());
             skHandle = allocResult.Unwrap();
             skBytes = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize);
-            var writeResult = skHandle.Write(skBytes);
+            Result<Unit, ShieldFailure> writeResult = skHandle.Write(skBytes);
             if (writeResult.IsErr)
             {
                 skHandle.Dispose();
@@ -182,7 +183,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             SodiumInterop.SecureWipe(skBytes).IgnoreResult();
             skBytes = null;
             tempPrivCopy = new byte[Constants.X25519PrivateKeySize];
-            var readResult = skHandle.Read(tempPrivCopy);
+            Result<Unit, ShieldFailure> readResult = skHandle.Read(tempPrivCopy);
             if (readResult.IsErr)
             {
                 skHandle.Dispose();
@@ -190,7 +191,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 return Result<(SodiumSecureMemoryHandle, byte[]), ShieldFailure>.Err(readResult.UnwrapErr());
             }
 
-            var deriveResult = Result<byte[], ShieldFailure>.Try(() => ScalarMult.Base(tempPrivCopy),
+            Result<byte[], ShieldFailure> deriveResult = Result<byte[], ShieldFailure>.Try(() => ScalarMult.Base(tempPrivCopy),
                 ex => ShieldFailure.DeriveKey($"Failed to derive {keyPurpose} public key.", ex));
             SodiumInterop.SecureWipe(tempPrivCopy).IgnoreResult();
             tempPrivCopy = null;
@@ -761,21 +762,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
         return Result<SodiumSecureMemoryHandle?, ShieldFailure>.Err(
             ShieldFailure.Handshake($"Local OPK ID {opkId} not found."));
-    }
-
-    private static byte[] ConcatenateBobDhResults(byte[] dh1, byte[] dh2, byte[] dh3, byte[]? dh4)
-    {
-        int totalDhLength = dh1.Length + dh2.Length + dh3.Length + (dh4?.Length ?? 0);
-        byte[] dhConcatBytes = new byte[totalDhLength];
-        int currentOffset = 0;
-        Buffer.BlockCopy(dh1, 0, dhConcatBytes, currentOffset, dh1.Length);
-        currentOffset += dh1.Length;
-        Buffer.BlockCopy(dh2, 0, dhConcatBytes, currentOffset, dh2.Length);
-        currentOffset += dh2.Length;
-        Buffer.BlockCopy(dh3, 0, dhConcatBytes, currentOffset, dh3.Length);
-        currentOffset += dh3.Length;
-        if (dh4 != null) Buffer.BlockCopy(dh4, 0, dhConcatBytes, currentOffset, dh4.Length);
-        return dhConcatBytes;
     }
 
     public void Dispose()

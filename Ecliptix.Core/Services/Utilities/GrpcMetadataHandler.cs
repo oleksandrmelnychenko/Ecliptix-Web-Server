@@ -16,14 +16,14 @@ public static class GrpcMetadataHandler
 
     private const string LocaleKey = "lang";
     private const string LinkIdKey = "fetch-link";
-    private const string ApiKey = "api-key";
+    private const string ApplicationInstanceIdKey = "application-identifier";
 
     private const string AppDeviceId = "d-identifier";
     private const string KeyExchangeContextTypeValue = "JmTGdGilMka07zyg5hz6Q";
     private const string KeyExchangeContextTypeKey = "oiwfT6c5kOQsZozxhTBg";
 
     public const string UniqueConnectId = "UniqueConnectId";
-    
+
     /// <summary>
     ///     Name of the connection, like (AppDeviceEphemeralConnect)
     /// </summary>
@@ -38,7 +38,7 @@ public static class GrpcMetadataHandler
 
     public static Result<Unit, MetaDataSystemFailure> ValidateRequiredMetaDataParams(Metadata requestHeaders) =>
         requestHeaders.GetValueAsResult(LinkIdKey)
-            .AndThen(_ => requestHeaders.GetValueAsResult(ApiKey))
+            .AndThen(_ => requestHeaders.GetValueAsResult(ApplicationInstanceIdKey))
             .AndThen(_ => requestHeaders.GetValueAsResult(KeyExchangeContextTypeKey))
             .Bind(contextTypeValue =>
             {
@@ -55,48 +55,69 @@ public static class GrpcMetadataHandler
             .AndThen(_ => requestHeaders.GetValueAsResult(ConnectionContextId))
             .Map(_ => Unit.Value);
 
-   public static Result<uint, MetaDataSystemFailure> ComputeUniqueConnectId(Metadata requestHeaders) =>
-        requestHeaders.GetValueAsResult(AppDeviceId)
-            .Bind(appDeviceId =>
-            {
-                if (!Guid.TryParse(appDeviceId, out Guid guid))
-                    return Result<Guid, MetaDataSystemFailure>.Err(
-                        MetaDataSystemFailure.ComponentNotFound($"Invalid Guid format for key '{AppDeviceId}'"));
-                return Result<Guid, MetaDataSystemFailure>.Ok(guid);
-            })
-            .AndThen(guid => requestHeaders.GetValueAsResult(ConnectionContextId)
-                .Bind(contextId =>
-                {
-                    if (!Enum.TryParse(contextId, true, out PubKeyExchangeType contextType) ||
-                        !Enum.IsDefined(contextType))
-                        return Result<PubKeyExchangeType, MetaDataSystemFailure>.Err(
-                            MetaDataSystemFailure.ComponentNotFound($"Invalid PubKeyExchangeType for key '{ConnectionContextId}'"));
-                    return Result<PubKeyExchangeType, MetaDataSystemFailure>.Ok(contextType);
-                })
-                .AndThen(contextType => requestHeaders.GetValueAsResult(OperationContextId)
-                    .Map(opContextId => Guid.TryParse(opContextId, out Guid opGuid) ? opGuid : (Guid?)null)
-                    .Map(opContextGuid => (guid, contextType, opContextGuid))))
+    public static Result<uint, MetaDataSystemFailure> ComputeUniqueConnectId(Metadata requestHeaders) =>
+        requestHeaders.GetValueAsResult(ApplicationInstanceIdKey)
+            .Bind(appInstanceIdStr => Guid.TryParse(appInstanceIdStr, out Guid appInstanceId)
+                ? Result<Guid, MetaDataSystemFailure>.Ok(appInstanceId)
+                : Result<Guid, MetaDataSystemFailure>.Err(
+                    MetaDataSystemFailure.ComponentNotFound(
+                        $"Invalid Guid format for key '{ApplicationInstanceIdKey}'")))
+            .AndThen(appInstanceId => requestHeaders.GetValueAsResult(AppDeviceId)
+                .Bind(appDeviceIdStr => Guid.TryParse(appDeviceIdStr, out Guid appDeviceId)
+                    ? Result<Guid, MetaDataSystemFailure>.Ok(appDeviceId)
+                    : Result<Guid, MetaDataSystemFailure>.Err(
+                        MetaDataSystemFailure.ComponentNotFound($"Invalid Guid format for key '{AppDeviceId}'")))
+                .Map(appDeviceId => (appInstanceId, appDeviceId)))
+            .AndThen(data => requestHeaders.GetValueAsResult(ConnectionContextId)
+                .Bind(connectionContextIdStr =>
+                    Enum.TryParse(connectionContextIdStr, true, out PubKeyExchangeType contextType) &&
+                    Enum.IsDefined(contextType)
+                        ? Result<PubKeyExchangeType, MetaDataSystemFailure>.Ok(contextType)
+                        : Result<PubKeyExchangeType, MetaDataSystemFailure>.Err(
+                            MetaDataSystemFailure.ComponentNotFound(
+                                $"Invalid PubKeyExchangeType for key '{ConnectionContextId}'")))
+                .Map(contextType => (data.appInstanceId, data.appDeviceId, contextType)))
+            .AndThen(data => requestHeaders.GetValueAsResult(OperationContextId)
+                .Match(
+                    opContextIdStr => Guid.TryParse(opContextIdStr, out Guid opContextId)
+                        ? Result<Guid?, MetaDataSystemFailure>.Ok(opContextId)
+                        : Result<Guid?, MetaDataSystemFailure>.Ok(null),
+                    _ => Result<Guid?, MetaDataSystemFailure>.Ok(null))
+                .Map(opContextId => (data.appInstanceId, data.appDeviceId, data.contextType, opContextId)))
             .Map(data =>
             {
-                byte[] guidBytes = data.guid.ToByteArray();
-                byte[] contextBytes = BitConverter.GetBytes((uint)data.contextType);
+                byte[] appInstanceIdBytes = data.appInstanceId.ToByteArray();
+                byte[] appDeviceIdBytes = data.appDeviceId.ToByteArray();
+                uint contextTypeUint = (uint)data.contextType;
+                byte[] contextTypeBytes = BitConverter.GetBytes(contextTypeUint);
                 if (BitConverter.IsLittleEndian)
-                    Array.Reverse(contextBytes);
-
-                int totalLength = guidBytes.Length + contextBytes.Length + (data.opContextGuid.HasValue ? 16 : 0);
-                byte[] combined = new byte[totalLength];
-                Buffer.BlockCopy(guidBytes, 0, combined, 0, guidBytes.Length);
-                Buffer.BlockCopy(contextBytes, 0, combined, guidBytes.Length, contextBytes.Length);
-                if (data.opContextGuid.HasValue)
                 {
-                    byte[] opContextBytes = data.opContextGuid.Value.ToByteArray();
-                    Buffer.BlockCopy(opContextBytes, 0, combined, guidBytes.Length + contextBytes.Length, opContextBytes.Length);
+                    Array.Reverse(contextTypeBytes);
+                }
+
+                int totalLength = appInstanceIdBytes.Length + appDeviceIdBytes.Length + contextTypeBytes.Length;
+                if (data.opContextId.HasValue)
+                {
+                    totalLength += 16;
+                }
+
+                byte[] combined = new byte[totalLength];
+                int offset = 0;
+                Buffer.BlockCopy(appInstanceIdBytes, 0, combined, offset, appInstanceIdBytes.Length);
+                offset += appInstanceIdBytes.Length;
+                Buffer.BlockCopy(appDeviceIdBytes, 0, combined, offset, appDeviceIdBytes.Length);
+                offset += appDeviceIdBytes.Length;
+                Buffer.BlockCopy(contextTypeBytes, 0, combined, offset, contextTypeBytes.Length);
+                offset += contextTypeBytes.Length;
+                if (data.opContextId.HasValue)
+                {
+                    byte[] opContextBytes = data.opContextId.Value.ToByteArray();
+                    Buffer.BlockCopy(opContextBytes, 0, combined, offset, opContextBytes.Length);
                 }
 
                 byte[] hash = SHA256.HashData(combined);
                 return BinaryPrimitives.ReadUInt32BigEndian(hash.AsSpan(0, 4));
             });
-
 
     public static string GetRequestedLocale(Metadata requestHeaders) =>
         requestHeaders.GetValueAsResult(LocaleKey).Unwrap();

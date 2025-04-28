@@ -34,10 +34,8 @@ public class EcliptixProtocolSystemTests : IAsyncDisposable
         _testContext = TestContext; // MSTest provides TestContext automatically
         _aliceKeys =  EcliptixSystemIdentityKeys.Create(5).Unwrap();
         _bobKeys =EcliptixSystemIdentityKeys.Create(5).Unwrap();
-        ShieldSessionManager aliceSessionManager = ShieldSessionManager.Create();
-        ShieldSessionManager bobSessionManager = ShieldSessionManager.Create();
-        _aliceEcliptixProtocolSystem = new EcliptixProtocolSystem(_aliceKeys, aliceSessionManager);
-        _bobEcliptixProtocolSystem = new EcliptixProtocolSystem(_bobKeys, bobSessionManager);
+        _aliceEcliptixProtocolSystem = new EcliptixProtocolSystem(_aliceKeys);
+        _bobEcliptixProtocolSystem = new EcliptixProtocolSystem(_bobKeys);
     }
 
     public TestContext TestContext { get; set; } // Required property for MSTest to inject TestContext
@@ -191,8 +189,6 @@ public class EcliptixProtocolSystemTests : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await _aliceEcliptixProtocolSystem.DisposeAsync();
-        await _bobEcliptixProtocolSystem.DisposeAsync();
         _aliceKeys.Dispose();
         _bobKeys.Dispose();
         GC.SuppressFinalize(this);

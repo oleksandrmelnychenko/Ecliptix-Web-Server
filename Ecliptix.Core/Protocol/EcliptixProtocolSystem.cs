@@ -1,24 +1,18 @@
-using System;
-using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Threading;
-using System.Threading.Tasks;
 using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
-using Sodium;
 
 namespace Ecliptix.Core.Protocol;
 
-public sealed class EcliptixProtocolSystem : IDataCenterPubKeyExchange, IOutboundMessageService, IInboundMessageService,
-    IAsyncDisposable
+public sealed class EcliptixProtocolSystem
 {
     public static ReadOnlySpan<byte> X3dhInfo => "Ecliptix_X3DH"u8;
     private readonly EcliptixSystemIdentityKeys _ecliptixSystemIdentityKeys;
-    private readonly ShieldSessionManager _sessionManager;
-    private bool _disposed;
+
+    private ConnectSession _connectSession;
 
     private static uint GenerateRequestId()
     {
@@ -28,101 +22,50 @@ public sealed class EcliptixProtocolSystem : IDataCenterPubKeyExchange, IOutboun
     private static long _requestIdCounter = 0;
     private static Timestamp GetProtoTimestamp() => Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow);
 
-    public EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys, ShieldSessionManager? sessionManager = null)
+    public EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys)
     {
-        _ecliptixSystemIdentityKeys = ecliptixSystemIdentityKeys ?? throw new ArgumentNullException(nameof(ecliptixSystemIdentityKeys));
-        _sessionManager = sessionManager ?? ShieldSessionManager.Create();
-        Logger.WriteLine("[ShieldPro] Initialized ShieldPro instance.");
+        _ecliptixSystemIdentityKeys = ecliptixSystemIdentityKeys;
     }
 
-    private async ValueTask<T> ExecuteUnderSessionLockAsync<T>(
-        uint sessionId, PubKeyExchangeType exchangeType, Func<ConnectSession, ValueTask<T>> action,
-        bool allowInitOrPending = false)
-    {
-        Result<ConnectSession, string> holderResult = await _sessionManager.FindSession(sessionId, exchangeType);
-        if (!holderResult.IsOk)
-            throw new ShieldChainStepException(holderResult.UnwrapErr());
-
-        var session = holderResult.Unwrap();
-        Logger.WriteLine($"[ShieldPro] Acquiring lock for session {sessionId} ({exchangeType}).");
-        bool acquiredLock = false;
-        try
-        {
-            acquiredLock = await session.Lock.WaitAsync(TimeSpan.FromSeconds(5));
-            if (!acquiredLock)
-                throw new ShieldChainStepException($"Failed to acquire lock for session {sessionId}.");
-
-            var stateResult = session.GetState();
-            if (!stateResult.IsOk)
-                throw new ShieldChainStepException($"Failed to get session state: {stateResult.UnwrapErr()}");
-            var state = stateResult.Unwrap();
-            if (state != PubKeyExchangeState.Complete && (!allowInitOrPending ||
-                                                          (state != PubKeyExchangeState.Init &&
-                                                           state != PubKeyExchangeState.Pending)))
-                throw new ShieldChainStepException(
-                    $"Session {sessionId} (Type: {exchangeType}) is not {(allowInitOrPending ? "Init, Pending, or Complete" : "Complete")}. State: {state}");
-
-            var expirationResult = session.EnsureNotExpired();
-            if (!expirationResult.IsOk)
-                throw new ShieldChainStepException($"Session expired: {expirationResult.UnwrapErr()}");
-
-            return await action(session);
-        }
-        finally
-        {
-            if (acquiredLock)
-            {
-                try
-                {
-                    session.Lock.Release();
-                    Logger.WriteLine($"[ShieldPro] Released lock for session {sessionId} ({exchangeType}).");
-                }
-                catch (ObjectDisposedException)
-                {
-                    Logger.WriteLine($"[ShieldPro] Lock for session {sessionId} was already disposed.");
-                }
-            }
-        }
-    }
-
-    public async Task<(uint SessionId, PubKeyExchange InitialMessage)> BeginDataCenterPubKeyExchangeAsync(
+    public PubKeyExchange BeginDataCenterPubKeyExchangeAsync(
+        uint connectId,
         PubKeyExchangeType exchangeType)
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(EcliptixProtocolSystem));
+        Debug.WriteLine($"[ShieldPro] Beginning exchange {exchangeType}, generated ConnectId: {connectId}");
+        Debug.WriteLine("[ShieldPro] Generating ephemeral key pair.");
 
-        uint sessionId = GenerateRequestId();
-        Logger.WriteLine($"[ShieldPro] Beginning exchange {exchangeType}, generated Session ID: {sessionId}");
-
-        Logger.WriteLine("[ShieldPro] Generating ephemeral key pair.");
         _ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
 
-        var localBundleResult = _ecliptixSystemIdentityKeys.CreatePublicBundle();
+        Result<LocalPublicKeyBundle, ShieldFailure>
+            localBundleResult = _ecliptixSystemIdentityKeys.CreatePublicBundle();
         if (!localBundleResult.IsOk)
+        {
             throw new ShieldChainStepException(
                 $"Failed to create local public bundle: {localBundleResult.UnwrapErr()}");
-        var localBundle = localBundleResult.Unwrap();
+        }
 
-        var protoBundle = localBundle.ToProtobufExchange()
-                          ?? throw new ShieldChainStepException("Failed to convert local public bundle to protobuf.");
+        LocalPublicKeyBundle localBundle = localBundleResult.Unwrap();
+        PublicKeyBundle protoBundle = localBundle.ToProtobufExchange();
 
-        var sessionResult = ConnectSession.Create(sessionId, localBundle, true);
+        Result<ConnectSession, ShieldFailure> sessionResult = ConnectSession.Create(connectId, localBundle, true);
         if (!sessionResult.IsOk)
+        {
             throw new ShieldChainStepException($"Failed to create session: {sessionResult.UnwrapErr()}");
-        var session = sessionResult.Unwrap();
+        }
 
-        var insertResult = await _sessionManager.InsertSession(sessionId, exchangeType, session);
-        if (!insertResult.IsOk)
-            throw new ShieldChainStepException($"Failed to insert session: {insertResult.UnwrapErr()}");
+        _connectSession = sessionResult.Unwrap();
 
-        var dhPublicKeyResult = session.GetCurrentSenderDhPublicKey();
+        Result<byte[]?, ShieldFailure> dhPublicKeyResult = _connectSession.GetCurrentSenderDhPublicKey();
         if (!dhPublicKeyResult.IsOk)
+        {
             throw new ShieldChainStepException($"Sender DH key not initialized: {dhPublicKeyResult.UnwrapErr()}");
-        var dhPublicKey = dhPublicKeyResult.Unwrap();
+        }
 
-        Logger.WriteLine($"[ShieldPro] Initial DH Public Key: {Convert.ToHexString(dhPublicKey)}");
+        byte[]? dhPublicKey = dhPublicKeyResult.Unwrap();
 
-        var pubKeyExchange = new PubKeyExchange
+        Debug.WriteLine($"[ShieldPro] Initial DH Public Key: {Convert.ToHexString(dhPublicKey)}");
+
+        PubKeyExchange pubKeyExchange = new()
         {
             State = PubKeyExchangeState.Init,
             OfType = exchangeType,
@@ -130,106 +73,117 @@ public sealed class EcliptixProtocolSystem : IDataCenterPubKeyExchange, IOutboun
             InitialDhPublicKey = ByteString.CopyFrom(dhPublicKey)
         };
 
-        return (sessionId, pubKeyExchange);
+        return pubKeyExchange;
     }
 
-    public async Task<(uint SessionId, PubKeyExchange ResponseMessage)> ProcessAndRespondToPubKeyExchangeAsync(
-        PubKeyExchange peerInitialMessageProto)
+    public PubKeyExchange ProcessAndRespondToPubKeyExchangeAsync(
+        uint connectId,PubKeyExchange peerInitialMessageProto)
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(EcliptixProtocolSystem));
-        if (peerInitialMessageProto == null)
-            throw new ArgumentNullException(nameof(peerInitialMessageProto));
         if (peerInitialMessageProto.State != PubKeyExchangeState.Init)
+        {
             throw new ArgumentException("Expected peer message state to be Init.", nameof(peerInitialMessageProto));
+        }
 
         PubKeyExchangeType exchangeType = peerInitialMessageProto.OfType;
-        uint sessionId = GenerateRequestId();
-        Logger.WriteLine($"[ShieldPro] Processing exchange request {exchangeType}, generated Session ID: {sessionId}");
+        Debug.WriteLine($"[ShieldPro] Processing exchange request {exchangeType}, generated Session ID: {connectId}");
 
         SodiumSecureMemoryHandle? rootKeyHandle = null;
+
         try
         {
             PublicKeyBundle peerBundleProto =
                 Helpers.ParseFromBytes<PublicKeyBundle>(peerInitialMessageProto.Payload.ToByteArray());
-            Result<LocalPublicKeyBundle, ShieldFailure> peerBundleResult = LocalPublicKeyBundle.FromProtobufExchange(peerBundleProto);
+            Result<LocalPublicKeyBundle, ShieldFailure> peerBundleResult =
+                LocalPublicKeyBundle.FromProtobufExchange(peerBundleProto);
             if (!peerBundleResult.IsOk)
+            {
                 throw new ShieldChainStepException($"Failed to convert peer bundle: {peerBundleResult.UnwrapErr()}");
+            }
+
             LocalPublicKeyBundle peerBundle = peerBundleResult.Unwrap();
-            
+
             Result<bool, ShieldFailure> spkValidResult = EcliptixSystemIdentityKeys.VerifyRemoteSpkSignature(
                 peerBundle.IdentityEd25519,
                 peerBundle.SignedPreKeyPublic,
                 peerBundle.SignedPreKeySignature);
-            
+
             if (!spkValidResult.IsOk || !spkValidResult.Unwrap())
+            {
                 throw new ShieldChainStepException(
                     $"SPK signature validation failed: {(spkValidResult.IsOk ? "Invalid signature" : spkValidResult.UnwrapErr())}");
-            
-            Logger.WriteLine("[ShieldPro] Generating ephemeral key for response.");
+            }
+
+            Debug.WriteLine("[ShieldPro] Generating ephemeral key for response.");
             _ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
 
-            var localBundleResult = _ecliptixSystemIdentityKeys.CreatePublicBundle();
+            Result<LocalPublicKeyBundle, ShieldFailure> localBundleResult =
+                _ecliptixSystemIdentityKeys.CreatePublicBundle();
             if (!localBundleResult.IsOk)
+            {
                 throw new ShieldChainStepException(
                     $"Failed to create local public bundle: {localBundleResult.UnwrapErr()}");
-            var localBundle = localBundleResult.Unwrap();
+            }
 
-            var protoBundle = localBundle.ToProtobufExchange()
-                              ?? throw new ShieldChainStepException(
-                                  "Failed to convert local public bundle to protobuf.");
+            LocalPublicKeyBundle localBundle = localBundleResult.Unwrap();
+            PublicKeyBundle protoBundle = localBundle.ToProtobufExchange();
 
-          
-            
-            var sessionResult = ConnectSession.Create(sessionId, localBundle, false);
+            Result<ConnectSession, ShieldFailure> sessionResult = ConnectSession.Create(connectId, localBundle, false);
             if (!sessionResult.IsOk)
+            {
                 throw new ShieldChainStepException($"Failed to create session: {sessionResult.UnwrapErr()}");
-            var session = sessionResult.Unwrap();
+            }
 
-            var insertResult = await _sessionManager.InsertSession(sessionId, exchangeType, session);
-            if (!insertResult.IsOk)
-                throw new ShieldChainStepException($"Failed to insert session: {insertResult.UnwrapErr()}");
+            _connectSession = sessionResult.Unwrap();
 
-          
-            Logger.WriteLine("[ShieldPro] Verifying remote SPK signature.");
-          
-            Logger.WriteLine("[ShieldPro] Deriving shared secret as recipient.");
-            var deriveResult = _ecliptixSystemIdentityKeys.CalculateSharedSecretAsRecipient(
-                peerBundle.IdentityX25519,
-                peerBundle.EphemeralX25519,
-                peerBundle.OneTimePreKeys?.FirstOrDefault()?.PreKeyId,
-                X3dhInfo);
+            Debug.WriteLine("[ShieldPro] Deriving shared secret as recipient.");
+            Result<SodiumSecureMemoryHandle, ShieldFailure> deriveResult =
+                _ecliptixSystemIdentityKeys.CalculateSharedSecretAsRecipient(
+                    peerBundle.IdentityX25519,
+                    peerBundle.EphemeralX25519,
+                    peerBundle.OneTimePreKeys?.FirstOrDefault()?.PreKeyId,
+                    X3dhInfo);
             if (!deriveResult.IsOk)
+            {
                 throw new ShieldChainStepException($"Shared secret derivation failed: {deriveResult.UnwrapErr()}");
+            }
+
             rootKeyHandle = deriveResult.Unwrap();
 
             byte[] rootKeyBytes = new byte[Constants.X25519KeySize];
             rootKeyHandle.Read(rootKeyBytes.AsSpan());
-            Logger.WriteLine($"[ShieldPro] Root Key: {Convert.ToHexString(rootKeyBytes)}");
+            Debug.WriteLine($"[ShieldPro] Root Key: {Convert.ToHexString(rootKeyBytes)}");
 
-            session.SetPeerBundle(peerBundle);
-            session.SetConnectionState(PubKeyExchangeState.Pending);
+            _connectSession.SetPeerBundle(peerBundle);
+            _connectSession.SetConnectionState(PubKeyExchangeState.Pending);
 
-            var peerDhKey = peerInitialMessageProto.InitialDhPublicKey.ToByteArray();
-            Logger.WriteLine($"[ShieldPro] Peer Initial DH Public Key: {Convert.ToHexString(peerDhKey)}");
+            byte[]? peerDhKey = peerInitialMessageProto.InitialDhPublicKey.ToByteArray();
+            Debug.WriteLine($"[ShieldPro] Peer Initial DH Public Key: {Convert.ToHexString(peerDhKey)}");
 
-            var finalizeResult = session.FinalizeChainAndDhKeys(rootKeyBytes, peerDhKey);
+            Result<Unit, ShieldFailure> finalizeResult =
+                _connectSession.FinalizeChainAndDhKeys(rootKeyBytes, peerDhKey);
             if (!finalizeResult.IsOk)
+            {
                 throw new ShieldChainStepException($"Failed to finalize chain keys: {finalizeResult.UnwrapErr()}");
+            }
 
-            var stateResult = session.SetConnectionState(PubKeyExchangeState.Complete);
+            Result<Unit, ShieldFailure> stateResult = _connectSession.SetConnectionState(PubKeyExchangeState.Complete);
             if (!stateResult.IsOk)
+            {
                 throw new ShieldChainStepException($"Failed to set Complete state: {stateResult.UnwrapErr()}");
+            }
 
             SodiumInterop.SecureWipe(rootKeyBytes);
 
-            var dhPublicKeyResult = session.GetCurrentSenderDhPublicKey();
+            Result<byte[]?, ShieldFailure> dhPublicKeyResult = _connectSession.GetCurrentSenderDhPublicKey();
             if (!dhPublicKeyResult.IsOk)
+            {
                 throw new ShieldChainStepException($"Failed to get sender DH key: {dhPublicKeyResult.UnwrapErr()}");
-            var dhPublicKey = dhPublicKeyResult.Unwrap();
+            }
 
-            Logger.WriteLine($"[ShieldPro] Sender DH Public Key: {Convert.ToHexString(dhPublicKey)}");
-            var response = new PubKeyExchange
+            byte[]? dhPublicKey = dhPublicKeyResult.Unwrap();
+
+            Debug.WriteLine($"[ShieldPro] Sender DH Public Key: {Convert.ToHexString(dhPublicKey)}");
+            PubKeyExchange pubKeyExchange = new()
             {
                 State = PubKeyExchangeState.Pending,
                 OfType = exchangeType,
@@ -237,12 +191,11 @@ public sealed class EcliptixProtocolSystem : IDataCenterPubKeyExchange, IOutboun
                 InitialDhPublicKey = ByteString.CopyFrom(dhPublicKey)
             };
 
-            return (sessionId, response);
+            return pubKeyExchange;
         }
         catch
         {
-            Logger.WriteLine($"[ShieldPro] Error in ProcessAndRespondToPubKeyExchangeAsync for session {sessionId}.");
-            (await _sessionManager.RemoveSessionAsync(sessionId, exchangeType)).IgnoreResult();
+            Debug.WriteLine($"[ShieldPro] Error in ProcessAndRespondToPubKeyExchangeAsync for session {connectId}.");
             throw;
         }
         finally
@@ -251,304 +204,286 @@ public sealed class EcliptixProtocolSystem : IDataCenterPubKeyExchange, IOutboun
         }
     }
 
-    public async Task<(uint SessionId, SodiumSecureMemoryHandle RootKeyHandle)> CompleteDataCenterPubKeyExchangeAsync(
+    public SodiumSecureMemoryHandle CompleteDataCenterPubKeyExchangeAsync(
         uint sessionId, PubKeyExchangeType exchangeType, PubKeyExchange peerMessage)
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(EcliptixProtocolSystem));
-        if (peerMessage == null)
-            throw new ArgumentNullException(nameof(peerMessage));
+        Debug.WriteLine($"[ShieldPro] Completing exchange for session {sessionId} ({exchangeType}).");
 
-        Logger.WriteLine($"[ShieldPro] Completing exchange for session {sessionId} ({exchangeType}).");
-
-        return await ExecuteUnderSessionLockAsync(sessionId, exchangeType, async session =>
+        PublicKeyBundle peerBundleProto = Helpers.ParseFromBytes<PublicKeyBundle>(peerMessage.Payload.ToByteArray());
+        Result<LocalPublicKeyBundle, ShieldFailure> peerBundleResult =
+            LocalPublicKeyBundle.FromProtobufExchange(peerBundleProto);
+        if (!peerBundleResult.IsOk)
         {
-            var peerBundleProto = Helpers.ParseFromBytes<PublicKeyBundle>(peerMessage.Payload.ToByteArray());
-            var peerBundleResult = LocalPublicKeyBundle.FromProtobufExchange(peerBundleProto);
-            if (!peerBundleResult.IsOk)
-                throw new ShieldChainStepException($"Failed to convert peer bundle: {peerBundleResult.UnwrapErr()}");
-            var peerBundle = peerBundleResult.Unwrap();
+            throw new ShieldChainStepException($"Failed to convert peer bundle: {peerBundleResult.UnwrapErr()}");
+        }
 
-            Logger.WriteLine("[ShieldPro] Verifying remote SPK signature for completion.");
-            var spkValidResult = EcliptixSystemIdentityKeys.VerifyRemoteSpkSignature(
-                peerBundle.IdentityEd25519,
-                peerBundle.SignedPreKeyPublic,
-                peerBundle.SignedPreKeySignature);
-            if (!spkValidResult.IsOk || !spkValidResult.Unwrap())
-                throw new ShieldChainStepException(
-                    $"SPK signature validation failed: {(spkValidResult.IsOk ? "Invalid signature" : spkValidResult.UnwrapErr())}");
+        LocalPublicKeyBundle peerBundle = peerBundleResult.Unwrap();
 
-            Logger.WriteLine("[ShieldPro] Deriving X3DH shared secret.");
-            var deriveResult = _ecliptixSystemIdentityKeys.X3dhDeriveSharedSecret(peerBundle, X3dhInfo);
-            if (!deriveResult.IsOk)
-                throw new ShieldChainStepException($"Shared secret derivation failed: {deriveResult.UnwrapErr()}");
-            var rootKeyHandle = deriveResult.Unwrap();
+        Debug.WriteLine("[ShieldPro] Verifying remote SPK signature for completion.");
+        Result<bool, ShieldFailure> spkValidResult = EcliptixSystemIdentityKeys.VerifyRemoteSpkSignature(
+            peerBundle.IdentityEd25519,
+            peerBundle.SignedPreKeyPublic,
+            peerBundle.SignedPreKeySignature);
+        if (!spkValidResult.IsOk || !spkValidResult.Unwrap())
+        {
+            throw new ShieldChainStepException(
+                $"SPK signature validation failed: {(spkValidResult.IsOk ? "Invalid signature" : spkValidResult.UnwrapErr())}");
+        }
 
-            byte[] rootKeyBytes = new byte[Constants.X25519KeySize];
-            rootKeyHandle.Read(rootKeyBytes.AsSpan());
-            Logger.WriteLine($"[ShieldPro] Derived Root Key: {Convert.ToHexString(rootKeyBytes)}");
+        Debug.WriteLine("[ShieldPro] Deriving X3DH shared secret.");
+        Result<SodiumSecureMemoryHandle, ShieldFailure> deriveResult =
+            _ecliptixSystemIdentityKeys.X3dhDeriveSharedSecret(peerBundle, X3dhInfo);
+        if (!deriveResult.IsOk)
+        {
+            throw new ShieldChainStepException($"Shared secret derivation failed: {deriveResult.UnwrapErr()}");
+        }
 
-            var finalizeResult =
-                session.FinalizeChainAndDhKeys(rootKeyBytes, peerMessage.InitialDhPublicKey.ToByteArray());
-            if (!finalizeResult.IsOk)
-                throw new ShieldChainStepException($"Failed to finalize chain keys: {finalizeResult.UnwrapErr()}");
+        SodiumSecureMemoryHandle rootKeyHandle = deriveResult.Unwrap();
 
-            session.SetPeerBundle(peerBundle);
-            var stateResult = session.SetConnectionState(PubKeyExchangeState.Complete);
-            if (!stateResult.IsOk)
-                throw new ShieldChainStepException($"Failed to set Complete state: {stateResult.UnwrapErr()}");
+        byte[] rootKeyBytes = new byte[Constants.X25519KeySize];
+        rootKeyHandle.Read(rootKeyBytes.AsSpan());
+        Debug.WriteLine($"[ShieldPro] Derived Root Key: {Convert.ToHexString(rootKeyBytes)}");
 
-            SodiumInterop.SecureWipe(rootKeyBytes);
-            return (session.SessionId, rootKeyHandle);
-        }, allowInitOrPending: true);
+        Result<Unit, ShieldFailure> finalizeResult =
+            _connectSession.FinalizeChainAndDhKeys(rootKeyBytes, peerMessage.InitialDhPublicKey.ToByteArray());
+        if (!finalizeResult.IsOk)
+        {
+            throw new ShieldChainStepException($"Failed to finalize chain keys: {finalizeResult.UnwrapErr()}");
+        }
+
+        _connectSession.SetPeerBundle(peerBundle);
+        Result<Unit, ShieldFailure> stateResult = _connectSession.SetConnectionState(PubKeyExchangeState.Complete);
+        if (!stateResult.IsOk)
+        {
+            throw new ShieldChainStepException($"Failed to set Complete state: {stateResult.UnwrapErr()}");
+        }
+
+        SodiumInterop.SecureWipe(rootKeyBytes);
+        return rootKeyHandle;
     }
 
-    public async Task<CipherPayload> ProduceOutboundMessageAsync(
-        uint sessionId, PubKeyExchangeType exchangeType, byte[] plainPayload)
+    public CipherPayload ProduceOutboundMessageAsync(
+        uint connectId, PubKeyExchangeType exchangeType, byte[] plainPayload)
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(EcliptixProtocolSystem));
-        if (plainPayload == null)
-            throw new ArgumentNullException(nameof(plainPayload));
+        Debug.WriteLine($"[ShieldPro] Producing outbound message for session {connectId} ({exchangeType}).");
 
-        Logger.WriteLine($"[ShieldPro] Producing outbound message for session {sessionId} ({exchangeType}).");
+        byte[]? ciphertext = null;
+        byte[]? tag = null;
 
-        return await ExecuteUnderSessionLockAsync(sessionId, exchangeType, async session =>
+        ShieldMessageKey? messageKeyClone = null;
+
+        try
         {
-            byte[]? messageKeyBytes = null;
-            byte[]? ciphertext = null;
-            byte[]? tag = null;
-            ShieldMessageKey? messageKeyClone = null;
+            Debug.WriteLine("[ShieldPro] Preparing next send message.");
+            Result<(ShieldMessageKey MessageKey, bool IncludeDhKey), ShieldFailure> prepResult =
+                _connectSession.PrepareNextSendMessage();
+            if (!prepResult.IsOk)
+            {
+                throw new ShieldChainStepException(
+                    $"Failed to prepare outgoing message key: {prepResult.UnwrapErr()}");
+            }
+
+            (ShieldMessageKey messageKey, bool includeDhKey) = prepResult.Unwrap();
+
+            Result<byte[], ShieldFailure> nonceResult = _connectSession.GenerateNextNonce();
+            if (!nonceResult.IsOk)
+            {
+                throw new ShieldChainStepException($"Failed to generate nonce: {nonceResult.UnwrapErr()}");
+            }
+
+            byte[] nonce = nonceResult.Unwrap();
+
+            Debug.WriteLine($"[ShieldPro][Encrypt] Nonce: {Convert.ToHexString(nonce)}");
+            Debug.WriteLine($"[ShieldPro][Encrypt] Plaintext: {Convert.ToHexString(plainPayload)}");
+
+            byte[]? newSenderDhPublicKey = includeDhKey
+                ? _connectSession.GetCurrentSenderDhPublicKey().Match(ok => ok,
+                    err => throw new ShieldChainStepException($"Failed to get sender DH key: {err.Message}"))
+                : null;
+            if (newSenderDhPublicKey != null)
+            {
+                Debug.WriteLine(
+                    $"[ShieldPro] Including new DH Public Key: {Convert.ToHexString(newSenderDhPublicKey)}");
+            }
+
+            byte[] messageKeyBytes = new byte[Constants.AesKeySize];
+            messageKey.ReadKeyMaterial(messageKeyBytes);
+            Debug.WriteLine($"[ShieldPro][Encrypt] Message Key: {Convert.ToHexString(messageKeyBytes)}");
+
+            Result<ShieldMessageKey, ShieldFailure> cloneResult =
+                ShieldMessageKey.New(messageKey.Index, messageKeyBytes);
+            if (!cloneResult.IsOk)
+            {
+                throw new ShieldChainStepException($"Failed to clone message key: {cloneResult.UnwrapErr()}");
+            }
+
+            messageKeyClone = cloneResult.Unwrap();
+
+            SodiumInterop.SecureWipe(messageKeyBytes);
+
+            Result<LocalPublicKeyBundle, ShieldFailure> peerBundleResult = _connectSession.GetPeerBundle();
+            if (!peerBundleResult.IsOk)
+            {
+                throw new ShieldChainStepException($"Failed to get peer bundle: {peerBundleResult.UnwrapErr()}");
+            }
+
+            LocalPublicKeyBundle peerBundle = peerBundleResult.Unwrap();
+
+            byte[] localId = _ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
+            byte[] peerId = peerBundle.IdentityX25519;
+            byte[] ad = new byte[localId.Length + peerId.Length];
+            Buffer.BlockCopy(localId, 0, ad, 0, localId.Length);
+            Buffer.BlockCopy(peerId, 0, ad, localId.Length, peerId.Length);
+            Debug.WriteLine($"[ShieldPro][Encrypt] Associated Data: {Convert.ToHexString(ad)}");
+
+            byte[] clonedKeyMaterial = new byte[Constants.AesKeySize];
             try
             {
-                Logger.WriteLine("[ShieldPro] Preparing next send message.");
-                var prepResult = session.PrepareNextSendMessage();
-                if (!prepResult.IsOk)
-                    throw new ShieldChainStepException(
-                        $"Failed to prepare outgoing message key: {prepResult.UnwrapErr()}");
-                var (messageKey, includeDhKey) = prepResult.Unwrap();
-
-                var nonceResult = session.GenerateNextNonce();
-                if (!nonceResult.IsOk)
-                    throw new ShieldChainStepException($"Failed to generate nonce: {nonceResult.UnwrapErr()}");
-                var nonce = nonceResult.Unwrap();
-
-                Logger.WriteLine($"[ShieldPro][Encrypt] Nonce: {Convert.ToHexString(nonce)}");
-                Logger.WriteLine($"[ShieldPro][Encrypt] Plaintext: {Convert.ToHexString(plainPayload)}");
-
-                byte[]? newSenderDhPublicKey = includeDhKey
-                    ? session.GetCurrentSenderDhPublicKey().Match(ok => ok,
-                        err => throw new ShieldChainStepException($"Failed to get sender DH key: {err.Message}"))
-                    : null;
-                if (newSenderDhPublicKey != null)
-                    Logger.WriteLine(
-                        $"[ShieldPro] Including new DH Public Key: {Convert.ToHexString(newSenderDhPublicKey)}");
-
-                messageKeyBytes = new byte[Constants.AesKeySize];
-                messageKey.ReadKeyMaterial(messageKeyBytes);
-                Logger.WriteLine($"[ShieldPro][Encrypt] Message Key: {Convert.ToHexString(messageKeyBytes)}");
-
-                var cloneResult = ShieldMessageKey.New(messageKey.Index, messageKeyBytes);
-                if (!cloneResult.IsOk)
-                    throw new ShieldChainStepException($"Failed to clone message key: {cloneResult.UnwrapErr()}");
-                messageKeyClone = cloneResult.Unwrap();
-
-                SodiumInterop.SecureWipe(messageKeyBytes);
-                messageKeyBytes = null;
-
-                var peerBundleResult = session.GetPeerBundle();
-                if (!peerBundleResult.IsOk)
-                    throw new ShieldChainStepException($"Failed to get peer bundle: {peerBundleResult.UnwrapErr()}");
-                var peerBundle = peerBundleResult.Unwrap();
-
-                byte[] localId = _ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
-                byte[] peerId = peerBundle.IdentityX25519;
-                byte[] ad = new byte[localId.Length + peerId.Length];
-                Buffer.BlockCopy(localId, 0, ad, 0, localId.Length);
-                Buffer.BlockCopy(peerId, 0, ad, localId.Length, peerId.Length);
-                Logger.WriteLine($"[ShieldPro][Encrypt] Associated Data: {Convert.ToHexString(ad)}");
-
-                byte[] clonedKeyMaterial = new byte[Constants.AesKeySize];
-                try
-                {
-                    messageKeyClone.ReadKeyMaterial(clonedKeyMaterial);
-                    (ciphertext, tag) = AesGcmService.EncryptAllocating(clonedKeyMaterial, nonce, plainPayload, ad);
-                    Logger.WriteLine($"[ShieldPro][Encrypt] Ciphertext: {Convert.ToHexString(ciphertext)}");
-                    Logger.WriteLine($"[ShieldPro][Encrypt] Tag: {Convert.ToHexString(tag)}");
-                }
-                finally
-                {
-                    SodiumInterop.SecureWipe(clonedKeyMaterial);
-                }
-
-                byte[] ciphertextAndTag = new byte[ciphertext.Length + tag.Length];
-                Buffer.BlockCopy(ciphertext, 0, ciphertextAndTag, 0, ciphertext.Length);
-                Buffer.BlockCopy(tag, 0, ciphertextAndTag, ciphertext.Length, tag.Length);
-                Logger.WriteLine($"[ShieldPro][Encrypt] Ciphertext+Tag: {Convert.ToHexString(ciphertextAndTag)}");
-
-                var payload = new CipherPayload
-                {
-                    RequestId = GenerateRequestId(),
-                    Nonce = ByteString.CopyFrom(nonce),
-                    RatchetIndex = messageKeyClone.Index,
-                    Cipher = ByteString.CopyFrom(ciphertextAndTag),
-                    CreatedAt = GetProtoTimestamp(),
-                    DhPublicKey = newSenderDhPublicKey != null
-                        ? ByteString.CopyFrom(newSenderDhPublicKey)
-                        : ByteString.Empty
-                };
-
-                Logger.WriteLine($"[ShieldPro] Outbound message prepared with Ratchet Index: {messageKeyClone.Index}");
-                return payload;
+                messageKeyClone.ReadKeyMaterial(clonedKeyMaterial);
+                (ciphertext, tag) = AesGcmService.EncryptAllocating(clonedKeyMaterial, nonce, plainPayload, ad);
+                Debug.WriteLine($"[ShieldPro][Encrypt] Ciphertext: {Convert.ToHexString(ciphertext)}");
+                Debug.WriteLine($"[ShieldPro][Encrypt] Tag: {Convert.ToHexString(tag)}");
             }
             finally
             {
-                messageKeyClone?.Dispose();
-                SodiumInterop.SecureWipe(ciphertext);
-                SodiumInterop.SecureWipe(tag);
+                SodiumInterop.SecureWipe(clonedKeyMaterial);
             }
-        });
+
+            byte[] ciphertextAndTag = new byte[ciphertext.Length + tag.Length];
+            Buffer.BlockCopy(ciphertext, 0, ciphertextAndTag, 0, ciphertext.Length);
+            Buffer.BlockCopy(tag, 0, ciphertextAndTag, ciphertext.Length, tag.Length);
+            Debug.WriteLine($"[ShieldPro][Encrypt] Ciphertext+Tag: {Convert.ToHexString(ciphertextAndTag)}");
+
+            CipherPayload payload = new()
+            {
+                RequestId = GenerateRequestId(),
+                Nonce = ByteString.CopyFrom(nonce),
+                RatchetIndex = messageKeyClone.Index,
+                Cipher = ByteString.CopyFrom(ciphertextAndTag),
+                CreatedAt = GetProtoTimestamp(),
+                DhPublicKey = newSenderDhPublicKey != null
+                    ? ByteString.CopyFrom(newSenderDhPublicKey)
+                    : ByteString.Empty
+            };
+
+            Debug.WriteLine($"[ShieldPro] Outbound message prepared with Ratchet Index: {messageKeyClone.Index}");
+            return payload;
+        }
+        finally
+        {
+            messageKeyClone?.Dispose();
+            SodiumInterop.SecureWipe(ciphertext);
+            SodiumInterop.SecureWipe(tag);
+        }
     }
 
-    public async Task<byte[]> ProcessInboundMessageAsync(
+    public byte[] ProcessInboundMessageAsync(
         uint sessionId, PubKeyExchangeType exchangeType, CipherPayload cipherPayloadProto)
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(EcliptixProtocolSystem));
-        if (cipherPayloadProto == null)
-            throw new ArgumentNullException(nameof(cipherPayloadProto));
-        if (cipherPayloadProto.Cipher.Length < Constants.AesGcmTagSize)
-            throw new ArgumentException("Ciphertext invalid.", nameof(cipherPayloadProto));
-        if (cipherPayloadProto.Nonce.Length != Constants.AesGcmNonceSize)
-            throw new ArgumentException("Nonce invalid.", nameof(cipherPayloadProto));
-
-        Logger.WriteLine(
+        Debug.WriteLine(
             $"[ShieldPro] Processing inbound message for session {sessionId} ({exchangeType}), Ratchet Index: {cipherPayloadProto.RatchetIndex}");
 
-        return await ExecuteUnderSessionLockAsync(sessionId, exchangeType, async session =>
+        byte[]? messageKeyBytes = null;
+        byte[]? plaintext = null;
+        ShieldMessageKey? messageKeyClone = null;
+        try
         {
-            byte[]? messageKeyBytes = null;
-            byte[]? plaintext = null;
-            byte[]? ad = null;
-            ShieldMessageKey? messageKeyClone = null;
-            try
+            byte[]? receivedDhKey = cipherPayloadProto.DhPublicKey.Length > 0
+                ? cipherPayloadProto.DhPublicKey.ToByteArray()
+                : null;
+            if (receivedDhKey != null)
             {
-                byte[]? receivedDhKey = cipherPayloadProto.DhPublicKey.Length > 0
-                    ? cipherPayloadProto.DhPublicKey.ToByteArray()
-                    : null;
-                if (receivedDhKey != null)
+                Result<byte[]?, ShieldFailure> currentPeerDhResult = _connectSession.GetCurrentPeerDhPublicKey();
+                if (currentPeerDhResult.IsOk)
                 {
-                    var currentPeerDhResult = session.GetCurrentPeerDhPublicKey();
-                    if (currentPeerDhResult.IsOk)
+                    byte[] currentPeerDh = currentPeerDhResult.Unwrap();
+                    Debug.WriteLine($"[ShieldPro][Decrypt] Received DH Key: {Convert.ToHexString(receivedDhKey)}");
+                    Debug.WriteLine(
+                        $"[ShieldPro][Decrypt] Current Peer DH Key: {Convert.ToHexString(currentPeerDh)}");
+                    if (!receivedDhKey.SequenceEqual(currentPeerDh))
                     {
-                        byte[] currentPeerDh = currentPeerDhResult.Unwrap();
-                        Logger.WriteLine($"[ShieldPro][Decrypt] Received DH Key: {Convert.ToHexString(receivedDhKey)}");
-                        Logger.WriteLine(
-                            $"[ShieldPro][Decrypt] Current Peer DH Key: {Convert.ToHexString(currentPeerDh)}");
-                        if (!receivedDhKey.SequenceEqual(currentPeerDh))
-                        {
-                            Logger.WriteLine("[ShieldPro] Performing DH ratchet due to new peer DH key.");
-                            var ratchetResult = session.PerformReceivingRatchet(receivedDhKey);
-                            if (!ratchetResult.IsOk)
-                                throw new ShieldChainStepException(
-                                    $"Failed to perform DH ratchet: {ratchetResult.UnwrapErr()}");
-                        }
+                        Debug.WriteLine("[ShieldPro] Performing DH ratchet due to new peer DH key.");
+                        var ratchetResult = _connectSession.PerformReceivingRatchet(receivedDhKey);
+                        if (!ratchetResult.IsOk)
+                            throw new ShieldChainStepException(
+                                $"Failed to perform DH ratchet: {ratchetResult.UnwrapErr()}");
                     }
                 }
+            }
 
-                Logger.WriteLine(
-                    $"[ShieldPro][Decrypt] Ciphertext+Tag: {Convert.ToHexString(cipherPayloadProto.Cipher.ToByteArray())}");
-                Logger.WriteLine(
-                    $"[ShieldPro][Decrypt] Nonce: {Convert.ToHexString(cipherPayloadProto.Nonce.ToByteArray())}");
+            Debug.WriteLine(
+                $"[ShieldPro][Decrypt] Ciphertext+Tag: {Convert.ToHexString(cipherPayloadProto.Cipher.ToByteArray())}");
+            Debug.WriteLine(
+                $"[ShieldPro][Decrypt] Nonce: {Convert.ToHexString(cipherPayloadProto.Nonce.ToByteArray())}");
 
-                var messageKeyResult = session.ProcessReceivedMessage(cipherPayloadProto.RatchetIndex, receivedDhKey);
-                if (!messageKeyResult.IsOk)
-                    throw new ShieldChainStepException($"Failed to process message: {messageKeyResult.UnwrapErr()}");
-                var originalMessageKey = messageKeyResult.Unwrap();
+            Result<ShieldMessageKey, ShieldFailure> messageKeyResult =
+                _connectSession.ProcessReceivedMessage(cipherPayloadProto.RatchetIndex, receivedDhKey);
+            if (!messageKeyResult.IsOk)
+            {
+                throw new ShieldChainStepException($"Failed to process message: {messageKeyResult.UnwrapErr()}");
+            }
 
-                messageKeyBytes = new byte[Constants.AesKeySize];
-                originalMessageKey.ReadKeyMaterial(messageKeyBytes);
-                Logger.WriteLine($"[ShieldPro][Decrypt] Message Key: {Convert.ToHexString(messageKeyBytes)}");
+            ShieldMessageKey originalMessageKey = messageKeyResult.Unwrap();
 
-                var cloneResult = ShieldMessageKey.New(originalMessageKey.Index, messageKeyBytes);
-                if (!cloneResult.IsOk)
-                    throw new ShieldChainStepException(
-                        $"Failed to clone message key for decryption: {cloneResult.UnwrapErr()}");
-                messageKeyClone = cloneResult.Unwrap();
+            messageKeyBytes = new byte[Constants.AesKeySize];
+            originalMessageKey.ReadKeyMaterial(messageKeyBytes);
+            Debug.WriteLine($"[ShieldPro][Decrypt] Message Key: {Convert.ToHexString(messageKeyBytes)}");
 
-                Logger.WriteLine($"[ShieldPro] Processed Key Index: {messageKeyClone.Index}");
+            var cloneResult = ShieldMessageKey.New(originalMessageKey.Index, messageKeyBytes);
+            if (!cloneResult.IsOk)
+                throw new ShieldChainStepException(
+                    $"Failed to clone message key for decryption: {cloneResult.UnwrapErr()}");
+            messageKeyClone = cloneResult.Unwrap();
 
-                var peerBundleResult = session.GetPeerBundle();
-                if (!peerBundleResult.IsOk)
-                    throw new ShieldChainStepException($"Failed to get peer bundle: {peerBundleResult.UnwrapErr()}");
-                var peerBundle = peerBundleResult.Unwrap();
+            Debug.WriteLine($"[ShieldPro] Processed Key Index: {messageKeyClone.Index}");
 
-                byte[] senderId = peerBundle.IdentityX25519;
-                byte[] receiverId = _ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
-                ad = new byte[senderId.Length + receiverId.Length];
-                Buffer.BlockCopy(senderId, 0, ad, 0, senderId.Length);
-                Buffer.BlockCopy(receiverId, 0, ad, senderId.Length, receiverId.Length);
-                Logger.WriteLine($"[ShieldPro][Decrypt] Associated Data: {Convert.ToHexString(ad)}");
+            Result<LocalPublicKeyBundle, ShieldFailure> peerBundleResult = _connectSession.GetPeerBundle();
+            if (!peerBundleResult.IsOk)
+                throw new ShieldChainStepException($"Failed to get peer bundle: {peerBundleResult.UnwrapErr()}");
+            LocalPublicKeyBundle peerBundle = peerBundleResult.Unwrap();
 
-                byte[] clonedKeyMaterial = new byte[Constants.AesKeySize];
-                try
-                {
-                    messageKeyClone.ReadKeyMaterial(clonedKeyMaterial);
-                    Logger.WriteLine($"[ShieldPro][Decrypt] Decryption Key: {Convert.ToHexString(clonedKeyMaterial)}");
+            byte[] senderId = peerBundle.IdentityX25519;
+            byte[] receiverId = _ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
+            byte[] ad = new byte[senderId.Length + receiverId.Length];
+            Buffer.BlockCopy(senderId, 0, ad, 0, senderId.Length);
+            Buffer.BlockCopy(receiverId, 0, ad, senderId.Length, receiverId.Length);
+            Debug.WriteLine($"[ShieldPro][Decrypt] Associated Data: {Convert.ToHexString(ad)}");
 
-                    ReadOnlySpan<byte> fullCipherSpan = cipherPayloadProto.Cipher.Span;
-                    int cipherLength = fullCipherSpan.Length - Constants.AesGcmTagSize;
-                    ReadOnlySpan<byte> cipherOnly = fullCipherSpan[..cipherLength];
-                    ReadOnlySpan<byte> tagSpan = fullCipherSpan[cipherLength..];
+            byte[] clonedKeyMaterial = new byte[Constants.AesKeySize];
+            try
+            {
+                messageKeyClone.ReadKeyMaterial(clonedKeyMaterial);
+                Debug.WriteLine($"[ShieldPro][Decrypt] Decryption Key: {Convert.ToHexString(clonedKeyMaterial)}");
 
-                    plaintext = AesGcmService.DecryptAllocating(
-                        clonedKeyMaterial,
-                        cipherPayloadProto.Nonce.ToByteArray(),
-                        cipherOnly.ToArray(),
-                        tagSpan.ToArray(),
-                        ad);
-                    Logger.WriteLine($"[ShieldPro][Decrypt] Plaintext: {Convert.ToHexString(plaintext)}");
+                ReadOnlySpan<byte> fullCipherSpan = cipherPayloadProto.Cipher.Span;
+                int cipherLength = fullCipherSpan.Length - Constants.AesGcmTagSize;
+                ReadOnlySpan<byte> cipherOnly = fullCipherSpan[..cipherLength];
+                ReadOnlySpan<byte> tagSpan = fullCipherSpan[cipherLength..];
 
-                    byte[] plaintextCopy = (byte[])plaintext.Clone();
-                    Logger.WriteLine(
-                        $"[ShieldPro][Decrypt] Returning plaintext copy: {Convert.ToHexString(plaintextCopy)}");
-                    return plaintextCopy;
-                }
-                finally
-                {
-                    SodiumInterop.SecureWipe(clonedKeyMaterial);
-                    SodiumInterop.SecureWipe(plaintext);
-                    SodiumInterop.SecureWipe(ad);
-                }
+                plaintext = AesGcmService.DecryptAllocating(
+                    clonedKeyMaterial,
+                    cipherPayloadProto.Nonce.ToByteArray(),
+                    cipherOnly.ToArray(),
+                    tagSpan.ToArray(),
+                    ad);
+                Debug.WriteLine($"[ShieldPro][Decrypt] Plaintext: {Convert.ToHexString(plaintext)}");
+
+                byte[] plaintextCopy = (byte[])plaintext.Clone();
+                Debug.WriteLine(
+                    $"[ShieldPro][Decrypt] Returning plaintext copy: {Convert.ToHexString(plaintextCopy)}");
+                return plaintextCopy;
             }
             finally
             {
-                SodiumInterop.SecureWipe(messageKeyBytes);
-                messageKeyClone?.Dispose();
+                SodiumInterop.SecureWipe(clonedKeyMaterial);
+                SodiumInterop.SecureWipe(plaintext);
+                SodiumInterop.SecureWipe(ad);
             }
-        });
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        Logger.WriteLine("[ShieldPro] Disposing...");
-        await _sessionManager.DisposeAsync();
-        Logger.WriteLine("[ShieldPro] Disposed.");
-        GC.SuppressFinalize(this);
-    }
-
-    private static class Logger
-    {
-        private static readonly object Lock = new();
-
-        public static void WriteLine(string message)
+        }
+        finally
         {
-            lock (Lock)
-            {
-                Debug.WriteLine($"[{DateTime.UtcNow:HH:mm:ss.fff}] {message}");
-            }
+            SodiumInterop.SecureWipe(messageKeyBytes);
+            messageKeyClone?.Dispose();
         }
     }
 }

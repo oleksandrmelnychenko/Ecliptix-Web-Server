@@ -1,8 +1,13 @@
 using Akka.Actor;
 using Ecliptix.Core.Actors.Messages;
+using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
 
 namespace Ecliptix.Core.Actors;
+
+public record DecryptCipherPayloadCommand(uint UniqueConnectId, PubKeyExchangeType PubKeyExchangeType, CipherPayload CipherPayload);
+
+public record CipherPayloadReply(CipherPayload CipherPayload);
 
 public class EcliptixProtocolSystemActor
     : ReceiveActor
@@ -23,6 +28,15 @@ public class EcliptixProtocolSystemActor
     private void Ready()
     {
         ReceiveAsync<BeginAppDeviceEphemeralConnectCommand>(HandleBeginAppDeviceEphemeralConnectCommand);
+        ReceiveAsync<DecryptCipherPayloadCommand>(HandleDecryptCipherPayloadCommand);
+    }
+
+    private async Task HandleDecryptCipherPayloadCommand(DecryptCipherPayloadCommand command)
+    {
+        byte[] result = await _ecliptixProtocolConnectsManagerActor
+            .Ask<byte[]>(command);
+        
+        Sender.Tell(result);
     }
 
     private async Task
@@ -38,7 +52,7 @@ public class EcliptixProtocolSystemActor
         ProcessAndRespondToPubKeyExchangeReply? result =
             await _ecliptixProtocolConnectsManagerActor.Ask<ProcessAndRespondToPubKeyExchangeReply>(
                 createConnectCommand);
-        
+
         Sender.Tell(result);
     }
 

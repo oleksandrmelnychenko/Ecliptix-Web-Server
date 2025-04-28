@@ -69,12 +69,9 @@ public sealed class ConnectSession : IDisposable
         Debug.WriteLine($"[ShieldSession] Created session {id}, Initiator: {isInitiator}");
     }
 
-    public static Result<ConnectSession, ShieldFailure> Create(uint id, LocalPublicKeyBundle localBundle,
+    public static Result<ConnectSession, ShieldFailure> Create(uint connectId, LocalPublicKeyBundle localBundle,
         bool isInitiator)
     {
-        if (localBundle == null)
-            return Result<ConnectSession, ShieldFailure>.Err(ShieldFailure.InvalidInput("Local bundle cannot be null."));
-
         SodiumSecureMemoryHandle? initialSendingDhPrivateKeyHandle = null;
         byte[]? initialSendingDhPublicKey = null;
         byte[]? initialSendingDhPrivateKeyBytes = null;
@@ -84,8 +81,8 @@ public sealed class ConnectSession : IDisposable
 
         try
         {
-            Debug.WriteLine($"[ShieldSession] Creating session {id}, Initiator: {isInitiator}");
-            var overallResult = GenerateX25519KeyPair("Initial Sending DH")
+            Debug.WriteLine($"[ShieldSession] Creating session {connectId}, Initiator: {isInitiator}");
+            Result<ConnectSession, ShieldFailure> overallResult = GenerateX25519KeyPair("Initial Sending DH")
                 .Bind(initialSendKeys =>
                 {
                     (initialSendingDhPrivateKeyHandle, initialSendingDhPublicKey) = initialSendKeys;
@@ -107,7 +104,7 @@ public sealed class ConnectSession : IDisposable
                     Debug.WriteLine(
                         $"[ShieldSession] Generated Persistent DH Public Key: {Convert.ToHexString(persistentDhPublicKey)}");
                     byte[] tempChainKey = new byte[Constants.X25519KeySize];
-                    var stepResult = ShieldChainStep.Create(
+                    Result<ShieldChainStep, ShieldFailure> stepResult = ShieldChainStep.Create(
                         ChainStepType.Sender,
                         tempChainKey,
                         initialSendingDhPrivateKeyBytes,
@@ -120,9 +117,9 @@ public sealed class ConnectSession : IDisposable
                 .Bind(createdSendingStep =>
                 {
                     sendingStep = createdSendingStep;
-                    Debug.WriteLine($"[ShieldSession] Sending step created for session {id}");
-                    var session = new ConnectSession(
-                        id,
+                    Debug.WriteLine($"[ShieldSession] Sending step created for session {connectId}");
+                    ConnectSession session = new ConnectSession(
+                        connectId,
                         localBundle,
                         isInitiator,
                         initialSendingDhPrivateKeyHandle!,
@@ -137,7 +134,7 @@ public sealed class ConnectSession : IDisposable
 
             if (overallResult.IsErr)
             {
-                Debug.WriteLine($"[ShieldSession] Failed to create session {id}: {overallResult.UnwrapErr().Message}");
+                Debug.WriteLine($"[ShieldSession] Failed to create session {connectId}: {overallResult.UnwrapErr().Message}");
                 initialSendingDhPrivateKeyHandle?.Dispose();
                 sendingStep?.Dispose();
                 persistentDhPrivateKeyHandle?.Dispose();
@@ -148,13 +145,13 @@ public sealed class ConnectSession : IDisposable
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[ShieldSession] Unexpected error creating session {id}: {ex.Message}");
+            Debug.WriteLine($"[ShieldSession] Unexpected error creating session {connectId}: {ex.Message}");
             initialSendingDhPrivateKeyHandle?.Dispose();
             sendingStep?.Dispose();
             persistentDhPrivateKeyHandle?.Dispose();
             WipeIfNotNull(initialSendingDhPrivateKeyBytes).IgnoreResult();
             return Result<ConnectSession, ShieldFailure>.Err(
-                ShieldFailure.Generic($"Unexpected error creating session {id}.", ex));
+                ShieldFailure.Generic($"Unexpected error creating session {connectId}.", ex));
         }
     }
 

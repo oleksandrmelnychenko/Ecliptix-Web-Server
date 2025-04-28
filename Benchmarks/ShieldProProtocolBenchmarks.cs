@@ -28,7 +28,7 @@ public class ShieldProProtocolBenchmarks
     private const int MessagesPerSession = 100;
 
     [GlobalSetup]
-    public async Task GlobalSetup()
+    public void GlobalSetup()
     {
         var aliceMaterialResult = EcliptixSystemIdentityKeys.Create(1);
         var bobMaterialResult = EcliptixSystemIdentityKeys.Create(2);
@@ -38,90 +38,80 @@ public class ShieldProProtocolBenchmarks
         var aliceMaterial = aliceMaterialResult.Unwrap();
         var bobMaterial = bobMaterialResult.Unwrap();
 
+        uint sessionId = 2;
+
         _aliceEcliptixProtocolSystem = new EcliptixProtocolSystem(aliceMaterial);
         _bobEcliptixProtocolSystem = new EcliptixProtocolSystem(bobMaterial);
 
-        (uint SessionId, PubKeyExchange InitialMessage) aliceResult = await _aliceEcliptixProtocolSystem.BeginDataCenterPubKeyExchangeAsync(_exchangeType);
-        _aliceSessionId = aliceResult.SessionId;
+        PubKeyExchange aliceResult =
+            _aliceEcliptixProtocolSystem.BeginDataCenterPubKeyExchangeAsync(sessionId, _exchangeType);
 
-        (uint SessionId, PubKeyExchange ResponseMessage) bobResult = await _bobEcliptixProtocolSystem.ProcessAndRespondToPubKeyExchangeAsync(aliceResult.InitialMessage);
-        _bobSessionId = bobResult.SessionId;
+        PubKeyExchange bobResult =
+            _bobEcliptixProtocolSystem.ProcessAndRespondToPubKeyExchangeAsync(sessionId, aliceResult);
 
-        await _aliceEcliptixProtocolSystem.CompleteDataCenterPubKeyExchangeAsync(_aliceSessionId, _exchangeType,
-            bobResult.ResponseMessage);
+        _aliceEcliptixProtocolSystem.CompleteDataCenterPubKeyExchangeAsync(_aliceSessionId, _exchangeType,
+            bobResult);
 
         _sampleMessage = Encoding.UTF8.GetBytes(new string('A', MessageSize));
     }
 
     [Benchmark(Description = "X3DH Handshake")]
-    public async Task X3DH_Handshake()
+    public void X3DH_Handshake()
     {
         var aliceMaterial = EcliptixSystemIdentityKeys.Create(3).Unwrap();
         var bobMaterial = EcliptixSystemIdentityKeys.Create(4).Unwrap();
         var alice = new EcliptixProtocolSystem(aliceMaterial);
         var bob = new EcliptixProtocolSystem(bobMaterial);
-
-        try
-        {
-            var (aliceId, aliceMsg) = await alice.BeginDataCenterPubKeyExchangeAsync(_exchangeType);
-            var (bobId, bobMsg) = await bob.ProcessAndRespondToPubKeyExchangeAsync(aliceMsg);
-            await alice.CompleteDataCenterPubKeyExchangeAsync(aliceId, _exchangeType, bobMsg);
-        }
-        finally
-        {
-            await alice.DisposeAsync();
-            await bob.DisposeAsync();
-        }
+        uint sessionId = 2;
+        var aliceMsg = alice.BeginDataCenterPubKeyExchangeAsync(sessionId, _exchangeType);
+        var bobMsg = bob.ProcessAndRespondToPubKeyExchangeAsync(sessionId, aliceMsg);
+        alice.CompleteDataCenterPubKeyExchangeAsync(sessionId, _exchangeType, bobMsg);
     }
 
     [Benchmark(Description = "Symmetric Ratchet")]
-    public async Task Symmetric_Ratchet()
+    public void Symmetric_Ratchet()
     {
         var aliceMaterial = EcliptixSystemIdentityKeys.Create(5).Unwrap();
         var bobMaterial = EcliptixSystemIdentityKeys.Create(6).Unwrap();
         var alice = new EcliptixProtocolSystem(aliceMaterial);
         var bob = new EcliptixProtocolSystem(bobMaterial);
+        uint sessionId = 2;
+        var aliceMsg = alice.BeginDataCenterPubKeyExchangeAsync(sessionId, _exchangeType);
+        var bobMsg = bob.ProcessAndRespondToPubKeyExchangeAsync(sessionId, aliceMsg);
+        alice.CompleteDataCenterPubKeyExchangeAsync(sessionId, _exchangeType, bobMsg);
 
-        try
+        for (int i = 0; i < 100; i++)
         {
-            var (aliceId, aliceMsg) = await alice.BeginDataCenterPubKeyExchangeAsync(_exchangeType);
-            var (bobId, bobMsg) = await bob.ProcessAndRespondToPubKeyExchangeAsync(aliceMsg);
-            await alice.CompleteDataCenterPubKeyExchangeAsync(aliceId, _exchangeType, bobMsg);
-
-            for (int i = 0; i < 100; i++)
-            {
-                await alice.ProduceOutboundMessageAsync(aliceId, _exchangeType, _sampleMessage);
-            }
-        }
-        finally
-        {
-            await alice.DisposeAsync();
-            await bob.DisposeAsync();
+            alice.ProduceOutboundMessageAsync(sessionId, _exchangeType, _sampleMessage);
         }
     }
 
     [Benchmark(Description = "DH Ratchet")]
-    public async Task DH_Ratchet()
+    public void DH_Ratchet()
     {
+        int sessionId = 2;
         for (int i = 0; i < 10; i++)
         {
             var cipher =
-                await _aliceEcliptixProtocolSystem.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType, _sampleMessage);
-            await _bobEcliptixProtocolSystem.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, cipher);
+                _aliceEcliptixProtocolSystem.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType,
+                    _sampleMessage);
+            _bobEcliptixProtocolSystem.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, cipher);
         }
     }
 
     [Benchmark(Description = "Message Encryption")]
     public async Task Message_Encryption()
     {
-        await _aliceEcliptixProtocolSystem.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType, _sampleMessage);
+        _aliceEcliptixProtocolSystem.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType, _sampleMessage);
     }
 
     [Benchmark(Description = "Message Decryption")]
     public async Task Message_Decryption()
     {
-        var cipher = await _aliceEcliptixProtocolSystem.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType, _sampleMessage);
-        await _bobEcliptixProtocolSystem.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, cipher);
+        var cipher =
+            _aliceEcliptixProtocolSystem.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType,
+                _sampleMessage);
+        _bobEcliptixProtocolSystem.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, cipher);
     }
 
     [Benchmark(Description = "Single Session Throughput")]
@@ -130,56 +120,45 @@ public class ShieldProProtocolBenchmarks
         for (int i = 0; i < MessageCount; i++)
         {
             var cipher =
-                await _aliceEcliptixProtocolSystem.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType, _sampleMessage);
-            await _bobEcliptixProtocolSystem.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, cipher);
-            var reply = await _bobEcliptixProtocolSystem.ProduceOutboundMessageAsync(_bobSessionId, _exchangeType, _sampleMessage);
-            await _aliceEcliptixProtocolSystem.ProcessInboundMessageAsync(_aliceSessionId, _exchangeType, reply);
+                _aliceEcliptixProtocolSystem.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType,
+                    _sampleMessage);
+            _bobEcliptixProtocolSystem.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, cipher);
+            var reply = _bobEcliptixProtocolSystem.ProduceOutboundMessageAsync(_bobSessionId, _exchangeType,
+                _sampleMessage);
+            _aliceEcliptixProtocolSystem.ProcessInboundMessageAsync(_aliceSessionId, _exchangeType, reply);
         }
     }
 
     [Benchmark(Description = "Multiple Sessions Throughput")]
     public async Task Multiple_Sessions_Throughput()
     {
-        var tasks = new Task[ParallelSessionCount];
+        Task[] tasks = new Task[ParallelSessionCount];
         for (int s = 0; s < ParallelSessionCount; s++)
         {
-            var sessionId = s;
-            tasks[s] = Task.Run(async () =>
+            int sessionId = s;
+            tasks[s] = Task.Run(() =>
             {
-                var aliceMaterial = EcliptixSystemIdentityKeys.Create((uint)(sessionId * 2 + 7)).Unwrap();
-                var bobMaterial = EcliptixSystemIdentityKeys.Create((uint)(sessionId * 2 + 8)).Unwrap();
-                var alice = new EcliptixProtocolSystem(aliceMaterial);
-                var bob = new EcliptixProtocolSystem(bobMaterial);
+                EcliptixSystemIdentityKeys aliceMaterial =
+                    EcliptixSystemIdentityKeys.Create((uint)(sessionId * 2 + 7)).Unwrap();
+                EcliptixSystemIdentityKeys bobMaterial =
+                    EcliptixSystemIdentityKeys.Create((uint)(sessionId * 2 + 8)).Unwrap();
+                EcliptixProtocolSystem alice = new EcliptixProtocolSystem(aliceMaterial);
+                EcliptixProtocolSystem bob = new EcliptixProtocolSystem(bobMaterial);
 
-                try
-                {
-                    var (aliceId, aliceMsg) = await alice.BeginDataCenterPubKeyExchangeAsync(_exchangeType);
-                    var (bobId, bobMsg) = await bob.ProcessAndRespondToPubKeyExchangeAsync(aliceMsg);
-                    await alice.CompleteDataCenterPubKeyExchangeAsync(aliceId, _exchangeType, bobMsg);
+                uint connectId = 2;
+                PubKeyExchange aliceMsg = alice.BeginDataCenterPubKeyExchangeAsync(connectId, _exchangeType);
+                PubKeyExchange bobMsg = bob.ProcessAndRespondToPubKeyExchangeAsync(connectId, aliceMsg);
+                alice.CompleteDataCenterPubKeyExchangeAsync(connectId, _exchangeType, bobMsg);
 
-                    for (int i = 0; i < MessagesPerSession; i++)
-                    {
-                        var cipher = await alice.ProduceOutboundMessageAsync(aliceId, _exchangeType, _sampleMessage);
-                        await bob.ProcessInboundMessageAsync(bobId, _exchangeType, cipher);
-                    }
-                }
-                finally
+                for (int i = 0; i < MessagesPerSession; i++)
                 {
-                    await alice.DisposeAsync();
-                    await bob.DisposeAsync();
+                    CipherPayload cipher =
+                        alice.ProduceOutboundMessageAsync(connectId, _exchangeType, _sampleMessage);
+                    bob.ProcessInboundMessageAsync(connectId, _exchangeType, cipher);
                 }
             });
         }
 
         await Task.WhenAll(tasks);
-    }
-
-    [GlobalCleanup]
-    public async Task GlobalCleanup()
-    {
-        if (_aliceEcliptixProtocolSystem != null)
-            await _aliceEcliptixProtocolSystem.DisposeAsync();
-        if (_bobEcliptixProtocolSystem != null)
-            await _bobEcliptixProtocolSystem.DisposeAsync();
     }
 }
