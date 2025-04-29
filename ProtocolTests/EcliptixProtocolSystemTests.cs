@@ -142,7 +142,7 @@ public class EcliptixProtocolSystemTests : IAsyncDisposable
             LocalPublicKeyBundle bobBundleInternal = bobBundleInternalResult.Unwrap();
 
             Result<SodiumSecureMemoryHandle, ShieldFailure> aliceDeriveResult =
-                _aliceKeys.X3dhDeriveSharedSecret(bobBundleInternal, EcliptixProtocolSystem.X3dhInfo);
+                _aliceKeys.X3dhDeriveSharedSecret(bobBundleInternal, Constants.X3dhInfo);
             
             Assert.IsTrue(aliceDeriveResult.IsOk,
                 aliceDeriveResult.IsErr
@@ -164,7 +164,7 @@ public class EcliptixProtocolSystemTests : IAsyncDisposable
                 receivedAliceBundleProto.IdentityX25519PublicKey.ToByteArray(),
                 receivedAliceBundleProto.EphemeralX25519PublicKey.ToByteArray(),
                 opkIdUsedByAlice,
-                EcliptixProtocolSystem.X3dhInfo
+                Constants.X3dhInfo
             );
             Assert.IsTrue(bobDeriveResult.IsOk,
                 bobDeriveResult.IsErr

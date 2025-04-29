@@ -12,7 +12,6 @@ namespace Ecliptix.Core.Protocol; // Or your preferred namespace
 /// </summary>
 public static class AesGcmService
 {
-    // --- Error Messages ---
     private const string ErrInvalidKeyLength = "Invalid AES key length";
     private const string ErrInvalidNonceLength = "Invalid AES-GCM nonce length";
     private const string ErrInvalidTagLength = "Invalid AES-GCM tag length";
@@ -87,7 +86,6 @@ public static class AesGcmService
         Span<byte> plaintextDestination,
         ReadOnlySpan<byte> associatedData = default)
     {
-        // Argument Validation
         if (key.Length != Constants.AesKeySize) throw new ArgumentException(ErrInvalidKeyLength, nameof(key));
         if (nonce.Length != Constants.AesGcmNonceSize)
             throw new ArgumentException(ErrInvalidNonceLength, nameof(nonce));
@@ -97,23 +95,19 @@ public static class AesGcmService
 
         try
         {
-            using AesGcm aesGcm = new AesGcm(key, Constants.AesGcmTagSize);
+            using AesGcm aesGcm = new(key, Constants.AesGcmTagSize);
             aesGcm.Decrypt(nonce, ciphertext, tag, plaintextDestination, associatedData);
-            // Throws AuthenticationTagMismatchException on failure
         }
         catch (AuthenticationTagMismatchException authEx)
         {
-            // Log removed
-            throw new ShieldChainStepException(ErrDecryptFail, authEx); // Wrap specific exception
+            throw new ShieldChainStepException(ErrDecryptFail, authEx);
         }
-        catch (CryptographicException cryptoEx) // Catch other crypto errors
+        catch (CryptographicException cryptoEx) 
         {
-            // Log removed
-            throw new ShieldChainStepException(ErrDecryptFail, cryptoEx); // Wrap general exception
+            throw new ShieldChainStepException(ErrDecryptFail, cryptoEx); 
         }
-        catch (Exception ex) // Catch other potential issues
+        catch (Exception ex) 
         {
-            // Log removed
             throw new ShieldChainStepException(ErrDecryptFail, ex);
         }
     }

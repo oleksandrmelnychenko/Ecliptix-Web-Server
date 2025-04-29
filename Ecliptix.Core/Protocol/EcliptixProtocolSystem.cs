@@ -9,17 +9,10 @@ namespace Ecliptix.Core.Protocol;
 
 public sealed class EcliptixProtocolSystem
 {
-    public static ReadOnlySpan<byte> X3dhInfo => "Ecliptix_X3DH"u8;
     private readonly EcliptixSystemIdentityKeys _ecliptixSystemIdentityKeys;
 
     private ConnectSession _connectSession;
 
-    private static uint GenerateRequestId()
-    {
-        return (uint)Interlocked.Increment(ref _requestIdCounter);
-    }
-
-    private static long _requestIdCounter = 0;
     private static Timestamp GetProtoTimestamp() => Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow);
 
     public EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys)
@@ -136,12 +129,14 @@ public sealed class EcliptixProtocolSystem
             _connectSession = sessionResult.Unwrap();
 
             Debug.WriteLine("[ShieldPro] Deriving shared secret as recipient.");
+            OneTimePreKeyRecord? first = peerBundle.OneTimePreKeys.FirstOrDefault();
+
             Result<SodiumSecureMemoryHandle, ShieldFailure> deriveResult =
                 _ecliptixSystemIdentityKeys.CalculateSharedSecretAsRecipient(
                     peerBundle.IdentityX25519,
                     peerBundle.EphemeralX25519,
-                    peerBundle.OneTimePreKeys?.FirstOrDefault()?.PreKeyId,
-                    X3dhInfo);
+                    first?.PreKeyId,
+                    Constants.X3dhInfo);
             if (!deriveResult.IsOk)
             {
                 throw new ShieldChainStepException($"Shared secret derivation failed: {deriveResult.UnwrapErr()}");
@@ -232,7 +227,7 @@ public sealed class EcliptixProtocolSystem
 
         Debug.WriteLine("[ShieldPro] Deriving X3DH shared secret.");
         Result<SodiumSecureMemoryHandle, ShieldFailure> deriveResult =
-            _ecliptixSystemIdentityKeys.X3dhDeriveSharedSecret(peerBundle, X3dhInfo);
+            _ecliptixSystemIdentityKeys.X3dhDeriveSharedSecret(peerBundle, Constants.X3dhInfo);
         if (!deriveResult.IsOk)
         {
             throw new ShieldChainStepException($"Shared secret derivation failed: {deriveResult.UnwrapErr()}");
@@ -356,7 +351,7 @@ public sealed class EcliptixProtocolSystem
 
             CipherPayload payload = new()
             {
-                RequestId = GenerateRequestId(),
+                RequestId = Helpers.GenerateRandomUInt32(true),
                 Nonce = ByteString.CopyFrom(nonce),
                 RatchetIndex = messageKeyClone.Index,
                 Cipher = ByteString.CopyFrom(ciphertextAndTag),

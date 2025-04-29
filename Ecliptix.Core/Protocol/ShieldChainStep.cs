@@ -6,17 +6,21 @@ public sealed class ShieldChainStep : IDisposable
 {
     private const uint DefaultCacheWindowSize = 1000;
 
-    private readonly ChainStepType _stepType;
-    private readonly uint _cacheWindow;
     private SodiumSecureMemoryHandle _chainKeyHandle;
-    private SodiumSecureMemoryHandle? _dhPrivateKeyHandle;
-    private byte[]? _dhPublicKey;
-    private uint _currentIndex;
-    private DateTimeOffset _lastUpdate;
-    private bool _disposed;
-    public bool IsNewChain { get; internal set; }
 
-    public ChainStepType StepType => _stepType;
+    private SodiumSecureMemoryHandle? _dhPrivateKeyHandle;
+
+    private byte[]? _dhPublicKey;
+
+    private uint _currentIndex;
+
+    private bool _disposed;
+
+    private bool _isNewChain;
+
+    private readonly ChainStepType _stepType;
+
+    private readonly uint _cacheWindow;
 
     public Result<uint, ShieldFailure> GetCurrentIndex() =>
         _disposed
@@ -32,7 +36,6 @@ public sealed class ShieldChainStep : IDisposable
         {
             Debug.WriteLine($"[ShieldChainStep] Setting current index from {_currentIndex} to {value}");
             _currentIndex = value;
-            _lastUpdate = DateTimeOffset.UtcNow;
         }
 
         return Result<Unit, ShieldFailure>.Ok(Unit.Value);
@@ -51,8 +54,7 @@ public sealed class ShieldChainStep : IDisposable
         _dhPublicKey = dhPublicKey;
         _cacheWindow = cacheWindowSize;
         _currentIndex = 0;
-        _lastUpdate = DateTimeOffset.UtcNow;
-        IsNewChain = false;
+        _isNewChain = false;
         _disposed = false;
         Debug.WriteLine($"[ShieldChainStep] Created chain step of type {_stepType}");
     }
@@ -103,49 +105,59 @@ public sealed class ShieldChainStep : IDisposable
     {
         Debug.WriteLine("[ShieldChainStep] Validating and preparing DH keys");
         if (initialDhPrivateKey == null && initialDhPublicKey == null)
-            return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Ok((null, null));
-
-        if (initialDhPrivateKey != null && initialDhPublicKey != null)
         {
-            if (initialDhPrivateKey.Length != Constants.X25519PrivateKeySize)
-                return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
-                    ShieldFailure.InvalidInput(
-                        $"Initial DH private key must be {Constants.X25519PrivateKeySize} bytes."));
-            if (initialDhPublicKey.Length != Constants.X25519KeySize)
-                return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
-                    ShieldFailure.InvalidInput($"Initial DH public key must be {Constants.X25519KeySize} bytes."));
+            return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Ok((null, null));
+        }
 
-            SodiumSecureMemoryHandle? dhPrivateKeyHandle = null;
-            try
-            {
-                return SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize)
-                    .Bind(handle =>
-                    {
-                        dhPrivateKeyHandle = handle;
-                        Debug.WriteLine(
-                            $"[ShieldChainStep] Writing initial DH private key: {Convert.ToHexString(initialDhPrivateKey)}");
-                        return handle.Write(initialDhPrivateKey);
-                    })
-                    .Map(_ =>
-                    {
-                        byte[] dhPublicKeyCloned = (byte[])initialDhPublicKey.Clone();
-                        Debug.WriteLine(
-                            $"[ShieldChainStep] Cloned DH public key: {Convert.ToHexString(dhPublicKeyCloned)}");
-                        return (dhPrivateKeyHandle, dhPublicKeyCloned);
-                    })
-                    .MapErr(err =>
-                    {
-                        dhPrivateKeyHandle?.Dispose();
-                        return err;
-                    })!;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ShieldChainStep] Unexpected error preparing DH keys: {ex.Message}");
-                dhPrivateKeyHandle?.Dispose();
-                return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
-                    ShieldFailure.Generic("Unexpected error preparing DH keys.", ex));
-            }
+        if (initialDhPrivateKey == null || initialDhPublicKey == null)
+        {
+            return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
+                ShieldFailure.InvalidInput("Both DH private and public keys must be provided, or neither."));
+        }
+
+        if (initialDhPrivateKey.Length != Constants.X25519PrivateKeySize)
+        {
+            return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
+                ShieldFailure.InvalidInput(
+                    $"Initial DH private key must be {Constants.X25519PrivateKeySize} bytes."));
+        }
+
+        if (initialDhPublicKey.Length != Constants.X25519KeySize)
+        {
+            return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
+                ShieldFailure.InvalidInput($"Initial DH public key must be {Constants.X25519KeySize} bytes."));
+        }
+
+        SodiumSecureMemoryHandle? dhPrivateKeyHandle = null;
+        try
+        {
+            return SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize)
+                .Bind(handle =>
+                {
+                    dhPrivateKeyHandle = handle;
+                    Debug.WriteLine(
+                        $"[ShieldChainStep] Writing initial DH private key: {Convert.ToHexString(initialDhPrivateKey)}");
+                    return handle.Write(initialDhPrivateKey);
+                })
+                .Map(_ =>
+                {
+                    byte[] dhPublicKeyCloned = (byte[])initialDhPublicKey.Clone();
+                    Debug.WriteLine(
+                        $"[ShieldChainStep] Cloned DH public key: {Convert.ToHexString(dhPublicKeyCloned)}");
+                    return (dhPrivateKeyHandle, dhPublicKeyCloned);
+                })
+                .MapErr(err =>
+                {
+                    dhPrivateKeyHandle?.Dispose();
+                    return err;
+                })!;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ShieldChainStep] Unexpected error preparing DH keys: {ex.Message}");
+            dhPrivateKeyHandle?.Dispose();
+            return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
+                ShieldFailure.Generic("Unexpected error preparing DH keys.", ex));
         }
 
         return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
@@ -323,9 +335,8 @@ public sealed class ShieldChainStep : IDisposable
             .Bind(_ => HandleDhKeyUpdate(newDhPrivateKey, newDhPublicKey))
             .Map(_ =>
             {
-                _lastUpdate = DateTimeOffset.UtcNow;
-                IsNewChain = _stepType == ChainStepType.Sender;
-                Debug.WriteLine($"[ShieldChainStep] Keys updated successfully. IsNewChain: {IsNewChain}");
+                _isNewChain = _stepType == ChainStepType.Sender;
+                Debug.WriteLine($"[ShieldChainStep] Keys updated successfully. IsNewChain: {_isNewChain}");
                 return Unit.Value;
             });
     }
@@ -344,61 +355,48 @@ public sealed class ShieldChainStep : IDisposable
     private Result<Unit, ShieldFailure> HandleDhKeyUpdate(byte[]? newDhPrivateKey, byte[]? newDhPublicKey)
     {
         if (newDhPrivateKey == null && newDhPublicKey == null)
-            return Result<Unit, ShieldFailure>.Ok(Unit.Value);
-
-        if (newDhPrivateKey != null && newDhPublicKey != null)
         {
-            if (newDhPrivateKey.Length != Constants.X25519PrivateKeySize)
-                return Result<Unit, ShieldFailure>.Err(
-                    ShieldFailure.InvalidInput($"New DH private key must be {Constants.X25519PrivateKeySize} bytes."));
-            if (newDhPublicKey.Length != Constants.X25519KeySize)
-                return Result<Unit, ShieldFailure>.Err(
-                    ShieldFailure.InvalidInput($"New DH public key must be {Constants.X25519KeySize} bytes."));
-
-            Debug.WriteLine(
-                $"[ShieldChainStep] Updating DH keys. Private: {Convert.ToHexString(newDhPrivateKey)}, Public: {Convert.ToHexString(newDhPublicKey)}");
-            Result<Unit, ShieldFailure> ensureHandleResult = (_dhPrivateKeyHandle == null)
-                ? SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize)
-                    .Map(handle =>
-                    {
-                        _dhPrivateKeyHandle = handle;
-                        return Unit.Value;
-                    })
-                : Result<Unit, ShieldFailure>.Ok(Unit.Value);
-
-            return ensureHandleResult
-                .Bind(_ => _dhPrivateKeyHandle!.Write(newDhPrivateKey))
-                .Map(_ =>
-                {
-                    WipeIfNotNull(_dhPublicKey).IgnoreResult();
-                    _dhPublicKey = (byte[])newDhPublicKey.Clone();
-                    return Unit.Value;
-                });
+            return Result<Unit, ShieldFailure>.Ok(Unit.Value);
         }
 
-        return Result<Unit, ShieldFailure>.Err(
-            ShieldFailure.InvalidInput("Both new DH private and public keys must be provided, or neither."));
-    }
-
-    internal Result<byte[], ShieldFailure> ReadChainKey() =>
-        CheckDisposed().Bind(_ => _chainKeyHandle.ReadBytes(Constants.X25519KeySize))
-            .Map(bytes =>
-            {
-                Debug.WriteLine($"[ShieldChainStep] Read chain key: {Convert.ToHexString(bytes)}");
-                return bytes;
-            });
-
-    internal Result<byte[]?, ShieldFailure> ReadDhPrivateKey() =>
-        CheckDisposed().Bind<byte[]?>(_ =>
+        if (newDhPrivateKey == null || newDhPublicKey == null)
         {
-            if (_dhPrivateKeyHandle == null) return Result<byte[]?, ShieldFailure>.Ok(null);
-            return _dhPrivateKeyHandle.ReadBytes(Constants.X25519PrivateKeySize)
-                .Map<byte[]?>(okBytes =>
+            return Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.InvalidInput("Both new DH private and public keys must be provided, or neither."));
+        }
+
+        if (newDhPrivateKey.Length != Constants.X25519PrivateKeySize)
+        {
+            return Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.InvalidInput($"New DH private key must be {Constants.X25519PrivateKeySize} bytes."));
+        }
+
+        if (newDhPublicKey.Length != Constants.X25519KeySize)
+        {
+            return Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.InvalidInput($"New DH public key must be {Constants.X25519KeySize} bytes."));
+        }
+
+        Debug.WriteLine(
+            $"[ShieldChainStep] Updating DH keys. Private: {Convert.ToHexString(newDhPrivateKey)}, Public: {Convert.ToHexString(newDhPublicKey)}");
+        Result<Unit, ShieldFailure> ensureHandleResult = (_dhPrivateKeyHandle == null)
+            ? SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize)
+                .Map(handle =>
                 {
-                    Debug.WriteLine($"[ShieldChainStep] Read DH private key: {Convert.ToHexString(okBytes)}");
-                    return okBytes;
-                });
-        });
+                    _dhPrivateKeyHandle = handle;
+                    return Unit.Value;
+                })
+            : Result<Unit, ShieldFailure>.Ok(Unit.Value);
+
+        return ensureHandleResult
+            .Bind(_ => _dhPrivateKeyHandle!.Write(newDhPrivateKey))
+            .Map(_ =>
+            {
+                WipeIfNotNull(_dhPublicKey).IgnoreResult();
+                _dhPublicKey = (byte[])newDhPublicKey.Clone();
+                return Unit.Value;
+            });
+    }
 
     internal Result<byte[]?, ShieldFailure> ReadDhPublicKey() =>
         CheckDisposed().Map<byte[]?>(_ =>
@@ -422,8 +420,6 @@ public sealed class ShieldChainStep : IDisposable
         _chainKeyHandle = null!;
         _dhPrivateKeyHandle = null;
         _dhPublicKey = null;
-
-        GC.SuppressFinalize(this);
     }
 
     internal void PruneOldKeys(SortedDictionary<uint, ShieldMessageKey> messageKeys)
@@ -452,9 +448,6 @@ public sealed class ShieldChainStep : IDisposable
         }
     }
 
-    private static Result<Unit, ShieldFailure> WipeIfNotNull(byte[]? data)
-    {
-        if (data == null) return Result<Unit, ShieldFailure>.Ok(Unit.Value);
-        return SodiumInterop.SecureWipe(data);
-    }
+    private static Result<Unit, ShieldFailure> WipeIfNotNull(byte[]? data) =>
+        data == null ? Result<Unit, ShieldFailure>.Ok(Unit.Value) : SodiumInterop.SecureWipe(data);
 }

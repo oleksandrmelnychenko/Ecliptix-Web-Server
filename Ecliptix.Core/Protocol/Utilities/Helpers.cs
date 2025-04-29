@@ -19,26 +19,6 @@ public static class Helpers
         return value;
     }
 
-    public static byte[] GenerateSecureRandomTag(int tagLengthBytes)
-    {
-        if (tagLengthBytes < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(tagLengthBytes));
-        }
-        byte[] tagBytes = new byte[tagLengthBytes];
-        Rng.GetBytes(tagBytes);
-        return tagBytes;
-    }
-
-    internal static void GenerateSecureRandomTag(Span<byte> destination)
-    {
-        if (destination.IsEmpty)
-        {
-            throw new ArgumentException(null, nameof(destination));
-        }
-        Rng.GetBytes(destination);
-    }
-
     public static T ParseFromBytes<T>(byte[] data) where T : IMessage<T>, new()
     {
         MessageParser<T> parser = new(() => new T());

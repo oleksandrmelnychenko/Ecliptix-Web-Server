@@ -6,14 +6,11 @@ namespace Ecliptix.Core.Protocol;
 
 public record OneTimePreKeyRecord(uint PreKeyId, byte[] PublicKey)
 {
-    // Consider adding validation constants if needed elsewhere
-    private const int ExpectedPublicKeySize = 32; // Example size
-
     public static Result<OneTimePreKeyRecord, ShieldFailure> Create(uint preKeyId, byte[] publicKey)
     {
-        if (publicKey.Length != ExpectedPublicKeySize)
+        if (publicKey.Length != Constants.Ed25519KeySize)
             return Result<OneTimePreKeyRecord, ShieldFailure>.Err(
-                ShieldFailure.Decode($"One-time prekey public key must be {ExpectedPublicKeySize} bytes."));
+                ShieldFailure.Decode($"One-time prekey public key must be {Constants.Ed25519KeySize} bytes."));
 
         return Result<OneTimePreKeyRecord, ShieldFailure>.Ok(new OneTimePreKeyRecord(preKeyId, publicKey));
     }
@@ -40,7 +37,6 @@ public record LocalPublicKeyBundle(
     {
     }
 
-    // Internal struct to hold validated data before final record creation
     private readonly struct InternalBundleData
     {
         public required byte[] IdentityEd25519 { get; init; }
@@ -51,7 +47,6 @@ public record LocalPublicKeyBundle(
         public required List<OneTimePreKeyRecord> OneTimePreKeys { get; init; }
         public required byte[]? EphemeralX25519 { get; init; }
     }
-
 
     public PublicKeyBundle ToProtobufExchange()
     {
@@ -84,8 +79,10 @@ public record LocalPublicKeyBundle(
     public static Result<LocalPublicKeyBundle, ShieldFailure> FromProtobufExchange(PublicKeyBundle? proto)
     {
         if (proto == null)
+        {
             return Result<LocalPublicKeyBundle, ShieldFailure>.Err(
                 ShieldFailure.InvalidInput("Input Protobuf bundle cannot be null."));
+        }
 
         return Result<LocalPublicKeyBundle, ShieldFailure>.Try(
             func: () =>

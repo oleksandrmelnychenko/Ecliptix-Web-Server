@@ -3,19 +3,39 @@ namespace Ecliptix.Core.Protocol.Utilities;
 public static class Constants
 {
     public const int X25519KeySize = 32;
-    public const uint CacheWindowSize = 1000;
-    public static readonly TimeSpan RotationTimeout = TimeSpan.FromSeconds(3600);
     public const int Ed25519KeySize = 32;
-    // HKDF Info constants
-    public static readonly byte[] MsgInfo = { 0x01 };
-    public static readonly byte[] ChainInfo = { 0x02 };
-    public static readonly byte[] DhRatchetInfo = { 0x03 }; // For Root Key + Chain Key derivation post-DH
-    public static ReadOnlySpan<byte> X3dhInfo => "Ecliptix_X3DH"u8;
-    // Info constants for initial chain key derivation from root key
-    // Ensure these are distinct from DhRatchetInfo and each other
-    public static readonly byte[] InitialSenderChainInfo = { 0x11 };
-    public static readonly byte[] InitialReceiverChainInfo = { 0x12 };
+    
+    public static readonly byte[] MsgInfo = [0x01];
+    public static readonly byte[] ChainInfo = [0x02];
+    public static readonly byte[] X3dhInfo =
+    [
+        0x45, 0x63, 0x6C, 0x69, 0x70, 0x74, 0x69, 0x78, 0x5F, 0x58, 0x33, 0x44, 0x48
+    ];
 
+    public static readonly byte[] EphemeralDhRatchet =
+    [
+        0x45,
+        0x70,
+        0x68,
+        0x65,
+        0x6D,
+        0x65,
+        0x72,
+        0x61,
+        0x6C,
+        0x20,
+        0x44,
+        0x48,
+        0x20,
+        0x52,
+        0x61,
+        0x74,
+        0x63,
+        0x68,
+        0x65,
+        0x74
+    ];
+    
     public const int Ed25519PublicKeySize = 32;
     public const int Ed25519SecretKeySize = 64;
     public const int Ed25519SignatureSize = 64;
