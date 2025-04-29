@@ -7,30 +7,23 @@ using Google.Protobuf.WellKnownTypes;
 
 namespace Ecliptix.Core.Protocol;
 
-public sealed class EcliptixProtocolSystem
+public sealed class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys)
 {
-    private readonly EcliptixSystemIdentityKeys _ecliptixSystemIdentityKeys;
-
     private ConnectSession _connectSession;
 
     private static Timestamp GetProtoTimestamp() => Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow);
 
-    public EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys)
-    {
-        _ecliptixSystemIdentityKeys = ecliptixSystemIdentityKeys;
-    }
-
-    public PubKeyExchange BeginDataCenterPubKeyExchangeAsync(
+    public PubKeyExchange BeginDataCenterPubKeyExchange(
         uint connectId,
         PubKeyExchangeType exchangeType)
     {
         Debug.WriteLine($"[ShieldPro] Beginning exchange {exchangeType}, generated ConnectId: {connectId}");
         Debug.WriteLine("[ShieldPro] Generating ephemeral key pair.");
 
-        _ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
+        ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
 
         Result<LocalPublicKeyBundle, ShieldFailure>
-            localBundleResult = _ecliptixSystemIdentityKeys.CreatePublicBundle();
+            localBundleResult = ecliptixSystemIdentityKeys.CreatePublicBundle();
         if (!localBundleResult.IsOk)
         {
             throw new ShieldChainStepException(
@@ -69,7 +62,7 @@ public sealed class EcliptixProtocolSystem
         return pubKeyExchange;
     }
 
-    public PubKeyExchange ProcessAndRespondToPubKeyExchangeAsync(
+    public PubKeyExchange ProcessAndRespondToPubKeyExchange(
         uint connectId,PubKeyExchange peerInitialMessageProto)
     {
         if (peerInitialMessageProto.State != PubKeyExchangeState.Init)
@@ -107,10 +100,10 @@ public sealed class EcliptixProtocolSystem
             }
 
             Debug.WriteLine("[ShieldPro] Generating ephemeral key for response.");
-            _ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
+            ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
 
             Result<LocalPublicKeyBundle, ShieldFailure> localBundleResult =
-                _ecliptixSystemIdentityKeys.CreatePublicBundle();
+                ecliptixSystemIdentityKeys.CreatePublicBundle();
             if (!localBundleResult.IsOk)
             {
                 throw new ShieldChainStepException(
@@ -132,7 +125,7 @@ public sealed class EcliptixProtocolSystem
             OneTimePreKeyRecord? first = peerBundle.OneTimePreKeys.FirstOrDefault();
 
             Result<SodiumSecureMemoryHandle, ShieldFailure> deriveResult =
-                _ecliptixSystemIdentityKeys.CalculateSharedSecretAsRecipient(
+                ecliptixSystemIdentityKeys.CalculateSharedSecretAsRecipient(
                     peerBundle.IdentityX25519,
                     peerBundle.EphemeralX25519,
                     first?.PreKeyId,
@@ -199,8 +192,8 @@ public sealed class EcliptixProtocolSystem
         }
     }
 
-    public SodiumSecureMemoryHandle CompleteDataCenterPubKeyExchangeAsync(
-        uint sessionId, PubKeyExchangeType exchangeType, PubKeyExchange peerMessage)
+    public void CompleteDataCenterPubKeyExchange(uint sessionId, PubKeyExchangeType exchangeType,
+        PubKeyExchange peerMessage)
     {
         Debug.WriteLine($"[ShieldPro] Completing exchange for session {sessionId} ({exchangeType}).");
 
@@ -227,7 +220,7 @@ public sealed class EcliptixProtocolSystem
 
         Debug.WriteLine("[ShieldPro] Deriving X3DH shared secret.");
         Result<SodiumSecureMemoryHandle, ShieldFailure> deriveResult =
-            _ecliptixSystemIdentityKeys.X3dhDeriveSharedSecret(peerBundle, Constants.X3dhInfo);
+            ecliptixSystemIdentityKeys.X3dhDeriveSharedSecret(peerBundle, Constants.X3dhInfo);
         if (!deriveResult.IsOk)
         {
             throw new ShieldChainStepException($"Shared secret derivation failed: {deriveResult.UnwrapErr()}");
@@ -254,10 +247,9 @@ public sealed class EcliptixProtocolSystem
         }
 
         SodiumInterop.SecureWipe(rootKeyBytes);
-        return rootKeyHandle;
     }
 
-    public CipherPayload ProduceOutboundMessageAsync(
+    public CipherPayload ProduceOutboundMessage(
         uint connectId, PubKeyExchangeType exchangeType, byte[] plainPayload)
     {
         Debug.WriteLine($"[ShieldPro] Producing outbound message for session {connectId} ({exchangeType}).");
@@ -324,7 +316,7 @@ public sealed class EcliptixProtocolSystem
 
             LocalPublicKeyBundle peerBundle = peerBundleResult.Unwrap();
 
-            byte[] localId = _ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
+            byte[] localId = ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
             byte[] peerId = peerBundle.IdentityX25519;
             byte[] ad = new byte[localId.Length + peerId.Length];
             Buffer.BlockCopy(localId, 0, ad, 0, localId.Length);
@@ -372,7 +364,7 @@ public sealed class EcliptixProtocolSystem
         }
     }
 
-    public byte[] ProcessInboundMessageAsync(
+    public byte[] ProcessInboundMessage(
         uint sessionId, PubKeyExchangeType exchangeType, CipherPayload cipherPayloadProto)
     {
         Debug.WriteLine(
@@ -438,7 +430,7 @@ public sealed class EcliptixProtocolSystem
             LocalPublicKeyBundle peerBundle = peerBundleResult.Unwrap();
 
             byte[] senderId = peerBundle.IdentityX25519;
-            byte[] receiverId = _ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
+            byte[] receiverId = ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
             byte[] ad = new byte[senderId.Length + receiverId.Length];
             Buffer.BlockCopy(senderId, 0, ad, 0, senderId.Length);
             Buffer.BlockCopy(receiverId, 0, ad, senderId.Length, receiverId.Length);

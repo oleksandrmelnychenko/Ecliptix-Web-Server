@@ -32,7 +32,7 @@ public sealed class ConnectSession : IDisposable
     private SodiumSecureMemoryHandle? _persistentDhPrivateKeyHandle;
     private byte[]? _persistentDhPublicKey;
     private SodiumSecureMemoryHandle? _initialSendingDhPrivateKeyHandle;
-    private SodiumSecureMemoryHandle? _currentSendingDhPrivateKeyHandle; 
+    private SodiumSecureMemoryHandle? _currentSendingDhPrivateKeyHandle;
     private volatile bool _disposed;
     private readonly bool _isFirstReceivingRatchet;
 
@@ -134,7 +134,8 @@ public sealed class ConnectSession : IDisposable
 
             if (overallResult.IsErr)
             {
-                Debug.WriteLine($"[ShieldSession] Failed to create session {connectId}: {overallResult.UnwrapErr().Message}");
+                Debug.WriteLine(
+                    $"[ShieldSession] Failed to create session {connectId}: {overallResult.UnwrapErr().Message}");
                 initialSendingDhPrivateKeyHandle?.Dispose();
                 sendingStep?.Dispose();
                 persistentDhPrivateKeyHandle?.Dispose();
@@ -164,7 +165,8 @@ public sealed class ConnectSession : IDisposable
         try
         {
             Debug.WriteLine($"[ShieldSession] Generating X25519 key pair for {keyPurpose}");
-            Result<SodiumSecureMemoryHandle, ShieldFailure> allocResult = SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
+            Result<SodiumSecureMemoryHandle, ShieldFailure> allocResult =
+                SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
             if (allocResult.IsErr)
                 return Result<(SodiumSecureMemoryHandle, byte[]), ShieldFailure>.Err(allocResult.UnwrapErr());
             skHandle = allocResult.Unwrap();
@@ -187,7 +189,8 @@ public sealed class ConnectSession : IDisposable
                 return Result<(SodiumSecureMemoryHandle, byte[]), ShieldFailure>.Err(readResult.UnwrapErr());
             }
 
-            Result<byte[], ShieldFailure> deriveResult = Result<byte[], ShieldFailure>.Try(() => ScalarMult.Base(tempPrivCopy),
+            Result<byte[], ShieldFailure> deriveResult = Result<byte[], ShieldFailure>.Try(
+                () => ScalarMult.Base(tempPrivCopy),
                 ex => ShieldFailure.Generic($"Failed to derive {keyPurpose} public key.", ex));
             SodiumInterop.SecureWipe(tempPrivCopy).IgnoreResult();
             tempPrivCopy = null;
@@ -345,7 +348,7 @@ public sealed class ConnectSession : IDisposable
                 ShieldFailure.InvalidInput(
                     $"Initial peer DH public key must be {Constants.X25519PublicKeySize} bytes."));
         }
-        
+
         return Result<Unit, ShieldFailure>.Ok(Unit.Value);
     }
 
@@ -534,7 +537,7 @@ public sealed class ConnectSession : IDisposable
         {
             return Result<Unit, ShieldFailure>.Ok(Unit.Value);
         }
-        
+
         bool keysDiffer = (_peerDhPublicKey == null || !receivedDhPublicKeyBytes.SequenceEqual(_peerDhPublicKey));
         Debug.WriteLine(
             $"[ShieldSession] Checking DH key difference. Peer DH Key: {Convert.ToHexString(_peerDhPublicKey)}, Received: {Convert.ToHexString(receivedDhPublicKeyBytes)}");
@@ -542,7 +545,7 @@ public sealed class ConnectSession : IDisposable
         {
             return Result<Unit, ShieldFailure>.Ok(Unit.Value);
         }
-        
+
         Result<uint, ShieldFailure> currentIndexResult = receivingStep.GetCurrentIndex();
         if (currentIndexResult.IsErr)
             return Result<Unit, ShieldFailure>.Err(currentIndexResult.UnwrapErr());
@@ -581,7 +584,7 @@ public sealed class ConnectSession : IDisposable
         {
             Debug.WriteLine($"[ShieldSession] Performing DH ratchet for session {_id}, IsSender: {isSender}");
             Result<Unit, ShieldFailure> initialCheck = CheckDisposed().Bind(_ =>
-                _rootKeyHandle != null && !_rootKeyHandle.IsInvalid
+                _rootKeyHandle is { IsInvalid: false }
                     ? Result<Unit, ShieldFailure>.Ok(Unit.Value)
                     : Result<Unit, ShieldFailure>.Err(
                         ShieldFailure.Generic("Root key handle not initialized or invalid.")));
@@ -603,9 +606,13 @@ public sealed class ConnectSession : IDisposable
                         ShieldFailure.Generic("Peer DH public key not available for sender DH ratchet."));
                 }
 
-                Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), ShieldFailure> ephResult = GenerateX25519KeyPair("Ephemeral DH Ratchet");
+                Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), ShieldFailure> ephResult =
+                    GenerateX25519KeyPair("Ephemeral DH Ratchet");
                 if (ephResult.IsErr)
+                {
                     return Result<Unit, ShieldFailure>.Err(ephResult.UnwrapErr());
+                }
+
                 (newEphemeralSkHandle, newEphemeralPublicKey) = ephResult.Unwrap();
                 Debug.WriteLine(
                     $"[ShieldSession] New Ephemeral Public Key: {Convert.ToHexString(newEphemeralPublicKey)}");
@@ -631,7 +638,7 @@ public sealed class ConnectSession : IDisposable
                         ShieldFailure.InvalidInput(
                             "Received DH public key is missing or invalid for receiver DH ratchet."));
 
-                Debug.WriteLine($"[ShieldSession] Using current sending DH private key for receiver ratchet.");
+                Debug.WriteLine("[ShieldSession] Using current sending DH private key for receiver ratchet.");
                 dhResult = _currentSendingDhPrivateKeyHandle!.ReadBytes(Constants.X25519PrivateKeySize)
                     .Bind(persistPrivBytes =>
                     {
@@ -684,7 +691,7 @@ public sealed class ConnectSession : IDisposable
                         if (privateKeyResult.IsErr)
                             return Result<Unit, ShieldFailure>.Err(privateKeyResult.UnwrapErr());
                         byte[] newDhPrivateKeyBytes = privateKeyResult.Unwrap();
-                        Debug.WriteLine($"[ShieldSession] Updating sending step with new DH keys.");
+                        Debug.WriteLine("[ShieldSession] Updating sending step with new DH keys.");
                         _currentSendingDhPrivateKeyHandle?.Dispose();
                         _currentSendingDhPrivateKeyHandle = newEphemeralSkHandle;
                         newEphemeralSkHandle = null;
@@ -692,24 +699,21 @@ public sealed class ConnectSession : IDisposable
                             newEphemeralPublicKey!);
                     }
 
-                    Debug.WriteLine($"[ShieldSession] Updating receiving step.");
+                    Debug.WriteLine("[ShieldSession] Updating receiving step.");
                     return _receivingStep!.UpdateKeysAfterDhRatchet(newChainKeyForTargetStep!);
                 })
                 .Map(_ =>
                 {
-                    if (isSender)
-                    {
-                        _receivedNewDhKey = false;
-                    }
-                    else
+                    if (!isSender)
                     {
                         WipeIfNotNull(_peerDhPublicKey).IgnoreResult();
                         _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes!.Clone();
-                        _receivedNewDhKey = false;
                     }
 
+                    _receivedNewDhKey = false;
+
                     ClearMessageKeyCache();
-                    Debug.WriteLine($"[ShieldSession] DH ratchet completed.");
+                    Debug.WriteLine("[ShieldSession] DH ratchet completed.");
                     return Unit.Value;
                 })
                 .MapErr(err =>

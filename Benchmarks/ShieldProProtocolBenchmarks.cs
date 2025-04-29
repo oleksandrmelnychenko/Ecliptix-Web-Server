@@ -44,12 +44,12 @@ public class ShieldProProtocolBenchmarks
         _bobEcliptixProtocolSystem = new EcliptixProtocolSystem(bobMaterial);
 
         PubKeyExchange aliceResult =
-            _aliceEcliptixProtocolSystem.BeginDataCenterPubKeyExchangeAsync(sessionId, _exchangeType);
+            _aliceEcliptixProtocolSystem.BeginDataCenterPubKeyExchange(sessionId, _exchangeType);
 
         PubKeyExchange bobResult =
-            _bobEcliptixProtocolSystem.ProcessAndRespondToPubKeyExchangeAsync(sessionId, aliceResult);
+            _bobEcliptixProtocolSystem.ProcessAndRespondToPubKeyExchange(sessionId, aliceResult);
 
-        _aliceEcliptixProtocolSystem.CompleteDataCenterPubKeyExchangeAsync(_aliceSessionId, _exchangeType,
+        _aliceEcliptixProtocolSystem.CompleteDataCenterPubKeyExchange(_aliceSessionId, _exchangeType,
             bobResult);
 
         _sampleMessage = Encoding.UTF8.GetBytes(new string('A', MessageSize));
@@ -63,9 +63,9 @@ public class ShieldProProtocolBenchmarks
         var alice = new EcliptixProtocolSystem(aliceMaterial);
         var bob = new EcliptixProtocolSystem(bobMaterial);
         uint sessionId = 2;
-        var aliceMsg = alice.BeginDataCenterPubKeyExchangeAsync(sessionId, _exchangeType);
-        var bobMsg = bob.ProcessAndRespondToPubKeyExchangeAsync(sessionId, aliceMsg);
-        alice.CompleteDataCenterPubKeyExchangeAsync(sessionId, _exchangeType, bobMsg);
+        var aliceMsg = alice.BeginDataCenterPubKeyExchange(sessionId, _exchangeType);
+        var bobMsg = bob.ProcessAndRespondToPubKeyExchange(sessionId, aliceMsg);
+        alice.CompleteDataCenterPubKeyExchange(sessionId, _exchangeType, bobMsg);
     }
 
     [Benchmark(Description = "Symmetric Ratchet")]
@@ -76,13 +76,13 @@ public class ShieldProProtocolBenchmarks
         var alice = new EcliptixProtocolSystem(aliceMaterial);
         var bob = new EcliptixProtocolSystem(bobMaterial);
         uint sessionId = 2;
-        var aliceMsg = alice.BeginDataCenterPubKeyExchangeAsync(sessionId, _exchangeType);
-        var bobMsg = bob.ProcessAndRespondToPubKeyExchangeAsync(sessionId, aliceMsg);
-        alice.CompleteDataCenterPubKeyExchangeAsync(sessionId, _exchangeType, bobMsg);
+        var aliceMsg = alice.BeginDataCenterPubKeyExchange(sessionId, _exchangeType);
+        var bobMsg = bob.ProcessAndRespondToPubKeyExchange(sessionId, aliceMsg);
+        alice.CompleteDataCenterPubKeyExchange(sessionId, _exchangeType, bobMsg);
 
         for (int i = 0; i < 100; i++)
         {
-            alice.ProduceOutboundMessageAsync(sessionId, _exchangeType, _sampleMessage);
+            alice.ProduceOutboundMessage(sessionId, _exchangeType, _sampleMessage);
         }
     }
 
@@ -93,25 +93,25 @@ public class ShieldProProtocolBenchmarks
         for (int i = 0; i < 10; i++)
         {
             var cipher =
-                _aliceEcliptixProtocolSystem.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType,
+                _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_aliceSessionId, _exchangeType,
                     _sampleMessage);
-            _bobEcliptixProtocolSystem.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, cipher);
+            _bobEcliptixProtocolSystem.ProcessInboundMessage(_bobSessionId, _exchangeType, cipher);
         }
     }
 
     [Benchmark(Description = "Message Encryption")]
     public async Task Message_Encryption()
     {
-        _aliceEcliptixProtocolSystem.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType, _sampleMessage);
+        _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_aliceSessionId, _exchangeType, _sampleMessage);
     }
 
     [Benchmark(Description = "Message Decryption")]
     public async Task Message_Decryption()
     {
         var cipher =
-            _aliceEcliptixProtocolSystem.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType,
+            _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_aliceSessionId, _exchangeType,
                 _sampleMessage);
-        _bobEcliptixProtocolSystem.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, cipher);
+        _bobEcliptixProtocolSystem.ProcessInboundMessage(_bobSessionId, _exchangeType, cipher);
     }
 
     [Benchmark(Description = "Single Session Throughput")]
@@ -120,12 +120,12 @@ public class ShieldProProtocolBenchmarks
         for (int i = 0; i < MessageCount; i++)
         {
             var cipher =
-                _aliceEcliptixProtocolSystem.ProduceOutboundMessageAsync(_aliceSessionId, _exchangeType,
+                _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_aliceSessionId, _exchangeType,
                     _sampleMessage);
-            _bobEcliptixProtocolSystem.ProcessInboundMessageAsync(_bobSessionId, _exchangeType, cipher);
-            var reply = _bobEcliptixProtocolSystem.ProduceOutboundMessageAsync(_bobSessionId, _exchangeType,
+            _bobEcliptixProtocolSystem.ProcessInboundMessage(_bobSessionId, _exchangeType, cipher);
+            var reply = _bobEcliptixProtocolSystem.ProduceOutboundMessage(_bobSessionId, _exchangeType,
                 _sampleMessage);
-            _aliceEcliptixProtocolSystem.ProcessInboundMessageAsync(_aliceSessionId, _exchangeType, reply);
+            _aliceEcliptixProtocolSystem.ProcessInboundMessage(_aliceSessionId, _exchangeType, reply);
         }
     }
 
@@ -146,15 +146,15 @@ public class ShieldProProtocolBenchmarks
                 EcliptixProtocolSystem bob = new EcliptixProtocolSystem(bobMaterial);
 
                 uint connectId = 2;
-                PubKeyExchange aliceMsg = alice.BeginDataCenterPubKeyExchangeAsync(connectId, _exchangeType);
-                PubKeyExchange bobMsg = bob.ProcessAndRespondToPubKeyExchangeAsync(connectId, aliceMsg);
-                alice.CompleteDataCenterPubKeyExchangeAsync(connectId, _exchangeType, bobMsg);
+                PubKeyExchange aliceMsg = alice.BeginDataCenterPubKeyExchange(connectId, _exchangeType);
+                PubKeyExchange bobMsg = bob.ProcessAndRespondToPubKeyExchange(connectId, aliceMsg);
+                alice.CompleteDataCenterPubKeyExchange(connectId, _exchangeType, bobMsg);
 
                 for (int i = 0; i < MessagesPerSession; i++)
                 {
                     CipherPayload cipher =
-                        alice.ProduceOutboundMessageAsync(connectId, _exchangeType, _sampleMessage);
-                    bob.ProcessInboundMessageAsync(connectId, _exchangeType, cipher);
+                        alice.ProduceOutboundMessage(connectId, _exchangeType, _sampleMessage);
+                    bob.ProcessInboundMessage(connectId, _exchangeType, cipher);
                 }
             });
         }

@@ -27,7 +27,7 @@ public class EcliptixProtocolConnectActor : ReceiveActor
 
     private void HandleDecryptCipherPayloadCommand(DecryptCipherPayloadCommand command)
     {
-        byte[] payload = _ecliptixProtocolSystem.ProcessInboundMessageAsync(command.UniqueConnectId,
+        byte[] payload = _ecliptixProtocolSystem.ProcessInboundMessage(command.UniqueConnectId,
             command.PubKeyExchangeType, command.CipherPayload);
         Sender.Tell(payload);
     }
@@ -42,7 +42,7 @@ public class EcliptixProtocolConnectActor : ReceiveActor
         _ecliptixProtocolSystem = new EcliptixProtocolSystem(ecliptixSystemIdentityKeys);
 
         PubKeyExchange pubKeyExchange =
-            _ecliptixProtocolSystem.ProcessAndRespondToPubKeyExchangeAsync(arg.ConnectId, arg.PubKeyExchange);
+            _ecliptixProtocolSystem.ProcessAndRespondToPubKeyExchange(arg.ConnectId, arg.PubKeyExchange);
 
         Sender.Tell(new ProcessAndRespondToPubKeyExchangeReply(pubKeyExchange));
     }
