@@ -1,6 +1,7 @@
 using System.Diagnostics;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Core.Protocol.Utilities;
+
+namespace Ecliptix.Core.Protocol;
 
 public sealed class ShieldChainStep : IDisposable
 {
@@ -21,6 +22,8 @@ public sealed class ShieldChainStep : IDisposable
     private readonly ChainStepType _stepType;
 
     private readonly uint _cacheWindow;
+
+    private static readonly Result<Unit, ShieldFailure> OkResult = Result<Unit, ShieldFailure>.Ok(Unit.Value);
 
     public Result<uint, ShieldFailure> GetCurrentIndex() =>
         _disposed
@@ -159,9 +162,6 @@ public sealed class ShieldChainStep : IDisposable
             return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
                 ShieldFailure.Generic("Unexpected error preparing DH keys.", ex));
         }
-
-        return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
-            ShieldFailure.InvalidInput("Both DH private and public keys must be provided, or neither."));
     }
 
     private static Result<SodiumSecureMemoryHandle, ShieldFailure> AllocateAndWriteChainKey(byte[] initialChainKey)
@@ -198,97 +198,74 @@ public sealed class ShieldChainStep : IDisposable
         Result<uint, ShieldFailure> currentIndexResult = GetCurrentIndex();
         if (currentIndexResult.IsErr)
             return Result<ShieldMessageKey, ShieldFailure>.Err(currentIndexResult.UnwrapErr());
-        uint indexBeforeDerivation = currentIndexResult.Unwrap();
 
-        if (targetIndex <= indexBeforeDerivation)
-            return Result<ShieldMessageKey, ShieldFailure>.Err(ShieldFailure.InvalidInput(
-                $"[{_stepType}] Requested index {targetIndex} is not future (current: {indexBeforeDerivation}) and not cached."));
+        uint currentIndex = currentIndexResult.Unwrap();
+
+        if (targetIndex <= currentIndex)
+            return Result<ShieldMessageKey, ShieldFailure>.Err(
+                ShieldFailure.InvalidInput(
+                    $"[{_stepType}] Requested index {targetIndex} is not future (current: {currentIndex}) and not cached."));
 
         Debug.WriteLine(
-            $"[ShieldChainStep] Starting derivation for target index: {targetIndex}, current index: {indexBeforeDerivation}");
+            $"[ShieldChainStep] Starting derivation for target index: {targetIndex}, current index: {currentIndex}");
 
-        byte[]? currentChainKey = null;
-        byte[]? nextChainKey = null;
-        byte[]? msgKey = null;
-        Result<Unit, ShieldFailure> overallResult = Result<Unit, ShieldFailure>.Ok(Unit.Value);
+        Result<byte[], ShieldFailure> chainKeyResult = _chainKeyHandle.ReadBytes(Constants.X25519KeySize);
+        if (chainKeyResult.IsErr)
+            return Result<ShieldMessageKey, ShieldFailure>.Err(chainKeyResult.UnwrapErr());
+
+        byte[] chainKey = chainKeyResult.Unwrap();
 
         try
         {
-            Result<byte[], ShieldFailure> readResult = _chainKeyHandle.ReadBytes(Constants.X25519KeySize);
-            if (readResult.IsErr) return Result<ShieldMessageKey, ShieldFailure>.Err(readResult.UnwrapErr());
-            currentChainKey = readResult.Unwrap();
-            Debug.WriteLine($"[ShieldChainStep] Current Chain Key: {Convert.ToHexString(currentChainKey)}");
+            Span<byte> currentChainKey = stackalloc byte[Constants.X25519KeySize];
+            Span<byte> nextChainKey = stackalloc byte[Constants.X25519KeySize];
+            Span<byte> msgKey = stackalloc byte[Constants.AesKeySize];
 
-            nextChainKey = new byte[Constants.X25519KeySize];
-            msgKey = new byte[Constants.AesKeySize];
+            chainKey.CopyTo(currentChainKey);
 
-            for (uint idx = indexBeforeDerivation + 1; idx <= targetIndex; idx++)
+            for (uint idx = currentIndex + 1; idx <= targetIndex; idx++)
             {
                 Debug.WriteLine($"[ShieldChainStep] Deriving key for index: {idx}");
-                Result<Unit, ShieldFailure> stepResult =
-                    Result<Unit, ShieldFailure>.Try(
-                        action: () =>
-                        {
-                            using HkdfSha256 hkdfMsg = new(currentChainKey, null);
-                            hkdfMsg.Expand(Constants.MsgInfo, msgKey.AsSpan());
-                            using HkdfSha256 hkdfChain = new(currentChainKey, null);
-                            hkdfChain.Expand(Constants.ChainInfo, nextChainKey.AsSpan());
-                        },
-                        errorMapper: ex =>
-                            ShieldFailure.DeriveKey($"HKDF failed during derivation for index {idx}.", ex)
-                    );
 
-                if (stepResult.IsErr)
+                try
                 {
-                    overallResult = stepResult;
-                    break;
+                    using HkdfSha256 hkdfMsg = new(currentChainKey, null);
+                    hkdfMsg.Expand(Constants.MsgInfo, msgKey);
+
+                    using HkdfSha256 hkdfChain = new(currentChainKey, null);
+                    hkdfChain.Expand(Constants.ChainInfo, nextChainKey);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[ShieldChainStep] Error deriving keys at index {idx}: {ex.Message}");
+                    return Result<ShieldMessageKey, ShieldFailure>.Err(
+                        ShieldFailure.DeriveKey($"HKDF failed during derivation at index {idx}.", ex));
                 }
 
-                byte[] msgKeyClone = (byte[])msgKey.Clone();
-                Debug.WriteLine($"[ShieldChainStep] Message Key for index {idx}: {Convert.ToHexString(msgKeyClone)}");
-                Result<ShieldMessageKey, ShieldFailure> createKeyResult = ShieldMessageKey.New(idx, msgKeyClone);
+                byte[] msgKeyClone = msgKey.ToArray();
 
-                WipeIfNotNull(msgKeyClone).IgnoreResult();
+                Result<ShieldMessageKey, ShieldFailure> keyResult = ShieldMessageKey.New(idx, msgKeyClone);
+                if (keyResult.IsErr)
+                    return Result<ShieldMessageKey, ShieldFailure>.Err(keyResult.UnwrapErr());
 
-                if (createKeyResult.IsErr)
-                {
-                    overallResult = Result<Unit, ShieldFailure>.Err(createKeyResult.UnwrapErr());
-                    break;
-                }
-
-                ShieldMessageKey messageKey = createKeyResult.Unwrap();
+                ShieldMessageKey messageKey = keyResult.Unwrap();
 
                 if (!messageKeys.TryAdd(idx, messageKey))
                 {
                     messageKey.Dispose();
-                    overallResult = Result<Unit, ShieldFailure>.Err(
-                        ShieldFailure.Generic(
-                            $"Key for index {idx} unexpectedly appeared in cache during derivation."));
-                    break;
+                    return Result<ShieldMessageKey, ShieldFailure>.Err(
+                        ShieldFailure.Generic($"Key for index {idx} unexpectedly appeared during derivation."));
                 }
 
                 Result<Unit, ShieldFailure> writeResult = _chainKeyHandle.Write(nextChainKey);
                 if (writeResult.IsErr)
                 {
-                    if (messageKeys.Remove(idx, out ShieldMessageKey? addedKey))
-                        addedKey.Dispose();
-                    overallResult = writeResult;
-                    break;
+                    messageKeys.Remove(idx, out var removedKey);
+                    removedKey?.Dispose();
+                    return Result<ShieldMessageKey, ShieldFailure>.Err(writeResult.UnwrapErr());
                 }
 
-                Array.Copy(nextChainKey, currentChainKey, nextChainKey.Length);
-                Debug.WriteLine($"[ShieldChainStep] Updated Chain Key: {Convert.ToHexString(currentChainKey)}");
-            }
-
-            if (overallResult.IsErr)
-            {
-                for (uint idx = indexBeforeDerivation + 1; idx < targetIndex; idx++)
-                {
-                    if (messageKeys.Remove(idx, out ShieldMessageKey? keyToRemove))
-                        keyToRemove?.Dispose();
-                }
-
-                return Result<ShieldMessageKey, ShieldFailure>.Err(overallResult.UnwrapErr());
+                nextChainKey.CopyTo(currentChainKey);
             }
 
             Result<Unit, ShieldFailure> setIndexResult = SetCurrentIndex(targetIndex);
@@ -304,18 +281,14 @@ public sealed class ShieldChainStep : IDisposable
             }
             else
             {
-                Debug.WriteLine(
-                    $"[ShieldChainStep] Derived key for index {targetIndex} not found in cache after derivation.");
+                Debug.WriteLine($"[ShieldChainStep] Derived key for index {targetIndex} not found in cache.");
                 return Result<ShieldMessageKey, ShieldFailure>.Err(
-                    ShieldFailure.Generic(
-                        $"Derived key for index {targetIndex} not found in cache after loop completion."));
+                    ShieldFailure.Generic($"Derived key for index {targetIndex} missing after derivation loop."));
             }
         }
         finally
         {
-            WipeIfNotNull(currentChainKey).IgnoreResult();
-            WipeIfNotNull(nextChainKey).IgnoreResult();
-            WipeIfNotNull(msgKey).IgnoreResult();
+            WipeIfNotNull(chainKey).IgnoreResult();
         }
     }
 
@@ -356,46 +329,109 @@ public sealed class ShieldChainStep : IDisposable
     {
         if (newDhPrivateKey == null && newDhPublicKey == null)
         {
-            return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+            return OkResult;
         }
 
-        if (newDhPrivateKey == null || newDhPublicKey == null)
+        return ValidateAll(
+            () => ValidateDhKeysNotNull(newDhPrivateKey, newDhPublicKey),
+            () => ValidateDhPrivateKeySize(newDhPrivateKey),
+            () => ValidateDhPublicKeySize(newDhPublicKey)
+        ).Bind(_ =>
         {
-            return Result<Unit, ShieldFailure>.Err(
-                ShieldFailure.InvalidInput("Both new DH private and public keys must be provided, or neither."));
-        }
+            Debug.WriteLine($"[ShieldChainStep] Updating DH keys.");
 
-        if (newDhPrivateKey.Length != Constants.X25519PrivateKeySize)
+            Result<Unit, ShieldFailure> handleResult = EnsureDhPrivateKeyHandle();
+            if (handleResult.IsErr)
+                return handleResult.MapErr(e => e);
+
+            Result<Unit, ShieldFailure> writeResult = _dhPrivateKeyHandle!.Write(newDhPrivateKey!.AsSpan());
+            if (writeResult.IsErr)
+                return writeResult.MapErr(e => e);
+
+            WipeIfNotNull(_dhPublicKey).IgnoreResult();
+            _dhPublicKey = (byte[])newDhPublicKey!.Clone();
+
+            return OkResult;
+        });
+    }
+
+    private Result<Unit, ShieldFailure> EnsureDhPrivateKeyHandle()
+    {
+        if (_dhPrivateKeyHandle != null)
         {
-            return Result<Unit, ShieldFailure>.Err(
-                ShieldFailure.InvalidInput($"New DH private key must be {Constants.X25519PrivateKeySize} bytes."));
+            return OkResult;
         }
 
-        if (newDhPublicKey.Length != Constants.X25519KeySize)
+        Result<SodiumSecureMemoryHandle, ShieldFailure> allocResult =
+            SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
+        if (allocResult.IsErr)
         {
-            return Result<Unit, ShieldFailure>.Err(
-                ShieldFailure.InvalidInput($"New DH public key must be {Constants.X25519KeySize} bytes."));
+            return Result<Unit, ShieldFailure>.Err(allocResult.UnwrapErr());
         }
 
-        Debug.WriteLine(
-            $"[ShieldChainStep] Updating DH keys. Private: {Convert.ToHexString(newDhPrivateKey)}, Public: {Convert.ToHexString(newDhPublicKey)}");
-        Result<Unit, ShieldFailure> ensureHandleResult = (_dhPrivateKeyHandle == null)
-            ? SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize)
-                .Map(handle =>
-                {
-                    _dhPrivateKeyHandle = handle;
-                    return Unit.Value;
-                })
-            : Result<Unit, ShieldFailure>.Ok(Unit.Value);
+        _dhPrivateKeyHandle = allocResult.Unwrap();
+        return OkResult;
+    }
 
-        return ensureHandleResult
-            .Bind(_ => _dhPrivateKeyHandle!.Write(newDhPrivateKey))
-            .Map(_ =>
+    private static Result<Unit, ShieldFailure> ValidateAll(params Func<Result<Unit, ShieldFailure>>[]? validators)
+    {
+        if (validators is null || validators.Length == 0)
+        {
+            return OkResult;
+        }
+
+        foreach (Func<Result<Unit, ShieldFailure>> validate in validators)
+        {
+            Result<Unit, ShieldFailure> result = validate();
+            if (result.IsErr)
             {
-                WipeIfNotNull(_dhPublicKey).IgnoreResult();
-                _dhPublicKey = (byte[])newDhPublicKey.Clone();
-                return Unit.Value;
-            });
+                return result;
+            }
+        }
+
+        return OkResult;
+    }
+
+    private static Result<Unit, ShieldFailure> ValidateDhKeysNotNull(byte[]? privateKey, byte[]? publicKey)
+    {
+        if (privateKey == null && publicKey == null)
+        {
+            return OkResult;
+        }
+
+        if (privateKey == null || publicKey == null)
+        {
+            return Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.InvalidInput("Both DH private and public keys must be provided together."));
+        }
+
+        return OkResult;
+    }
+
+    private static Result<Unit, ShieldFailure> ValidateDhPrivateKeySize(byte[]? privateKey)
+    {
+        if (privateKey == null)
+        {
+            return OkResult;
+        }
+
+        return privateKey.Length == Constants.X25519PrivateKeySize
+            ? OkResult
+            : Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.InvalidInput($"DH private key must be {Constants.X25519PrivateKeySize} bytes."));
+    }
+
+    private static Result<Unit, ShieldFailure> ValidateDhPublicKeySize(byte[]? publicKey)
+    {
+        if (publicKey == null)
+        {
+            return OkResult;
+        }
+
+        return publicKey.Length == Constants.X25519KeySize
+            ? OkResult
+            : Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.InvalidInput($"DH public key must be {Constants.X25519KeySize} bytes."));
     }
 
     internal Result<byte[]?, ShieldFailure> ReadDhPublicKey() =>

@@ -78,14 +78,14 @@ public sealed class HkdfSha256 : IDisposable
                 {
                     info.CopyTo(inputBufferSpan);
                     inputBufferSpan[info.Length] = counter;
-                    currentInputSlice = inputBufferSpan.Slice(0, info.Length + 1);
+                    currentInputSlice = inputBufferSpan[..(info.Length + 1)];
                 }
                 else
                 {
                     hash.CopyTo(inputBufferSpan);
-                    info.CopyTo(inputBufferSpan.Slice(HashOutputLength));
+                    info.CopyTo(inputBufferSpan[HashOutputLength..]);
                     inputBufferSpan[HashOutputLength + info.Length] = counter;
-                    currentInputSlice = inputBufferSpan.Slice(0, HashOutputLength + info.Length + 1);
+                    currentInputSlice = inputBufferSpan[..(HashOutputLength + info.Length + 1)];
                 }
 
                 if (tempInputArray == null || tempInputArray.Length != currentInputSlice.Length)
@@ -101,8 +101,10 @@ public sealed class HkdfSha256 : IDisposable
                 );
 
                 if (tempHashResult.Length != HashOutputLength)
+                {
                     throw new CryptographicException(
                         $"HMAC-SHA256 output size mismatch during T({counter}) generation.");
+                }
 
                 tempHashResult.CopyTo(hash);
                 Wipe(tempHashResult);
