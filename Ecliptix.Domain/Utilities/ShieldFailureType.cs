@@ -1,4 +1,4 @@
-namespace Ecliptix.Core.Protocol.Utilities;
+namespace Ecliptix.Domain.Utilities;
 
 public enum ShieldFailureType
 {

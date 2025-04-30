@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using Google.Protobuf;
 
-namespace Ecliptix.Core.Protocol.Utilities;
+namespace Ecliptix.Domain.Utilities;
 
 public static class Helpers
 {

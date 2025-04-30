@@ -1,4 +1,5 @@
 using Ecliptix.Core.Protocol.Utilities;
+using Ecliptix.Domain.Utilities;
 using Sodium;
 
 namespace Ecliptix.Core.Protocol;

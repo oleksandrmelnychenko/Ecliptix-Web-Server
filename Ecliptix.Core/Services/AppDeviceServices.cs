@@ -1,15 +1,14 @@
 using Akka.Actor;
 using Akka.Hosting;
-using Ecliptix.Core.Actors;
-using Ecliptix.Core.Actors.Messages;
+using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Core.Services.Utilities;
+using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.AppDevice;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 using Grpc.Core;
-using Status = Grpc.Core.Status;
 
 namespace Ecliptix.Core.Services;
 
@@ -22,7 +21,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
         Logger.LogInformation("Received EstablishAppDeviceEphemeralConnect request with type {RequestType}",
             request.OfType);
 
-        uint connectId = ServiceUtilities.ExtractUniqueConnectId(context);
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
         BeginAppDeviceEphemeralConnectCommand command = new(request, connectId);
         Result<DeriveSharedSecretReply, ShieldFailure> deriveSharedSecretReply =
             await ProtocolActor.Ask<Result<DeriveSharedSecretReply, ShieldFailure>>(
@@ -41,7 +40,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
     public override async Task<CipherPayload> RegisterDeviceAppIfNotExist(CipherPayload request,
         ServerCallContext context)
     {
-        uint connectId = ServiceUtilities.ExtractUniqueConnectId(context);
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
 
         DecryptCipherPayloadCommand decryptCipherPayloadCommand =
             new(connectId, PubKeyExchangeType.AppDeviceEphemeralConnect, request);
@@ -51,6 +50,14 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
         if (decryptionResult.IsOk)
         {
             AppDevice appDevice = Helpers.ParseFromBytes<AppDevice>(decryptionResult.Unwrap());
+            
+            
+            
+            
+            
+            
+            
+            
             AppDeviceRegisteredStateReply appDeviceRegisteredStateReply = new()
             {
                 Status = AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration
@@ -68,6 +75,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
             }
         }
 
+        context.Status = ShieldFailure.ToGrpcStatus(decryptionResult.UnwrapErr());
         return new CipherPayload();
     }
 }

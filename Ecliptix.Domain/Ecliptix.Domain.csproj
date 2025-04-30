@@ -8,7 +8,9 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Akka" Version="1.5.40" />
         <PackageReference Include="Grpc.AspNetCore.Server" Version="2.70.0"/>
+        <PackageReference Include="Npgsql" Version="9.0.3" />
         <PackageReference Include="protobuf-net" Version="3.2.46"/>
         <PackageReference Include="protobuf-net.Grpc" Version="1.2.2"/>
         <PackageReference Include="Protobuf.Grpc" Version="1.0.170"/>
@@ -35,10 +37,6 @@
         <Protobuf Include="Protobuf\KeyMaterials.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
         <Protobuf Include="Protobuf\Verification.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
         <Protobuf Include="Protobuf\VerificationServiceActions.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="Utilities\" />
     </ItemGroup>
 
 </Project>

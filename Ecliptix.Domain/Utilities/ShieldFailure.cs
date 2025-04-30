@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Grpc.Core;
 
-namespace Ecliptix.Core.Protocol.Utilities;
+namespace Ecliptix.Domain.Utilities;
 
 public class ShieldFailure
 {

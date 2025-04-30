@@ -1,8 +1,7 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using Ecliptix.Core.Protocol.Utilities;
 
-namespace Ecliptix.Core.Protocol.Utilities;
+namespace Ecliptix.Domain.Utilities;
 
 public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
 {
@@ -28,7 +27,7 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
     public static Result<T, TE> Err(TE error)
     {
         ArgumentNullException.ThrowIfNull(error, nameof(error));
-        return new(error);
+        return new Result<T, TE>(error);
     }
 
     public static Result<T, TE> FromValue(T? value, TE errorWhenNull)

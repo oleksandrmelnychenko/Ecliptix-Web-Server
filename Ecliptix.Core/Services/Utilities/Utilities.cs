@@ -45,36 +45,12 @@ public static class ServiceUtilities
         return await decryptPayloadFun(encryptedPayload, connectionId, 0);
     }
 
-    public static async Task ProcessSingleCallRequest(Func<string, string, Task> func, ServerCallContext context)
-    {
-        try
-        {
-            string appDeviceId = GrpcMetadataHandler.GetAppDeviceId(context.RequestHeaders);
-            string connectionContextId = GrpcMetadataHandler.GetConnectionContextId(context.RequestHeaders);
-            var operationContextId = GrpcMetadataHandler.GetOperationContextId(context.RequestHeaders);
-
-            await func(appDeviceId, connectionContextId);
-        }
-        catch (RpcException exc)
-        {
-            context.Status = exc.StatusCode == StatusCode.PermissionDenied
-                ? new Status(StatusCode.PermissionDenied, exc.Message)
-                : new Status(StatusCode.InvalidArgument, exc.Message);
-            throw new RpcException(context.Status);
-        }
-        catch (Exception exc)
-        {
-            context.Status = new Status(StatusCode.InvalidArgument, exc.Message);
-            throw new RpcException(context.Status);
-        }
-    }
-
     public static T ParseFromBytes<T>(byte[] data) where T : IMessage<T>, new()
     {
         MessageParser<T> parser = new(() => new T());
         return parser.ParseFrom(data);
     }
 
-    public static uint ExtractUniqueConnectId(ServerCallContext context) =>
+    public static uint ExtractConnectId(ServerCallContext context) =>
         (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
 }

@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
+using Ecliptix.Core.Protocol.Utilities;
 
-namespace Ecliptix.Core.Protocol.Utilities;
+namespace Ecliptix.Domain.Utilities;
 
 public class MetaDataSystemFailure
 {

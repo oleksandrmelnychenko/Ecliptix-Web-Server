@@ -1,11 +1,13 @@
 using System.Collections.Concurrent;
 using Akka.Actor;
-using Ecliptix.Core.Actors.Messages;
 using Ecliptix.Core.Protocol.Utilities;
+using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
 
-namespace Ecliptix.Core.Actors;
+namespace Ecliptix.Core.Protocol.Actors;
+
+public record BeginAppDeviceEphemeralConnectCommand(PubKeyExchange PubKeyExchange, uint UniqueConnectId = 0);
 
 public record DecryptCipherPayloadCommand(
     uint ConnectId,
@@ -18,8 +20,6 @@ public record EncryptCipherPayloadCommand(
     byte[] Payload);
 
 public record CreateConnectCommand(uint ConnectId, PubKeyExchange PubKeyExchange);
-
-public record CipherPayloadReply(CipherPayload CipherPayload);
 
 public class EcliptixProtocolSystemActor : ReceiveActor
 {
@@ -83,20 +83,21 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
         return deriveSharedSecretResult;
     }
-    
+
     private async Task HandleCreateConnectCommand(CreateConnectCommand command)
     {
         Result<DeriveSharedSecretReply, ShieldFailure> result = await CreateConnectActorAndDeriveSecret(command);
         Sender.Tell(result);
     }
-    
+
     private async Task HandleEncryptCipherPayloadCommand(EncryptCipherPayloadCommand command)
     {
         uint connectId = command.ConnectId;
 
         if (_connectActorRefs.TryGetValue(connectId, out IActorRef? actorRef))
         {
-            Result<CipherPayload, ShieldFailure> result = await actorRef.Ask<Result<CipherPayload, ShieldFailure>>(command);
+            Result<CipherPayload, ShieldFailure> result =
+                await actorRef.Ask<Result<CipherPayload, ShieldFailure>>(command);
             Sender.Tell(result);
         }
         else

@@ -1,6 +1,6 @@
 using Akka.Actor;
 using Akka.Hosting;
-using Ecliptix.Core.Actors;
+using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Protobuf.AppDeviceServices;
 
 namespace Ecliptix.Core.Services;

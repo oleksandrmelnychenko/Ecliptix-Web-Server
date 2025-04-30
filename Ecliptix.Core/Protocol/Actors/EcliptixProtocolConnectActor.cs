@@ -1,10 +1,10 @@
 using Akka.Actor;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Core.Protocol.Utilities;
+using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
 
-namespace Ecliptix.Core.Actors;
+namespace Ecliptix.Core.Protocol.Actors;
 
 public record DeriveSharedSecretCommand(uint ConnectId, PubKeyExchange PubKeyExchange);
 
