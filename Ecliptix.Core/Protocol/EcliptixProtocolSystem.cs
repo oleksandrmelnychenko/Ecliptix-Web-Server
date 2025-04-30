@@ -7,17 +7,15 @@ using Google.Protobuf.WellKnownTypes;
 
 namespace Ecliptix.Core.Protocol;
 
-public sealed class EcliptixProtocolSystem
+public class EcliptixProtocolSystem
 {
     private readonly EcliptixSystemIdentityKeys _ecliptixSystemIdentityKeys;
     private ConnectSession _connectSession;
-
 
     public EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys)
     {
         _ecliptixSystemIdentityKeys = ecliptixSystemIdentityKeys;
     }
-    
 
     private static Timestamp GetProtoTimestamp() => Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow);
 

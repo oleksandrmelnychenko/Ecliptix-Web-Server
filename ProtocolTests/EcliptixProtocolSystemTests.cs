@@ -7,7 +7,7 @@ using Google.Protobuf;
 namespace ProtocolTests;
 
 [TestClass]
-public class EcliptixProtocolSystemTests : IAsyncDisposable
+public class EcliptixProtocolSystemTests : IDisposable
 {
     private readonly TestContext _testContext;
     private readonly EcliptixSystemIdentityKeys _aliceKeys;
@@ -187,7 +187,7 @@ public class EcliptixProtocolSystemTests : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public void Dispose()
     {
         _aliceKeys.Dispose();
         _bobKeys.Dispose();

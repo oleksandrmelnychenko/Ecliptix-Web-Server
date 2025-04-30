@@ -15,8 +15,6 @@ using Ecliptix.Protobuf.PubKeyExchange; // Your PubKeyExchange namespace
 [TestClass]
 public class ShieldProDoubleRatchetTests // Or your actual test class name
 {
-    // --- Your Fields ---
-    // Make sure these are correctly initialized in your [TestInitialize]
     private EcliptixProtocolSystem _aliceEcliptixProtocolSystem;
     private EcliptixProtocolSystem _bobEcliptixProtocolSystem;
     private uint _aliceSessionId;
@@ -241,7 +239,7 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
 
 
     [TestMethod]
-    public async Task Ratchet_BidirectionalMessageExchange_153Iterations_WithMultipleDHRotations_Succeeds()
+    public void Ratchet_BidirectionalMessageExchange_153Iterations_WithMultipleDHRotations_Succeeds()
     {
         WriteLine("[Test: Ratchet_BidirectionalMessageExchange_153Iterations_WithMultipleDHRotations] Running...");
         const int iterationCount = 506;

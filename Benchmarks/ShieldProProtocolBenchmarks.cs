@@ -13,7 +13,7 @@ namespace Benchmarks;
 [MemoryDiagnoser]
 [RPlotExporter]
 [MinColumn, MaxColumn, MeanColumn, MedianColumn]
-[SimpleJob(RunStrategy.Throughput, launchCount: 3, warmupCount: 5, iterationCount: 10)]
+[SimpleJob(RunStrategy.Throughput, launchCount: 1, warmupCount: 5, iterationCount: 20)]
 public class ShieldProProtocolBenchmarks
 {
     private EcliptixProtocolSystem _aliceEcliptixProtocolSystem;
@@ -23,9 +23,9 @@ public class ShieldProProtocolBenchmarks
     private readonly PubKeyExchangeType _exchangeType = PubKeyExchangeType.AppDeviceEphemeralConnect;
     private byte[] _sampleMessage;
     private const int MessageSize = 64;
-    private const int MessageCount = 1000;
+    private const int MessageCount = 10;
     private const int ParallelSessionCount = 10;
-    private const int MessagesPerSession = 100;
+    private const int MessagesPerSession = 10;
 
     [GlobalSetup]
     public void GlobalSetup()
@@ -80,7 +80,7 @@ public class ShieldProProtocolBenchmarks
         var bobMsg = bob.ProcessAndRespondToPubKeyExchange(sessionId, aliceMsg);
         alice.CompleteDataCenterPubKeyExchange(sessionId, _exchangeType, bobMsg);
 
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < 10; i++)
         {
             alice.ProduceOutboundMessage(sessionId, _exchangeType, _sampleMessage);
         }
@@ -100,13 +100,13 @@ public class ShieldProProtocolBenchmarks
     }
 
     [Benchmark(Description = "Message Encryption")]
-    public async Task Message_Encryption()
+    public void Message_Encryption()
     {
         _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_aliceSessionId, _exchangeType, _sampleMessage);
     }
 
     [Benchmark(Description = "Message Decryption")]
-    public async Task Message_Decryption()
+    public void Message_Decryption()
     {
         var cipher =
             _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_aliceSessionId, _exchangeType,
@@ -115,7 +115,7 @@ public class ShieldProProtocolBenchmarks
     }
 
     [Benchmark(Description = "Single Session Throughput")]
-    public async Task Single_Session_Throughput()
+    public void Single_Session_Throughput()
     {
         for (int i = 0; i < MessageCount; i++)
         {

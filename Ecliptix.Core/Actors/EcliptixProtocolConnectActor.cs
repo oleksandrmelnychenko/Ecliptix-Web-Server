@@ -12,8 +12,8 @@ public record DeriveSharedSecretReply(PubKeyExchange PubKeyExchange);
 
 public class EcliptixProtocolConnectActor : ReceiveActor
 {
-    private readonly EcliptixProtocolSystem _ecliptixProtocolSystem;
-    
+    private readonly EcliptixProtocolSystem? _ecliptixProtocolSystem;
+
     private const int LocalKeyCount = 10;
 
     public EcliptixProtocolConnectActor()
@@ -40,14 +40,14 @@ public class EcliptixProtocolConnectActor : ReceiveActor
 
     private void HandleEncryptCipherPayloadCommand(EncryptCipherPayloadCommand command)
     {
-        CipherPayload cipherPayload = _ecliptixProtocolSystem.ProduceOutboundMessage(command.ConnectId,
+        CipherPayload cipherPayload = _ecliptixProtocolSystem!.ProduceOutboundMessage(command.ConnectId,
             command.PubKeyExchangeType, command.Payload);
         Sender.Tell(Result<CipherPayload, ShieldFailure>.Ok(cipherPayload));
     }
 
     private void HandleDecryptCipherPayloadCommand(DecryptCipherPayloadCommand command)
     {
-        byte[] payload = _ecliptixProtocolSystem.ProcessInboundMessage(command.ConnectId,
+        byte[] payload = _ecliptixProtocolSystem!.ProcessInboundMessage(command.ConnectId,
             command.PubKeyExchangeType, command.CipherPayload);
         Sender.Tell(Result<byte[], ShieldFailure>.Ok(payload));
     }
@@ -55,7 +55,7 @@ public class EcliptixProtocolConnectActor : ReceiveActor
     private void HandleProcessAndRespondToPubKeyExchangeCommand(DeriveSharedSecretCommand arg)
     {
         PubKeyExchange pubKeyExchange =
-            _ecliptixProtocolSystem.ProcessAndRespondToPubKeyExchange(arg.ConnectId, arg.PubKeyExchange);
+            _ecliptixProtocolSystem!.ProcessAndRespondToPubKeyExchange(arg.ConnectId, arg.PubKeyExchange);
 
         Sender.Tell(Result<DeriveSharedSecretReply, ShieldFailure>.Ok(
             new DeriveSharedSecretReply(pubKeyExchange)));

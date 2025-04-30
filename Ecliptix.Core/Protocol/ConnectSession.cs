@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Security.Cryptography;
@@ -538,7 +539,7 @@ public sealed class ConnectSession : IDisposable
             return Result<Unit, ShieldFailure>.Ok(Unit.Value);
         }
 
-        bool keysDiffer = (_peerDhPublicKey == null || !receivedDhPublicKeyBytes.SequenceEqual(_peerDhPublicKey));
+        bool keysDiffer = _peerDhPublicKey == null || !receivedDhPublicKeyBytes.SequenceEqual(_peerDhPublicKey);
         Debug.WriteLine(
             $"[ShieldSession] Checking DH key difference. Peer DH Key: {Convert.ToHexString(_peerDhPublicKey)}, Received: {Convert.ToHexString(receivedDhPublicKeyBytes)}");
         if (!keysDiffer)
@@ -772,7 +773,7 @@ public sealed class ConnectSession : IDisposable
     private void ClearMessageKeyCache()
     {
         Debug.WriteLine($"[ShieldSession] Clearing message key cache for session {_id}");
-        foreach (var kvp in _messageKeys.ToList())
+        foreach (KeyValuePair<uint, ShieldMessageKey> kvp in _messageKeys.ToList())
         {
             try
             {
