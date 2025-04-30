@@ -47,7 +47,7 @@ try
     {
         options.AddFixedWindowLimiter(policyName: "grpc", limiterOptions =>
         {
-            limiterOptions.PermitLimit = 100; 
+            limiterOptions.PermitLimit = 100;
             limiterOptions.Window = TimeSpan.FromSeconds(10);
             limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
             limiterOptions.QueueLimit = 0;
@@ -62,41 +62,25 @@ try
             ILogger<Program> logger = sp.GetRequiredService<ILogger<Program>>();
             using (LogContext.PushProperty("SystemName", systemActorName))
             {
-                logger.LogInformation("Actor system {SystemName} is running");
+                logger.LogInformation("$Actor system {systemActorName} is running");
             }
 
-            TimeSpan defaultCleanupInterval = TimeSpan.FromMinutes(15);
-            
-            IActorRef connectsManagerActor = system.ActorOf(
-                EcliptixProtocolConnectsManagerActor.Build(
-                    sp.GetRequiredService<ILogger<EcliptixProtocolConnectsManagerActor>>(), 
-                    defaultCleanupInterval),
-                "ConnectionsManager");
+            IActorRef protocolSystemActor = system.ActorOf(
+                EcliptixProtocolSystemActor.Build(sp.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>()),
+                "ProtocolSystem");
 
-             IActorRef protocolSystemActor = system.ActorOf(
-                 EcliptixProtocolSystemActor.Build(
-                     connectsManagerActor, 
-                     sp.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>()),
-                 "ProtocolSystem");
-            
-             registry.Register<EcliptixProtocolConnectsManagerActor>(connectsManagerActor);
-             registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
+            registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
         });
     });
 
     builder.Services.AddHostedService<ActorSystemHostedService>();
-
     builder.WebHost.ConfigureKestrel(options =>
     {
-        options.ListenAnyIP(5001, listenOptions =>
-        {
-            listenOptions.Protocols = HttpProtocols.Http2;
-        });
+        options.ListenAnyIP(5001, listenOptions => { listenOptions.Protocols = HttpProtocols.Http2; });
     });
 
     WebApplication app = builder.Build();
 
-    //app.UseRateLimiter();
     app.UseHttpsRedirection();
     app.UseRequestLocalization();
     app.UseDefaultFiles();

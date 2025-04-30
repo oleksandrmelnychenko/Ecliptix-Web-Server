@@ -30,7 +30,7 @@ public class ShieldProDoubleRatchetTests // Or your actual test class name
     // --- Your [TestInitialize] method goes here ---
     // Ensure it performs the handshake and sets the session IDs correctly
     [TestInitialize]
-    public async Task InitializeAsync()
+    public void InitializeAsync()
     {
         WriteLine("[TestInitialize] Setting up Alice and Bob...");
         // Create key materials (replace with your LocalKeyMaterial setup)

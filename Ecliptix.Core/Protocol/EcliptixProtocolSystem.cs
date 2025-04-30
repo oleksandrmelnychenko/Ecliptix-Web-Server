@@ -7,9 +7,17 @@ using Google.Protobuf.WellKnownTypes;
 
 namespace Ecliptix.Core.Protocol;
 
-public sealed class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys)
+public sealed class EcliptixProtocolSystem
 {
+    private readonly EcliptixSystemIdentityKeys _ecliptixSystemIdentityKeys;
     private ConnectSession _connectSession;
+
+
+    public EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys)
+    {
+        _ecliptixSystemIdentityKeys = ecliptixSystemIdentityKeys;
+    }
+    
 
     private static Timestamp GetProtoTimestamp() => Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow);
 
@@ -20,10 +28,10 @@ public sealed class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSy
         Debug.WriteLine($"[ShieldPro] Beginning exchange {exchangeType}, generated ConnectId: {connectId}");
         Debug.WriteLine("[ShieldPro] Generating ephemeral key pair.");
 
-        ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
+        _ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
 
         Result<LocalPublicKeyBundle, ShieldFailure>
-            localBundleResult = ecliptixSystemIdentityKeys.CreatePublicBundle();
+            localBundleResult = _ecliptixSystemIdentityKeys.CreatePublicBundle();
         if (!localBundleResult.IsOk)
         {
             throw new ShieldChainStepException(
@@ -100,10 +108,10 @@ public sealed class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSy
             }
 
             Debug.WriteLine("[ShieldPro] Generating ephemeral key for response.");
-            ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
+            _ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
 
             Result<LocalPublicKeyBundle, ShieldFailure> localBundleResult =
-                ecliptixSystemIdentityKeys.CreatePublicBundle();
+                _ecliptixSystemIdentityKeys.CreatePublicBundle();
             if (!localBundleResult.IsOk)
             {
                 throw new ShieldChainStepException(
@@ -125,7 +133,7 @@ public sealed class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSy
             OneTimePreKeyRecord? first = peerBundle.OneTimePreKeys.FirstOrDefault();
 
             Result<SodiumSecureMemoryHandle, ShieldFailure> deriveResult =
-                ecliptixSystemIdentityKeys.CalculateSharedSecretAsRecipient(
+                _ecliptixSystemIdentityKeys.CalculateSharedSecretAsRecipient(
                     peerBundle.IdentityX25519,
                     peerBundle.EphemeralX25519,
                     first?.PreKeyId,
@@ -220,7 +228,7 @@ public sealed class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSy
 
         Debug.WriteLine("[ShieldPro] Deriving X3DH shared secret.");
         Result<SodiumSecureMemoryHandle, ShieldFailure> deriveResult =
-            ecliptixSystemIdentityKeys.X3dhDeriveSharedSecret(peerBundle, Constants.X3dhInfo);
+            _ecliptixSystemIdentityKeys.X3dhDeriveSharedSecret(peerBundle, Constants.X3dhInfo);
         if (!deriveResult.IsOk)
         {
             throw new ShieldChainStepException($"Shared secret derivation failed: {deriveResult.UnwrapErr()}");
@@ -316,7 +324,7 @@ public sealed class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSy
 
             LocalPublicKeyBundle peerBundle = peerBundleResult.Unwrap();
 
-            byte[] localId = ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
+            byte[] localId = _ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
             byte[] peerId = peerBundle.IdentityX25519;
             byte[] ad = new byte[localId.Length + peerId.Length];
             Buffer.BlockCopy(localId, 0, ad, 0, localId.Length);
@@ -430,7 +438,7 @@ public sealed class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSy
             LocalPublicKeyBundle peerBundle = peerBundleResult.Unwrap();
 
             byte[] senderId = peerBundle.IdentityX25519;
-            byte[] receiverId = ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
+            byte[] receiverId = _ecliptixSystemIdentityKeys.IdentityX25519PublicKey;
             byte[] ad = new byte[senderId.Length + receiverId.Length];
             Buffer.BlockCopy(senderId, 0, ad, 0, senderId.Length);
             Buffer.BlockCopy(receiverId, 0, ad, senderId.Length, receiverId.Length);

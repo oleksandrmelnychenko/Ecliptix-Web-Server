@@ -3,8 +3,6 @@ syntax = "proto3";
 package ecliptix.proto;
 option csharp_namespace = "Ecliptix.Protobuf.PubKeyExchange";
 
-import "google/protobuf/timestamp.proto";
-
 enum PubKeyExchangeState {
   INIT = 0;
   COMPLETE = 1;

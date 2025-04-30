@@ -7,6 +7,7 @@ using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Protobuf.AppDevice;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
+using Google.Protobuf;
 using Grpc.Core;
 using Status = Grpc.Core.Status;
 
@@ -21,33 +22,51 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
         Logger.LogInformation("Received EstablishAppDeviceEphemeralConnect request with type {RequestType}",
             request.OfType);
 
-        try
+        uint connectId = ServiceUtilities.ExtractUniqueConnectId(context);
+        BeginAppDeviceEphemeralConnectCommand command = new(request, connectId);
+        Result<DeriveSharedSecretReply, ShieldFailure> deriveSharedSecretReply =
+            await ProtocolActor.Ask<Result<DeriveSharedSecretReply, ShieldFailure>>(
+                command,
+                context.CancellationToken);
+
+        if (deriveSharedSecretReply.IsOk)
         {
-           uint connectId = ServiceUtilities.ExtractUniqueConnectId(context);
-            
-            BeginAppDeviceEphemeralConnectCommand command = new(request, connectId);
-            ProcessAndRespondToPubKeyExchangeReply response =
-                await ProtocolActor.Ask<ProcessAndRespondToPubKeyExchangeReply>(
-                    command,
-                    context.CancellationToken);
-            return response.PubKeyExchange;
+            return deriveSharedSecretReply.Unwrap().PubKeyExchange;
         }
-        catch (Exception e)
-        {
-            Console.WriteLine(e);
-            throw;
-        }
+
+        context.Status = ShieldFailure.ToGrpcStatus(deriveSharedSecretReply.UnwrapErr());
+        return new PubKeyExchange();
     }
 
-    public override async Task<CipherPayload> RegisterDeviceAppIfNotExist(CipherPayload request, ServerCallContext context)
+    public override async Task<CipherPayload> RegisterDeviceAppIfNotExist(CipherPayload request,
+        ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractUniqueConnectId(context);
-        
-        DecryptCipherPayloadCommand cipherPayloadCommand=
+
+        DecryptCipherPayloadCommand decryptCipherPayloadCommand =
             new(connectId, PubKeyExchangeType.AppDeviceEphemeralConnect, request);
-        byte[] payload = await ProtocolActor.Ask<byte[]>(cipherPayloadCommand);
-        
-        AppDevice appDevice = Helpers.ParseFromBytes<AppDevice>(payload);
+
+        Result<byte[], ShieldFailure> decryptionResult =
+            await ProtocolActor.Ask<Result<byte[], ShieldFailure>>(decryptCipherPayloadCommand);
+        if (decryptionResult.IsOk)
+        {
+            AppDevice appDevice = Helpers.ParseFromBytes<AppDevice>(decryptionResult.Unwrap());
+            AppDeviceRegisteredStateReply appDeviceRegisteredStateReply = new()
+            {
+                Status = AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration
+            };
+            
+            EncryptCipherPayloadCommand encryptCipherPayloadCommand =
+                new(connectId, PubKeyExchangeType.AppDeviceEphemeralConnect, appDeviceRegisteredStateReply.ToByteArray());
+            
+            Result<CipherPayload, ShieldFailure> encryptionResult =
+                await ProtocolActor.Ask<Result<CipherPayload, ShieldFailure>>(encryptCipherPayloadCommand);
+
+            if (encryptionResult.IsOk)
+            {
+                return encryptionResult.Unwrap();
+            }
+        }
 
         return new CipherPayload();
     }

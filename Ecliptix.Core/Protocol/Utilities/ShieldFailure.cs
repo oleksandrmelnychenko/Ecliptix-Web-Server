@@ -70,6 +70,14 @@ public class ShieldFailure
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure Decode(string details, Exception? inner = null) =>
         new(ShieldFailureType.DecodeFailed, details, inner);
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ShieldFailure ActorRefNotFound(string details, Exception? inner = null) =>
+        new(ShieldFailureType.DecodeFailed, details, inner);
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ShieldFailure ActorNotCreated(string details, Exception? inner = null) =>
+        new(ShieldFailureType.DecodeFailed, details, inner);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure DeriveKey(string details, Exception? inner = null) =>

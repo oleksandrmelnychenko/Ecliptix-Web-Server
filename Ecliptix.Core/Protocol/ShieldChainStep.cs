@@ -33,7 +33,9 @@ public sealed class ShieldChainStep : IDisposable
     internal Result<Unit, ShieldFailure> SetCurrentIndex(uint value)
     {
         if (_disposed)
+        {
             return Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(ShieldChainStep)));
+        }
 
         if (_currentIndex != value)
         {
@@ -211,7 +213,9 @@ public sealed class ShieldChainStep : IDisposable
 
         Result<byte[], ShieldFailure> chainKeyResult = _chainKeyHandle.ReadBytes(Constants.X25519KeySize);
         if (chainKeyResult.IsErr)
+        {
             return Result<ShieldMessageKey, ShieldFailure>.Err(chainKeyResult.UnwrapErr());
+        }
 
         byte[] chainKey = chainKeyResult.Unwrap();
 
@@ -246,7 +250,9 @@ public sealed class ShieldChainStep : IDisposable
 
                 Result<ShieldMessageKey, ShieldFailure> keyResult = ShieldMessageKey.New(idx, msgKeyClone);
                 if (keyResult.IsErr)
+                {
                     return Result<ShieldMessageKey, ShieldFailure>.Err(keyResult.UnwrapErr());
+                }
 
                 ShieldMessageKey messageKey = keyResult.Unwrap();
 
@@ -270,7 +276,9 @@ public sealed class ShieldChainStep : IDisposable
 
             Result<Unit, ShieldFailure> setIndexResult = SetCurrentIndex(targetIndex);
             if (setIndexResult.IsErr)
+            {
                 return Result<ShieldMessageKey, ShieldFailure>.Err(setIndexResult.UnwrapErr());
+            }
 
             PruneOldKeys(messageKeys);
 
@@ -342,11 +350,15 @@ public sealed class ShieldChainStep : IDisposable
 
             Result<Unit, ShieldFailure> handleResult = EnsureDhPrivateKeyHandle();
             if (handleResult.IsErr)
+            {
                 return handleResult.MapErr(e => e);
+            }
 
             Result<Unit, ShieldFailure> writeResult = _dhPrivateKeyHandle!.Write(newDhPrivateKey!.AsSpan());
             if (writeResult.IsErr)
+            {
                 return writeResult.MapErr(e => e);
+            }
 
             WipeIfNotNull(_dhPublicKey).IgnoreResult();
             _dhPublicKey = (byte[])newDhPublicKey!.Clone();

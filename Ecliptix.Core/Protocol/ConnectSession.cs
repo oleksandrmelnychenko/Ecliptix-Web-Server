@@ -17,7 +17,6 @@ public sealed class ConnectSession : IDisposable
     private const int AesGcmNonceSize = 12;
 
     private readonly uint _id;
-    private readonly LocalPublicKeyBundle _localBundle;
     private LocalPublicKeyBundle? _peerBundle;
     private readonly ShieldChainStep? _sendingStep;
     private ShieldChainStep? _receivingStep;
@@ -36,11 +35,8 @@ public sealed class ConnectSession : IDisposable
     private volatile bool _disposed;
     private readonly bool _isFirstReceivingRatchet;
 
-    public SemaphoreSlim Lock { get; } = new(1, 1);
-
     private ConnectSession(
         uint id,
-        LocalPublicKeyBundle localBundle,
         bool isInitiator,
         SodiumSecureMemoryHandle initialSendingDhPrivateKeyHandle,
         ShieldChainStep sendingStep,
@@ -48,7 +44,6 @@ public sealed class ConnectSession : IDisposable
         byte[] persistentDhPublicKey)
     {
         _id = id;
-        _localBundle = localBundle;
         _isInitiator = isInitiator;
         _initialSendingDhPrivateKeyHandle = initialSendingDhPrivateKeyHandle;
         _currentSendingDhPrivateKeyHandle = initialSendingDhPrivateKeyHandle;
@@ -120,7 +115,6 @@ public sealed class ConnectSession : IDisposable
                     Debug.WriteLine($"[ShieldSession] Sending step created for session {connectId}");
                     ConnectSession session = new ConnectSession(
                         connectId,
-                        localBundle,
                         isInitiator,
                         initialSendingDhPrivateKeyHandle!,
                         sendingStep,
@@ -168,7 +162,10 @@ public sealed class ConnectSession : IDisposable
             Result<SodiumSecureMemoryHandle, ShieldFailure> allocResult =
                 SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
             if (allocResult.IsErr)
+            {
                 return Result<(SodiumSecureMemoryHandle, byte[]), ShieldFailure>.Err(allocResult.UnwrapErr());
+            }
+            
             skHandle = allocResult.Unwrap();
             skBytes = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize);
             Result<Unit, ShieldFailure> writeResult = skHandle.Write(skBytes);
@@ -244,7 +241,10 @@ public sealed class ConnectSession : IDisposable
     internal void SetPeerBundle(LocalPublicKeyBundle peerBundle)
     {
         if (peerBundle == null)
+        {
             throw new ArgumentNullException(nameof(peerBundle));
+        }
+        
         Debug.WriteLine($"[ShieldSession] Setting peer bundle for session {_id}");
         _peerBundle = peerBundle;
     }
@@ -393,8 +393,8 @@ public sealed class ConnectSession : IDisposable
     internal Result<(ShieldMessageKey MessageKey, bool IncludeDhKey), ShieldFailure> PrepareNextSendMessage()
     {
         ShieldChainStep? sendingStepLocal = null;
-        ShieldMessageKey? messageKey = null;
-        ShieldMessageKey? clonedMessageKey = null;
+        ShieldMessageKey? messageKey;
+        ShieldMessageKey? clonedMessageKey;
         byte[]? keyMaterial = null;
         bool includeDhKey = false;
 
@@ -453,7 +453,7 @@ public sealed class ConnectSession : IDisposable
     {
         ShieldChainStep? receivingStepLocal = null;
         byte[]? peerDhPublicCopy = null;
-        ShieldMessageKey? messageKey = null;
+        ShieldMessageKey? messageKey;
 
         try
         {
@@ -631,12 +631,17 @@ public sealed class ConnectSession : IDisposable
             else
             {
                 if (_receivingStep == null)
+                {
                     return Result<Unit, ShieldFailure>.Err(
                         ShieldFailure.Generic("Receiving step not initialized for DH ratchet."));
+                }
+
                 if (receivedDhPublicKeyBytes is not { Length: Constants.X25519PublicKeySize })
+                {
                     return Result<Unit, ShieldFailure>.Err(
                         ShieldFailure.InvalidInput(
                             "Received DH public key is missing or invalid for receiver DH ratchet."));
+                }
 
                 Debug.WriteLine("[ShieldSession] Using current sending DH private key for receiver ratchet.");
                 dhResult = _currentSendingDhPrivateKeyHandle!.ReadBytes(Constants.X25519PrivateKeySize)
@@ -669,7 +674,7 @@ public sealed class ConnectSession : IDisposable
                     hkdfOutput = new byte[Constants.X25519KeySize * 2];
                     return Result<Unit, ShieldFailure>.Try(() =>
                     {
-                        using var hkdf = new HkdfSha256(dhSecret!, currentRootKey);
+                        using HkdfSha256 hkdf = new(dhSecret!, currentRootKey);
                         hkdf.Expand(DhRatchetInfo, hkdfOutput);
                     }, ex => ShieldFailure.DeriveKey("HKDF expansion failed during DH ratchet.", ex));
                 })
@@ -755,7 +760,7 @@ public sealed class ConnectSession : IDisposable
     public Result<byte[]?, ShieldFailure> GetCurrentSenderDhPublicKey() =>
         CheckDisposed().Bind(_ => EnsureSendingStepInitialized()).Bind(step => step.ReadDhPublicKey());
 
-    internal Result<Unit, ShieldFailure> EnsureNotExpired() => CheckDisposed().Bind(_ =>
+    private Result<Unit, ShieldFailure> EnsureNotExpired() => CheckDisposed().Bind(_ =>
     {
         bool expired = DateTimeOffset.UtcNow - _createdAt > SessionTimeout;
         Debug.WriteLine($"[ShieldSession] Checking expiration for session {_id}. Expired: {expired}");
@@ -763,9 +768,6 @@ public sealed class ConnectSession : IDisposable
             ? Result<Unit, ShieldFailure>.Err(ShieldFailure.Generic($"Session {_id} has expired."))
             : Result<Unit, ShieldFailure>.Ok(Unit.Value);
     });
-
-    public Result<bool, ShieldFailure> IsExpired() =>
-        CheckDisposed().Map(_ => DateTimeOffset.UtcNow - _createdAt > SessionTimeout);
 
     private void ClearMessageKeyCache()
     {
@@ -802,7 +804,9 @@ public sealed class ConnectSession : IDisposable
     private void Dispose(bool disposing)
     {
         if (_disposed)
+        {
             return;
+        }
 
         Debug.WriteLine($"[ShieldSession] Disposing session {_id}");
         _disposed = true;
@@ -810,14 +814,6 @@ public sealed class ConnectSession : IDisposable
         if (disposing)
         {
             SecureCleanupLogic();
-            try
-            {
-                Lock.Dispose();
-            }
-            catch (ObjectDisposedException)
-            {
-                Debug.WriteLine($"[ShieldSession] Lock for session {_id} already disposed.");
-            }
         }
     }
 

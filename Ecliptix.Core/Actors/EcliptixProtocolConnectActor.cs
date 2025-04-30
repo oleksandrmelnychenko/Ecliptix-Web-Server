@@ -6,45 +6,59 @@ using Ecliptix.Protobuf.PubKeyExchange;
 
 namespace Ecliptix.Core.Actors;
 
-public record ProcessAndRespondToPubKeyExchangeCommand(uint ConnectId, PubKeyExchange PubKeyExchange);
+public record DeriveSharedSecretCommand(uint ConnectId, PubKeyExchange PubKeyExchange);
 
-public record ProcessAndRespondToPubKeyExchangeReply(PubKeyExchange PubKeyExchange);
+public record DeriveSharedSecretReply(PubKeyExchange PubKeyExchange);
 
 public class EcliptixProtocolConnectActor : ReceiveActor
 {
-    private EcliptixProtocolSystem _ecliptixProtocolSystem;
+    private readonly EcliptixProtocolSystem _ecliptixProtocolSystem;
+    
+    private const int LocalKeyCount = 10;
 
     public EcliptixProtocolConnectActor()
     {
+        Result<EcliptixSystemIdentityKeys, ShieldFailure> identityKeysResult =
+            EcliptixSystemIdentityKeys.Create(LocalKeyCount);
+        if (identityKeysResult.IsErr)
+        {
+            Sender.Tell(identityKeysResult.UnwrapErr());
+            return;
+        }
+
+        _ecliptixProtocolSystem = new EcliptixProtocolSystem(identityKeysResult.Unwrap());
+
         Become(Ready);
     }
 
     private void Ready()
     {
-        Receive<ProcessAndRespondToPubKeyExchangeCommand>(HandleProcessAndRespondToPubKeyExchangeCommand);
+        Receive<DeriveSharedSecretCommand>(HandleProcessAndRespondToPubKeyExchangeCommand);
         Receive<DecryptCipherPayloadCommand>(HandleDecryptCipherPayloadCommand);
+        Receive<EncryptCipherPayloadCommand>(HandleEncryptCipherPayloadCommand);
+    }
+
+    private void HandleEncryptCipherPayloadCommand(EncryptCipherPayloadCommand command)
+    {
+        CipherPayload cipherPayload = _ecliptixProtocolSystem.ProduceOutboundMessage(command.ConnectId,
+            command.PubKeyExchangeType, command.Payload);
+        Sender.Tell(Result<CipherPayload, ShieldFailure>.Ok(cipherPayload));
     }
 
     private void HandleDecryptCipherPayloadCommand(DecryptCipherPayloadCommand command)
     {
-        byte[] payload = _ecliptixProtocolSystem.ProcessInboundMessage(command.UniqueConnectId,
+        byte[] payload = _ecliptixProtocolSystem.ProcessInboundMessage(command.ConnectId,
             command.PubKeyExchangeType, command.CipherPayload);
-        Sender.Tell(payload);
+        Sender.Tell(Result<byte[], ShieldFailure>.Ok(payload));
     }
 
-    private void HandleProcessAndRespondToPubKeyExchangeCommand(ProcessAndRespondToPubKeyExchangeCommand arg)
+    private void HandleProcessAndRespondToPubKeyExchangeCommand(DeriveSharedSecretCommand arg)
     {
-        Result<EcliptixSystemIdentityKeys, ShieldFailure> systemIdentityKeysResult =
-            EcliptixSystemIdentityKeys.Create(10);
-
-        EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys = systemIdentityKeysResult.Unwrap();
-
-        _ecliptixProtocolSystem = new EcliptixProtocolSystem(ecliptixSystemIdentityKeys);
-
         PubKeyExchange pubKeyExchange =
             _ecliptixProtocolSystem.ProcessAndRespondToPubKeyExchange(arg.ConnectId, arg.PubKeyExchange);
 
-        Sender.Tell(new ProcessAndRespondToPubKeyExchangeReply(pubKeyExchange));
+        Sender.Tell(Result<DeriveSharedSecretReply, ShieldFailure>.Ok(
+            new DeriveSharedSecretReply(pubKeyExchange)));
     }
 
     public static Props Build() =>
