@@ -3,6 +3,7 @@ using Akka.Hosting;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Core.Services.Utilities;
+using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.AppDevice;
 using Ecliptix.Protobuf.CipherPayload;
@@ -50,25 +51,25 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
         if (decryptionResult.IsOk)
         {
             AppDevice appDevice = Helpers.ParseFromBytes<AppDevice>(decryptionResult.Unwrap());
-            
-            
-            
-            
-            
-            
-            
-            
+
             AppDeviceRegisteredStateReply appDeviceRegisteredStateReply = new()
             {
                 Status = AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration
             };
-            
+
             EncryptCipherPayloadCommand encryptCipherPayloadCommand =
-                new(connectId, PubKeyExchangeType.AppDeviceEphemeralConnect, appDeviceRegisteredStateReply.ToByteArray());
-            
+                new(connectId, PubKeyExchangeType.AppDeviceEphemeralConnect,
+                    appDeviceRegisteredStateReply.ToByteArray());
+
             Result<CipherPayload, ShieldFailure> encryptionResult =
                 await ProtocolActor.Ask<Result<CipherPayload, ShieldFailure>>(encryptCipherPayloadCommand);
 
+            RegisterAppDeviceIfNotExistCommand appDeviceIfNotExistCommand = new(appDevice);
+            Result<(Guid, int), ShieldFailure> persistorResult = await AppDevicePersistorActor
+                .Ask<Result<(Guid, int), ShieldFailure>>(appDeviceIfNotExistCommand);
+
+            
+            
             if (encryptionResult.IsOk)
             {
                 return encryptionResult.Unwrap();

@@ -106,12 +106,12 @@ try
 
     builder.WebHost.ConfigureKestrel(options =>
     {
-        var grpcPort = configuration.GetValue<int>("GrpcServer:Port", 5001);
+        int grpcPort = configuration.GetValue("GrpcServer:Port", 5001);
         options.ListenAnyIP(grpcPort, listenOptions =>
         {
             listenOptions.Protocols = HttpProtocols.Http2;
         });
-        options.ListenAnyIP(5000);
+        options.ListenAnyIP(5002);
     });
 
     WebApplication app = builder.Build();

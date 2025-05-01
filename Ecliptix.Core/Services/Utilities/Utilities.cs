@@ -18,25 +18,7 @@ public static class ServiceUtilities
         return segment.Array!;
     }
 
-    public static ByteString GuidToByteString(Guid guid)
-    {
-        byte[] bytes = guid.ToByteArray();
-        Array.Reverse(bytes, 0, 4);
-        Array.Reverse(bytes, 4, 2);
-        Array.Reverse(bytes, 6, 2);
-        return ByteString.CopyFrom(bytes);
-    }
-
-    public static Guid FromByteStringToGuid(ByteString byteString)
-    {
-        byte[] bytes = byteString.ToByteArray();
-
-        Array.Reverse(bytes, 0, 4);
-        Array.Reverse(bytes, 4, 2);
-        Array.Reverse(bytes, 6, 2);
-
-        return new Guid(bytes);
-    }
+   
 
     public static async Task<byte[]> ExtractCipherPayload(ByteString requestedEncryptedPayload, string connectionId,
         Func<byte[], string, int, Task<byte[]>> decryptPayloadFun)
