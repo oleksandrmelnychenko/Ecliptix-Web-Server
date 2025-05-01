@@ -1,7 +1,6 @@
 using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Core.Protocol.Actors;
-using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Utilities;
@@ -38,45 +37,71 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
         return new PubKeyExchange();
     }
 
-    public override async Task<CipherPayload> RegisterDeviceAppIfNotExist(CipherPayload request,
+    public override async Task<CipherPayload> RegisterDeviceAppIfNotExist(
+        CipherPayload request,
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        DecryptCipherPayloadCommand decryptCipherPayloadCommand =
-            new(connectId, PubKeyExchangeType.AppDeviceEphemeralConnect, request);
+        Result<byte[], ShieldFailure> decryptResult = await ProtocolActor
+            .Ask<Result<byte[], ShieldFailure>>(
+                new DecryptCipherPayloadCommand(
+                    connectId,
+                    PubKeyExchangeType.AppDeviceEphemeralConnect,
+                    request
+                ),
+                context.CancellationToken
+            );
 
-        Result<byte[], ShieldFailure> decryptionResult =
-            await ProtocolActor.Ask<Result<byte[], ShieldFailure>>(decryptCipherPayloadCommand);
-        if (decryptionResult.IsOk)
+        if (!decryptResult.IsOk)
         {
-            AppDevice appDevice = Helpers.ParseFromBytes<AppDevice>(decryptionResult.Unwrap());
-
-            AppDeviceRegisteredStateReply appDeviceRegisteredStateReply = new()
-            {
-                Status = AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration
-            };
-
-            EncryptCipherPayloadCommand encryptCipherPayloadCommand =
-                new(connectId, PubKeyExchangeType.AppDeviceEphemeralConnect,
-                    appDeviceRegisteredStateReply.ToByteArray());
-
-            Result<CipherPayload, ShieldFailure> encryptionResult =
-                await ProtocolActor.Ask<Result<CipherPayload, ShieldFailure>>(encryptCipherPayloadCommand);
-
-            RegisterAppDeviceIfNotExistCommand appDeviceIfNotExistCommand = new(appDevice);
-            Result<(Guid, int), ShieldFailure> persistorResult = await AppDevicePersistorActor
-                .Ask<Result<(Guid, int), ShieldFailure>>(appDeviceIfNotExistCommand);
-
-            
-            
-            if (encryptionResult.IsOk)
-            {
-                return encryptionResult.Unwrap();
-            }
+            context.Status = ShieldFailure.ToGrpcStatus(decryptResult.UnwrapErr());
+            return new CipherPayload();
         }
 
-        context.Status = ShieldFailure.ToGrpcStatus(decryptionResult.UnwrapErr());
-        return new CipherPayload();
+        AppDevice appDevice = Helpers.ParseFromBytes<AppDevice>(decryptResult.Unwrap());
+        Result<(Guid, int), ShieldFailure> persistorResult = await AppDevicePersistorActor
+            .Ask<Result<(Guid, int), ShieldFailure>>(
+                new RegisterAppDeviceIfNotExistCommand(appDevice),
+                context.CancellationToken
+            );
+
+        if (!persistorResult.IsOk)
+        {
+            context.Status = ShieldFailure.ToGrpcStatus(persistorResult.UnwrapErr());
+            return new CipherPayload();
+        }
+
+        (Guid id, int status) = persistorResult.Unwrap();
+        AppDeviceRegisteredStateReply.Types.Status currentStatus = status switch
+        {
+            0 => AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration,
+            1 => AppDeviceRegisteredStateReply.Types.Status.SuccessAlreadyExists,
+            _ => throw new InvalidOperationException($"Unexpected status code: {status}")
+        };
+
+        AppDeviceRegisteredStateReply reply = new()
+        {
+            Status = currentStatus,
+            UniqueId = Helpers.GuidToByteString(id)
+        };
+
+        Result<CipherPayload, ShieldFailure> encryptResult = await ProtocolActor
+            .Ask<Result<CipherPayload, ShieldFailure>>(
+                new EncryptCipherPayloadCommand(
+                    connectId,
+                    PubKeyExchangeType.AppDeviceEphemeralConnect,
+                    reply.ToByteArray()
+                ),
+                context.CancellationToken
+            );
+
+        if (!encryptResult.IsOk)
+        {
+            context.Status = ShieldFailure.ToGrpcStatus(encryptResult.UnwrapErr());
+            return new CipherPayload();
+        }
+
+        return encryptResult.Unwrap();
     }
 }
