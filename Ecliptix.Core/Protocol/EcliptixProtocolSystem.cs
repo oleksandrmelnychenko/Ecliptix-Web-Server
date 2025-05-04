@@ -388,7 +388,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                     if (!receivedDhKey.SequenceEqual(currentPeerDh))
                     {
                         Debug.WriteLine("[ShieldPro] Performing DH ratchet due to new peer DH key.");
-                        var ratchetResult = _connectSession.PerformReceivingRatchet(receivedDhKey);
+                        Result<Unit, ShieldFailure> ratchetResult = _connectSession.PerformReceivingRatchet(receivedDhKey);
                         if (!ratchetResult.IsOk)
                             throw new ShieldChainStepException(
                                 $"Failed to perform DH ratchet: {ratchetResult.UnwrapErr()}");
