@@ -88,7 +88,7 @@ public class VerificationSessionManagerActor : ReceiveActor
         }
     }
 
-    private IActorRef CreateMembershipVerificationSessionActor(StartVerificationSessionStreamCommand msg)
+    private void CreateMembershipVerificationSessionActor(StartVerificationSessionStreamCommand msg)
     {
         IActorRef? actor = Context.ActorOf(MembershipVerificationSessionActor.Build(
             msg.ConnectId,
@@ -101,9 +101,8 @@ public class VerificationSessionManagerActor : ReceiveActor
         ));
         
         _sessions[msg.ConnectId] = actor;
+        
         Context.Watch(actor);
-
-        return actor;
     }
 
     public static Props Build(IActorRef persistor, SNSProvider snsProvider) =>

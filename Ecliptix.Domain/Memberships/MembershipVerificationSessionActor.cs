@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Akka.Actor;
+using Akka.Event;
 using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
@@ -7,17 +8,22 @@ using Ecliptix.Protobuf.Verification;
 
 namespace Ecliptix.Domain.Memberships;
 
+public record StartTimer;
+
 public class MembershipVerificationSessionActor : ReceiveActor
 {
     private readonly ChannelWriter<TimerTick> _writer;
-    
+
     private readonly IActorRef _persistor;
-    
+
     private readonly SNSProvider _snsProvider;
-    
+
     private readonly VerificationSessionQueryRecord _verificationSessionQueryRecord;
 
     private const int SessionTimeout = 60;
+    private const int TimerIntervalSecs = 1;
+
+    private CancellationTokenSource _timerCancellationTokenSource;
 
     public MembershipVerificationSessionActor(
         uint connectId,
@@ -31,6 +37,7 @@ public class MembershipVerificationSessionActor : ReceiveActor
         _writer = writer;
         _persistor = persistor;
         _snsProvider = snsProvider;
+        _timerCancellationTokenSource = new CancellationTokenSource();
 
         _verificationSessionQueryRecord =
             new VerificationSessionQueryRecord(connectId, streamId, mobile, uniqueRec, GenerateVerificationCode())
@@ -39,7 +46,7 @@ public class MembershipVerificationSessionActor : ReceiveActor
                 Status = MembershipVerificationSessionStatus.Pending
             };
 
-        ReceiveAsync<StartVerificationSessionStreamCommand>(HandleStartVerificationSessionStreamCommand);
+        //ReceiveAsync<StartVerificationSessionStreamCommand>(HandleStartVerificationSessionStreamCommand);
         ReceiveAsync<TimerTick>(HandleTimerTick);
         ReceiveAsync<VerifyCodeRcpMsg>(HandleVerifyCodeRcpMsg);
         ReceiveAsync<PostponeSession>(HandlePostponeSession);
@@ -60,17 +67,130 @@ public class MembershipVerificationSessionActor : ReceiveActor
 
     protected override void PreStart()
     {
-        _ = SendVerificationSms(_verificationSessionQueryRecord.Mobile, _verificationSessionQueryRecord.Code,
-            _verificationSessionQueryRecord.ExpiresAt);
-        _ = SaveSession();
+        // Check for an existing pending session
+        Task<Result<VerificationSessionQueryRecord?, ShieldFailure>> existingSessionTask =
+            GetVerificationSessionQueryRecordIfExist();
+        existingSessionTask.Wait(); // Synchronous wait in PreStart to ensure session check completes
+
+        Result<VerificationSessionQueryRecord?, ShieldFailure> existingSessionResult = existingSessionTask.Result;
+        if (existingSessionResult.IsErr)
+        {
+            Context.System.Log.Error(
+                $"Failed to check for existing session: {existingSessionResult.UnwrapErr().Message}");
+            Context.Stop(Self);
+            return;
+        }
+
+        VerificationSessionQueryRecord? existingSession = existingSessionResult.Unwrap();
+        if (existingSession != null && existingSession.ExpiresAt > DateTime.UtcNow)
+        {
+            Task smsTask = SendVerificationSms(_verificationSessionQueryRecord.Mobile,
+                _verificationSessionQueryRecord.Code,
+                _verificationSessionQueryRecord.ExpiresAt);
+            smsTask.Wait();
+
+            if (smsTask.Exception != null)
+            {
+                Context.System.Log.Warning($"Failed to resend verification SMS: {smsTask.Exception.Message}");
+            }
+        }
+        else
+        {
+            Task<Result<bool, ShieldFailure>> createSessionTask = CreateMembershipVerificationSessionRecord();
+            createSessionTask.Wait();
+
+            Result<bool, ShieldFailure> createSessionResult = createSessionTask.Result;
+            if (createSessionResult.IsErr)
+            {
+                Context.System.Log.Error(
+                    $"Failed to create verification session: {createSessionResult.UnwrapErr().Message}");
+                Context.Stop(Self);
+                return;
+            }
+
+            Task smsTask = SendVerificationSms(_verificationSessionQueryRecord.Mobile,
+                _verificationSessionQueryRecord.Code,
+                _verificationSessionQueryRecord.ExpiresAt);
+            smsTask.Wait();
+
+            if (smsTask.Exception != null)
+            {
+                Context.System.Log.Warning($"Failed to send verification SMS: {smsTask.Exception.Message}");
+            }
+        }
+
+        Task timerTask = Task.Run(async () =>
+        {
+            for (int i = 0; i < SessionTimeout; i++)
+            {
+                await Task.Delay(1000);
+                await _writer.WriteAsync(new TimerTick());
+            }
+        });
+
+        if (timerTask.IsFaulted)
+        {
+            Context.System.Log.Warning($"Failed to start session timer: {timerTask.Exception?.Message}");
+        }
+    }
+
+    private async Task HandleStartTimer(StartTimer _)
+    {
+        Task timerTask = Task.Run(async () =>
+        {
+            CancellationToken cancellationToken = _timerCancellationTokenSource.Token;
+            Guid deviceId = _verificationSessionQueryRecord.AppDeviceUniqueRec;
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(TimerIntervalSecs), cancellationToken);
+                    DateTime now = DateTime.UtcNow;
+                    ulong remainingSeconds =
+                        (ulong)Math.Max(0, (_verificationSessionQueryRecord.ExpiresAt - now).TotalSeconds);
+
+                    if (remainingSeconds == 0)
+                    {
+                        Context.System.Log.Info($"Session expired for device_id: {deviceId}");
+                        Context.Stop(Self);
+                        break;
+                    }
+
+                    await _writer.WriteAsync(new TimerTick
+                    {
+                        RemainingSeconds = remainingSeconds
+                    }, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Context.System.Log.Warning(
+                        $"Failed to send TimerTick for device_id: {deviceId}, error: {ex.Message}");
+                }
+            }
+        });
+
+        if (timerTask.IsFaulted)
+        {
+            Context.System.Log.Warning($"Failed to start session timer: {timerTask.Exception?.Message}");
+        }
+    }
+
+    private async Task HandleStopTimer(StopTimer msg)
+    {
+        await _timerCancellationTokenSource.CancelAsync()!;
+        _timerCancellationTokenSource.Dispose();
+        _timerCancellationTokenSource = new CancellationTokenSource();
     }
 
     protected override void PostStop()
     {
-    }
-
-    private async Task HandleStartVerificationSessionStreamCommand(StartVerificationSessionStreamCommand _)
-    {
+        _timerCancellationTokenSource?.Cancel();
+        _timerCancellationTokenSource?.Dispose();
     }
 
     private async Task HandleTimerTick(TimerTick _)
@@ -85,19 +205,18 @@ public class MembershipVerificationSessionActor : ReceiveActor
     {
     }
 
-    private async Task HandleStopTimer(StopTimer msg)
-    {
-    }
-
     private async Task HandleCheckSessionStatus(CheckVerificationSessionStatusCommand msg)
     {
     }
 
-    private async Task SaveSession()
-    {
-        _ = _persistor.Ask<Result<bool, ShieldFailure>>(
+    private async Task<Result<bool, ShieldFailure>> CreateMembershipVerificationSessionRecord() =>
+        await _persistor.Ask<Result<bool, ShieldFailure>>(
             new CreateMembershipVerificationSessionRecordCommand(_verificationSessionQueryRecord));
-    }
+
+    private async Task<Result<VerificationSessionQueryRecord?, ShieldFailure>>
+        GetVerificationSessionQueryRecordIfExist() =>
+        await _persistor.Ask<Result<VerificationSessionQueryRecord?, ShieldFailure>>(
+            new GetVerificationSessionCommand(_verificationSessionQueryRecord.AppDeviceUniqueRec));
 
     private async Task UpdateSessionStatus(string status)
     {
