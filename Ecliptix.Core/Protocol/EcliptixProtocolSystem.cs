@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;

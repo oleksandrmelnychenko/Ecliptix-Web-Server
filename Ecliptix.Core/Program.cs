@@ -4,13 +4,15 @@ using Akka.Hosting;
 using Ecliptix.Core.Interceptors;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Services;
+using Ecliptix.Core.Services.Memberships;
+using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Persistors;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Npgsql;
 using OpenTelemetry.Metrics;
 using Serilog;
 using Serilog.Context;
-using Microsoft.Extensions.Diagnostics.HealthChecks; 
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 const string systemActorName = "EcliptixProtocolSystemActor";
 
@@ -32,6 +34,7 @@ try
         throw new InvalidOperationException("Connection string 'EcliptixDb' not found or is empty in configuration.");
     }
 
+    builder.Services.AddSingleton<SNSProvider>();
     builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
     {
         ILoggerFactory? loggerFactory = sp.GetService<ILoggerFactory>();
@@ -44,6 +47,7 @@ try
         {
             Log.Warning("ILoggerFactory not found in service provider. Npgsql logging will be disabled.");
         }
+
         Log.Information("Building NpgsqlDataSource for EcliptixDb.");
         return dataSourceBuilder.Build();
     });
@@ -59,43 +63,44 @@ try
             metrics.AddConsoleExporter();
         });
 
-    /*
-    builder.Services.AddRateLimiter(options =>
-    {
-        options.AddFixedWindowLimiter(policyName: "grpc", limiterOptions =>
-        {
-            limiterOptions.PermitLimit = 100;
-            limiterOptions.Window = TimeSpan.FromSeconds(10);
-            limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-            limiterOptions.QueueLimit = 0;
-        });
-        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    });
-    */
-
     builder.Services.AddAkka(systemActorName, (akkaBuilder, serviceProvider) =>
     {
         akkaBuilder.WithActors((system, registry) =>
         {
             ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+
             using (LogContext.PushProperty("ActorSystemName", system.Name))
             {
                 logger.LogInformation("Actor system {ActorSystemName} is starting up.", system.Name);
             }
 
-            NpgsqlDataSource resolvedDataSource = serviceProvider.GetRequiredService<NpgsqlDataSource>();
-            ILogger<EcliptixProtocolSystemActor> protocolActorLogger = serviceProvider.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>();
+            NpgsqlDataSource npgsqlDataSource = serviceProvider.GetRequiredService<NpgsqlDataSource>();
+            SNSProvider snsProvider = serviceProvider.GetRequiredService<SNSProvider>();
+
+            ILogger<EcliptixProtocolSystemActor> protocolActorLogger =
+                serviceProvider.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>();
 
             IActorRef protocolSystemActor = system.ActorOf(
                 EcliptixProtocolSystemActor.Build(protocolActorLogger),
                 "ProtocolSystem");
 
             IActorRef appDevicePersistor = system.ActorOf(
-                AppDevicePersistorActor.Build(resolvedDataSource),
+                AppDevicePersistorActor.Build(npgsqlDataSource),
                 "AppDevicePersistor");
+
+            IActorRef membershipVerificationSessionPersistorActor = system.ActorOf(
+                MembershipVerificationSessionPersistorActor.Build(npgsqlDataSource),
+                "MembershipVerificationSessionPersistorActor");
+
+            IActorRef verificationSessionManagerActor = system.ActorOf(
+                VerificationSessionManagerActor.Build(membershipVerificationSessionPersistorActor,
+                    snsProvider),
+                "VerificationSessionManagerActor");
 
             registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
             registry.Register<AppDevicePersistorActor>(appDevicePersistor);
+            registry.Register<MembershipVerificationSessionPersistorActor>(membershipVerificationSessionPersistorActor);
+            registry.Register<VerificationSessionManagerActor>(verificationSessionManagerActor);
 
             logger.LogInformation("Registered top-level actors: {ProtocolActorPath}, {PersistorActorPath}",
                 protocolSystemActor.Path, appDevicePersistor.Path);
@@ -107,10 +112,7 @@ try
     builder.WebHost.ConfigureKestrel(options =>
     {
         int grpcPort = configuration.GetValue("GrpcServer:Port", 5001);
-        options.ListenAnyIP(grpcPort, listenOptions =>
-        {
-            listenOptions.Protocols = HttpProtocols.Http2;
-        });
+        options.ListenAnyIP(grpcPort, listenOptions => { listenOptions.Protocols = HttpProtocols.Http2; });
         options.ListenAnyIP(5002);
     });
 
@@ -126,7 +128,9 @@ try
     app.UseStaticFiles();
 
     app.MapGrpcService<AppDeviceServices>();
-        // .RequireRateLimiting("grpc");
+    app.MapGrpcService<VerificationServices>();
+
+    // .RequireRateLimiting("grpc");
 
     app.MapGet("/", () => Results.Ok("Ecliptix Service is operational."));
     app.MapHealthChecks("/healthz");
@@ -137,7 +141,7 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "Ecliptix application host terminated unexpectedly");
-    throw; // Re-throw the exception after logging for visibility
+    throw;
 }
 finally
 {
@@ -148,13 +152,10 @@ finally
 static void RegisterLocalization(IServiceCollection services)
 {
     services.AddLocalization();
-    services.Configure<RequestLocalizationOptions>(options =>
-    {
-        options.FallBackToParentUICultures = true;
-    });
+    services.Configure<RequestLocalizationOptions>(options => { options.FallBackToParentUICultures = true; });
 }
 
-static void RegisterValidators(IServiceCollection services) // Renamed
+static void RegisterValidators(IServiceCollection services)
 {
     services.AddResponseCompression();
     services.AddHealthChecks()

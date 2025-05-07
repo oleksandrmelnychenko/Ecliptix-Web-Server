@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using Ecliptix.Core.Protocol;
-using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Domain.Utilities;
 
 // MSTest namespace

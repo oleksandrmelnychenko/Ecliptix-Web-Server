@@ -1,4 +1,3 @@
-using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Utilities;
 using Grpc.Core;

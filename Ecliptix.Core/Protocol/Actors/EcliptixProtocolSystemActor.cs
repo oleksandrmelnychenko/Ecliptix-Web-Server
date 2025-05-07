@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using Akka.Actor;
-using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;

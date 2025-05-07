@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using Ecliptix.Core.Protocol.Utilities;
 
 namespace Ecliptix.Domain.Utilities;
 

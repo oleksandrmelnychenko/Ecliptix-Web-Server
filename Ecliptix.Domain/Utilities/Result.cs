@@ -1,5 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using Ecliptix.Core.Protocol.Utilities;
 
 namespace Ecliptix.Domain.Utilities;
 

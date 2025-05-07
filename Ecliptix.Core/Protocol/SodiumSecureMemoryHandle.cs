@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Core.Protocol;

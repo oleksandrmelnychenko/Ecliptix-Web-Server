@@ -5,7 +5,7 @@ using System.Security.Cryptography; // For AuthenticationTagMismatchException
 using System.Text;
 using System.Threading.Tasks;
 using Ecliptix.Core.Protocol; // Your ShieldPro namespace
-using Ecliptix.Core.Protocol.Utilities; // For ShieldChainStepException if needed
+// For ShieldChainStepException if needed
 using Ecliptix.Protobuf.CipherPayload; // Your CipherPayload namespace
 using Ecliptix.Protobuf.PubKeyExchange; // Your PubKeyExchange namespace
 

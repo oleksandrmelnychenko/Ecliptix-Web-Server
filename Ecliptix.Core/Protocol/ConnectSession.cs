@@ -2,7 +2,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Security.Cryptography;
-using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.PubKeyExchange;
 using Sodium;

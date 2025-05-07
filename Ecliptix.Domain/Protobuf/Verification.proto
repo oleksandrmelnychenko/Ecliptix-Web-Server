@@ -13,14 +13,15 @@ enum VerificationStatus {
 }
 
 enum VerificationType {
-  REGISTRATION = 0;
-  LOGIN = 1;
+  SIGNUP = 0;
+  SIGNIN = 1;
   PASSWORD_RESET = 2;
 }
 
-message VerifyAppDeviceRequest {
+message MembershipVerificationRequest {
   string mobile = 1;
-  VerificationType verification_type = 2;
+  bytes unique_app_device_rec = 2;
+  VerificationType verification_type = 3;
 }
 
 message VerifyCodeRequest {
