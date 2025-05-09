@@ -19,7 +19,7 @@ public class ShieldProProtocolBenchmarks
     private EcliptixProtocolSystem _bobEcliptixProtocolSystem;
     private uint _aliceSessionId;
     private uint _bobSessionId;
-    private readonly PubKeyExchangeType _exchangeType = PubKeyExchangeType.AppDeviceEphemeralConnect;
+    private readonly PubKeyExchangeType _exchangeType = PubKeyExchangeType.DataCenterEphemeralConnect;
     private byte[] _sampleMessage;
     private const int MessageSize = 64;
     private const int MessageCount = 10;

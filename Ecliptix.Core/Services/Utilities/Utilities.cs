@@ -18,8 +18,6 @@ public static class ServiceUtilities
         return segment.Array!;
     }
 
-   
-
     public static async Task<byte[]> ExtractCipherPayload(ByteString requestedEncryptedPayload, string connectionId,
         Func<byte[], string, int, Task<byte[]>> decryptPayloadFun)
     {

@@ -27,7 +27,7 @@ public class VerificationServiceBase(
             .Ask<Result<byte[], ShieldFailure>>(
                 new DecryptCipherPayloadCommand(
                     connectId,
-                    PubKeyExchangeType.AppDeviceEphemeralConnect,
+                    PubKeyExchangeType.DataCenterEphemeralConnect,
                     request
                 ),
                 context.CancellationToken

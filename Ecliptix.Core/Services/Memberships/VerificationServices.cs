@@ -46,7 +46,7 @@ public sealed class VerificationServices(
                     .Ask<Result<CipherPayload, ShieldFailure>>(
                         new EncryptCipherPayloadCommand(
                             connectId,
-                            PubKeyExchangeType.AppDeviceEphemeralConnect,
+                            PubKeyExchangeType.DataCenterEphemeralConnect,
                             timerTick.ToByteArray()
                         ),
                         context.CancellationToken

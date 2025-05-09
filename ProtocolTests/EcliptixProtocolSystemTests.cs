@@ -120,7 +120,7 @@ public class EcliptixProtocolSystemTests : IDisposable
     [TestMethod]
     public void CompleteExchange_Success_Should_FinalizeSessionAndReturnRootKey()
     {
-        const PubKeyExchangeType exchangeType = PubKeyExchangeType.AppDeviceEphemeralConnect;
+        const PubKeyExchangeType exchangeType = PubKeyExchangeType.DataCenterEphemeralConnect;
         SodiumSecureMemoryHandle? aliceRootKeyHandle = null;
         SodiumSecureMemoryHandle? bobRootKeyHandle = null;
 

@@ -11,7 +11,7 @@ enum PubKeyExchangeState {
 }
 
 enum PubKeyExchangeType {
-  APP_DEVICE_EPHEMERAL_CONNECT = 0;
+  DataCenterEphemeralConnect = 0;
 }
 
 message PubKeyExchange {

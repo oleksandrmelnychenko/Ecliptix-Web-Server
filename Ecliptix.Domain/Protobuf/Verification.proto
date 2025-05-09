@@ -36,6 +36,7 @@ message VerifyCodeReply{
 
 message TimerTick {
   uint64 remaining_seconds = 1;
+  bytes stream_id = 2;
 }
 
 message ErrorReply {

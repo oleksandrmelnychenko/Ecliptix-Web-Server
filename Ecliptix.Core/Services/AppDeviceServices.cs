@@ -47,7 +47,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
             .Ask<Result<byte[], ShieldFailure>>(
                 new DecryptCipherPayloadCommand(
                     connectId,
-                    PubKeyExchangeType.AppDeviceEphemeralConnect,
+                    PubKeyExchangeType.DataCenterEphemeralConnect,
                     request
                 ),
                 context.CancellationToken
@@ -90,7 +90,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
             .Ask<Result<CipherPayload, ShieldFailure>>(
                 new EncryptCipherPayloadCommand(
                     connectId,
-                    PubKeyExchangeType.AppDeviceEphemeralConnect,
+                    PubKeyExchangeType.DataCenterEphemeralConnect,
                     reply.ToByteArray()
                 ),
                 context.CancellationToken
