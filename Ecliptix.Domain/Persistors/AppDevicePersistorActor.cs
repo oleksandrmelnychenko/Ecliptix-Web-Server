@@ -42,11 +42,10 @@ public class AppDevicePersistorActor : ReceiveActor
 
     private async Task HandleRegisterAppDeviceIfNotExistCommand(RegisterAppDeviceIfNotExistCommand command)
     {
-        Result<(Guid, int), ShieldFailure> operationResult = await RegisterAppDevice(command.AppDevice);
-        Sender.Tell(operationResult);
+        await RegisterAppDevice(command.AppDevice);
     }
 
-    private async Task<Result<(Guid, int), ShieldFailure>> RegisterAppDevice(AppDevice appDevice)
+    private async Task RegisterAppDevice(AppDevice appDevice)
     {
         int deviceTypeInt = (int)appDevice.DeviceType;
 
@@ -64,24 +63,24 @@ public class AppDevicePersistorActor : ReceiveActor
             await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
             {
-                return Result<(Guid, int), ShieldFailure>.Err(
-                    ShieldFailure.DataAccess("Failed to register app device (no result returned)."));
+                Sender.Tell(Result<(Guid, int), ShieldFailure>.Err(
+                    ShieldFailure.DataAccess("Failed to register app device (no result returned).")));
             }
 
             Guid uniqueId = reader.GetFieldValue<Guid>(0);
             int status = reader.GetInt32(1);
 
-            return Result<(Guid, int), ShieldFailure>.Ok((uniqueId, status));
+            Sender.Tell(Result<(Guid, int), ShieldFailure>.Ok((uniqueId, status)));
         }
         catch (NpgsqlException dbEx)
         {
-            return Result<(Guid, int), ShieldFailure>.Err(
-                ShieldFailure.DataAccess($"Database error during registration: {dbEx.Message}", dbEx));
+            Sender.Tell(Result<(Guid, int), ShieldFailure>.Err(
+                ShieldFailure.DataAccess($"Database error during registration: {dbEx.Message}", dbEx)));
         }
         catch (Exception ex)
         {
-            return Result<(Guid, int), ShieldFailure>.Err(
-                ShieldFailure.Generic($"Unexpected error during registration: {ex.Message}", ex));
+            Sender.Tell(Result<(Guid, int), ShieldFailure>.Err(
+                ShieldFailure.Generic($"Unexpected error during registration: {ex.Message}", ex)));
         }
     }
 }

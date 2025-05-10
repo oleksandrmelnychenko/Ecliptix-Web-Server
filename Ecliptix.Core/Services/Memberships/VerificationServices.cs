@@ -10,6 +10,7 @@ using Ecliptix.Protobuf.PubKeyExchange;
 using Ecliptix.Protobuf.Verification;
 using Google.Protobuf;
 using Grpc.Core;
+using TimerTick = Ecliptix.Protobuf.Verification.TimerTick;
 
 namespace Ecliptix.Core.Services.Memberships;
 
@@ -68,7 +69,7 @@ public sealed class VerificationServices(
                     writer
                 ));
 
-        await streamingTask;
+        if (sessionResult.IsOk) await streamingTask;
     }
 
     public override Task<CipherPayload> VerifyWithCode(CipherPayload request, ServerCallContext context)

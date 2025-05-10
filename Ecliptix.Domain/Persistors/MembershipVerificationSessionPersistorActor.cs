@@ -34,7 +34,7 @@ public class MembershipVerificationSessionPersistorActor : ReceiveActor
         ReceiveAsync<GetVerificationSessionCommand>(HandleGetVerificationSession);
     }
 
-    private async Task<Result<Unit, ShieldFailure>> HandleCreateMembershipVerificationSessionRecord(
+    private async Task HandleCreateMembershipVerificationSessionRecord(
         CreateMembershipVerificationSessionRecordCommand cmd)
     {
         try
@@ -55,7 +55,7 @@ public class MembershipVerificationSessionPersistorActor : ReceiveActor
             command.Parameters.Add(new NpgsqlParameter("connect_id", NpgsqlDbType.Bigint)
                 { Value = (long)record.ConnectId });
             command.Parameters.Add(new NpgsqlParameter("mobile", NpgsqlDbType.Varchar, 20)
-                { Value = record.Mobile ?? (object)DBNull.Value });
+                { Value = record.Mobile });
             command.Parameters.Add(new NpgsqlParameter("stream_id", NpgsqlDbType.Uuid)
                 { Value = record.StreamId });
 
@@ -63,25 +63,26 @@ public class MembershipVerificationSessionPersistorActor : ReceiveActor
 
             if (result == null || result == DBNull.Value)
             {
-                return Result<Unit, ShieldFailure>.Err(
-                    ShieldFailure.DataAccess("Failed to create verification session: conflicting pending session exists."));
+                Sender.Tell(Result<Unit, ShieldFailure>.Err(
+                    ShieldFailure.DataAccess(
+                        "Failed to create verification session: conflicting pending session exists.")));
             }
 
-            return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+            Sender.Tell(Result<Unit, ShieldFailure>.Ok(Unit.Value));
         }
         catch (NpgsqlException dbEx)
         {
-            return Result<Unit, ShieldFailure>.Err(
-                ShieldFailure.DataAccess($"Database error during session creation: {dbEx.Message}", dbEx));
+            Sender.Tell(Result<VerificationSessionQueryRecord, ShieldFailure>.Err(
+                ShieldFailure.DataAccess($"Database error during session retrieval: {dbEx.Message}", dbEx)));
         }
         catch (Exception ex)
         {
-            return Result<Unit, ShieldFailure>.Err(
-                ShieldFailure.Generic($"Unexpected error during session creation: {ex.Message}", ex));
+            Sender.Tell(Result<VerificationSessionQueryRecord, ShieldFailure>.Err(
+                ShieldFailure.Generic($"Unexpected error during session retrieval: {ex.Message}", ex)));
         }
     }
 
-    private async Task<Result<VerificationSessionQueryRecord?, ShieldFailure>> HandleGetVerificationSession(
+    private async Task HandleGetVerificationSession(
         GetVerificationSessionCommand cmd)
     {
         try
@@ -109,20 +110,20 @@ public class MembershipVerificationSessionPersistorActor : ReceiveActor
                     ExpiresAt = reader.GetDateTime(5),
                     Status = Enum.Parse<MembershipVerificationSessionStatus>(reader.GetString(6), ignoreCase: true)
                 };
-                return Result<VerificationSessionQueryRecord?, ShieldFailure>.Ok(record);
+                Sender.Tell(Result<VerificationSessionQueryRecord, ShieldFailure>.Ok(record));
             }
 
-            return Result<VerificationSessionQueryRecord?, ShieldFailure>.Ok(null);
+            Sender.Tell(Result<VerificationSessionQueryRecord, ShieldFailure>.Ok(VerificationSessionQueryRecord.Empty));
         }
         catch (NpgsqlException dbEx)
         {
-            return Result<VerificationSessionQueryRecord?, ShieldFailure>.Err(
-                ShieldFailure.DataAccess($"Database error during session retrieval: {dbEx.Message}", dbEx));
+            Sender.Tell(Result<VerificationSessionQueryRecord, ShieldFailure>.Err(
+                ShieldFailure.DataAccess($"Database error during session retrieval: {dbEx.Message}", dbEx)));
         }
         catch (Exception ex)
         {
-            return Result<VerificationSessionQueryRecord?, ShieldFailure>.Err(
-                ShieldFailure.Generic($"Unexpected error during session retrieval: {ex.Message}", ex));
+            Sender.Tell(Result<VerificationSessionQueryRecord, ShieldFailure>.Err(
+                ShieldFailure.Generic($"Unexpected error during session retrieval: {ex.Message}", ex)));
         }
     }
 }

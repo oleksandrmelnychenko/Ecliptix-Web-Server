@@ -56,23 +56,17 @@ public class VerificationSessionManagerActor : ReceiveActor
 
     private void HandlePostponeSession(PostponeSession msg)
     {
-        if (_sessions.TryGetValue(msg.ConnectId, out var actor))
+        if (_sessions.TryGetValue(msg.ConnectId, out IActorRef? actor))
         {
             actor.Tell(msg);
-        }
-        else
-        {
         }
     }
 
     private void HandleStopTimer(StopTimer msg)
     {
-        if (_sessions.TryGetValue(msg.ConnectId, out var actor))
+        if (_sessions.TryGetValue(msg.ConnectId, out IActorRef? actor))
         {
             actor.Tell(msg);
-        }
-        else
-        {
         }
     }
 
@@ -118,8 +112,6 @@ public record StartVerificationSessionStreamCommand(
 public record VerifyCodeRcpMsg(CipherPayload InboundCipher, byte[] ConnectId);
 
 public record PostponeSession(uint ConnectId);
-
-public record StopTimer(uint ConnectId);
 
 public record CheckVerificationSessionStatusCommand(StartVerificationSessionStreamCommand Request);
 
