@@ -22,6 +22,7 @@ public class MembershipVerificationSessionActor : ReceiveActor
     private readonly TimeSpan _timerInterval = TimeSpan.FromSeconds(1);
     private readonly Guid _streamId = Guid.NewGuid();
     private readonly ILoggingAdapter _log = Context.GetLogger();
+    private int _remainingSeconds;
 
     public MembershipVerificationSessionActor(
         uint connectId,
@@ -60,7 +61,7 @@ public class MembershipVerificationSessionActor : ReceiveActor
 
     private void Initializing()
     {
-        Context.System.Log.Info("Entering Initializing state");
+        _log.Info("Entering Initializing state");
 
         Receive<Result<VerificationSessionQueryRecord, ShieldFailure>>(HandleExistingSessionCheck);
         Receive<Status.Failure>(failure =>
@@ -73,9 +74,9 @@ public class MembershipVerificationSessionActor : ReceiveActor
             _writer.TryComplete(failure.Cause);
             Context.Stop(Self);
         });
-        ReceiveAny(msg => Context.System.Log.Warning($"Unexpected message: {msg.GetType()}"));
+        ReceiveAny(msg => _log.Warning($"Unexpected message: {msg.GetType()}"));
 
-        Context.System.Log.Info("Requesting existing verification session");
+        _log.Info("Requesting existing verification session");
         _persistor.Ask<Result<VerificationSessionQueryRecord, ShieldFailure>>(
                 new GetVerificationSessionCommand(_verificationSessionQueryRecord.AppDeviceUniqueRec))
             .PipeTo(Self);
@@ -93,9 +94,21 @@ public class MembershipVerificationSessionActor : ReceiveActor
         VerificationSessionQueryRecord existingSession = result.Unwrap();
         if (!existingSession.IsEmpty && existingSession.ExpiresAt > DateTime.UtcNow)
         {
-            _log.Info("Existing session found, transitioning to Running state");
+            _log.Info("Existing session found, sending SMS and transitioning to Running state");
             SendVerificationSms(existingSession.Mobile, existingSession.Code, existingSession.ExpiresAt)
-                .PipeTo(Self, success: () => new StartTimer());
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        _log.Error(t.Exception, "Failed to send SMS for existing session");
+                    }
+                    else
+                    {
+                        _log.Info("SMS sent successfully for existing session");
+                    }
+                    return new StartTimer();
+                })
+                .PipeTo(Self);
             Become(Running);
         }
         else
@@ -122,24 +135,36 @@ public class MembershipVerificationSessionActor : ReceiveActor
     {
         if (result.IsErr)
         {
-            Context.System.Log.Error($"Failed to create verification session: {result.UnwrapErr().Message}");
+            _log.Error($"Failed to create verification session: {result.UnwrapErr().Message}");
             Context.Stop(Self);
             return;
         }
 
-        _ = SendVerificationSms(_verificationSessionQueryRecord.Mobile, _verificationSessionQueryRecord.Code,
-            _verificationSessionQueryRecord.ExpiresAt);
-        Context.System.Log.Info("Transitioning to Running state (new session created)");
+        _log.Info("Session created, sending SMS and transitioning to Running state");
+        SendVerificationSms(_verificationSessionQueryRecord.Mobile, _verificationSessionQueryRecord.Code,
+            _verificationSessionQueryRecord.ExpiresAt)
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _log.Error(t.Exception, "Failed to send SMS for new session");
+                }
+                else
+                {
+                    _log.Info("SMS sent successfully for new session");
+                }
+                return new StartTimer();
+            })
+            .PipeTo(Self);
         Become(Running);
-        Self.Tell(new StartTimer());
     }
 
     private void Running()
     {
-        Context.System.Log.Info("Entered Running state");
+        _log.Info("Entered Running state");
         Receive<StartTimer>(_ =>
         {
-            Context.System.Log.Info("Processing StartTimer message");
+            _log.Info("Processing StartTimer message");
             StartTimer();
         });
         Receive<TimerTick>(HandleTimerTick);
@@ -148,40 +173,55 @@ public class MembershipVerificationSessionActor : ReceiveActor
         Receive<StopTimer>(_ => _timerCancelable.Cancel());
     }
 
-    private void HandleTimerTick(TimerTick tick)
+    private void HandleTimerTick(TimerTick _)
     {
-        if (tick.RemainingSeconds == 0)
+        _log.Info($"Timer tick: {_remainingSeconds:D2}:{_remainingSeconds % 60:D2} remaining");
+
+        if (_remainingSeconds <= 0)
         {
-            Context.System.Log.Info(
-                $"Session expired for device_id: {_verificationSessionQueryRecord.AppDeviceUniqueRec}");
+            _log.Info($"Session expired for device_id: {_verificationSessionQueryRecord.AppDeviceUniqueRec}");
+            /*_persistor.Tell(new UpdateSessionStatusCommand(
+                _verificationSessionQueryRecord.AppDeviceUniqueRec, "Expired"));*/
+            _timerCancelable.Cancel();
             Context.Stop(Self);
         }
         else
         {
-            _writer.WriteAsync(tick);
+            _writer.WriteAsync(new TimerTick
+            {
+                RemainingSeconds = (ulong)_remainingSeconds,
+                StreamId = Helpers.GuidToByteString(_streamId)
+            });
+            _remainingSeconds--;
         }
     }
 
     private void StartTimer()
     {
+        _remainingSeconds = (int)_sessionTimeout.TotalSeconds;
         _timerCancelable = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
             initialDelay: TimeSpan.Zero,
             interval: _timerInterval,
             receiver: Self,
-            message: new TimerTick
-            {
-                RemainingSeconds = CalculateRemainingSeconds(_verificationSessionQueryRecord.ExpiresAt),
-                StreamId = Helpers.GuidToByteString(_streamId)
-            },
+            message: new TimerTick(),
             sender: ActorRefs.NoSender);
-        Context.System.Log.Info("Timer started");
+        _log.Info("Timer started");
     }
 
     private async Task SendVerificationSms(string mobile, string code, DateTime expiresAt)
     {
         string message =
             $"Your verification code is: {code}. It will expire in {CalculateRemainingSeconds(expiresAt)} seconds.";
-        await _snsProvider.SendSMSAsync(mobile, message);
+        try
+        {
+            await _snsProvider.SendSMSAsync(mobile, message);
+            _log.Info("SMS sent successfully");
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to send SMS");
+            throw;
+        }
     }
 
     private static string GenerateVerificationCode() => new Random().Next(10000, 99999).ToString();
@@ -197,12 +237,13 @@ public class MembershipVerificationSessionActor : ReceiveActor
         _timerCancelable?.Cancel();
     }
 
-    // Placeholder handlers
     private void HandleVerifyCodeRcpMsg(VerifyCodeRcpMsg msg)
     {
+        // Placeholder for future implementation
     }
 
     private void HandlePostponeSession(PostponeSession msg)
     {
+        // Placeholder for future implementation
     }
 }
