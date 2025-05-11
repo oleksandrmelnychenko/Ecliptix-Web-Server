@@ -84,7 +84,7 @@ public class VerificationSessionManagerActor : ReceiveActor
 
     private void CreateMembershipVerificationSessionActor(StartVerificationSessionStreamCommand msg)
     {
-        IActorRef? actor = Context.ActorOf(MembershipVerificationSessionActor.Build(
+        IActorRef? actor = Context.ActorOf(VerificationSessionActor.Build(
             msg.ConnectId,
             Guid.NewGuid(),
             msg.Mobile,

@@ -1,30 +1,31 @@
 using System.Threading.Channels;
 using Akka.Actor;
 using Akka.Event;
-using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Verification;
 
+namespace Ecliptix.Domain.Memberships;
+
 public record StartTimer;
 
 public record StopTimer(uint ConnectId);
 
-public class MembershipVerificationSessionActor : ReceiveActor
+public class VerificationSessionActor : ReceiveActor
 {
     private readonly ChannelWriter<TimerTick> _writer;
     private readonly IActorRef _persistor;
     private readonly SNSProvider _snsProvider;
     private readonly VerificationSessionQueryRecord _verificationSessionQueryRecord;
-    private ICancelable _timerCancelable;
+    private ICancelable? _timerCancelable;
     private readonly TimeSpan _sessionTimeout = TimeSpan.FromSeconds(60);
     private readonly TimeSpan _timerInterval = TimeSpan.FromSeconds(1);
     private readonly Guid _streamId = Guid.NewGuid();
     private readonly ILoggingAdapter _log = Context.GetLogger();
     private int _remainingSeconds;
 
-    public MembershipVerificationSessionActor(
+    public VerificationSessionActor(
         uint connectId,
         Guid streamId,
         string mobile,
@@ -41,7 +42,7 @@ public class MembershipVerificationSessionActor : ReceiveActor
             connectId, streamId, mobile, uniqueRec, GenerateVerificationCode())
         {
             ExpiresAt = DateTime.UtcNow.Add(_sessionTimeout),
-            Status = MembershipVerificationSessionStatus.Pending
+            Status = VerificationSessionStatus.Pending
         };
 
         Become(Initializing);
@@ -56,7 +57,7 @@ public class MembershipVerificationSessionActor : ReceiveActor
         IActorRef persistor,
         SNSProvider snsProvider) =>
         Props.Create(() =>
-            new MembershipVerificationSessionActor(connectId, streamId, mobile, deviceId, writer, persistor,
+            new VerificationSessionActor(connectId, streamId, mobile, deviceId, writer, persistor,
                 snsProvider));
 
     private void Initializing()
@@ -116,7 +117,7 @@ public class MembershipVerificationSessionActor : ReceiveActor
             _log.Info("No valid session found, transitioning to CreatingSession state");
             Become(CreatingSession);
             _persistor.Ask<Result<Unit, ShieldFailure>>(
-                    new CreateMembershipVerificationSessionRecordCommand(_verificationSessionQueryRecord))
+                    new CreateVerificationSessionRecordCommand(_verificationSessionQueryRecord))
                 .PipeTo(Self);
         }
     }
@@ -142,7 +143,7 @@ public class MembershipVerificationSessionActor : ReceiveActor
 
         _log.Info("Session created, sending SMS and transitioning to Running state");
         SendVerificationSms(_verificationSessionQueryRecord.Mobile, _verificationSessionQueryRecord.Code,
-            _verificationSessionQueryRecord.ExpiresAt)
+                _verificationSessionQueryRecord.ExpiresAt)
             .ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -167,27 +168,27 @@ public class MembershipVerificationSessionActor : ReceiveActor
             _log.Info("Processing StartTimer message");
             StartTimer();
         });
-        Receive<TimerTick>(HandleTimerTick);
+        ReceiveAsync<TimerTick>(HandleTimerTick);
         Receive<VerifyCodeRcpMsg>(HandleVerifyCodeRcpMsg);
         Receive<PostponeSession>(HandlePostponeSession);
         Receive<StopTimer>(_ => _timerCancelable.Cancel());
     }
 
-    private void HandleTimerTick(TimerTick _)
+    private async Task HandleTimerTick(TimerTick _)
     {
         _log.Info($"Timer tick: {_remainingSeconds:D2}:{_remainingSeconds % 60:D2} remaining");
 
         if (_remainingSeconds <= 0)
         {
             _log.Info($"Session expired for device_id: {_verificationSessionQueryRecord.AppDeviceUniqueRec}");
-            /*_persistor.Tell(new UpdateSessionStatusCommand(
-                _verificationSessionQueryRecord.AppDeviceUniqueRec, "Expired"));*/
-            _timerCancelable.Cancel();
+            _persistor.Tell(new UpdateSessionStatusCommand(
+                _verificationSessionQueryRecord.AppDeviceUniqueRec, VerificationSessionStatus.Expired));
+            _timerCancelable?.Cancel();
             Context.Stop(Self);
         }
         else
         {
-            _writer.WriteAsync(new TimerTick
+            await _writer.WriteAsync(new TimerTick
             {
                 RemainingSeconds = (ulong)_remainingSeconds,
                 StreamId = Helpers.GuidToByteString(_streamId)

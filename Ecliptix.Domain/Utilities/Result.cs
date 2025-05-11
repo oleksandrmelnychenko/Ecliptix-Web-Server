@@ -130,25 +130,6 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
         }
     }
 
-    public static async ValueTask<Result<T, TError>> TryAsync<T, TError>(
-        Func<ValueTask<T>> action,
-        Func<ShieldFailure, TError> errorMapper,
-        Action? cleanup = null)
-    {
-        ArgumentNullException.ThrowIfNull(action, nameof(action));
-        ArgumentNullException.ThrowIfNull(errorMapper, nameof(errorMapper));
-
-        try
-        {
-            T result = await action().ConfigureAwait(false);
-            return Result<T, TError>.Ok(result);
-        }
-        finally
-        {
-            cleanup?.Invoke();
-        }
-    }
-
     [MemberNotNullWhen(true, nameof(_value))]
     [MemberNotNullWhen(false, nameof(_error))]
     public bool IsOk { get; }

@@ -9,16 +9,18 @@ using System.Threading.Tasks;
 
 namespace Ecliptix.Domain.Persistors;
 
-public record CreateMembershipVerificationSessionRecordCommand(
+public record CreateVerificationSessionRecordCommand(
     VerificationSessionQueryRecord VerificationSessionQueryRecord);
 
 public record GetVerificationSessionCommand(Guid DeviceId);
 
-public class MembershipVerificationSessionPersistorActor : ReceiveActor
+public record UpdateSessionStatusCommand(Guid SessionId, VerificationSessionStatus Status);
+
+public class VerificationSessionPersistorActor : ReceiveActor
 {
     private readonly NpgsqlDataSource _npgsqlDataSource;
 
-    public MembershipVerificationSessionPersistorActor(NpgsqlDataSource npgsqlDataSource)
+    public VerificationSessionPersistorActor(NpgsqlDataSource npgsqlDataSource)
     {
         _npgsqlDataSource = npgsqlDataSource;
 
@@ -26,16 +28,44 @@ public class MembershipVerificationSessionPersistorActor : ReceiveActor
     }
 
     public static Props Build(NpgsqlDataSource npgsqlDataSource) =>
-        Props.Create(() => new MembershipVerificationSessionPersistorActor(npgsqlDataSource));
+        Props.Create(() => new VerificationSessionPersistorActor(npgsqlDataSource));
 
     private void Ready()
     {
-        ReceiveAsync<CreateMembershipVerificationSessionRecordCommand>(HandleCreateMembershipVerificationSessionRecord);
+        ReceiveAsync<CreateVerificationSessionRecordCommand>(HandleCreateMembershipVerificationSessionRecord);
         ReceiveAsync<GetVerificationSessionCommand>(HandleGetVerificationSession);
+        ReceiveAsync<UpdateSessionStatusCommand>(HandleUpdateSessionStatus);
+    }
+    
+    private async Task HandleUpdateSessionStatus(UpdateSessionStatusCommand cmd)
+    {
+        try
+        {
+            await using NpgsqlConnection connection = _npgsqlDataSource.CreateConnection();
+            await connection.OpenAsync();
+            await using NpgsqlCommand command = new(
+                "SELECT update_verification_session_status(@device_id, @status::verification_status)", connection);
+
+            command.Parameters.Add(new NpgsqlParameter("device_id", NpgsqlDbType.Uuid) { Value = cmd.SessionId });
+            command.Parameters.Add(new NpgsqlParameter("status", NpgsqlDbType.Varchar) { Value = cmd.Status });
+
+            await command.ExecuteNonQueryAsync();
+            Sender.Tell(Result<Unit, ShieldFailure>.Ok(Unit.Value));
+        }
+        catch (NpgsqlException dbEx)
+        {
+            Sender.Tell(Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.DataAccess($"Database error during session status update: {dbEx.Message}", dbEx)));
+        }
+        catch (Exception ex)
+        {
+            Sender.Tell(Result<Unit, ShieldFailure>.Err(
+                ShieldFailure.Generic($"Unexpected error during session status update: {ex.Message}", ex)));
+        }
     }
 
     private async Task HandleCreateMembershipVerificationSessionRecord(
-        CreateMembershipVerificationSessionRecordCommand cmd)
+        CreateVerificationSessionRecordCommand cmd)
     {
         try
         {
@@ -108,7 +138,7 @@ public class MembershipVerificationSessionPersistorActor : ReceiveActor
                 )
                 {
                     ExpiresAt = reader.GetDateTime(5),
-                    Status = Enum.Parse<MembershipVerificationSessionStatus>(reader.GetString(6), ignoreCase: true)
+                    Status = Enum.Parse<VerificationSessionStatus>(reader.GetString(6), ignoreCase: true)
                 };
                 Sender.Tell(Result<VerificationSessionQueryRecord, ShieldFailure>.Ok(record));
             }

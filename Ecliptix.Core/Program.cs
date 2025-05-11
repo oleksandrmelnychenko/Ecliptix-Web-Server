@@ -89,7 +89,7 @@ try
                 "AppDevicePersistor");
 
             IActorRef membershipVerificationSessionPersistorActor = system.ActorOf(
-                MembershipVerificationSessionPersistorActor.Build(npgsqlDataSource),
+                VerificationSessionPersistorActor.Build(npgsqlDataSource),
                 "MembershipVerificationSessionPersistorActor");
 
             IActorRef verificationSessionManagerActor = system.ActorOf(
@@ -99,7 +99,7 @@ try
 
             registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
             registry.Register<AppDevicePersistorActor>(appDevicePersistor);
-            registry.Register<MembershipVerificationSessionPersistorActor>(membershipVerificationSessionPersistorActor);
+            registry.Register<VerificationSessionPersistorActor>(membershipVerificationSessionPersistorActor);
             registry.Register<VerificationSessionManagerActor>(verificationSessionManagerActor);
 
             logger.LogInformation("Registered top-level actors: {ProtocolActorPath}, {PersistorActorPath}",

@@ -10,7 +10,7 @@ public record VerificationSessionQueryRecord(
     string Code)
 {
     public DateTime ExpiresAt { get; init; }
-    public MembershipVerificationSessionStatus Status { get; init; }
+    public VerificationSessionStatus Status { get; init; }
     
     public bool IsEmpty =>
         ConnectId == 0 &&
