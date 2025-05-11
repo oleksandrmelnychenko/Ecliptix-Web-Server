@@ -169,9 +169,9 @@ public class VerificationSessionActor : ReceiveActor
             StartTimer();
         });
         ReceiveAsync<TimerTick>(HandleTimerTick);
-        Receive<VerifyCodeRcpMsg>(HandleVerifyCodeRcpMsg);
+        Receive<VerifyCodeCommand>(HandleVerifyCode);
         Receive<PostponeSession>(HandlePostponeSession);
-        Receive<StopTimer>(_ => _timerCancelable.Cancel());
+        Receive<StopTimer>(_ => _timerCancelable?.Cancel());
     }
 
     private async Task HandleTimerTick(TimerTick _)
@@ -238,9 +238,9 @@ public class VerificationSessionActor : ReceiveActor
         _timerCancelable?.Cancel();
     }
 
-    private void HandleVerifyCodeRcpMsg(VerifyCodeRcpMsg msg)
+    private void HandleVerifyCode(VerifyCodeCommand command)
     {
-        // Placeholder for future implementation
+       _persistor.Forward(command);
     }
 
     private void HandlePostponeSession(PostponeSession msg)

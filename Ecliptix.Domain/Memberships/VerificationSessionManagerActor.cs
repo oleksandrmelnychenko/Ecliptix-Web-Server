@@ -22,11 +22,19 @@ public class VerificationSessionManagerActor : ReceiveActor
         _persistor = persistor;
         _snsProvider = snsProvider;
 
+        Receive<VerifyCodeCommand>(HandleVerifyCode);
         Receive<StartVerificationSessionStreamCommand>(HandleStartVerificationSession);
-        Receive<VerifyCodeRcpMsg>(HandleVerifyCodeRcpMsg);
         Receive<PostponeSession>(HandlePostponeSession);
         Receive<StopTimer>(HandleStopTimer);
         Receive<Terminated>(HandleTerminated);
+    }
+
+    private void HandleVerifyCode(VerifyCodeCommand command)
+    {
+        if (_sessions.TryGetValue(command.ConnectId, out IActorRef? existing))
+        {
+            existing.Forward(command);
+        }
     }
 
     private void HandleStartVerificationSession(StartVerificationSessionStreamCommand command)
@@ -38,19 +46,6 @@ public class VerificationSessionManagerActor : ReceiveActor
         else
         {
             CreateMembershipVerificationSessionActor(command);
-        }
-    }
-
-    private void HandleVerifyCodeRcpMsg(VerifyCodeRcpMsg msg)
-    {
-        uint deviceId = BitConverter.ToUInt32(msg.ConnectId, 0);
-        if (_sessions.TryGetValue(deviceId, out IActorRef? actor))
-        {
-            actor.Forward(msg);
-        }
-        else
-        {
-            //Sender.Tell(Result.Ok(new CipherPayload { Status = (int)StatusCode.NotFound }));
         }
     }
 
@@ -109,10 +104,10 @@ public record StartVerificationSessionStreamCommand(
     Guid DeviceId,
     ChannelWriter<TimerTick> Writer);
 
-public record VerifyCodeRcpMsg(CipherPayload InboundCipher, byte[] ConnectId);
-
 public record PostponeSession(uint ConnectId);
 
 public record CheckVerificationSessionStatusCommand(StartVerificationSessionStreamCommand Request);
 
 public record UpdateSessionExpiresAt(uint UniqueId, DateTime ExpiresAt);
+
+public record VerifyCodeCommand(uint ConnectId, string Code,VerificationType VerificationType);

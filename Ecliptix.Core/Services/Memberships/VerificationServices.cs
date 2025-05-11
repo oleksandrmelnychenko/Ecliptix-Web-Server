@@ -43,12 +43,21 @@ public sealed class VerificationServices(
         {
             await foreach (TimerTick timerTick in channel.Reader.ReadAllAsync(context.CancellationToken))
             {
+                SendVerificationCodeReply sendVerificationCodeReply = new()
+                {
+                    TimerTick = timerTick,
+                    Error = new ErrorReply
+                    {
+                        Status = VerificationStatus.InternalError
+                    }
+                };
+                
                 Result<CipherPayload, ShieldFailure> encryptResult = await ProtocolActor
                     .Ask<Result<CipherPayload, ShieldFailure>>(
                         new EncryptCipherPayloadCommand(
                             connectId,
                             PubKeyExchangeType.DataCenterEphemeralConnect,
-                            timerTick.ToByteArray()
+                            sendVerificationCodeReply.ToByteArray()
                         ),
                         context.CancellationToken
                     );
@@ -77,9 +86,25 @@ public sealed class VerificationServices(
         return base.VerifyWithCode(request, context);
     }
 
-    public override Task SendVerificationCode(CipherPayload request, IServerStreamWriter<CipherPayload> responseStream,
+    public override async Task SendVerificationCode(CipherPayload request, IServerStreamWriter<CipherPayload> responseStream,
         ServerCallContext context)
     {
-        return base.SendVerificationCode(request, responseStream, context);
+        Result<byte[], ShieldFailure> decryptResult = await DecryptRequest(request, context);
+        if (decryptResult.IsErr)
+        {
+            context.Status = ShieldFailure.ToGrpcStatus(decryptResult.UnwrapErr());
+            await responseStream.WriteAsync(new CipherPayload());
+            return;
+        }
+        
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
+        
+        VerifyCodeRequest verifyCodeRequest = Helpers.ParseFromBytes<VerifyCodeRequest>(
+            decryptResult.Unwrap());
+
+        VerifyCodeCommand verifyCodeCommand = new(connectId, verifyCodeRequest.Code, verifyCodeRequest.VerificationType);
+
+        await VerificationSessionManagerActor.Ask<Result<bool,ShieldFailure>>(verifyCodeCommand);
+
     }
 }
