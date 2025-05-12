@@ -24,7 +24,6 @@ public class VerificationSessionManagerActor : ReceiveActor
 
         Receive<VerifyCodeCommand>(HandleVerifyCode);
         Receive<StartVerificationSessionStreamCommand>(HandleStartVerificationSession);
-        Receive<PostponeSession>(HandlePostponeSession);
         Receive<StopTimer>(HandleStopTimer);
         Receive<Terminated>(HandleTerminated);
     }
@@ -41,19 +40,11 @@ public class VerificationSessionManagerActor : ReceiveActor
     {
         if (_sessions.TryGetValue(command.ConnectId, out IActorRef? existing))
         {
-            existing.Tell(new CheckVerificationSessionStatusCommand(command));
+            existing.Forward(command);
         }
         else
         {
             CreateMembershipVerificationSessionActor(command);
-        }
-    }
-
-    private void HandlePostponeSession(PostponeSession msg)
-    {
-        if (_sessions.TryGetValue(msg.ConnectId, out IActorRef? actor))
-        {
-            actor.Tell(msg);
         }
     }
 
@@ -104,10 +95,7 @@ public record StartVerificationSessionStreamCommand(
     Guid DeviceId,
     ChannelWriter<TimerTick> Writer);
 
-public record PostponeSession(uint ConnectId);
 
-public record CheckVerificationSessionStatusCommand(StartVerificationSessionStreamCommand Request);
-
-public record UpdateSessionExpiresAt(uint UniqueId, DateTime ExpiresAt);
+//public record CheckVerificationSessionStatusCommand(StartVerificationSessionStreamCommand Request);
 
 public record VerifyCodeCommand(uint ConnectId, string Code,VerificationType VerificationType);

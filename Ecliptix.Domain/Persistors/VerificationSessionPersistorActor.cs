@@ -103,7 +103,7 @@ public class VerificationSessionPersistorActor : ReceiveActor
                 NpgsqlParameter[] parameters =
                 [
                     new(DEVICE_ID_PARAM, NpgsqlDbType.Uuid) { Value = cmd.SessionId },
-                    new(STATUS_PARAM, NpgsqlDbType.Varchar) { Value = cmd.Status.ToString() }
+                    new(STATUS_PARAM, NpgsqlDbType.Varchar) { Value = cmd.Status.ToString().ToLower() }
                 ];
                 await using NpgsqlCommand command = CreateCommand(conn, UPDATE_STATUS_SQL, parameters);
                 await command.ExecuteNonQueryAsync();

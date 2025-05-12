@@ -43,21 +43,12 @@ public sealed class VerificationServices(
         {
             await foreach (TimerTick timerTick in channel.Reader.ReadAllAsync(context.CancellationToken))
             {
-                SendVerificationCodeReply sendVerificationCodeReply = new()
-                {
-                    TimerTick = timerTick,
-                    Error = new ErrorReply
-                    {
-                        Status = VerificationStatus.InternalError
-                    }
-                };
-                
                 Result<CipherPayload, ShieldFailure> encryptResult = await ProtocolActor
                     .Ask<Result<CipherPayload, ShieldFailure>>(
                         new EncryptCipherPayloadCommand(
                             connectId,
                             PubKeyExchangeType.DataCenterEphemeralConnect,
-                            sendVerificationCodeReply.ToByteArray()
+                            timerTick.ToByteArray()
                         ),
                         context.CancellationToken
                     );

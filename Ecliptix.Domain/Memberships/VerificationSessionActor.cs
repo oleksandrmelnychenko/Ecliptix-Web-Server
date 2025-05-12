@@ -1,3 +1,4 @@
+using System.Diagnostics.Eventing.Reader;
 using System.Threading.Channels;
 using Akka.Actor;
 using Akka.Event;
@@ -19,7 +20,7 @@ public class VerificationSessionActor : ReceiveActor
     private readonly SNSProvider _snsProvider;
     private readonly VerificationSessionQueryRecord _verificationSessionQueryRecord;
     private ICancelable? _timerCancelable;
-    private readonly TimeSpan _sessionTimeout = TimeSpan.FromSeconds(60);
+    private readonly TimeSpan _sessionTimeout = TimeSpan.FromSeconds(10);
     private readonly TimeSpan _timerInterval = TimeSpan.FromSeconds(1);
     private readonly Guid _streamId = Guid.NewGuid();
     private readonly ILoggingAdapter _log = Context.GetLogger();
@@ -75,7 +76,6 @@ public class VerificationSessionActor : ReceiveActor
             _writer.TryComplete(failure.Cause);
             Context.Stop(Self);
         });
-        ReceiveAny(msg => _log.Warning($"Unexpected message: {msg.GetType()}"));
 
         _log.Info("Requesting existing verification session");
         _persistor.Ask<Result<VerificationSessionQueryRecord, ShieldFailure>>(
@@ -170,7 +170,6 @@ public class VerificationSessionActor : ReceiveActor
         });
         ReceiveAsync<TimerTick>(HandleTimerTick);
         Receive<VerifyCodeCommand>(HandleVerifyCode);
-        Receive<PostponeSession>(HandlePostponeSession);
         Receive<StopTimer>(_ => _timerCancelable?.Cancel());
     }
 
@@ -181,8 +180,10 @@ public class VerificationSessionActor : ReceiveActor
         if (_remainingSeconds <= 0)
         {
             _log.Info($"Session expired for device_id: {_verificationSessionQueryRecord.AppDeviceUniqueRec}");
-            _persistor.Tell(new UpdateSessionStatusCommand(
+
+            await _persistor.Ask<Result<Unit, ShieldFailure>>(new UpdateSessionStatusCommand(
                 _verificationSessionQueryRecord.AppDeviceUniqueRec, VerificationSessionStatus.Expired));
+            
             _timerCancelable?.Cancel();
             Context.Stop(Self);
         }
@@ -225,7 +226,7 @@ public class VerificationSessionActor : ReceiveActor
         }
     }
 
-    private static string GenerateVerificationCode() => new Random().Next(10000, 99999).ToString();
+    private static string GenerateVerificationCode() => new Random().Next(100000, 1000000).ToString();
 
     private static ulong CalculateRemainingSeconds(DateTime expiresAt)
     {
@@ -241,10 +242,5 @@ public class VerificationSessionActor : ReceiveActor
     private void HandleVerifyCode(VerifyCodeCommand command)
     {
        _persistor.Forward(command);
-    }
-
-    private void HandlePostponeSession(PostponeSession msg)
-    {
-        // Placeholder for future implementation
     }
 }
