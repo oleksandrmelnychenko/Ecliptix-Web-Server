@@ -12,115 +12,77 @@ using Grpc.Core;
 
 namespace Ecliptix.Core.Services.Memberships;
 
-public sealed class AuthVerificationServices(
-    IActorRegistry actorRegistry,
-    ILogger<AuthVerificationServices> logger) :
-    AuthVerificationServicesBase(actorRegistry, logger)
+public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<AuthVerificationServices> logger)
+    : AuthVerificationServicesBase(actorRegistry, logger)
 {
+    private readonly ILogger<AuthVerificationServices> _logger = logger;
+
     public override async Task InitiateVerification(CipherPayload request,
         IServerStreamWriter<CipherPayload> responseStream,
         ServerCallContext context)
     {
         Result<byte[], ShieldFailure> decryptResult = await DecryptRequest(request, context);
-        uint connectId = ServiceUtilities.ExtractConnectId(context);
-
-        if (!decryptResult.IsOk)
+        if (decryptResult.IsErr)
         {
-            context.Status = ShieldFailure.ToGrpcStatus(decryptResult.UnwrapErr());
-            await responseStream.WriteAsync(new CipherPayload());
+            HandleError(decryptResult.UnwrapErr(), context);
+            return;
         }
 
-        InitiateVerificationRequest
-            initiateVerificationRequest = Helpers.ParseFromBytes<InitiateVerificationRequest>(
-                decryptResult.Unwrap());
+        InitiateVerificationRequest initiateRequest =
+            Helpers.ParseFromBytes<InitiateVerificationRequest>(decryptResult.Unwrap());
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
 
         Channel<VerificationCountdownUpdate> channel = Channel.CreateUnbounded<VerificationCountdownUpdate>();
         ChannelWriter<VerificationCountdownUpdate> writer = channel.Writer;
 
-        Task streamingTask = Task.Run(async () =>
+        Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context);
+
+        Result<bool, ShieldFailure> sessionResult = await VerificationSessionManagerActor
+            .Ask<Result<bool, ShieldFailure>>(new InitiateVerificationActorCommand(
+                connectId,
+                initiateRequest.PhoneNumber,
+                Helpers.FromByteStringToGuid(initiateRequest.DeviceIdentifier),
+                writer
+            ));
+
+        if (sessionResult.IsOk)
         {
-            await foreach (VerificationCountdownUpdate verificationCountdownUpdate in channel.Reader.ReadAllAsync(
-                               context.CancellationToken))
-            {
-                Result<CipherPayload, ShieldFailure> encryptResult = await EncryptRequest(
-                    verificationCountdownUpdate.ToByteArray(),
-                    PubKeyExchangeType.DataCenterEphemeralConnect,
-                    context
-                );
-
-                if (encryptResult.IsOk)
-                {
-                    await responseStream.WriteAsync(encryptResult.Unwrap());
-                }
-            }
-        });
-
-        Result<bool, ShieldFailure> sessionResult =
-            await VerificationSessionManagerActor
-                .Ask<Result<bool, ShieldFailure>>(new InitiateVerificationActorCommand(
-                    connectId,
-                    initiateVerificationRequest.PhoneNumber,
-                    Helpers.FromByteStringToGuid(initiateVerificationRequest.DeviceIdentifier),
-                    writer
-                ));
-
-        if (sessionResult.IsOk) await streamingTask;
+            await streamingTask;
+        }
+        else
+        {
+            HandleError(sessionResult.UnwrapErr(), context);
+        }
     }
-
 
     public override async Task<CipherPayload> ValidatePhoneNumber(CipherPayload request, ServerCallContext context)
     {
         Result<byte[], ShieldFailure> decryptResult = await DecryptRequest(request, context);
         if (decryptResult.IsErr)
         {
-            context.Status = ShieldFailure.ToGrpcStatus(decryptResult.UnwrapErr());
+            HandleError(decryptResult.UnwrapErr(), context);
             return new CipherPayload();
         }
 
-        ValidatePhoneNumberRequest validatePhoneNumberRequest = Helpers.ParseFromBytes<ValidatePhoneNumberRequest>(
-            decryptResult.Unwrap());
+        ValidatePhoneNumberRequest validateRequest =
+            Helpers.ParseFromBytes<ValidatePhoneNumberRequest>(decryptResult.Unwrap());
+        ValidatePhoneNumberCommand actorCommand = new(validateRequest.PhoneNumber);
 
-        ValidatePhoneNumberCommand actorCommand = new(validatePhoneNumberRequest.PhoneNumber);
-
-        Result<PhoneNumberValidationResult, ShieldFailure> validationResult =
-            await PhoneNumberValidatorActor.Ask<Result<PhoneNumberValidationResult, ShieldFailure>>(actorCommand);
+        Result<PhoneNumberValidationResult, ShieldFailure> validationResult = await PhoneNumberValidatorActor
+            .Ask<Result<PhoneNumberValidationResult, ShieldFailure>>(actorCommand);
 
         if (validationResult.IsOk)
         {
-            PhoneNumberValidationResult phoneNumberValidationResult = validationResult.Unwrap();
-            if (phoneNumberValidationResult.IsValid)
+            PhoneNumberValidationResult phoneValidation = validationResult.Unwrap();
+            ValidatePhoneNumberResponse response = new()
             {
-                ValidatePhoneNumberResponse validatePhoneNumberResponse =
-                    new()
-                    {
-                        Result = VerificationResult.Succeeded
-                    };
+                Result = phoneValidation.IsValid ? VerificationResult.Succeeded : VerificationResult.InvalidPhone
+            };
 
-                Result<CipherPayload, ShieldFailure> encryptResult = await EncryptRequest(
-                    validatePhoneNumberResponse.ToByteArray(),
-                    PubKeyExchangeType.DataCenterEphemeralConnect, context);
-                if (encryptResult.IsOk) return encryptResult.Unwrap();
-                context.Status = ShieldFailure.ToGrpcStatus(encryptResult.UnwrapErr());
-            }
-            else
-            {
-                ValidatePhoneNumberResponse validatePhoneNumberResponse =
-                    new()
-                    {
-                        Result = VerificationResult.InvalidPhone
-                    };
-                
-                Result<CipherPayload, ShieldFailure> encryptResult = await EncryptRequest(
-                    validatePhoneNumberResponse.ToByteArray(),
-                    PubKeyExchangeType.DataCenterEphemeralConnect, context);
-                if (encryptResult.IsOk) return encryptResult.Unwrap();
-                context.Status = ShieldFailure.ToGrpcStatus(encryptResult.UnwrapErr());
-            }
-
-            return new CipherPayload();
+            return await EncryptAndReturnResponse(response.ToByteArray(), context);
         }
 
-        context.Status = ShieldFailure.ToGrpcStatus(validationResult.UnwrapErr());
+        HandleError(validationResult.UnwrapErr(), context);
         return new CipherPayload();
     }
 
@@ -129,38 +91,72 @@ public sealed class AuthVerificationServices(
         Result<byte[], ShieldFailure> decryptResult = await DecryptRequest(request, context);
         if (decryptResult.IsErr)
         {
-            context.Status = ShieldFailure.ToGrpcStatus(decryptResult.UnwrapErr());
+            HandleError(decryptResult.UnwrapErr(), context);
             return new CipherPayload();
         }
 
+        VerifyCodeRequest verifyRequest = Helpers.ParseFromBytes<VerifyCodeRequest>(decryptResult.Unwrap());
         uint connectId = ServiceUtilities.ExtractConnectId(context);
+        VerifyCodeActorCommand actorCommand = new(connectId, verifyRequest.Code, verifyRequest.Purpose);
 
-        VerifyCodeRequest verifyCodeRequest = Helpers.ParseFromBytes<VerifyCodeRequest>(
-            decryptResult.Unwrap());
-
-        VerifyCodeActorCommand verifyCodeActorCommand =
-            new(connectId, verifyCodeRequest.Code, verifyCodeRequest.Purpose);
-
-        Result<VerifyCodeResponse, ShieldFailure> verificationResult =
-            await VerificationSessionManagerActor
-                .Ask<Result<VerifyCodeResponse, ShieldFailure>>(verifyCodeActorCommand);
+        Result<VerifyCodeResponse, ShieldFailure> verificationResult = await VerificationSessionManagerActor
+            .Ask<Result<VerifyCodeResponse, ShieldFailure>>(actorCommand);
 
         if (verificationResult.IsOk)
         {
-            Result<CipherPayload, ShieldFailure> encryptResult = await EncryptRequest(
-                verificationResult.Unwrap().ToByteArray(),
-                PubKeyExchangeType.DataCenterEphemeralConnect, context);
+            return await EncryptAndReturnResponse(verificationResult.Unwrap().ToByteArray(), context);
+        }
 
-            if (!encryptResult.IsOk)
+        HandleError(verificationResult.UnwrapErr(), context);
+        return new CipherPayload();
+    }
+
+    private async Task StreamCountdownUpdatesAsync(
+        IServerStreamWriter<CipherPayload> responseStream,
+        ChannelReader<VerificationCountdownUpdate> reader,
+        ServerCallContext context)
+    {
+        try
+        {
+            await foreach (VerificationCountdownUpdate update in reader.ReadAllAsync(context.CancellationToken))
             {
-                context.Status = ShieldFailure.ToGrpcStatus(encryptResult.UnwrapErr());
-                return new CipherPayload();
-            }
+                Result<CipherPayload, ShieldFailure> encryptResult = await EncryptRequest(
+                    update.ToByteArray(),
+                    PubKeyExchangeType.DataCenterEphemeralConnect,
+                    context);
 
+                if (encryptResult.IsOk)
+                {
+                    await responseStream.WriteAsync(encryptResult.Unwrap());
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Streaming cancelled.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during streaming.");
+        }
+    }
+
+    private async Task<CipherPayload> EncryptAndReturnResponse(byte[] data, ServerCallContext context)
+    {
+        Result<CipherPayload, ShieldFailure> encryptResult =
+            await EncryptRequest(data, PubKeyExchangeType.DataCenterEphemeralConnect, context);
+        if (encryptResult.IsOk)
+        {
             return encryptResult.Unwrap();
         }
 
-        context.Status = ShieldFailure.ToGrpcStatus(verificationResult.UnwrapErr());
+        HandleError(encryptResult.UnwrapErr(), context);
         return new CipherPayload();
+    }
+
+    private void HandleError(ShieldFailure failure, ServerCallContext context)
+    {
+        context.Status = ShieldFailure.ToGrpcStatus(failure);
+        _logger.LogWarning("Error occurred: {Failure}", failure);
     }
 }
