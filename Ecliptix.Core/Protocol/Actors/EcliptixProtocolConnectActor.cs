@@ -33,21 +33,21 @@ public class EcliptixProtocolConnectActor : ReceiveActor
     private void Ready()
     {
         Receive<DeriveSharedSecretCommand>(HandleProcessAndRespondToPubKeyExchangeCommand);
-        Receive<DecryptCipherPayloadCommand>(HandleDecryptCipherPayloadCommand);
-        Receive<EncryptCipherPayloadCommand>(HandleEncryptCipherPayloadCommand);
+        Receive<DecryptCipherPayloadActorCommand>(HandleDecryptCipherPayloadCommand);
+        Receive<EncryptPayloadActorCommand>(HandleEncryptCipherPayloadCommand);
     }
 
-    private void HandleEncryptCipherPayloadCommand(EncryptCipherPayloadCommand command)
+    private void HandleEncryptCipherPayloadCommand(EncryptPayloadActorCommand actorCommand)
     {
-        CipherPayload cipherPayload = _ecliptixProtocolSystem!.ProduceOutboundMessage(command.ConnectId,
-            command.PubKeyExchangeType, command.Payload);
+        CipherPayload cipherPayload = _ecliptixProtocolSystem!.ProduceOutboundMessage(actorCommand.ConnectId,
+            actorCommand.PubKeyExchangeType, actorCommand.Payload);
         Sender.Tell(Result<CipherPayload, ShieldFailure>.Ok(cipherPayload));
     }
 
-    private void HandleDecryptCipherPayloadCommand(DecryptCipherPayloadCommand command)
+    private void HandleDecryptCipherPayloadCommand(DecryptCipherPayloadActorCommand actorCommand)
     {
-        byte[] payload = _ecliptixProtocolSystem!.ProcessInboundMessage(command.ConnectId,
-            command.PubKeyExchangeType, command.CipherPayload);
+        byte[] payload = _ecliptixProtocolSystem!.ProcessInboundMessage(actorCommand.ConnectId,
+            actorCommand.PubKeyExchangeType, actorCommand.CipherPayload);
         Sender.Tell(Result<byte[], ShieldFailure>.Ok(payload));
     }
 

@@ -45,7 +45,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
 
         Result<byte[], ShieldFailure> decryptResult = await ProtocolActor
             .Ask<Result<byte[], ShieldFailure>>(
-                new DecryptCipherPayloadCommand(
+                new DecryptCipherPayloadActorCommand(
                     connectId,
                     PubKeyExchangeType.DataCenterEphemeralConnect,
                     request
@@ -88,7 +88,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
 
         Result<CipherPayload, ShieldFailure> encryptResult = await ProtocolActor
             .Ask<Result<CipherPayload, ShieldFailure>>(
-                new EncryptCipherPayloadCommand(
+                new EncryptPayloadActorCommand(
                     connectId,
                     PubKeyExchangeType.DataCenterEphemeralConnect,
                     reply.ToByteArray()

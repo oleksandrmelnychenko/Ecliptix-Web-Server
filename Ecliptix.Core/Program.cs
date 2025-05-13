@@ -97,10 +97,15 @@ try
                     snsProvider),
                 "VerificationSessionManagerActor");
 
+            IActorRef phoneNumberValidatorActor = system.ActorOf(
+                PhoneNumberValidatorActor.Build(),
+                "PhoneNumberValidatorActor");
+
             registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
             registry.Register<AppDevicePersistorActor>(appDevicePersistor);
             registry.Register<VerificationSessionPersistorActor>(membershipVerificationSessionPersistorActor);
             registry.Register<VerificationSessionManagerActor>(verificationSessionManagerActor);
+            registry.Register<PhoneNumberValidatorActor>(phoneNumberValidatorActor);
 
             logger.LogInformation("Registered top-level actors: {ProtocolActorPath}, {PersistorActorPath}",
                 protocolSystemActor.Path, appDevicePersistor.Path);
@@ -128,7 +133,7 @@ try
     app.UseStaticFiles();
 
     app.MapGrpcService<AppDeviceServices>();
-    app.MapGrpcService<VerificationServices>();
+    app.MapGrpcService<AuthVerificationServices>();
 
     // .RequireRateLimiting("grpc");
 

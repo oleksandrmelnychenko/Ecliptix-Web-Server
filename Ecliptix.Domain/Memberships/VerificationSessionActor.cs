@@ -5,7 +5,7 @@ using Akka.Event;
 using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
-using Ecliptix.Protobuf.Verification;
+using Ecliptix.Protobuf.Authentication;
 
 namespace Ecliptix.Domain.Memberships;
 
@@ -15,7 +15,7 @@ public record StopTimer(uint ConnectId);
 
 public class VerificationSessionActor : ReceiveActor
 {
-    private readonly ChannelWriter<TimerTick> _writer;
+    private readonly ChannelWriter<VerificationCountdownUpdate> _writer;
     private readonly IActorRef _persistor;
     private readonly SNSProvider _snsProvider;
     private readonly VerificationSessionQueryRecord _verificationSessionQueryRecord;
@@ -31,7 +31,7 @@ public class VerificationSessionActor : ReceiveActor
         Guid streamId,
         string mobile,
         Guid uniqueRec,
-        ChannelWriter<TimerTick> writer,
+        ChannelWriter<VerificationCountdownUpdate> writer,
         IActorRef persistor,
         SNSProvider snsProvider)
     {
@@ -54,7 +54,7 @@ public class VerificationSessionActor : ReceiveActor
         Guid streamId,
         string mobile,
         Guid deviceId,
-        ChannelWriter<TimerTick> writer,
+        ChannelWriter<VerificationCountdownUpdate> writer,
         IActorRef persistor,
         SNSProvider snsProvider) =>
         Props.Create(() =>
@@ -168,12 +168,12 @@ public class VerificationSessionActor : ReceiveActor
             _log.Info("Processing StartTimer message");
             StartTimer();
         });
-        ReceiveAsync<TimerTick>(HandleTimerTick);
-        Receive<VerifyCodeCommand>(HandleVerifyCode);
+        ReceiveAsync<VerificationCountdownUpdate>(HandleTimerTick);
+        Receive<VerifyCodeActorCommand>(HandleVerifyCode);
         Receive<StopTimer>(_ => _timerCancelable?.Cancel());
     }
 
-    private async Task HandleTimerTick(TimerTick _)
+    private async Task HandleTimerTick(VerificationCountdownUpdate _)
     {
         _log.Info($"Timer tick: {_remainingSeconds:D2}:{_remainingSeconds % 60:D2} remaining");
 
@@ -189,10 +189,10 @@ public class VerificationSessionActor : ReceiveActor
         }
         else
         {
-            await _writer.WriteAsync(new TimerTick
+            await _writer.WriteAsync(new VerificationCountdownUpdate
             {
-                RemainingSeconds = (ulong)_remainingSeconds,
-                StreamId = Helpers.GuidToByteString(_streamId)
+                SecondsRemaining = (ulong)_remainingSeconds,
+                SessionIdentifier = Helpers.GuidToByteString(_streamId)
             });
             _remainingSeconds--;
         }
@@ -205,7 +205,7 @@ public class VerificationSessionActor : ReceiveActor
             initialDelay: TimeSpan.Zero,
             interval: _timerInterval,
             receiver: Self,
-            message: new TimerTick(),
+            message: new VerificationCountdownUpdate(),
             sender: ActorRefs.NoSender);
         _log.Info("Timer started");
     }
@@ -239,8 +239,8 @@ public class VerificationSessionActor : ReceiveActor
         _timerCancelable?.Cancel();
     }
 
-    private void HandleVerifyCode(VerifyCodeCommand command)
+    private void HandleVerifyCode(VerifyCodeActorCommand actorCommand)
     {
-       _persistor.Forward(command);
+       _persistor.Forward(actorCommand);
     }
 }

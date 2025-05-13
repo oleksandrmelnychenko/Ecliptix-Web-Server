@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package ecliptix.auth;
+option csharp_namespace = "Ecliptix.Protobuf.Authentication";
+
+// Specifies the purpose of the verification operation.
+enum VerificationPurpose {
+  VERIFICATION_PURPOSE_UNSPECIFIED = 0;
+  REGISTRATION = 1;
+  LOGIN = 2;
+  PASSWORD_RECOVERY = 3;
+}
+
+// Indicates the result of a verification operation.
+enum VerificationResult {
+  VERIFICATION_RESULT_UNSPECIFIED = 0;
+  SUCCEEDED = 1;
+  INVALID_PHONE = 2;
+  INVALID_CODE = 3;
+  EXPIRED = 4;
+}
+
+// Initiates or resumes a phone number verification session, triggering a server-side stream of countdown updates.
+// This message is used to start a new verification process or resume an existing one by providing a session identifier.
+// Upon successful initiation, the server responds with a session identifier and begins streaming periodic updates
+// containing the remaining time in the verification window, emitted every second. The verification session is tied to a
+// specific phone number, device, and purpose (e.g., registration, login). If the session cannot be initiated or resumed
+// (e.g., invalid phone number or expired session), the server returns an appropriate result code.
+message InitiateVerificationRequest {
+  string phone_number = 1;
+  bytes device_identifier = 2;
+  VerificationPurpose purpose = 3;
+  bytes session_identifier = 4;
+}
+
+// Represents a single update in the verification session’s countdown, streamed by the server.
+// This message is emitted every second as part of the server-side stream initiated by an InitiateVerificationRequest.
+// It provides the remaining time in the verification window and the session identifier, allowing the client to track the
+// verification process and update the user interface (e.g., display a countdown timer). The stream continues until the
+// verification window expires, the session is completed (e.g., via successful code verification), or an error occurs.
+message VerificationCountdownUpdate {
+  uint64 seconds_remaining = 1;
+  bytes session_identifier = 2;
+}
+
+// Responds to an InitiateVerificationRequest, indicating the outcome of session initiation or resumption.
+// This message provides the result of the attempt to start or resume a verification session, including a result code
+// (e.g., SUCCEEDED, INVALID_PHONE), a human-readable message for errors, and the session identifier if the operation
+// was successful. The session identifier is used in subsequent requests (e.g., to submit a verification code) and in
+// the streamed countdown updates. Clients should check the result code to handle errors appropriately.
+message InitiateVerificationResponse {
+  VerificationResult result = 1;
+  string message = 2;
+  bytes session_identifier = 3;
+}
+
+// Requests validation of a user-provided verification code during an active verification session.
+// This message is sent by the client to submit a verification code (e.g., a one-time password received via SMS) for
+// validation against an active session. The request includes the session identifier to associate the code with the
+// correct verification process and the purpose to ensure consistency with the session’s intent. The server responds
+// with the outcome of the validation, indicating whether the code is correct, invalid, or expired.
+message VerifyCodeRequest {
+  bytes session_identifier = 1;
+  string code = 2;
+  VerificationPurpose purpose = 3;
+}
+
+// Responds to a VerifyCodeRequest, indicating the outcome of verification code validation.
+// This message provides the result of validating the submitted code, including a result code (e.g., SUCCEEDED,
+// INVALID_CODE, EXPIRED) and a human-readable message for errors. A successful result indicates the phone number has
+// been verified for the specified purpose, allowing the client to proceed (e.g., complete registration). Error results
+// prompt the client to display an error message or initiate a new verification session if needed.
+message VerifyCodeResponse {
+  VerificationResult result = 1;
+  string message = 2;
+}
+
+message ValidatePhoneNumberRequest {
+  string phone_number = 1;
+}
+
+message ValidatePhoneNumberResponse {
+  string phone_number = 1;
+  VerificationResult result = 2;
+  optional string message = 3;
+}

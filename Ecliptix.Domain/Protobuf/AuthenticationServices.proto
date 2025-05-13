@@ -1,0 +1,11 @@
+syntax = "proto3";
+import "CipherPayload.proto";
+
+package ecliptix.proto.verification;
+option csharp_namespace = "Ecliptix.Protobuf.Authentication";
+
+service AuthenticationServices {
+  rpc InitiateVerification(CipherPayload) returns (stream CipherPayload);
+  rpc VerifyCode(CipherPayload) returns (CipherPayload);
+  rpc ValidatePhoneNumber(CipherPayload) returns (CipherPayload);
+}

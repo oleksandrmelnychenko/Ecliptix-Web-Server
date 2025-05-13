@@ -10,6 +10,7 @@
     <ItemGroup>
         <PackageReference Include="Akka" Version="1.5.40" />
         <PackageReference Include="Grpc.AspNetCore.Server" Version="2.70.0"/>
+        <PackageReference Include="libphonenumber-csharp" Version="9.0.5" />
         <PackageReference Include="Npgsql" Version="9.0.3" />
         <PackageReference Include="protobuf-net" Version="3.2.46"/>
         <PackageReference Include="protobuf-net.Grpc" Version="1.2.2"/>
@@ -35,8 +36,8 @@
 
         <Protobuf Include="Protobuf\HealthCheck.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
         <Protobuf Include="Protobuf\KeyMaterials.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-        <Protobuf Include="Protobuf\Verification.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-        <Protobuf Include="Protobuf\VerificationServiceActions.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+        <Protobuf Include="Protobuf\AuthVerification.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+        <Protobuf Include="Protobuf\AuthenticationServices.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
     </ItemGroup>
 
 </Project>

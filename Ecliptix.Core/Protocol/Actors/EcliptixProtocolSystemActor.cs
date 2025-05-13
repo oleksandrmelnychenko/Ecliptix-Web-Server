@@ -8,12 +8,12 @@ namespace Ecliptix.Core.Protocol.Actors;
 
 public record BeginAppDeviceEphemeralConnectCommand(PubKeyExchange PubKeyExchange, uint UniqueConnectId = 0);
 
-public record DecryptCipherPayloadCommand(
+public record DecryptCipherPayloadActorCommand(
     uint ConnectId,
     PubKeyExchangeType PubKeyExchangeType,
     CipherPayload CipherPayload);
 
-public record EncryptCipherPayloadCommand(
+public record EncryptPayloadActorCommand(
     uint ConnectId,
     PubKeyExchangeType PubKeyExchangeType,
     byte[] Payload);
@@ -34,8 +34,8 @@ public class EcliptixProtocolSystemActor : ReceiveActor
     private void Ready()
     {
         ReceiveAsync<BeginAppDeviceEphemeralConnectCommand>(HandleBeginAppDeviceEphemeralConnectCommand);
-        ReceiveAsync<DecryptCipherPayloadCommand>(HandleDecryptCipherPayloadCommand);
-        ReceiveAsync<EncryptCipherPayloadCommand>(HandleEncryptCipherPayloadCommand);
+        ReceiveAsync<DecryptCipherPayloadActorCommand>(HandleDecryptCipherPayloadCommand);
+        ReceiveAsync<EncryptPayloadActorCommand>(HandleEncryptCipherPayloadCommand);
         ReceiveAsync<CreateConnectCommand>(HandleCreateConnectCommand);
     }
 
@@ -89,14 +89,14 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         Sender.Tell(result);
     }
 
-    private async Task HandleEncryptCipherPayloadCommand(EncryptCipherPayloadCommand command)
+    private async Task HandleEncryptCipherPayloadCommand(EncryptPayloadActorCommand actorCommand)
     {
-        uint connectId = command.ConnectId;
+        uint connectId = actorCommand.ConnectId;
 
         if (_connectActorRefs.TryGetValue(connectId, out IActorRef? actorRef))
         {
             Result<CipherPayload, ShieldFailure> result =
-                await actorRef.Ask<Result<CipherPayload, ShieldFailure>>(command);
+                await actorRef.Ask<Result<CipherPayload, ShieldFailure>>(actorCommand);
             Sender.Tell(result);
         }
         else
@@ -106,13 +106,13 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         }
     }
 
-    private async Task HandleDecryptCipherPayloadCommand(DecryptCipherPayloadCommand command)
+    private async Task HandleDecryptCipherPayloadCommand(DecryptCipherPayloadActorCommand actorCommand)
     {
-        uint connectId = command.ConnectId;
+        uint connectId = actorCommand.ConnectId;
 
         if (_connectActorRefs.TryGetValue(connectId, out IActorRef? actorRef))
         {
-            Result<byte[], ShieldFailure> result = await actorRef.Ask<Result<byte[], ShieldFailure>>(command);
+            Result<byte[], ShieldFailure> result = await actorRef.Ask<Result<byte[], ShieldFailure>>(actorCommand);
             Sender.Tell(result);
         }
         else

@@ -1,8 +1,7 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Akka.Actor;
-using Ecliptix.Protobuf.CipherPayload;
-using Ecliptix.Protobuf.Verification;
+using Ecliptix.Protobuf.Authentication;
 
 namespace Ecliptix.Domain.Memberships;
 
@@ -22,21 +21,21 @@ public class VerificationSessionManagerActor : ReceiveActor
         _persistor = persistor;
         _snsProvider = snsProvider;
 
-        Receive<VerifyCodeCommand>(HandleVerifyCode);
-        Receive<StartVerificationSessionStreamCommand>(HandleStartVerificationSession);
+        Receive<VerifyCodeActorCommand>(HandleVerifyCode);
+        Receive<InitiateVerificationActorCommand>(HandleStartVerificationSession);
         Receive<StopTimer>(HandleStopTimer);
         Receive<Terminated>(HandleTerminated);
     }
 
-    private void HandleVerifyCode(VerifyCodeCommand command)
+    private void HandleVerifyCode(VerifyCodeActorCommand actorCommand)
     {
-        if (_sessions.TryGetValue(command.ConnectId, out IActorRef? existing))
+        if (_sessions.TryGetValue(actorCommand.ConnectId, out IActorRef? existing))
         {
-            existing.Forward(command);
+            existing.Forward(actorCommand);
         }
     }
 
-    private void HandleStartVerificationSession(StartVerificationSessionStreamCommand command)
+    private void HandleStartVerificationSession(InitiateVerificationActorCommand command)
     {
         if (_sessions.TryGetValue(command.ConnectId, out IActorRef? existing))
         {
@@ -68,7 +67,7 @@ public class VerificationSessionManagerActor : ReceiveActor
         }
     }
 
-    private void CreateMembershipVerificationSessionActor(StartVerificationSessionStreamCommand msg)
+    private void CreateMembershipVerificationSessionActor(InitiateVerificationActorCommand msg)
     {
         IActorRef? actor = Context.ActorOf(VerificationSessionActor.Build(
             msg.ConnectId,
@@ -79,9 +78,9 @@ public class VerificationSessionManagerActor : ReceiveActor
             _persistor,
             _snsProvider
         ));
-        
+
         _sessions[msg.ConnectId] = actor;
-        
+
         Context.Watch(actor);
     }
 
@@ -89,13 +88,10 @@ public class VerificationSessionManagerActor : ReceiveActor
         Props.Create(() => new VerificationSessionManagerActor(persistor, snsProvider));
 }
 
-public record StartVerificationSessionStreamCommand(
+public record InitiateVerificationActorCommand(
     uint ConnectId,
     string Mobile,
     Guid DeviceId,
-    ChannelWriter<TimerTick> Writer);
+    ChannelWriter<VerificationCountdownUpdate> Writer);
 
-
-//public record CheckVerificationSessionStatusCommand(StartVerificationSessionStreamCommand Request);
-
-public record VerifyCodeCommand(uint ConnectId, string Code,VerificationType VerificationType);
+public record VerifyCodeActorCommand(uint ConnectId, string Code, VerificationPurpose VerificationPurpose);
