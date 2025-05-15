@@ -2,29 +2,65 @@ using Akka.Actor;
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
+using Ecliptix.Protobuf.Authentication;
 using Npgsql;
 using NpgsqlTypes;
 
 namespace Ecliptix.Domain.Persistors;
 
-// Command records
-public record CreateVerificationSessionRecordCommand(VerificationSessionQueryRecord VerificationSessionQueryRecord);
-public record GetVerificationSessionCommand(Guid DeviceId);
-public record UpdateSessionStatusCommand(Guid SessionId, VerificationSessionStatus Status);
-public record VerifyCodeCommand;
+public record EnsurePhoneNumberActorCommand(
+    string PhoneNumber,
+    string? RegionCode,
+    CustomPhoneNumberType PhoneType,
+    uint ConnectId);
+
+public record CreateVerificationSessionRecordCommand(
+    Guid PhoneNumberIdentifier,
+    Guid SystemDeviceIdentifier,
+    VerificationPurpose Purpose,
+    DateTime ExpiresAt,
+    string VerificationCode,
+    uint ConnectId);
+
+public record GetVerificationSessionCommand(
+    Guid DeviceId,
+    Guid PhoneNumberIdentifier,
+    VerificationPurpose Purpose);
+
+public record GetPhoneNumberActorCommand(Guid PhoneNumberIdentifier);
+
+public record UpdateVerificationSessionStatusCommand(Guid SessionId, VerificationSessionStatus Status);
+
+public record CreateOtpRecordCommand(OtpQueryRecord OtpRecord);
+
+public record VerifyCodeWithSessionCommand(
+    Guid SessionIdentifier,
+    string Code,
+    VerificationPurpose VerificationPurpose,
+    uint ConnectId);
 
 public class VerificationSessionPersistorActor : ReceiveActor
 {
     private readonly NpgsqlDataSource _dataSource;
 
-    // SQL query constants
-    private const string CREATE_SESSION_SQL = "SELECT create_verification_session(@device_id, @code, @expires_at, @connect_id, @mobile, @stream_id)";
-    private const string GET_SESSION_SQL = "SELECT connect_id, stream_id, mobile, device_id, code, expires_at, status FROM get_verification_session(@device_id)";
-    private const string UPDATE_STATUS_SQL = "SELECT update_verification_session_status(@device_id, @status::verification_status)";
+    private const string CreateSessionSql =
+        "SELECT session_unique_id, outcome FROM create_verification_session(@system_device_id, @phone_unique_id, @code, @purpose::verification_purpose, @expires_at, @connect_id)";
 
-    // Parameter name constants (for reused parameters)
-    private const string DEVICE_ID_PARAM = "device_id";
-    private const string STATUS_PARAM = "status";
+    private const string GetSessionSql =
+        "SELECT session_unique_id, phone_number_unique_id_out, connection_id, app_device_id_out, phone_number_out, phone_region_out, phone_type_out, expires_at_out, status_out, purpose_out, otp_count_out FROM get_verification_session(@app_device_id, @phone_unique_id, @purpose::verification_purpose)";
+
+    private const string UpdateStatusSql =
+        "SELECT update_verification_session_status(@session_unique_id, @status::verification_status)";
+
+    private const string VerifyCodeSql =
+        "SELECT verify_code(@session_unique_id, @submitted_code, @max_attempts)";
+
+    private const string SystemDeviceIdParam = "system_device_id";
+    private const string PhoneNumberIdentifierParam = "phone_unique_id";
+    private const string SessionUniqueIdParam = "session_unique_id";
+    private const string CodeParam = "code";
+    private const string PurposeParam = "purpose";
+    private const string StatusParam = "status";
 
     public VerificationSessionPersistorActor(NpgsqlDataSource dataSource)
     {
@@ -32,97 +68,237 @@ public class VerificationSessionPersistorActor : ReceiveActor
         Become(Ready);
     }
 
-    public static Props Build(NpgsqlDataSource dataSource) => Props.Create(() => new VerificationSessionPersistorActor(dataSource));
+    public static Props Build(NpgsqlDataSource dataSource) =>
+        Props.Create(() => new VerificationSessionPersistorActor(dataSource));
 
     private void Ready()
     {
-        ReceiveAsync<CreateVerificationSessionRecordCommand>(HandleCreateMembershipVerificationSessionRecord);
+        ReceiveAsync<CreateVerificationSessionRecordCommand>(HandleCreateVerificationSessionRecord);
         ReceiveAsync<GetVerificationSessionCommand>(HandleGetVerificationSession);
-        ReceiveAsync<UpdateSessionStatusCommand>(HandleUpdateSessionStatus);
-        ReceiveAsync<VerifyCodeCommand>(HandleVerifyCode);
+        ReceiveAsync<UpdateVerificationSessionStatusCommand>(HandleUpdateSessionStatus);
+        ReceiveAsync<VerifyCodeWithSessionCommand>(HandleVerifyCodeWithSession);
+        ReceiveAsync<EnsurePhoneNumberActorCommand>(HandleEnsurePhoneNumberCommand);
+        ReceiveAsync<GetPhoneNumberActorCommand>(HandleGetPhoneNumberCommand);
+        ReceiveAsync<CreateOtpRecordCommand>(HandleCreateOtpRecord);
     }
 
-    private async Task HandleCreateMembershipVerificationSessionRecord(CreateVerificationSessionRecordCommand cmd)
+    private async Task HandleGetPhoneNumberCommand(GetPhoneNumberActorCommand cmd)
     {
         await ExecuteWithConnection(
             async conn =>
             {
-                VerificationSessionQueryRecord record = cmd.VerificationSessionQueryRecord;
+                const string sql = @"
+                        SELECT phone_number, region, type
+                        FROM get_phone_number(@phone_unique_id);
+                    ";
+
                 NpgsqlParameter[] parameters =
                 [
-                    new(DEVICE_ID_PARAM, NpgsqlDbType.Uuid) { Value = record.AppDeviceUniqueRec },
-                    new("code", NpgsqlDbType.Varchar, 6) { Value = record.Code },
-                    new("expires_at", NpgsqlDbType.TimestampTz) { Value = record.ExpiresAt },
-                    new("connect_id", NpgsqlDbType.Bigint) { Value = (long)record.ConnectId },
-                    new("mobile", NpgsqlDbType.Varchar, 20) { Value = record.Mobile },
-                    new("stream_id", NpgsqlDbType.Uuid) { Value = record.StreamId }
+                    new("phone_unique_id", NpgsqlDbType.Uuid) { Value = cmd.PhoneNumberIdentifier }
                 ];
-                await using NpgsqlCommand command = CreateCommand(conn, CREATE_SESSION_SQL, parameters);
-                object? result = await command.ExecuteScalarAsync();
-                return result == null || result == DBNull.Value
-                    ? Result<Unit, ShieldFailure>.Err(ShieldFailure.DataAccess("Failed to create verification session: conflicting pending session exists."))
-                    : Result<Unit, ShieldFailure>.Ok(Unit.Value);
+
+                await using NpgsqlCommand command = CreateCommand(conn, sql, parameters);
+                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+
+                if (!await reader.ReadAsync())
+                {
+                    return Result<PhoneNumberQueryRecord, ShieldFailure>.Err(
+                        ShieldFailure.DataAccess("Phone number not found."));
+                }
+
+                string phoneNumber = reader.GetString(0);
+                string? region = reader.IsDBNull(1) ? null : reader.GetString(1);
+                CustomPhoneNumberType type = Enum.Parse<CustomPhoneNumberType>(reader.GetString(2), true);
+
+                return Result<PhoneNumberQueryRecord, ShieldFailure>.Ok(
+                    new PhoneNumberQueryRecord(phoneNumber, region, type)
+                    {
+                        UniqueIdentifier = cmd.PhoneNumberIdentifier
+                    });
             },
-            "session creation"
-        );
+            "get phone number");
+    }
+
+    private async Task HandleCreateVerificationSessionRecord(CreateVerificationSessionRecordCommand cmd)
+    {
+        await ExecuteWithConnection(
+            async conn =>
+            {
+                NpgsqlParameter[] parameters =
+                [
+                    new(SystemDeviceIdParam, NpgsqlDbType.Uuid) { Value = cmd.SystemDeviceIdentifier },
+                    new(PhoneNumberIdentifierParam, NpgsqlDbType.Uuid) { Value = cmd.PhoneNumberIdentifier },
+                    new(CodeParam, NpgsqlDbType.Varchar, 6) { Value = cmd.VerificationCode },
+                    new(PurposeParam, NpgsqlDbType.Varchar) { Value = cmd.Purpose.ToString().ToLowerInvariant() },
+                    new("expires_at", NpgsqlDbType.TimestampTz) { Value = cmd.ExpiresAt },
+                    new("connect_id", NpgsqlDbType.Bigint) { Value = (long)cmd.ConnectId }
+                ];
+
+                await using NpgsqlCommand command = CreateCommand(conn, CreateSessionSql, parameters);
+                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+
+                if (!await reader.ReadAsync())
+                {
+                    return Result<Unit, ShieldFailure>.Err(
+                        ShieldFailure.DataAccess("Failed to create verification session: no result."));
+                }
+
+                Guid? sessionId = reader.IsDBNull(0) ? null : reader.GetGuid(0);
+                string outcome = reader.GetString(1);
+
+                if (!sessionId.HasValue || outcome is "phone_not_found" or "conflict_unresolved")
+                {
+                    return Result<Unit, ShieldFailure>.Err(
+                        ShieldFailure.DataAccess($"Failed to create verification session: {outcome}"));
+                }
+
+                return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+            },
+            "session creation");
     }
 
     private async Task HandleGetVerificationSession(GetVerificationSessionCommand cmd)
     {
         await ExecuteWithConnection(
-            async conn =>
+            conn =>
             {
-                NpgsqlParameter[] parameters = [new(DEVICE_ID_PARAM, NpgsqlDbType.Uuid) { Value = cmd.DeviceId }
+                NpgsqlParameter[] parameters =
+                [
+                    new(SystemDeviceIdParam, NpgsqlDbType.Uuid) { Value = cmd.DeviceId },
+                    new(PhoneNumberIdentifierParam, NpgsqlDbType.Uuid) { Value = cmd.PhoneNumberIdentifier },
+                    new(PurposeParam, NpgsqlDbType.Varchar) { Value = cmd.Purpose.ToString().ToLowerInvariant() }
                 ];
-                await using NpgsqlCommand command = CreateCommand(conn, GET_SESSION_SQL, parameters);
-                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
-                var record = await reader.ReadAsync()
-                    ? new VerificationSessionQueryRecord(
-                        ConnectId: (uint)reader.GetInt64(0),
-                        StreamId: reader.GetGuid(1),
-                        Mobile: reader.IsDBNull(2) ? null : reader.GetString(2),
-                        AppDeviceUniqueRec: reader.GetGuid(3),
-                        Code: reader.GetString(4)
-                    )
-                    {
-                        ExpiresAt = reader.GetDateTime(5),
-                        Status = Enum.Parse<VerificationSessionStatus>(reader.GetString(6), ignoreCase: true)
-                    }
-                    : VerificationSessionQueryRecord.Empty;
-                return Result<VerificationSessionQueryRecord, ShieldFailure>.Ok(record);
+                return ReadSessionQueryRecord(conn, parameters);
             },
-            "session retrieval"
-        );
+            "session retrieval");
     }
 
-    private async Task HandleUpdateSessionStatus(UpdateSessionStatusCommand cmd)
+    private async Task HandleUpdateSessionStatus(UpdateVerificationSessionStatusCommand cmd)
     {
         await ExecuteWithConnection(
             async conn =>
             {
                 NpgsqlParameter[] parameters =
                 [
-                    new(DEVICE_ID_PARAM, NpgsqlDbType.Uuid) { Value = cmd.SessionId },
-                    new(STATUS_PARAM, NpgsqlDbType.Varchar) { Value = cmd.Status.ToString().ToLower() }
+                    new(SessionUniqueIdParam, NpgsqlDbType.Uuid) { Value = cmd.SessionId },
+                    new(StatusParam, NpgsqlDbType.Varchar) { Value = cmd.Status.ToString().ToLowerInvariant() }
                 ];
-                await using NpgsqlCommand command = CreateCommand(conn, UPDATE_STATUS_SQL, parameters);
+
+                await using NpgsqlCommand command = CreateCommand(conn, UpdateStatusSql, parameters);
                 await command.ExecuteNonQueryAsync();
                 return Result<Unit, ShieldFailure>.Ok(Unit.Value);
             },
-            "session status update"
-        );
+            "session status update");
     }
 
-    private async Task HandleVerifyCode(VerifyCodeCommand cmd)
+    private async Task HandleCreateOtpRecord(CreateOtpRecordCommand cmd)
     {
         await ExecuteWithConnection(
             async conn =>
             {
-                // Placeholder for verification logic
-                return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+                const string sql = @"
+                SELECT otp_unique_id, outcome FROM insert_otp_record(@session_unique_id, @otp_hash, @otp_salt, @expires_at, @status::verification_status)";
+                NpgsqlParameter[] parameters =
+                [
+                    new("session_unique_id", NpgsqlDbType.Uuid) { Value = cmd.OtpRecord.SessionIdentifier },
+                    new("otp_hash", NpgsqlDbType.Varchar) { Value = cmd.OtpRecord.OtpHash },
+                    new("otp_salt", NpgsqlDbType.Varchar) { Value = cmd.OtpRecord.OtpSalt },
+                    new("expires_at", NpgsqlDbType.TimestampTz) { Value = cmd.OtpRecord.ExpiresAt },
+                    new("status", NpgsqlDbType.Varchar) { Value = cmd.OtpRecord.Status.ToString().ToLowerInvariant() }
+                ];
+
+                await using NpgsqlCommand command = CreateCommand(conn, sql, parameters);
+                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    Guid otpUniqueId = reader.GetGuid(0);
+                    string outcome = reader.GetString(1);
+                    if (outcome == "created")
+                        return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+                    return Result<Unit, ShieldFailure>.Err(ShieldFailure.Generic($"OTP insertion failed: {outcome}"));
+                }
+
+                return Result<Unit, ShieldFailure>.Err(ShieldFailure.DataAccess("Failed to insert OTP record."));
             },
-            "code verification"
-        );
+            "insert OTP record");
+    }
+
+    private async Task HandleVerifyCodeWithSession(VerifyCodeWithSessionCommand cmd)
+    {
+        await ExecuteWithConnection(
+            async conn =>
+            {
+                NpgsqlParameter[] parameters =
+                [
+                    new("session_unique_id", NpgsqlDbType.Uuid) { Value = cmd.SessionIdentifier },
+                    new("submitted_code", NpgsqlDbType.Varchar) { Value = cmd.Code },
+                    new("max_attempts", NpgsqlDbType.Smallint) { Value = 5 }
+                ];
+
+                await using NpgsqlCommand command = CreateCommand(conn, VerifyCodeSql, parameters);
+                string outcome = (string)(await command.ExecuteScalarAsync() ?? "failed");
+
+                if (outcome == "verified")
+                {
+                    return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+                }
+
+                return Result<Unit, ShieldFailure>.Err(
+                    ShieldFailure.Generic($"Code verification failed: {outcome}"));
+            },
+            "code verification");
+    }
+
+    private async Task HandleEnsurePhoneNumberCommand(EnsurePhoneNumberActorCommand cmd)
+    {
+        await ExecuteWithConnection(
+            async conn =>
+            {
+                NpgsqlParameter[] parameters =
+                [
+                    new("phone_number_string", NpgsqlDbType.Varchar) { Value = cmd.PhoneNumber },
+                    new("region", NpgsqlDbType.Varchar) { Value = (object?)cmd.RegionCode ?? DBNull.Value },
+                    new("type", NpgsqlDbType.Varchar) { Value = cmd.PhoneType.ToString().ToLowerInvariant() }
+                ];
+
+                const string sql =
+                    "SELECT ensure_phone_number(@phone_number_string, @region, @type::phone_number_type)";
+
+                await using NpgsqlCommand command = CreateCommand(conn, sql, parameters);
+                object? result = await command.ExecuteScalarAsync();
+
+                if (result is not Guid guid)
+                    return Result<Guid, ShieldFailure>.Err(
+                        ShieldFailure.DataAccess("Failed to ensure phone number."));
+
+                return Result<Guid, ShieldFailure>.Ok(guid);
+            },
+            "ensure phone number");
+    }
+
+
+    private static async Task<Result<Option<VerificationSessionQueryRecord>, ShieldFailure>> ReadSessionQueryRecord(
+        NpgsqlConnection conn, NpgsqlParameter[] parameters)
+    {
+        await using NpgsqlCommand command = CreateCommand(conn, GetSessionSql, parameters);
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+
+        if (!await reader.ReadAsync())
+            return Result<Option<VerificationSessionQueryRecord>, ShieldFailure>.Ok(
+                Option<VerificationSessionQueryRecord>.None);
+
+        VerificationSessionQueryRecord record = new(
+            UniqueIdentifier: reader.GetGuid(0),
+            PhoneNumberIdentifier: reader.GetGuid(1),
+            AppDeviceIdentifier: reader.GetGuid(3),
+            ConnectId: reader.IsDBNull(2) ? 0 : (uint)reader.GetInt64(2))
+        {
+            ExpiresAt = reader.GetDateTime(7),
+            Purpose = Enum.Parse<VerificationPurpose>(reader.GetString(9), true)
+        };
+
+        return Result<Option<VerificationSessionQueryRecord>, ShieldFailure>.Ok(
+            Option<VerificationSessionQueryRecord>.Some(record));
     }
 
     private async Task ExecuteWithConnection<T>(
@@ -148,9 +324,10 @@ public class VerificationSessionPersistorActor : ReceiveActor
         }
     }
 
-    private static NpgsqlCommand CreateCommand(NpgsqlConnection connection, string sql, params NpgsqlParameter[] parameters)
+    private static NpgsqlCommand CreateCommand(NpgsqlConnection connection, string sql,
+        params NpgsqlParameter[] parameters)
     {
-        NpgsqlCommand command = new(sql, connection);
+        NpgsqlCommand command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddRange(parameters);
         return command;
     }

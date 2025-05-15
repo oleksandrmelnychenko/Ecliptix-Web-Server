@@ -1,28 +1,48 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Akka.Actor;
+using Ecliptix.Domain.Persistors;
 using Ecliptix.Protobuf.Authentication;
+using Microsoft.Extensions.Localization;
 
 namespace Ecliptix.Domain.Memberships;
 
+public record InitiateVerificationActorCommand(
+    uint ConnectId,
+    Guid PhoneNumberIdentifier,
+    Guid SystemDeviceIdentifier,
+    VerificationPurpose Purpose,
+    ChannelWriter<VerificationCountdownUpdate> Writer);
+
+public record VerifyCodeActorCommand(
+    uint ConnectId,
+    string Code,
+    VerificationPurpose VerificationPurpose,
+    Guid SystemDeviceIdentifier);
+
 public class VerificationSessionManagerActor : ReceiveActor
 {
+    private readonly IStringLocalizer<VerificationSessionManagerActor> _localizer;
     private readonly IActorRef _persistor;
-
     private readonly SNSProvider _snsProvider;
+
 
     private readonly ConcurrentDictionary<uint, IActorRef> _sessions = new();
 
     public VerificationSessionManagerActor(
         IActorRef persistor,
-        SNSProvider snsProvider
-    )
+        SNSProvider snsProvider,
+        IStringLocalizer<VerificationSessionManagerActor> localizer)
     {
+        _localizer = localizer;
         _persistor = persistor;
         _snsProvider = snsProvider;
 
         Receive<VerifyCodeActorCommand>(HandleVerifyCode);
         Receive<InitiateVerificationActorCommand>(HandleStartVerificationSession);
+        Receive<EnsurePhoneNumberActorCommand>(cmd =>
+            _persistor.Forward(cmd));
+
         Receive<StopTimer>(HandleStopTimer);
         Receive<Terminated>(HandleTerminated);
     }
@@ -43,7 +63,7 @@ public class VerificationSessionManagerActor : ReceiveActor
         }
         else
         {
-            CreateMembershipVerificationSessionActor(command);
+            CreateVerificationSessionActor(command);
         }
     }
 
@@ -67,31 +87,25 @@ public class VerificationSessionManagerActor : ReceiveActor
         }
     }
 
-    private void CreateMembershipVerificationSessionActor(InitiateVerificationActorCommand msg)
+    private void CreateVerificationSessionActor(InitiateVerificationActorCommand command)
     {
-        IActorRef? actor = Context.ActorOf(VerificationSessionActor.Build(
-            msg.ConnectId,
-            Guid.NewGuid(),
-            msg.Mobile,
-            msg.DeviceId,
-            msg.Writer,
+        IActorRef? verificationSessionActorRef = Context.ActorOf(VerificationSessionActor.Build(
+            command.ConnectId,
+            command.PhoneNumberIdentifier,
+            command.SystemDeviceIdentifier,
+            command.Purpose,
+            command.Writer,
             _persistor,
-            _snsProvider
+            _snsProvider,
+            _localizer
         ));
 
-        _sessions[msg.ConnectId] = actor;
+        _sessions[command.ConnectId] = verificationSessionActorRef;
 
-        Context.Watch(actor);
+        Context.Watch(verificationSessionActorRef);
     }
 
-    public static Props Build(IActorRef persistor, SNSProvider snsProvider) =>
-        Props.Create(() => new VerificationSessionManagerActor(persistor, snsProvider));
+    public static Props Build(IActorRef persistor, SNSProvider snsProvider,
+        IStringLocalizer<VerificationSessionManagerActor> localizer) =>
+        Props.Create(() => new VerificationSessionManagerActor(persistor, snsProvider, localizer));
 }
-
-public record InitiateVerificationActorCommand(
-    uint ConnectId,
-    string Mobile,
-    Guid DeviceId,
-    ChannelWriter<VerificationCountdownUpdate> Writer);
-
-public record VerifyCodeActorCommand(uint ConnectId, string Code, VerificationPurpose VerificationPurpose);

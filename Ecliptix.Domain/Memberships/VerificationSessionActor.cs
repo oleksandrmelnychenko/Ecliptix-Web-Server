@@ -1,11 +1,10 @@
-using System.Diagnostics.Eventing.Reader;
 using System.Threading.Channels;
 using Akka.Actor;
-using Akka.Event;
 using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Authentication;
+using Microsoft.Extensions.Localization;
 
 namespace Ecliptix.Domain.Memberships;
 
@@ -13,111 +12,121 @@ public record StartTimer;
 
 public record StopTimer(uint ConnectId);
 
+public record ResendOtpCommand(uint ConnectId); 
+
 public class VerificationSessionActor : ReceiveActor
 {
+    private readonly uint _connectId;
+    private readonly Guid _phoneNumberIdentifier;
+    private readonly Guid _systemDeviceIdentifier;
+    private readonly VerificationPurpose _purpose;
     private readonly ChannelWriter<VerificationCountdownUpdate> _writer;
     private readonly IActorRef _persistor;
     private readonly SNSProvider _snsProvider;
-    private readonly VerificationSessionQueryRecord _verificationSessionQueryRecord;
+    private readonly IStringLocalizer _localizer;
+
+    private Option<PhoneNumberQueryRecord> _phoneNumberQueryRecord = Option<PhoneNumberQueryRecord>.None;
+
+    private Option<VerificationSessionQueryRecord> _verificationSessionQueryRecord =
+        Option<VerificationSessionQueryRecord>.None;
+
     private ICancelable? _timerCancelable;
-    private readonly TimeSpan _sessionTimeout = TimeSpan.FromSeconds(10);
-    private readonly TimeSpan _timerInterval = TimeSpan.FromSeconds(1);
-    private readonly Guid _streamId = Guid.NewGuid();
-    private readonly ILoggingAdapter _log = Context.GetLogger();
-    private int _remainingSeconds;
+    private readonly TimeSpan _sessionTimeout = TimeSpan.FromMinutes(5);
+    private DateTime _sessionExpiresAt; // Tracks session expiration
+    private readonly int _maxOtpAttempts = 5; // Maximum OTP attempts
+    private int _otpAttempts = 0; // Current number of OTPs sent
+    private OneTimePassword? _activeOtp; // Current active OTP (null if none)
+    private ulong _activeOtpRemainingSeconds; // OTP countdown
 
     public VerificationSessionActor(
         uint connectId,
-        Guid streamId,
-        string mobile,
-        Guid uniqueRec,
+        Guid phoneNumberIdentifier,
+        Guid systemDeviceIdentifier,
+        VerificationPurpose purpose,
         ChannelWriter<VerificationCountdownUpdate> writer,
         IActorRef persistor,
-        SNSProvider snsProvider)
+        SNSProvider snsProvider,
+        IStringLocalizer localizer)
     {
+        _connectId = connectId;
+        _phoneNumberIdentifier = phoneNumberIdentifier;
+        _systemDeviceIdentifier = systemDeviceIdentifier;
+        _purpose = purpose;
         _writer = writer;
         _persistor = persistor;
         _snsProvider = snsProvider;
-
-        _verificationSessionQueryRecord = new VerificationSessionQueryRecord(
-            connectId, streamId, mobile, uniqueRec, GenerateVerificationCode())
-        {
-            ExpiresAt = DateTime.UtcNow.Add(_sessionTimeout),
-            Status = VerificationSessionStatus.Pending
-        };
+        _localizer = localizer;
+        _sessionExpiresAt = DateTime.UtcNow + _sessionTimeout;
 
         Become(Initializing);
     }
 
     public static Props Build(
         uint connectId,
-        Guid streamId,
-        string mobile,
-        Guid deviceId,
+        Guid phoneNumberIdentifier,
+        Guid systemDeviceIdentifier,
+        VerificationPurpose purpose,
         ChannelWriter<VerificationCountdownUpdate> writer,
         IActorRef persistor,
-        SNSProvider snsProvider) =>
-        Props.Create(() =>
-            new VerificationSessionActor(connectId, streamId, mobile, deviceId, writer, persistor,
-                snsProvider));
+        SNSProvider snsProvider,
+        IStringLocalizer localizer) =>
+        Props.Create(() => new VerificationSessionActor(
+            connectId, phoneNumberIdentifier, systemDeviceIdentifier, purpose, writer,
+            persistor, snsProvider, localizer));
 
     private void Initializing()
     {
-        _log.Info("Entering Initializing state");
-
-        Receive<Result<VerificationSessionQueryRecord, ShieldFailure>>(HandleExistingSessionCheck);
+        Receive<Result<Option<VerificationSessionQueryRecord>, ShieldFailure>>(HandleExistingSessionCheck);
+        Receive<Result<PhoneNumberQueryRecord, ShieldFailure>>(HandlePhoneNumberQueryRecord);
         Receive<Status.Failure>(failure =>
         {
-            _log.Error(failure.Cause,
-                "Failed to get existing verification session from persistor. Actor: {0}, ConnectId: {1}, DeviceId: {2}",
-                Self.Path.Name,
-                _verificationSessionQueryRecord.ConnectId,
-                _verificationSessionQueryRecord.AppDeviceUniqueRec);
             _writer.TryComplete(failure.Cause);
             Context.Stop(Self);
         });
 
-        _log.Info("Requesting existing verification session");
-        _persistor.Ask<Result<VerificationSessionQueryRecord, ShieldFailure>>(
-                new GetVerificationSessionCommand(_verificationSessionQueryRecord.AppDeviceUniqueRec))
-            .PipeTo(Self);
+        _persistor.Ask<Result<PhoneNumberQueryRecord, ShieldFailure>>(
+            new GetPhoneNumberActorCommand(_phoneNumberIdentifier)).PipeTo(Self);
     }
 
-    private void HandleExistingSessionCheck(Result<VerificationSessionQueryRecord, ShieldFailure> result)
+    private void HandlePhoneNumberQueryRecord(Result<PhoneNumberQueryRecord, ShieldFailure> result)
     {
         if (result.IsErr)
         {
-            _log.Error($"Failed to check for existing session: {result.UnwrapErr().Message}");
+            _writer.TryComplete(result.UnwrapErr().InnerException);
             Context.Stop(Self);
             return;
         }
 
-        VerificationSessionQueryRecord existingSession = result.Unwrap();
-        if (!existingSession.IsEmpty && existingSession.ExpiresAt > DateTime.UtcNow)
+        _phoneNumberQueryRecord = Option<PhoneNumberQueryRecord>.Some(result.Unwrap());
+        _persistor.Ask<Result<Option<VerificationSessionQueryRecord>, ShieldFailure>>(
+                new GetVerificationSessionCommand(_systemDeviceIdentifier, _systemDeviceIdentifier, _purpose))
+            .PipeTo(Self);
+    }
+
+    private void HandleExistingSessionCheck(Result<Option<VerificationSessionQueryRecord>, ShieldFailure> result)
+    {
+        if (result.IsErr)
         {
-            _log.Info("Existing session found, sending SMS and transitioning to Running state");
-            SendVerificationSms(existingSession.Mobile, existingSession.Code, existingSession.ExpiresAt)
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        _log.Error(t.Exception, "Failed to send SMS for existing session");
-                    }
-                    else
-                    {
-                        _log.Info("SMS sent successfully for existing session");
-                    }
-                    return new StartTimer();
-                })
-                .PipeTo(Self);
+            _writer.TryComplete(result.UnwrapErr().InnerException);
+            Context.Stop(Self);
+            return;
+        }
+
+        Option<VerificationSessionQueryRecord> maybeSession = result.Unwrap();
+        if (maybeSession.HasValue && maybeSession.Value.ExpiresAt > DateTime.UtcNow)
+        {
+            _verificationSessionQueryRecord = maybeSession;
+            _sessionExpiresAt = maybeSession.Value.ExpiresAt;
+            PrepareOtpAndSendAsync().ContinueWith(t => new StartTimer()).PipeTo(Self);
             Become(Running);
         }
         else
         {
-            _log.Info("No valid session found, transitioning to CreatingSession state");
             Become(CreatingSession);
             _persistor.Ask<Result<Unit, ShieldFailure>>(
-                    new CreateVerificationSessionRecordCommand(_verificationSessionQueryRecord))
+                    new CreateVerificationSessionRecordCommand(
+                        _phoneNumberIdentifier, _systemDeviceIdentifier, _purpose,
+                        DateTime.UtcNow + _sessionTimeout, "", _connectId))
                 .PipeTo(Self);
         }
     }
@@ -125,122 +134,214 @@ public class VerificationSessionActor : ReceiveActor
     private void CreatingSession()
     {
         Receive<Result<Unit, ShieldFailure>>(HandleSessionCreation);
-        Receive<Status.Failure>(failure =>
-        {
-            _log.Error(failure.Cause, "Failed to create session.");
-            Context.Stop(Self);
-        });
     }
 
     private void HandleSessionCreation(Result<Unit, ShieldFailure> result)
     {
         if (result.IsErr)
         {
-            _log.Error($"Failed to create verification session: {result.UnwrapErr().Message}");
+            _writer.TryComplete(result.UnwrapErr().InnerException);
             Context.Stop(Self);
             return;
         }
 
-        _log.Info("Session created, sending SMS and transitioning to Running state");
-        SendVerificationSms(_verificationSessionQueryRecord.Mobile, _verificationSessionQueryRecord.Code,
-                _verificationSessionQueryRecord.ExpiresAt)
-            .ContinueWith(t =>
+        _verificationSessionQueryRecord = Option<VerificationSessionQueryRecord>.Some(
+            new VerificationSessionQueryRecord(
+                Guid.NewGuid(), _phoneNumberIdentifier, _systemDeviceIdentifier, _connectId)
             {
-                if (t.IsFaulted)
-                {
-                    _log.Error(t.Exception, "Failed to send SMS for new session");
-                }
-                else
-                {
-                    _log.Info("SMS sent successfully for new session");
-                }
-                return new StartTimer();
-            })
-            .PipeTo(Self);
+                ExpiresAt = _sessionExpiresAt,
+                Purpose = _purpose
+            });
+
+        PrepareOtpAndSendAsync().ContinueWith(t => new StartTimer()).PipeTo(Self);
         Become(Running);
     }
 
     private void Running()
     {
-        _log.Info("Entered Running state");
-        Receive<StartTimer>(_ =>
-        {
-            _log.Info("Processing StartTimer message");
-            StartTimer();
-        });
+        Receive<StartTimer>(_ => StartTimer());
         ReceiveAsync<VerificationCountdownUpdate>(HandleTimerTick);
-        Receive<VerifyCodeActorCommand>(HandleVerifyCode);
-        Receive<StopTimer>(_ => _timerCancelable?.Cancel());
+        Receive<VerifyCodeActorCommand>(command =>
+        {
+            if (_verificationSessionQueryRecord.HasValue)
+            {
+                VerifyCodeWithSessionCommand sessionCommand = new(
+                    _verificationSessionQueryRecord.Value.UniqueIdentifier,
+                    command.Code,
+                    command.VerificationPurpose,
+                    command.ConnectId
+                );
+                _persistor.Forward(sessionCommand);
+            }
+        });
+        Receive<ResendOtpCommand>(command => HandleResendOtp(command));
+        Receive<StopTimer>(msg =>
+        {
+            if (msg.ConnectId == _connectId)
+            {
+                _timerCancelable?.Cancel();
+                Context.Stop(Self);
+            }
+        });
+    }
+    
+    
+
+    private void StartTimer()
+    {
+        _timerCancelable?.Cancel();
+        if (_activeOtp is not { IsActive: true })
+        {
+            return; 
+        }
+
+        _activeOtpRemainingSeconds = CalculateRemainingSeconds(_activeOtp.ExpiresAt);
+        if (_activeOtpRemainingSeconds <= 0)
+        {
+            _activeOtp.ConsumeOtp();
+            _activeOtp = null;
+            return;
+        }
+
+        _timerCancelable = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
+            initialDelay: TimeSpan.Zero,
+            interval: TimeSpan.FromSeconds(1),
+            receiver: Self,
+            message: new VerificationCountdownUpdate(),
+            sender: ActorRefs.NoSender);
     }
 
     private async Task HandleTimerTick(VerificationCountdownUpdate _)
     {
-        _log.Info($"Timer tick: {_remainingSeconds:D2}:{_remainingSeconds % 60:D2} remaining");
-
-        if (_remainingSeconds <= 0)
+        if (DateTime.UtcNow >= _sessionExpiresAt || _otpAttempts >= _maxOtpAttempts)
         {
-            _log.Info($"Session expired for device_id: {_verificationSessionQueryRecord.AppDeviceUniqueRec}");
+            await TerminateSession(VerificationSessionStatus.Expired);
+            return;
+        }
 
-            await _persistor.Ask<Result<Unit, ShieldFailure>>(new UpdateSessionStatusCommand(
-                _verificationSessionQueryRecord.AppDeviceUniqueRec, VerificationSessionStatus.Expired));
-            
+        if (_activeOtp is not { IsActive: true } || _activeOtpRemainingSeconds <= 0)
+        {
+            if (_activeOtp != null)
+            {
+                _activeOtp.ConsumeOtp();
+                await _persistor.Ask<Result<Unit, ShieldFailure>>(new UpdateVerificationSessionStatusCommand(
+                    _verificationSessionQueryRecord.Value!.UniqueIdentifier, VerificationSessionStatus.Expired));
+                _activeOtp = null;
+            }
+
             _timerCancelable?.Cancel();
-            Context.Stop(Self);
+            return;
+        }
+
+        await _writer.WriteAsync(new VerificationCountdownUpdate
+        {
+            SecondsRemaining = _activeOtpRemainingSeconds,
+            SessionIdentifier = Helpers.GuidToByteString(_verificationSessionQueryRecord.Value!.UniqueIdentifier)
+        });
+        _activeOtpRemainingSeconds--;
+    }
+
+    private async Task HandleResendOtp(ResendOtpCommand command)
+    {
+        if (command.ConnectId != _connectId)
+        {
+            return;
+        }
+
+        if (_otpAttempts >= _maxOtpAttempts)
+        {
+            await TerminateSession(VerificationSessionStatus.Postponed);
+            return;
+        }
+
+        if (_activeOtp is { IsActive: true })
+        {
+            // Active OTP exists, ignore resend request
+            return;
+        }
+
+        if (DateTime.UtcNow >= _sessionExpiresAt)
+        {
+            await TerminateSession(VerificationSessionStatus.Expired);
+            return;
+        }
+
+        Result<OtpQueryRecord, ShieldFailure> result = await PrepareOtpAndSendAsync();
+        if (result.IsOk)
+        {
+            Self.Tell(new StartTimer());
         }
         else
         {
-            await _writer.WriteAsync(new VerificationCountdownUpdate
+            _writer.TryComplete(result.UnwrapErr().InnerException);
+        }
+    }
+
+    private async Task<Result<OtpQueryRecord, ShieldFailure>> PrepareOtpAndSendAsync()
+    {
+        if (!_phoneNumberQueryRecord.HasValue)
+        {
+            return Result<OtpQueryRecord, ShieldFailure>.Err(ShieldFailure.Generic("Phone number not found"));
+        }
+
+        if (_otpAttempts >= _maxOtpAttempts)
+        {
+            await TerminateSession(VerificationSessionStatus.Postponed);
+            return Result<OtpQueryRecord, ShieldFailure>.Err(ShieldFailure.Generic("Maximum OTP attempts reached"));
+        }
+
+        OneTimePassword oneTimePassword = new OneTimePassword(_localizer);
+        Result<OtpQueryRecord, ShieldFailure> sendResult = await oneTimePassword.SendAsync(
+            _phoneNumberQueryRecord.Value,
+            async (phoneNumber, message) => await _snsProvider.SendSmsAsync(phoneNumber, message));
+
+        if (sendResult.IsOk)
+        {
+            OtpQueryRecord originalRecord = sendResult.Unwrap();
+            OtpQueryRecord otpRecord = new OtpQueryRecord
             {
-                SecondsRemaining = (ulong)_remainingSeconds,
-                SessionIdentifier = Helpers.GuidToByteString(_streamId)
-            });
-            _remainingSeconds--;
+                SessionIdentifier = _verificationSessionQueryRecord.Value!.UniqueIdentifier,
+                PhoneNumberIdentifier = originalRecord.PhoneNumberIdentifier,
+                OtpHash = originalRecord.OtpHash,
+                OtpSalt = originalRecord.OtpSalt,
+                ExpiresAt = originalRecord.ExpiresAt,
+                Status = originalRecord.Status,
+                IsActive = originalRecord.IsActive
+            };
+            _activeOtp = oneTimePassword;
+            _otpAttempts++;
+            await _persistor.Ask<Result<Unit, ShieldFailure>>(new CreateOtpRecordCommand(otpRecord));
         }
+
+        return sendResult;
     }
 
-    private void StartTimer()
+    private async Task TerminateSession(VerificationSessionStatus status)
     {
-        _remainingSeconds = (int)_sessionTimeout.TotalSeconds;
-        _timerCancelable = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
-            initialDelay: TimeSpan.Zero,
-            interval: _timerInterval,
-            receiver: Self,
-            message: new VerificationCountdownUpdate(),
-            sender: ActorRefs.NoSender);
-        _log.Info("Timer started");
-    }
-
-    private async Task SendVerificationSms(string mobile, string code, DateTime expiresAt)
-    {
-        string message =
-            $"Your verification code is: {code}. It will expire in {CalculateRemainingSeconds(expiresAt)} seconds.";
-        try
+        if (_verificationSessionQueryRecord.HasValue)
         {
-            await _snsProvider.SendSMSAsync(mobile, message);
-            _log.Info("SMS sent successfully");
+            await _persistor.Ask<Result<Unit, ShieldFailure>>(new UpdateVerificationSessionStatusCommand(
+                _verificationSessionQueryRecord.Value.UniqueIdentifier, status));
         }
-        catch (Exception ex)
-        {
-            _log.Error(ex, "Failed to send SMS");
-            throw;
-        }
-    }
 
-    private static string GenerateVerificationCode() => new Random().Next(100000, 1000000).ToString();
+        _timerCancelable?.Cancel();
+        _writer.TryComplete();
+        Context.Stop(Self);
+    }
 
     private static ulong CalculateRemainingSeconds(DateTime expiresAt)
     {
         TimeSpan remaining = expiresAt - DateTime.UtcNow;
-        return (ulong)Math.Max(0, remaining.TotalSeconds);
+        return (ulong)Math.Max(0, Math.Ceiling(remaining.TotalSeconds));
     }
 
     protected override void PostStop()
     {
         _timerCancelable?.Cancel();
-    }
-
-    private void HandleVerifyCode(VerifyCodeActorCommand actorCommand)
-    {
-       _persistor.Forward(actorCommand);
+        _writer.TryComplete();
     }
 }
+
+public record CreateOtpRecordCommand(OtpQueryRecord OtpRecord);
+
+public record UpdateVerificationSessionStatusCommand(Guid SessionId, VerificationSessionStatus Status);

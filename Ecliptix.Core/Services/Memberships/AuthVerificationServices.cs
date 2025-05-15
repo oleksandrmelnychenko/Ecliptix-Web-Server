@@ -3,6 +3,7 @@ using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Memberships;
+using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Authentication;
 using Ecliptix.Protobuf.CipherPayload;
@@ -40,8 +41,9 @@ public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogg
         Result<bool, ShieldFailure> sessionResult = await VerificationSessionManagerActor
             .Ask<Result<bool, ShieldFailure>>(new InitiateVerificationActorCommand(
                 connectId,
-                initiateRequest.PhoneNumber,
-                Helpers.FromByteStringToGuid(initiateRequest.DeviceIdentifier),
+                Helpers.FromByteStringToGuid(initiateRequest.PhoneNumberIdentifier),
+                Helpers.FromByteStringToGuid(initiateRequest.SystemDeviceIdentifier),
+                initiateRequest.Purpose,
                 writer
             ));
 
@@ -74,12 +76,37 @@ public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogg
         if (validationResult.IsOk)
         {
             PhoneNumberValidationResult phoneValidation = validationResult.Unwrap();
-            ValidatePhoneNumberResponse response = new()
+            if (phoneValidation.IsValid)
             {
-                Result = phoneValidation.IsValid ? VerificationResult.Succeeded : VerificationResult.InvalidPhone
-            };
+                uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-            return await EncryptAndReturnResponse(response.ToByteArray(), context);
+                EnsurePhoneNumberActorCommand ensurePhoneNumberActorCommand =
+                    new(phoneValidation.ParsedPhoneNumberE164!, phoneValidation.DetectedRegion,
+                        phoneValidation.NumberType, connectId);
+
+                Result<Guid, ShieldFailure> ensurePhoneNumberResult = await VerificationSessionManagerActor
+                    .Ask<Result<Guid, ShieldFailure>>(ensurePhoneNumberActorCommand);
+
+                if (ensurePhoneNumberResult.IsOk)
+                {
+                    ValidatePhoneNumberResponse response = new()
+                    {
+                        PhoneNumberIdentifier = Helpers.GuidToByteString(ensurePhoneNumberResult.Unwrap()),
+                        Result = VerificationResult.Succeeded
+                    };
+
+                    return await EncryptAndReturnResponse(response.ToByteArray(), context);
+                }
+            }
+            else
+            {
+                ValidatePhoneNumberResponse response = new()
+                {
+                    Result = VerificationResult.InvalidPhone
+                };
+
+                return await EncryptAndReturnResponse(response.ToByteArray(), context);
+            }
         }
 
         HandleError(validationResult.UnwrapErr(), context);
@@ -96,8 +123,11 @@ public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogg
         }
 
         VerifyCodeRequest verifyRequest = Helpers.ParseFromBytes<VerifyCodeRequest>(decryptResult.Unwrap());
+
         uint connectId = ServiceUtilities.ExtractConnectId(context);
-        VerifyCodeActorCommand actorCommand = new(connectId, verifyRequest.Code, verifyRequest.Purpose);
+
+        VerifyCodeActorCommand actorCommand = new(connectId, verifyRequest.Code, verifyRequest.Purpose,
+            Helpers.FromByteStringToGuid(verifyRequest.SystemDeviceIdentifier));
 
         Result<VerifyCodeResponse, ShieldFailure> verificationResult = await VerificationSessionManagerActor
             .Ask<Result<VerifyCodeResponse, ShieldFailure>>(actorCommand);

@@ -2,6 +2,39 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Ecliptix.Domain.Utilities;
 
+public readonly record struct Option<T>
+{
+    public bool HasValue { get; }
+    public T? Value { get; }
+
+    private Option(bool hasValue, T? value)
+    {
+        HasValue = hasValue;
+        Value = value;
+    }
+
+    public static Option<T> Some(T value)
+    {
+        if (value is null) throw new ArgumentNullException(nameof(value));
+        return new Option<T>(true, value);
+    }
+
+    public static Option<T> None => new(false, default);
+
+    public TResult Match<TResult>(Func<T, TResult> onSome, Func<TResult> onNone)
+        => HasValue ? onSome(Value!) : onNone();
+
+    public void Match(Action<T> onSome, Action onNone)
+    {
+        if (HasValue) onSome(Value!);
+        else onNone();
+    }
+
+    public T ValueOr(T fallback) => HasValue ? Value! : fallback;
+
+    public Option<TResult> Map<TResult>(Func<T, TResult> selector)
+        => HasValue ? Option<TResult>.Some(selector(Value!)) : Option<TResult>.None;
+}
 public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
 {
     private readonly T? _value;

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Compression;
 using Akka.Actor;
 using Akka.Hosting;
@@ -7,12 +8,14 @@ using Ecliptix.Core.Services;
 using Ecliptix.Core.Services.Memberships;
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Persistors;
+using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Npgsql;
 using OpenTelemetry.Metrics;
 using Serilog;
 using Serilog.Context;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Localization;
 
 const string systemActorName = "EcliptixProtocolSystemActor";
 
@@ -38,7 +41,7 @@ try
     builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
     {
         ILoggerFactory? loggerFactory = sp.GetService<ILoggerFactory>();
-        NpgsqlDataSourceBuilder dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+        NpgsqlDataSourceBuilder dataSourceBuilder = new(connectionString);
         if (loggerFactory != null)
         {
             dataSourceBuilder.UseLoggerFactory(loggerFactory);
@@ -51,6 +54,7 @@ try
         Log.Information("Building NpgsqlDataSource for EcliptixDb.");
         return dataSourceBuilder.Build();
     });
+
 
     RegisterLocalization(builder.Services);
     RegisterValidators(builder.Services);
@@ -68,6 +72,7 @@ try
         akkaBuilder.WithActors((system, registry) =>
         {
             ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+            SNSProvider snsProvider = serviceProvider.GetRequiredService<SNSProvider>();
 
             using (LogContext.PushProperty("ActorSystemName", system.Name))
             {
@@ -75,10 +80,12 @@ try
             }
 
             NpgsqlDataSource npgsqlDataSource = serviceProvider.GetRequiredService<NpgsqlDataSource>();
-            SNSProvider snsProvider = serviceProvider.GetRequiredService<SNSProvider>();
 
             ILogger<EcliptixProtocolSystemActor> protocolActorLogger =
                 serviceProvider.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>();
+
+            IStringLocalizer<VerificationSessionManagerActor> localizer = serviceProvider
+                .GetRequiredService<IStringLocalizer<VerificationSessionManagerActor>>();
 
             IActorRef protocolSystemActor = system.ActorOf(
                 EcliptixProtocolSystemActor.Build(protocolActorLogger),
@@ -94,7 +101,7 @@ try
 
             IActorRef verificationSessionManagerActor = system.ActorOf(
                 VerificationSessionManagerActor.Build(membershipVerificationSessionPersistorActor,
-                    snsProvider),
+                    snsProvider, localizer),
                 "VerificationSessionManagerActor");
 
             IActorRef phoneNumberValidatorActor = system.ActorOf(
@@ -156,8 +163,15 @@ finally
 
 static void RegisterLocalization(IServiceCollection services)
 {
-    services.AddLocalization();
-    services.Configure<RequestLocalizationOptions>(options => { options.FallBackToParentUICultures = true; });
+    services.AddLocalization(options => options.ResourcesPath = "Resources");
+    services.Configure<RequestLocalizationOptions>(options =>
+    {
+        CultureInfo[] supported = [new("en-US"), new("uk-UA")];
+        options.DefaultRequestCulture = new RequestCulture("en-US");
+        options.SupportedCultures = supported;
+        options.SupportedUICultures = supported;
+        options.FallBackToParentUICultures = true;
+    });
 }
 
 static void RegisterValidators(IServiceCollection services)
@@ -176,6 +190,7 @@ static void RegisterGrpc(IServiceCollection services)
     services.AddGrpc(options =>
     {
         options.ResponseCompressionLevel = CompressionLevel.Fastest;
+        options.ResponseCompressionAlgorithm = "gzip";
         options.EnableDetailedErrors = true;
         options.Interceptors.Add<RequestMetaDataInterceptor>();
         options.Interceptors.Add<ThreadCultureInterceptor>();
