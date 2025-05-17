@@ -1,5 +1,6 @@
 using Akka.Actor;
 using Akka.Event;
+using Ecliptix.Domain.Utilities;
 using PhoneNumbers;
 
 namespace Ecliptix.Domain.Memberships;
@@ -80,7 +81,7 @@ public class PhoneNumberValidatorActor : ReceiveActor
 
     private void HandleValidatePhoneNumber(ValidatePhoneNumberCommand command)
     {
-        var originalPhoneNumberStr = command.PhoneNumber;
+        string originalPhoneNumberStr = command.PhoneNumber;
         _log.Debug("Received validation request for: {PhoneNumber}, DefaultRegion: {DefaultRegion}",
             originalPhoneNumberStr, command.DefaultRegion ?? "N/A");
 
@@ -94,19 +95,18 @@ public class PhoneNumberValidatorActor : ReceiveActor
             parsedPhoneNumber = _phoneNumberUtil.Parse(originalPhoneNumberStr, regionToParseWith);
             e164FormatKey = _phoneNumberUtil.Format(parsedPhoneNumber, PhoneNumberFormat.E164);
 
-            if (_cache.TryGetValue(e164FormatKey, out var cachedResult))
+            if (_cache.TryGetValue(e164FormatKey, out PhoneNumberValidationResult? cachedResult))
             {
                 _log.Debug("Cache hit for {Key}. Returning cached result.", e164FormatKey);
                 UpdateLru(e164FormatKey);
-                Sender.Tell(cachedResult);
+                Sender.Tell(Result<PhoneNumberValidationResult, ShieldFailure>.Ok(cachedResult));
                 return;
             }
         }
         catch (NumberParseException ex)
         {
             _log.Warning(ex, "Parsing failed for {PhoneNumber}", originalPhoneNumberStr);
-            Sender.Tell(new PhoneNumberValidationResult($"Parsing failed: {ex.Message} (ErrorType: {ex.ErrorType})",
-                ValidationFailureReason.ParsingFailed));
+            Sender.Tell(Result<PhoneNumberValidationResult, ShieldFailure>.Err(ShieldFailure.Generic(ex.Message, ex)));
             return;
         }
 
@@ -115,7 +115,8 @@ public class PhoneNumberValidatorActor : ReceiveActor
             PhoneNumberValidationResult result;
             if (!_phoneNumberUtil.IsValidNumber(parsedPhoneNumber))
             {
-                PhoneNumberUtil.ValidationResult possibility = _phoneNumberUtil.IsPossibleNumberWithReason(parsedPhoneNumber);
+                PhoneNumberUtil.ValidationResult possibility =
+                    _phoneNumberUtil.IsPossibleNumberWithReason(parsedPhoneNumber);
                 ValidationFailureReason failureReason = MapPossibilityToFailureReason(possibility);
                 string errorMessage = $"Invalid number. Reason: {possibility}";
                 if (possibility == PhoneNumberUtil.ValidationResult.IS_POSSIBLE_LOCAL_ONLY &&
@@ -139,13 +140,12 @@ public class PhoneNumberValidatorActor : ReceiveActor
             }
 
             AddToCache(e164FormatKey, result);
-            Sender.Tell(result);
+            Sender.Tell(Result<PhoneNumberValidationResult, ShieldFailure>.Ok(result));
         }
         catch (Exception ex)
         {
             _log.Error(ex, "Unexpected error during validation for {PhoneNumber}", originalPhoneNumberStr);
-            Sender.Tell(new PhoneNumberValidationResult("An unexpected error occurred during validation.",
-                ValidationFailureReason.InternalError));
+            Sender.Tell(Result<PhoneNumberValidationResult, ShieldFailure>.Err(ShieldFailure.Generic(ex.Message, ex)));
         }
     }
 

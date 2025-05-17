@@ -75,9 +75,10 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
         (Guid id, int status) = persistorResult.Unwrap();
         AppDeviceRegisteredStateReply.Types.Status currentStatus = status switch
         {
-            0 => AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration,
-            1 => AppDeviceRegisteredStateReply.Types.Status.SuccessAlreadyExists,
-            _ => throw new InvalidOperationException($"Unexpected status code: {status}")
+            1 => AppDeviceRegisteredStateReply.Types.Status.SuccessAlreadyExists, // Device already exists
+            2 => AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration, // Device newly created
+            0 => AppDeviceRegisteredStateReply.Types.Status.FailureInvalidRequest, // Conflict or invalid request
+            _ => AppDeviceRegisteredStateReply.Types.Status.FailureInternalError // Unexpected status
         };
 
         AppDeviceRegisteredStateReply reply = new()

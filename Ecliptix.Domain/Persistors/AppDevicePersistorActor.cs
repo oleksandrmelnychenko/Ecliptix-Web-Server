@@ -47,8 +47,6 @@ public class AppDevicePersistorActor : ReceiveActor
 
     private async Task RegisterAppDevice(AppDevice appDevice)
     {
-        int deviceTypeInt = (int)appDevice.DeviceType;
-
         try
         {
             await using NpgsqlConnection connection = await _npgsqlDataSource.OpenConnectionAsync();
@@ -58,7 +56,7 @@ public class AppDevicePersistorActor : ReceiveActor
                 Helpers.FromByteStringToGuid(appDevice.AppInstanceId);
             cmd.Parameters.Add(ParamDeviceId, NpgsqlDbType.Uuid).Value =
                 Helpers.FromByteStringToGuid(appDevice.DeviceId);
-            cmd.Parameters.Add(ParamDeviceType, NpgsqlDbType.Integer).Value = deviceTypeInt;
+            cmd.Parameters.Add(ParamDeviceType, NpgsqlDbType.Integer).Value = (int)appDevice.DeviceType;
 
             await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())

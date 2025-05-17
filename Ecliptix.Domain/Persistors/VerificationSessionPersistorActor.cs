@@ -16,10 +16,9 @@ public record EnsurePhoneNumberActorCommand(
 
 public record CreateVerificationSessionRecordCommand(
     Guid PhoneNumberIdentifier,
-    Guid SystemDeviceIdentifier,
+    Guid AppDeviceIdentifier,
     VerificationPurpose Purpose,
     DateTime ExpiresAt,
-    string VerificationCode,
     uint ConnectId);
 
 public record GetVerificationSessionCommand(
@@ -43,11 +42,11 @@ public class VerificationSessionPersistorActor : ReceiveActor
 {
     private readonly NpgsqlDataSource _dataSource;
 
-    private const string CreateSessionSql =
-        "SELECT session_unique_id, outcome FROM create_verification_session(@system_device_id, @phone_unique_id, @code, @purpose::verification_purpose, @expires_at, @connect_id)";
-
     private const string GetSessionSql =
         "SELECT session_unique_id, phone_number_unique_id_out, connection_id, app_device_id_out, phone_number_out, phone_region_out, phone_type_out, expires_at_out, status_out, purpose_out, otp_count_out FROM get_verification_session(@app_device_id, @phone_unique_id, @purpose::verification_purpose)";
+
+    private const string CreateSessionSql =
+        "SELECT session_unique_id, outcome FROM create_verification_session(@app_device_id, @phone_unique_id, @purpose::verification_purpose, @expires_at, @connect_id)";
 
     private const string UpdateStatusSql =
         "SELECT update_verification_session_status(@session_unique_id, @status::verification_status)";
@@ -55,7 +54,7 @@ public class VerificationSessionPersistorActor : ReceiveActor
     private const string VerifyCodeSql =
         "SELECT verify_code(@session_unique_id, @submitted_code, @max_attempts)";
 
-    private const string SystemDeviceIdParam = "system_device_id";
+    private const string AppDeviceIdParam = "app_device_id";
     private const string PhoneNumberIdentifierParam = "phone_unique_id";
     private const string SessionUniqueIdParam = "session_unique_id";
     private const string CodeParam = "code";
@@ -126,9 +125,8 @@ public class VerificationSessionPersistorActor : ReceiveActor
             {
                 NpgsqlParameter[] parameters =
                 [
-                    new(SystemDeviceIdParam, NpgsqlDbType.Uuid) { Value = cmd.SystemDeviceIdentifier },
+                    new("app_device_id", NpgsqlDbType.Uuid) { Value = cmd.AppDeviceIdentifier },
                     new(PhoneNumberIdentifierParam, NpgsqlDbType.Uuid) { Value = cmd.PhoneNumberIdentifier },
-                    new(CodeParam, NpgsqlDbType.Varchar, 6) { Value = cmd.VerificationCode },
                     new(PurposeParam, NpgsqlDbType.Varchar) { Value = cmd.Purpose.ToString().ToLowerInvariant() },
                     new("expires_at", NpgsqlDbType.TimestampTz) { Value = cmd.ExpiresAt },
                     new("connect_id", NpgsqlDbType.Bigint) { Value = (long)cmd.ConnectId }
@@ -139,20 +137,20 @@ public class VerificationSessionPersistorActor : ReceiveActor
 
                 if (!await reader.ReadAsync())
                 {
-                    return Result<Unit, ShieldFailure>.Err(
+                    return Result<Guid, ShieldFailure>.Err(
                         ShieldFailure.DataAccess("Failed to create verification session: no result."));
                 }
 
-                Guid? sessionId = reader.IsDBNull(0) ? null : reader.GetGuid(0);
+                Guid? verificationSessionIdentifier = reader.IsDBNull(0) ? null : reader.GetGuid(0);
                 string outcome = reader.GetString(1);
 
-                if (!sessionId.HasValue || outcome is "phone_not_found" or "conflict_unresolved")
+                if (!verificationSessionIdentifier.HasValue || outcome is "phone_not_found" or "conflict_unresolved")
                 {
-                    return Result<Unit, ShieldFailure>.Err(
+                    return Result<Guid, ShieldFailure>.Err(
                         ShieldFailure.DataAccess($"Failed to create verification session: {outcome}"));
                 }
 
-                return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+                return Result<Guid, ShieldFailure>.Ok(verificationSessionIdentifier.Value);
             },
             "session creation");
     }
@@ -164,7 +162,7 @@ public class VerificationSessionPersistorActor : ReceiveActor
             {
                 NpgsqlParameter[] parameters =
                 [
-                    new(SystemDeviceIdParam, NpgsqlDbType.Uuid) { Value = cmd.DeviceId },
+                    new(AppDeviceIdParam, NpgsqlDbType.Uuid) { Value = cmd.DeviceId },
                     new(PhoneNumberIdentifierParam, NpgsqlDbType.Uuid) { Value = cmd.PhoneNumberIdentifier },
                     new(PurposeParam, NpgsqlDbType.Varchar) { Value = cmd.Purpose.ToString().ToLowerInvariant() }
                 ];
@@ -214,11 +212,14 @@ public class VerificationSessionPersistorActor : ReceiveActor
                     Guid otpUniqueId = reader.GetGuid(0);
                     string outcome = reader.GetString(1);
                     if (outcome == "created")
-                        return Result<Unit, ShieldFailure>.Ok(Unit.Value);
-                    return Result<Unit, ShieldFailure>.Err(ShieldFailure.Generic($"OTP insertion failed: {outcome}"));
+                    {
+                        return Result<Guid, ShieldFailure>.Ok(otpUniqueId);
+                    }
+
+                    return Result<Guid, ShieldFailure>.Err(ShieldFailure.Generic($"OTP insertion failed: {outcome}"));
                 }
 
-                return Result<Unit, ShieldFailure>.Err(ShieldFailure.DataAccess("Failed to insert OTP record."));
+                return Result<Guid, ShieldFailure>.Err(ShieldFailure.DataAccess("Failed to insert OTP record."));
             },
             "insert OTP record");
     }

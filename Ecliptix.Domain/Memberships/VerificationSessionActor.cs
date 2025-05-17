@@ -12,13 +12,13 @@ public record StartTimer;
 
 public record StopTimer(uint ConnectId);
 
-public record ResendOtpCommand(uint ConnectId); 
+public record ResendOtpCommand(uint ConnectId);
 
 public class VerificationSessionActor : ReceiveActor
 {
     private readonly uint _connectId;
     private readonly Guid _phoneNumberIdentifier;
-    private readonly Guid _systemDeviceIdentifier;
+    private readonly Guid _appDeviceIdentifier;
     private readonly VerificationPurpose _purpose;
     private readonly ChannelWriter<VerificationCountdownUpdate> _writer;
     private readonly IActorRef _persistor;
@@ -41,7 +41,7 @@ public class VerificationSessionActor : ReceiveActor
     public VerificationSessionActor(
         uint connectId,
         Guid phoneNumberIdentifier,
-        Guid systemDeviceIdentifier,
+        Guid appDeviceIdentifier,
         VerificationPurpose purpose,
         ChannelWriter<VerificationCountdownUpdate> writer,
         IActorRef persistor,
@@ -50,7 +50,7 @@ public class VerificationSessionActor : ReceiveActor
     {
         _connectId = connectId;
         _phoneNumberIdentifier = phoneNumberIdentifier;
-        _systemDeviceIdentifier = systemDeviceIdentifier;
+        _appDeviceIdentifier = appDeviceIdentifier;
         _purpose = purpose;
         _writer = writer;
         _persistor = persistor;
@@ -64,14 +64,14 @@ public class VerificationSessionActor : ReceiveActor
     public static Props Build(
         uint connectId,
         Guid phoneNumberIdentifier,
-        Guid systemDeviceIdentifier,
+        Guid appDeviceIdentifier,
         VerificationPurpose purpose,
         ChannelWriter<VerificationCountdownUpdate> writer,
         IActorRef persistor,
         SNSProvider snsProvider,
         IStringLocalizer localizer) =>
         Props.Create(() => new VerificationSessionActor(
-            connectId, phoneNumberIdentifier, systemDeviceIdentifier, purpose, writer,
+            connectId, phoneNumberIdentifier, appDeviceIdentifier, purpose, writer,
             persistor, snsProvider, localizer));
 
     private void Initializing()
@@ -99,7 +99,8 @@ public class VerificationSessionActor : ReceiveActor
 
         _phoneNumberQueryRecord = Option<PhoneNumberQueryRecord>.Some(result.Unwrap());
         _persistor.Ask<Result<Option<VerificationSessionQueryRecord>, ShieldFailure>>(
-                new GetVerificationSessionCommand(_systemDeviceIdentifier, _systemDeviceIdentifier, _purpose))
+                new GetVerificationSessionCommand(_appDeviceIdentifier, _phoneNumberQueryRecord.Value!.UniqueIdentifier,
+                    _purpose))
             .PipeTo(Self);
     }
 
@@ -113,7 +114,7 @@ public class VerificationSessionActor : ReceiveActor
         }
 
         Option<VerificationSessionQueryRecord> maybeSession = result.Unwrap();
-        if (maybeSession.HasValue && maybeSession.Value.ExpiresAt > DateTime.UtcNow)
+        if (maybeSession.HasValue && maybeSession.Value!.ExpiresAt > DateTime.UtcNow)
         {
             _verificationSessionQueryRecord = maybeSession;
             _sessionExpiresAt = maybeSession.Value.ExpiresAt;
@@ -122,21 +123,22 @@ public class VerificationSessionActor : ReceiveActor
         }
         else
         {
+            //TODO:verification code
             Become(CreatingSession);
-            _persistor.Ask<Result<Unit, ShieldFailure>>(
+            _persistor.Ask<Result<Guid, ShieldFailure>>(
                     new CreateVerificationSessionRecordCommand(
-                        _phoneNumberIdentifier, _systemDeviceIdentifier, _purpose,
-                        DateTime.UtcNow + _sessionTimeout, "", _connectId))
+                        _phoneNumberIdentifier, _appDeviceIdentifier, _purpose,
+                        DateTime.UtcNow + _sessionTimeout, _connectId))
                 .PipeTo(Self);
         }
     }
 
     private void CreatingSession()
     {
-        Receive<Result<Unit, ShieldFailure>>(HandleSessionCreation);
+        Receive<Result<Guid, ShieldFailure>>(HandleSessionCreation);
     }
 
-    private void HandleSessionCreation(Result<Unit, ShieldFailure> result)
+    private void HandleSessionCreation(Result<Guid, ShieldFailure> result)
     {
         if (result.IsErr)
         {
@@ -147,7 +149,7 @@ public class VerificationSessionActor : ReceiveActor
 
         _verificationSessionQueryRecord = Option<VerificationSessionQueryRecord>.Some(
             new VerificationSessionQueryRecord(
-                Guid.NewGuid(), _phoneNumberIdentifier, _systemDeviceIdentifier, _connectId)
+                result.Unwrap(), _phoneNumberIdentifier, _appDeviceIdentifier, _connectId)
             {
                 ExpiresAt = _sessionExpiresAt,
                 Purpose = _purpose
@@ -166,7 +168,7 @@ public class VerificationSessionActor : ReceiveActor
             if (_verificationSessionQueryRecord.HasValue)
             {
                 VerifyCodeWithSessionCommand sessionCommand = new(
-                    _verificationSessionQueryRecord.Value.UniqueIdentifier,
+                    _verificationSessionQueryRecord.Value!.UniqueIdentifier,
                     command.Code,
                     command.VerificationPurpose,
                     command.ConnectId
@@ -174,7 +176,7 @@ public class VerificationSessionActor : ReceiveActor
                 _persistor.Forward(sessionCommand);
             }
         });
-        Receive<ResendOtpCommand>(command => HandleResendOtp(command));
+        ReceiveAsync<ResendOtpCommand>(HandleResendOtp);
         Receive<StopTimer>(msg =>
         {
             if (msg.ConnectId == _connectId)
@@ -184,15 +186,13 @@ public class VerificationSessionActor : ReceiveActor
             }
         });
     }
-    
-    
 
     private void StartTimer()
     {
         _timerCancelable?.Cancel();
         if (_activeOtp is not { IsActive: true })
         {
-            return; 
+            return;
         }
 
         _activeOtpRemainingSeconds = CalculateRemainingSeconds(_activeOtp.ExpiresAt);
@@ -290,15 +290,15 @@ public class VerificationSessionActor : ReceiveActor
             return Result<OtpQueryRecord, ShieldFailure>.Err(ShieldFailure.Generic("Maximum OTP attempts reached"));
         }
 
-        OneTimePassword oneTimePassword = new OneTimePassword(_localizer);
+        OneTimePassword oneTimePassword = new(_localizer);
         Result<OtpQueryRecord, ShieldFailure> sendResult = await oneTimePassword.SendAsync(
-            _phoneNumberQueryRecord.Value,
+            _phoneNumberQueryRecord.Value!,
             async (phoneNumber, message) => await _snsProvider.SendSmsAsync(phoneNumber, message));
 
         if (sendResult.IsOk)
         {
             OtpQueryRecord originalRecord = sendResult.Unwrap();
-            OtpQueryRecord otpRecord = new OtpQueryRecord
+            OtpQueryRecord otpRecord = new()
             {
                 SessionIdentifier = _verificationSessionQueryRecord.Value!.UniqueIdentifier,
                 PhoneNumberIdentifier = originalRecord.PhoneNumberIdentifier,
@@ -310,7 +310,8 @@ public class VerificationSessionActor : ReceiveActor
             };
             _activeOtp = oneTimePassword;
             _otpAttempts++;
-            await _persistor.Ask<Result<Unit, ShieldFailure>>(new CreateOtpRecordCommand(otpRecord));
+
+            _persistor.Tell(new CreateOtpRecordCommand(otpRecord));
         }
 
         return sendResult;
@@ -321,7 +322,7 @@ public class VerificationSessionActor : ReceiveActor
         if (_verificationSessionQueryRecord.HasValue)
         {
             await _persistor.Ask<Result<Unit, ShieldFailure>>(new UpdateVerificationSessionStatusCommand(
-                _verificationSessionQueryRecord.Value.UniqueIdentifier, status));
+                _verificationSessionQueryRecord.Value!.UniqueIdentifier, status));
         }
 
         _timerCancelable?.Cancel();
@@ -341,7 +342,5 @@ public class VerificationSessionActor : ReceiveActor
         _writer.TryComplete();
     }
 }
-
-public record CreateOtpRecordCommand(OtpQueryRecord OtpRecord);
 
 public record UpdateVerificationSessionStatusCommand(Guid SessionId, VerificationSessionStatus Status);
