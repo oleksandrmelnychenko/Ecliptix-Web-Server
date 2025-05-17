@@ -4,6 +4,7 @@ namespace Ecliptix.Domain.Persistors.QueryRecords;
 
 public class OtpQueryRecord
 {
+    public Guid UniqueIdentifier { get; init; }
     public Guid SessionIdentifier { get; init; }
     public Guid PhoneNumberIdentifier { get; init; }
     public string OtpHash { get; init; } = string.Empty;

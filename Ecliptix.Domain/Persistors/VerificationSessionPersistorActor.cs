@@ -288,6 +288,20 @@ public class VerificationSessionPersistorActor : ReceiveActor
             return Result<Option<VerificationSessionQueryRecord>, ShieldFailure>.Ok(
                 Option<VerificationSessionQueryRecord>.None);
 
+        Option<OtpQueryRecord> otpActive = Option<OtpQueryRecord>.None;
+        if (!reader.IsDBNull(11)) 
+        {
+            otpActive = Option<OtpQueryRecord>.Some(new OtpQueryRecord
+            {
+                UniqueIdentifier = reader.GetGuid(11),
+                SessionIdentifier = reader.GetGuid(0),
+                OtpHash = reader.GetString(12),
+                OtpSalt = reader.GetString(13),
+                ExpiresAt = reader.GetDateTime(14),
+                Status = Enum.Parse<VerificationSessionStatus>(reader.GetString(15), true)
+            });
+        }
+
         VerificationSessionQueryRecord record = new(
             UniqueIdentifier: reader.GetGuid(0),
             PhoneNumberIdentifier: reader.GetGuid(1),
@@ -295,7 +309,10 @@ public class VerificationSessionPersistorActor : ReceiveActor
             ConnectId: reader.IsDBNull(2) ? 0 : (uint)reader.GetInt64(2))
         {
             ExpiresAt = reader.GetDateTime(7),
-            Purpose = Enum.Parse<VerificationPurpose>(reader.GetString(9), true)
+            Status = Enum.Parse<VerificationSessionStatus>(reader.GetString(8), true),
+            Purpose = Enum.Parse<VerificationPurpose>(reader.GetString(9), true),
+            OtpCount = reader.GetInt16(10),
+            OtpActive = otpActive
         };
 
         return Result<Option<VerificationSessionQueryRecord>, ShieldFailure>.Ok(

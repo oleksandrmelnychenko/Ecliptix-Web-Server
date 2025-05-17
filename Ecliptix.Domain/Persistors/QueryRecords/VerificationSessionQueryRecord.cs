@@ -1,4 +1,5 @@
 using Ecliptix.Domain.Memberships;
+using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Authentication;
 
 namespace Ecliptix.Domain.Persistors.QueryRecords;
@@ -12,5 +13,9 @@ public record VerificationSessionQueryRecord(
 {
     public DateTime ExpiresAt { get; init; }
     public VerificationPurpose Purpose { get; init; }
+    
+    public VerificationSessionStatus Status { get; init; }
     public int OtpCount { get; init; }
+
+    public Option<OtpQueryRecord> OtpActive { get; init; } = Option<OtpQueryRecord>.None;
 }
