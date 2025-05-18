@@ -16,7 +16,7 @@ public record ResendOtpCommand(uint ConnectId);
 
 public record SessionExpired;
 
-public record InitiateResendVerificationRequestActorCommand(Guid SessionIdentifier, uint ConnectId);
+public record InitiateResendVerificationRequestActorCommand(uint ConnectId);
 
 public class VerificationSessionActor : ReceiveActor
 {
@@ -175,6 +175,13 @@ public class VerificationSessionActor : ReceiveActor
         {
             if (!_verificationSessionQueryRecord.HasValue || _activeOtp is null || !_activeOtp.IsActive)
             {
+                UpdateOtpStatusActorCommand sessionCommand = new(
+                    _verificationSessionQueryRecord.Value!.UniqueIdentifier,
+                    VerificationSessionStatus.Expired
+                );
+                
+                _persistor.Forward(sessionCommand);
+                
                 Sender.Tell(new VerifyCodeResponse
                 {
                     Result = VerificationResult.Expired,

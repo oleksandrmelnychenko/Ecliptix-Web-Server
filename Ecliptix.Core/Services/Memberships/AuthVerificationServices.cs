@@ -73,7 +73,7 @@ public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogg
             Helpers.ParseFromBytes<InitiateResendOtpRequest>(decryptResult.Unwrap());
 
         InitiateResendVerificationRequestActorCommand actorCommand =
-            new(Helpers.FromByteStringToGuid(initiateResendOtpRequest.SessionIdentifier), connectId);
+            new(connectId);
 
         Result<ResendOtpResponse, ShieldFailure> resendResult = await VerificationSessionManagerActor
             .Ask<Result<ResendOtpResponse, ShieldFailure>>(actorCommand);
