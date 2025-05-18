@@ -13,7 +13,7 @@ public sealed class OneTimePassword(IStringLocalizer localizer)
 
     public bool IsActive { get; private set; }
 
-    public DateTime ExpiresAt { get; } = DateTime.UtcNow.AddMinutes(1);
+    public DateTime ExpiresAt { get; } = DateTime.UtcNow.AddSeconds(20);
 
     public Guid UniqueIdentifier { get; private set; }
 

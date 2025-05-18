@@ -176,7 +176,7 @@ public class VerificationSessionActor : ReceiveActor
             if (!_verificationSessionQueryRecord.HasValue || _activeOtp is null || !_activeOtp.IsActive)
             {
                 UpdateOtpStatusActorCommand sessionCommand = new(
-                    _verificationSessionQueryRecord.Value!.UniqueIdentifier,
+                    _activeOtp.UniqueIdentifier,
                     VerificationSessionStatus.Expired
                 );
                 
@@ -187,6 +187,7 @@ public class VerificationSessionActor : ReceiveActor
                     Result = VerificationResult.Expired,
                     Message = _localizer["No active session or OTP."]
                 });
+                
                 return;
             }
 
@@ -194,7 +195,7 @@ public class VerificationSessionActor : ReceiveActor
             if (isVerified)
             {
                 UpdateOtpStatusActorCommand sessionCommand = new(
-                    _verificationSessionQueryRecord.Value!.UniqueIdentifier,
+                    _activeOtp.UniqueIdentifier,
                     VerificationSessionStatus.Verified
                 );
                 
@@ -212,9 +213,10 @@ public class VerificationSessionActor : ReceiveActor
             else
             {
                 UpdateOtpStatusActorCommand sessionCommand = new(
-                    _verificationSessionQueryRecord.Value!.UniqueIdentifier,
+                    _activeOtp.UniqueIdentifier,
                     VerificationSessionStatus.Failed
                 );
+                
                 _persistor.Forward(sessionCommand);
                 
                 Sender.Tell(new VerifyCodeResponse
