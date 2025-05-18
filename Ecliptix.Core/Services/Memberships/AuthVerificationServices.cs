@@ -57,6 +57,36 @@ public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogg
         }
     }
 
+    public override async Task<CipherPayload> InitiateResendVerification(CipherPayload request,
+        ServerCallContext context)
+    {
+        Result<byte[], ShieldFailure> decryptResult = await DecryptRequest(request, context);
+        if (decryptResult.IsErr)
+        {
+            HandleError(decryptResult.UnwrapErr(), context);
+            return new CipherPayload();
+        }
+
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
+
+        InitiateResendOtpRequest initiateResendOtpRequest =
+            Helpers.ParseFromBytes<InitiateResendOtpRequest>(decryptResult.Unwrap());
+
+        InitiateResendVerificationRequestActorCommand actorCommand =
+            new(Helpers.FromByteStringToGuid(initiateResendOtpRequest.SessionIdentifier), connectId);
+
+        Result<ResendOtpResponse, ShieldFailure> resendResult = await VerificationSessionManagerActor
+            .Ask<Result<ResendOtpResponse, ShieldFailure>>(actorCommand);
+
+        if (resendResult.IsOk)
+        {
+            return await EncryptAndReturnResponse(resendResult.Unwrap().ToByteArray(), context);
+        }
+
+        HandleError(resendResult.UnwrapErr(), context);
+        return new CipherPayload();
+    }
+
     public override async Task<CipherPayload> ValidatePhoneNumber(CipherPayload request, ServerCallContext context)
     {
         Result<byte[], ShieldFailure> decryptResult = await DecryptRequest(request, context);

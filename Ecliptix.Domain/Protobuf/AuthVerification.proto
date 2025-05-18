@@ -32,6 +32,16 @@ message InitiateVerificationRequest {
   VerificationPurpose purpose = 3;
 }
 
+message InitiateResendOtpRequest {
+  bytes session_identifier = 1;
+}
+
+message ResendOtpResponse {
+  VerificationResult result = 1;      
+  bytes session_identifier = 2;       
+  VerificationPurpose purpose = 3;   
+}
+
 // Represents a single update in the verification session’s countdown, streamed by the server.
 // This message is emitted every second as part of the server-side stream initiated by an InitiateVerificationRequest.
 // It provides the remaining time in the verification window and the session identifier, allowing the client to track the

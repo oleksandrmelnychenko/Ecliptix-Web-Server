@@ -14,7 +14,7 @@ public record EnsurePhoneNumberActorCommand(
     CustomPhoneNumberType PhoneType,
     uint ConnectId);
 
-public record CreateVerificationSessionRecordCommand(
+public record CreateVerificationSessionCommand(
     Guid PhoneNumberIdentifier,
     Guid AppDeviceIdentifier,
     VerificationPurpose Purpose,
@@ -32,18 +32,9 @@ public readonly struct CreateOtpRecordResult(Guid otpUniqueId)
 }
 
 public record GetPhoneNumberActorCommand(Guid PhoneNumberIdentifier);
-
 public record UpdateVerificationSessionStatusActorCommand(Guid SessionId, VerificationSessionStatus Status);
-
-public record CreateOtpRecordActorCommand(OtpQueryRecord OtpRecord);
-
+public record CreateOtpActorCommand(OtpQueryRecord OtpRecord);
 public record UpdateOtpStatusActorCommand(Guid OtpIdentified, VerificationSessionStatus Status);
-
-public record VerifyCodeWithSessionCommand(
-    Guid SessionIdentifier,
-    string Code,
-    VerificationPurpose VerificationPurpose,
-    uint ConnectId);
 
 public class VerificationSessionPersistorActor : ReceiveActor
 {
@@ -59,12 +50,11 @@ public class VerificationSessionPersistorActor : ReceiveActor
         "SELECT update_verification_session_status(@session_unique_id, @status::verification_status)";
 
     private const string VerifyCodeSql =
-        "SELECT verify_code(@session_unique_id, @submitted_code, @max_attempts)";
+        "SELECT set_otp_verify_status(@session_unique_id, @verification_outcome)";
 
     private const string AppDeviceIdParam = "app_device_id";
     private const string PhoneNumberIdentifierParam = "phone_unique_id";
     private const string SessionUniqueIdParam = "session_unique_id";
-    private const string CodeParam = "code";
     private const string PurposeParam = "purpose";
     private const string StatusParam = "status";
 
@@ -79,13 +69,12 @@ public class VerificationSessionPersistorActor : ReceiveActor
 
     private void Ready()
     {
-        ReceiveAsync<CreateVerificationSessionRecordCommand>(HandleCreateVerificationSessionRecord);
+        ReceiveAsync<CreateVerificationSessionCommand>(HandleCreateVerificationSessionRecord);
         ReceiveAsync<GetVerificationSessionCommand>(HandleGetVerificationSession);
         ReceiveAsync<UpdateVerificationSessionStatusActorCommand>(HandleUpdateSessionStatus);
-        ReceiveAsync<VerifyCodeWithSessionCommand>(HandleVerifyCodeWithSession);
         ReceiveAsync<EnsurePhoneNumberActorCommand>(HandleEnsurePhoneNumberCommand);
         ReceiveAsync<GetPhoneNumberActorCommand>(HandleGetPhoneNumberCommand);
-        ReceiveAsync<CreateOtpRecordActorCommand>(HandleCreateOtpRecord);
+        ReceiveAsync<CreateOtpActorCommand>(HandleCreateOtpRecord);
         ReceiveAsync<UpdateOtpStatusActorCommand>(HandleUpdateOtpStatusCommand);
     }
 
@@ -162,7 +151,7 @@ public class VerificationSessionPersistorActor : ReceiveActor
             "get phone number");
     }
 
-    private async Task HandleCreateVerificationSessionRecord(CreateVerificationSessionRecordCommand cmd) =>
+    private async Task HandleCreateVerificationSessionRecord(CreateVerificationSessionCommand cmd) =>
         await ExecuteWithConnection(
             async conn =>
             {
@@ -227,7 +216,7 @@ public class VerificationSessionPersistorActor : ReceiveActor
             },
             "session status update");
 
-    private async Task HandleCreateOtpRecord(CreateOtpRecordActorCommand cmd) =>
+    private async Task HandleCreateOtpRecord(CreateOtpActorCommand cmd) =>
         await ExecuteWithConnection(
             async conn =>
             {
@@ -261,34 +250,7 @@ public class VerificationSessionPersistorActor : ReceiveActor
                     ShieldFailure.DataAccess("Failed to insert OTP record."));
             },
             "insert OTP record");
-
-
-    private async Task HandleVerifyCodeWithSession(VerifyCodeWithSessionCommand cmd)
-    {
-        await ExecuteWithConnection(
-            async conn =>
-            {
-                NpgsqlParameter[] parameters =
-                [
-                    new("session_unique_id", NpgsqlDbType.Uuid) { Value = cmd.SessionIdentifier },
-                    new("submitted_code", NpgsqlDbType.Varchar) { Value = cmd.Code },
-                    new("max_attempts", NpgsqlDbType.Smallint) { Value = 5 }
-                ];
-
-                await using NpgsqlCommand command = CreateCommand(conn, VerifyCodeSql, parameters);
-                string outcome = (string)(await command.ExecuteScalarAsync() ?? "failed");
-
-                if (outcome == "verified")
-                {
-                    return Result<Unit, ShieldFailure>.Ok(Unit.Value);
-                }
-
-                return Result<Unit, ShieldFailure>.Err(
-                    ShieldFailure.Generic($"Code verification failed: {outcome}"));
-            },
-            "code verification");
-    }
-
+    
     private async Task HandleEnsurePhoneNumberCommand(EnsurePhoneNumberActorCommand cmd)
     {
         await ExecuteWithConnection(

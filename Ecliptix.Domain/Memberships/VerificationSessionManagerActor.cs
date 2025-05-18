@@ -43,6 +43,14 @@ public class VerificationSessionManagerActor : ReceiveActor
         Receive<EnsurePhoneNumberActorCommand>(cmd =>
             _persistor.Forward(cmd));
 
+        Receive<InitiateResendVerificationRequestActorCommand>(actorCommand =>
+        {
+            if (_sessions.TryGetValue(actorCommand.ConnectId, out IActorRef? existing))
+            {
+                existing.Forward(actorCommand);
+            }
+        });
+
         Receive<StopTimer>(HandleStopTimer);
         Receive<Terminated>(HandleTerminated);
     }
