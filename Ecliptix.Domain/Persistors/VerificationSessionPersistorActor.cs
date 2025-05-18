@@ -26,11 +26,18 @@ public record GetVerificationSessionCommand(
     Guid PhoneNumberIdentifier,
     VerificationPurpose Purpose);
 
+public readonly struct CreateOtpRecordResult(Guid otpUniqueId)
+{
+    public readonly Guid OtpUniqueId = otpUniqueId;
+}
+
 public record GetPhoneNumberActorCommand(Guid PhoneNumberIdentifier);
 
-public record UpdateVerificationSessionStatusCommand(Guid SessionId, VerificationSessionStatus Status);
+public record UpdateVerificationSessionStatusActorCommand(Guid SessionId, VerificationSessionStatus Status);
 
-public record CreateOtpRecordCommand(OtpQueryRecord OtpRecord);
+public record CreateOtpRecordActorCommand(OtpQueryRecord OtpRecord);
+
+public record UpdateOtpStatusActorCommand(Guid OtpIdentified, VerificationSessionStatus Status);
 
 public record VerifyCodeWithSessionCommand(
     Guid SessionIdentifier,
@@ -74,12 +81,49 @@ public class VerificationSessionPersistorActor : ReceiveActor
     {
         ReceiveAsync<CreateVerificationSessionRecordCommand>(HandleCreateVerificationSessionRecord);
         ReceiveAsync<GetVerificationSessionCommand>(HandleGetVerificationSession);
-        ReceiveAsync<UpdateVerificationSessionStatusCommand>(HandleUpdateSessionStatus);
+        ReceiveAsync<UpdateVerificationSessionStatusActorCommand>(HandleUpdateSessionStatus);
         ReceiveAsync<VerifyCodeWithSessionCommand>(HandleVerifyCodeWithSession);
         ReceiveAsync<EnsurePhoneNumberActorCommand>(HandleEnsurePhoneNumberCommand);
         ReceiveAsync<GetPhoneNumberActorCommand>(HandleGetPhoneNumberCommand);
-        ReceiveAsync<CreateOtpRecordCommand>(HandleCreateOtpRecord);
+        ReceiveAsync<CreateOtpRecordActorCommand>(HandleCreateOtpRecord);
+        ReceiveAsync<UpdateOtpStatusActorCommand>(HandleUpdateOtpStatusCommand);
     }
+
+    private async Task HandleUpdateOtpStatusCommand(UpdateOtpStatusActorCommand cmd)
+    {
+        await ExecuteWithConnection(
+            async conn =>
+            {
+                const string sql =
+                    "SELECT success, message FROM update_otp_status(@otp_unique_id, @status::verification_status)";
+                NpgsqlParameter[] parameters =
+                [
+                    new("otp_unique_id", NpgsqlDbType.Uuid) { Value = cmd.OtpIdentified },
+                    new("status", NpgsqlDbType.Varchar) { Value = cmd.Status.ToString().ToLowerInvariant() }
+                ];
+
+                await using NpgsqlCommand command = CreateCommand(conn, sql, parameters);
+                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+
+                if (await reader.ReadAsync())
+                {
+                    bool success = reader.GetBoolean(0);
+                    string message = reader.GetString(1);
+
+                    if (!success)
+                    {
+                        return Result<Unit, ShieldFailure>.Err(ShieldFailure.DataAccess(message));
+                    }
+
+                    return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+                }
+
+                return Result<Unit, ShieldFailure>.Err(
+                    ShieldFailure.DataAccess("Failed to update OTP status: no result returned."));
+            },
+            "update OTP status"); // Fixed operation name from "insert OTP record"
+    }
+
 
     private async Task HandleGetPhoneNumberCommand(GetPhoneNumberActorCommand cmd)
     {
@@ -118,8 +162,7 @@ public class VerificationSessionPersistorActor : ReceiveActor
             "get phone number");
     }
 
-    private async Task HandleCreateVerificationSessionRecord(CreateVerificationSessionRecordCommand cmd)
-    {
+    private async Task HandleCreateVerificationSessionRecord(CreateVerificationSessionRecordCommand cmd) =>
         await ExecuteWithConnection(
             async conn =>
             {
@@ -153,10 +196,8 @@ public class VerificationSessionPersistorActor : ReceiveActor
                 return Result<Guid, ShieldFailure>.Ok(verificationSessionIdentifier.Value);
             },
             "session creation");
-    }
 
-    private async Task HandleGetVerificationSession(GetVerificationSessionCommand cmd)
-    {
+    private async Task HandleGetVerificationSession(GetVerificationSessionCommand cmd) =>
         await ExecuteWithConnection(
             conn =>
             {
@@ -169,10 +210,8 @@ public class VerificationSessionPersistorActor : ReceiveActor
                 return ReadSessionQueryRecord(conn, parameters);
             },
             "session retrieval");
-    }
 
-    private async Task HandleUpdateSessionStatus(UpdateVerificationSessionStatusCommand cmd)
-    {
+    private async Task HandleUpdateSessionStatus(UpdateVerificationSessionStatusActorCommand cmd) =>
         await ExecuteWithConnection(
             async conn =>
             {
@@ -187,10 +226,8 @@ public class VerificationSessionPersistorActor : ReceiveActor
                 return Result<Unit, ShieldFailure>.Ok(Unit.Value);
             },
             "session status update");
-    }
 
-    private async Task HandleCreateOtpRecord(CreateOtpRecordCommand cmd)
-    {
+    private async Task HandleCreateOtpRecord(CreateOtpRecordActorCommand cmd) =>
         await ExecuteWithConnection(
             async conn =>
             {
@@ -213,16 +250,18 @@ public class VerificationSessionPersistorActor : ReceiveActor
                     string outcome = reader.GetString(1);
                     if (outcome == "created")
                     {
-                        return Result<Guid, ShieldFailure>.Ok(otpUniqueId);
+                        return Result<CreateOtpRecordResult, ShieldFailure>.Ok(new CreateOtpRecordResult(otpUniqueId));
                     }
 
-                    return Result<Guid, ShieldFailure>.Err(ShieldFailure.Generic($"OTP insertion failed: {outcome}"));
+                    return Result<CreateOtpRecordResult, ShieldFailure>.Err(
+                        ShieldFailure.Generic($"OTP insertion failed: {outcome}"));
                 }
 
-                return Result<Guid, ShieldFailure>.Err(ShieldFailure.DataAccess("Failed to insert OTP record."));
+                return Result<CreateOtpRecordResult, ShieldFailure>.Err(
+                    ShieldFailure.DataAccess("Failed to insert OTP record."));
             },
             "insert OTP record");
-    }
+
 
     private async Task HandleVerifyCodeWithSession(VerifyCodeWithSessionCommand cmd)
     {
@@ -289,7 +328,7 @@ public class VerificationSessionPersistorActor : ReceiveActor
                 Option<VerificationSessionQueryRecord>.None);
 
         Option<OtpQueryRecord> otpActive = Option<OtpQueryRecord>.None;
-        if (!reader.IsDBNull(11)) 
+        if (!reader.IsDBNull(11))
         {
             otpActive = Option<OtpQueryRecord>.Some(new OtpQueryRecord
             {

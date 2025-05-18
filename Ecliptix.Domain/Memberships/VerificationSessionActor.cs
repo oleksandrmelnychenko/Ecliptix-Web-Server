@@ -32,11 +32,11 @@ public class VerificationSessionActor : ReceiveActor
 
     private ICancelable? _timerCancelable;
     private readonly TimeSpan _sessionTimeout = TimeSpan.FromMinutes(5);
-    private DateTime _sessionExpiresAt; // Tracks session expiration
-    private readonly int _maxOtpAttempts = 5; // Maximum OTP attempts
-    private int _otpAttempts = 0; // Current number of OTPs sent
-    private OneTimePassword? _activeOtp; // Current active OTP (null if none)
-    private ulong _activeOtpRemainingSeconds; // OTP countdown
+    private DateTime _sessionExpiresAt;
+    private const int MaxOtpAttempts = 5;
+    private int _otpAttempts;
+    private OneTimePassword? _activeOtp;
+    private ulong _activeOtpRemainingSeconds;
 
     public VerificationSessionActor(
         uint connectId,
@@ -213,18 +213,18 @@ public class VerificationSessionActor : ReceiveActor
 
     private async Task HandleTimerTick(VerificationCountdownUpdate _)
     {
-        if (DateTime.UtcNow >= _sessionExpiresAt || _otpAttempts >= _maxOtpAttempts)
+        if (DateTime.UtcNow >= _sessionExpiresAt || _otpAttempts >= MaxOtpAttempts)
         {
             await TerminateSession(VerificationSessionStatus.Expired);
             return;
         }
 
-        if (_activeOtp is not { IsActive: true } || _activeOtpRemainingSeconds <= 0)
+        if (_activeOtp is not { IsActive: true })
         {
             if (_activeOtp != null)
             {
                 _activeOtp.ConsumeOtp();
-                await _persistor.Ask<Result<Unit, ShieldFailure>>(new UpdateVerificationSessionStatusCommand(
+                await _persistor.Ask<Result<Unit, ShieldFailure>>(new UpdateVerificationSessionStatusActorCommand(
                     _verificationSessionQueryRecord.Value!.UniqueIdentifier, VerificationSessionStatus.Expired));
                 _activeOtp = null;
             }
@@ -238,6 +238,20 @@ public class VerificationSessionActor : ReceiveActor
             SecondsRemaining = _activeOtpRemainingSeconds,
             SessionIdentifier = Helpers.GuidToByteString(_verificationSessionQueryRecord.Value!.UniqueIdentifier)
         });
+
+        if (_activeOtpRemainingSeconds == 0)
+        {
+            _activeOtp.ConsumeOtp();
+
+            await _persistor.Ask<Result<Unit, ShieldFailure>>(
+                new UpdateOtpStatusActorCommand(
+                    _activeOtp.UniqueIdentifier, VerificationSessionStatus.Expired));
+
+            _activeOtp = null;
+            _timerCancelable?.Cancel();
+            return;
+        }
+
         _activeOtpRemainingSeconds--;
     }
 
@@ -248,7 +262,7 @@ public class VerificationSessionActor : ReceiveActor
             return;
         }
 
-        if (_otpAttempts >= _maxOtpAttempts)
+        if (_otpAttempts >= MaxOtpAttempts)
         {
             await TerminateSession(VerificationSessionStatus.Postponed);
             return;
@@ -284,7 +298,7 @@ public class VerificationSessionActor : ReceiveActor
             return Result<OtpQueryRecord, ShieldFailure>.Err(ShieldFailure.Generic("Phone number not found"));
         }
 
-        if (_otpAttempts >= _maxOtpAttempts)
+        if (_otpAttempts >= MaxOtpAttempts)
         {
             await TerminateSession(VerificationSessionStatus.Postponed);
             return Result<OtpQueryRecord, ShieldFailure>.Err(ShieldFailure.Generic("Maximum OTP attempts reached"));
@@ -311,7 +325,10 @@ public class VerificationSessionActor : ReceiveActor
             _activeOtp = oneTimePassword;
             _otpAttempts++;
 
-            _persistor.Tell(new CreateOtpRecordCommand(otpRecord));
+            Result<CreateOtpRecordResult, ShieldFailure> createOtpRecordResult =
+                await _persistor.Ask<Result<CreateOtpRecordResult,ShieldFailure>>(new CreateOtpRecordActorCommand(otpRecord));
+            
+            _activeOtp.SetOtpQueryRecordIdentifier(createOtpRecordResult.Unwrap().OtpUniqueId);
         }
 
         return sendResult;
@@ -321,7 +338,7 @@ public class VerificationSessionActor : ReceiveActor
     {
         if (_verificationSessionQueryRecord.HasValue)
         {
-            await _persistor.Ask<Result<Unit, ShieldFailure>>(new UpdateVerificationSessionStatusCommand(
+            await _persistor.Ask<Result<Unit, ShieldFailure>>(new UpdateVerificationSessionStatusActorCommand(
                 _verificationSessionQueryRecord.Value!.UniqueIdentifier, status));
         }
 
@@ -342,5 +359,3 @@ public class VerificationSessionActor : ReceiveActor
         _writer.TryComplete();
     }
 }
-
-public record UpdateVerificationSessionStatusCommand(Guid SessionId, VerificationSessionStatus Status);

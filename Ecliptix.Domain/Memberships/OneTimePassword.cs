@@ -15,6 +15,11 @@ public sealed class OneTimePassword(IStringLocalizer localizer)
 
     public DateTime ExpiresAt { get; } = DateTime.UtcNow.AddMinutes(1);
 
+    public Guid UniqueIdentifier { get; private set; }
+
+    public void SetOtpQueryRecordIdentifier(Guid identifier) =>
+        UniqueIdentifier = identifier;
+
     public async Task<Result<OtpQueryRecord, ShieldFailure>> SendAsync(
         PhoneNumberQueryRecord phoneNumberQueryRecord,
         Func<string, string, Task<Result<Unit, ShieldFailure>>> send)
