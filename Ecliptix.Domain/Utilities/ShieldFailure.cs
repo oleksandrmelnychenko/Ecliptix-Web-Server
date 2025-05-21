@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
-using Grpc.Core;
+using Grpc.Core; // Make sure you have this using for Status and StatusCode
+using System;    // For HashCode, Exception
+// ... other usings for your project structure
 
 namespace Ecliptix.Domain.Utilities;
 
@@ -24,10 +26,15 @@ public class ShieldFailure
             ShieldFailureType.ObjectDisposed => StatusCode.FailedPrecondition,
             ShieldFailureType.EphemeralMissing => StatusCode.FailedPrecondition,
             ShieldFailureType.StateMissing => StatusCode.FailedPrecondition,
+            ShieldFailureType.AuthenticationFailed => StatusCode.Unauthenticated, // Added mapping
+            // Add other specific mappings here if needed for new types
             _ => StatusCode.Internal
         };
 
-        string message = code == StatusCode.Internal ? "An internal error occurred." : failure.Message;
+        // For internal errors, use a generic message to avoid leaking sensitive details
+        string message = (code == StatusCode.Internal && failure.Type != ShieldFailureType.Generic)
+            ? "An internal error occurred."
+            : failure.Message;
 
         return new Status(code, message);
     }
@@ -60,6 +67,8 @@ public class ShieldFailure
         ShieldFailureType.BufferTooSmall => "Provided buffer is too small.",
         ShieldFailureType.DataTooLarge => "Provided data exceeds buffer capacity.",
         ShieldFailureType.DataAccessError => "Error accessing data.",
+        ShieldFailureType.SessionExpired => "Session has expired.",
+        ShieldFailureType.AuthenticationFailed => "Authentication failed.", // Added default message
         _ => $"Unknown Shield protocol error: {type}"
     };
 
@@ -70,14 +79,14 @@ public class ShieldFailure
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure Decode(string details, Exception? inner = null) =>
         new(ShieldFailureType.DecodeFailed, details, inner);
-    
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure ActorRefNotFound(string details, Exception? inner = null) =>
-        new(ShieldFailureType.DecodeFailed, details, inner);
-    
+        new(ShieldFailureType.DecodeFailed, details, inner); // Assuming this maps to DecodeFailed
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure ActorNotCreated(string details, Exception? inner = null) =>
-        new(ShieldFailureType.DecodeFailed, details, inner);
+        new(ShieldFailureType.DecodeFailed, details, inner); // Assuming this maps to DecodeFailed
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure DeriveKey(string details, Exception? inner = null) =>
@@ -127,13 +136,20 @@ public class ShieldFailure
     public static ShieldFailure KeyGeneration(string details, Exception? inner = null) =>
         new(ShieldFailureType.KeyGenerationFailed, details, inner);
 
+    // Note: PrepareLocal was mapping to KeyGenerationFailed, ensure this is intended or create a new type.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure PrepareLocal(string details, Exception? inner = null) =>
-        new(ShieldFailureType.KeyGenerationFailed, details, inner);
+        new(ShieldFailureType.PrepareLocalFailed, details, inner); // Changed to use PrepareLocalFailed type
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ShieldFailure SessionExpired(string details, Exception? inner = null) =>
         new(ShieldFailureType.SessionExpired, details, inner);
+
+    // New factory method for PasswordManager related authentication failures
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ShieldFailure AuthFailed(string details) =>
+        new(ShieldFailureType.AuthenticationFailed, details);
+
 
     public override string ToString() =>
         $"ShieldFailure(Type={Type}, Message='{Message}'{(InnerException != null ? $", InnerException='{InnerException.GetType().Name}: {InnerException.Message}'" : "")})";

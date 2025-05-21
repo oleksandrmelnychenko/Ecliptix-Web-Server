@@ -5,19 +5,17 @@ option csharp_namespace = "Ecliptix.Protobuf.Authentication";
 
 // Specifies the purpose of the verification operation.
 enum VerificationPurpose {
-  VERIFICATION_PURPOSE_UNSPECIFIED = 0;
-  REGISTRATION = 1;
-  LOGIN = 2;
-  PASSWORD_RECOVERY = 3;
+  REGISTRATION = 0;
+  LOGIN = 1;
+  PASSWORD_RECOVERY = 2;
 }
 
 // Indicates the result of a verification operation.
 enum VerificationResult {
-  VERIFICATION_RESULT_UNSPECIFIED = 0;
-  SUCCEEDED = 1;
-  INVALID_PHONE = 2;
-  INVALID_CODE = 3;
-  EXPIRED = 4;
+  SUCCEEDED = 0;
+  INVALID_PHONE = 1;
+  INVALID_OTP = 2;
+  EXPIRED = 3;
 }
 
 // Initiates or resumes a phone number verification session, triggering a server-side stream of countdown updates.
@@ -28,7 +26,7 @@ enum VerificationResult {
 // (e.g., invalid phone number or expired session), the server returns an appropriate result code.
 message InitiateVerificationRequest {
   bytes phone_number_identifier = 1;
-  bytes system_device_identifier = 2;
+  bytes app_device_identifier = 2;
   VerificationPurpose purpose = 3;
 }
 
@@ -70,7 +68,7 @@ message InitiateVerificationResponse {
 // correct verification process and the purpose to ensure consistency with the session’s intent. The server responds
 // with the outcome of the validation, indicating whether the code is correct, invalid, or expired.
 message VerifyCodeRequest {
-  bytes system_device_identifier = 1;
+  bytes app_device_identifier = 1;
   string code = 2;
   VerificationPurpose purpose = 3;
 }
@@ -82,7 +80,7 @@ message VerifyCodeRequest {
 // prompt the client to display an error message or initiate a new verification session if needed.
 message VerifyCodeResponse {
   VerificationResult result = 1;
-  string message = 2;
+  optional string message = 2;
 }
 
 message ValidatePhoneNumberRequest {

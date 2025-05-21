@@ -7,17 +7,16 @@ using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Authentication;
 using Ecliptix.Protobuf.CipherPayload;
+using Ecliptix.Protobuf.Membership;
 using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 using Grpc.Core;
 
 namespace Ecliptix.Core.Services.Memberships;
 
-public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<AuthVerificationServices> logger)
+public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<AuthVerificationServices> logger)
     : AuthVerificationServicesBase(actorRegistry, logger)
 {
-    private readonly ILogger<AuthVerificationServices> _logger = logger;
-
     public override async Task InitiateVerification(CipherPayload request,
         IServerStreamWriter<CipherPayload> responseStream,
         ServerCallContext context)
@@ -42,7 +41,7 @@ public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogg
             .Ask<Result<bool, ShieldFailure>>(new InitiateVerificationActorCommand(
                 connectId,
                 Helpers.FromByteStringToGuid(initiateRequest.PhoneNumberIdentifier),
-                Helpers.FromByteStringToGuid(initiateRequest.SystemDeviceIdentifier),
+                Helpers.FromByteStringToGuid(initiateRequest.AppDeviceIdentifier),
                 initiateRequest.Purpose,
                 writer
             ));
@@ -56,6 +55,7 @@ public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogg
             HandleError(sessionResult.UnwrapErr(), context);
         }
     }
+
 
     public override async Task<CipherPayload> InitiateResendVerification(CipherPayload request,
         ServerCallContext context)
@@ -73,7 +73,7 @@ public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogg
             Helpers.ParseFromBytes<InitiateResendOtpRequest>(decryptResult.Unwrap());
 
         InitiateResendVerificationRequestActorCommand actorCommand =
-            new(connectId);
+            new(connectId, Helpers.FromByteStringToGuid(initiateResendOtpRequest.SessionIdentifier));
 
         Result<ResendOtpResponse, ShieldFailure> resendResult = await VerificationSessionManagerActor
             .Ask<Result<ResendOtpResponse, ShieldFailure>>(actorCommand);
@@ -143,7 +143,7 @@ public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogg
         return new CipherPayload();
     }
 
-    public override async Task<CipherPayload> VerifyCode(CipherPayload request, ServerCallContext context)
+    public override async Task<CipherPayload> VerifyOtp(CipherPayload request, ServerCallContext context)
     {
         Result<byte[], ShieldFailure> decryptResult = await DecryptRequest(request, context);
         if (decryptResult.IsErr)
@@ -157,7 +157,7 @@ public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogg
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
         VerifyCodeActorCommand actorCommand = new(connectId, verifyRequest.Code, verifyRequest.Purpose,
-            Helpers.FromByteStringToGuid(verifyRequest.SystemDeviceIdentifier));
+            Helpers.FromByteStringToGuid(verifyRequest.AppDeviceIdentifier));
 
         Result<VerifyCodeResponse, ShieldFailure> verificationResult = await VerificationSessionManagerActor
             .Ask<Result<VerifyCodeResponse, ShieldFailure>>(actorCommand);
@@ -193,11 +193,11 @@ public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogg
         }
         catch (OperationCanceledException)
         {
-            _logger.LogInformation("Streaming cancelled.");
+            Logger.LogInformation("Streaming cancelled.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during streaming.");
+            Logger.LogError(ex, "Error during streaming.");
         }
     }
 
@@ -217,6 +217,6 @@ public sealed class AuthVerificationServices(IActorRegistry actorRegistry, ILogg
     private void HandleError(ShieldFailure failure, ServerCallContext context)
     {
         context.Status = ShieldFailure.ToGrpcStatus(failure);
-        _logger.LogWarning("Error occurred: {Failure}", failure);
+        Logger.LogWarning("Error occurred: {Failure}", failure);
     }
 }

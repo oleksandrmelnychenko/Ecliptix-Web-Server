@@ -4,9 +4,9 @@ import "CipherPayload.proto";
 package ecliptix.proto.verification;
 option csharp_namespace = "Ecliptix.Protobuf.Authentication";
 
-service AuthenticationServices {
+service AuthVerificationServices {
   rpc InitiateVerification(CipherPayload) returns (stream CipherPayload);
-  rpc VerifyCode(CipherPayload) returns (CipherPayload);
+  rpc VerifyOtp(CipherPayload) returns (CipherPayload);
   rpc ValidatePhoneNumber(CipherPayload) returns (CipherPayload);
   rpc InitiateResendVerification(CipherPayload) returns (CipherPayload);
 }

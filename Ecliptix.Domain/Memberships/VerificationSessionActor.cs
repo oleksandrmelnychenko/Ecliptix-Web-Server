@@ -1,3 +1,4 @@
+using System.Text;
 using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.Domain.Persistors;
@@ -16,7 +17,22 @@ public record ResendOtpCommand(uint ConnectId);
 
 public record SessionExpired;
 
-public record InitiateResendVerificationRequestActorCommand(uint ConnectId);
+public record InitiateResendVerificationRequestActorCommand(uint ConnectId, Guid SessionIdentifier);
+
+public record InitiateVerificationActorCommand(
+    uint ConnectId,
+    Guid PhoneNumberIdentifier,
+    Guid SystemDeviceIdentifier,
+    VerificationPurpose Purpose,
+    ChannelWriter<VerificationCountdownUpdate> Writer);
+
+public record VerifyCodeActorCommand(
+    uint ConnectId,
+    string Code,
+    VerificationPurpose VerificationPurpose,
+    Guid SystemDeviceIdentifier);
+
+public record CreateMembershipActorCommand(uint ConnectId, Guid SessionIdentifier, byte[] SecureKey);
 
 public class VerificationSessionActor : ReceiveActor
 {
@@ -26,6 +42,7 @@ public class VerificationSessionActor : ReceiveActor
     private readonly VerificationPurpose _purpose;
     private readonly ChannelWriter<VerificationCountdownUpdate> _writer;
     private readonly IActorRef _persistor;
+    private readonly IActorRef _membershipActor;
     private readonly SNSProvider _snsProvider;
     private readonly IStringLocalizer _localizer;
 
@@ -53,6 +70,7 @@ public class VerificationSessionActor : ReceiveActor
         VerificationPurpose purpose,
         ChannelWriter<VerificationCountdownUpdate> writer,
         IActorRef persistor,
+        IActorRef membershipActor,
         SNSProvider snsProvider,
         IStringLocalizer localizer)
     {
@@ -62,6 +80,7 @@ public class VerificationSessionActor : ReceiveActor
         _purpose = purpose;
         _writer = writer;
         _persistor = persistor;
+        _membershipActor = membershipActor;
         _snsProvider = snsProvider;
         _localizer = localizer;
         _sessionExpiresAt = DateTime.UtcNow + _sessionTimeout;
@@ -76,11 +95,12 @@ public class VerificationSessionActor : ReceiveActor
         VerificationPurpose purpose,
         ChannelWriter<VerificationCountdownUpdate> writer,
         IActorRef persistor,
+        IActorRef membershipActor,
         SNSProvider snsProvider,
         IStringLocalizer localizer) =>
         Props.Create(() => new VerificationSessionActor(
             connectId, phoneNumberIdentifier, appDeviceIdentifier, purpose, writer,
-            persistor, snsProvider, localizer));
+            persistor, membershipActor, snsProvider, localizer));
 
     private void Initializing()
     {
@@ -179,15 +199,15 @@ public class VerificationSessionActor : ReceiveActor
                     _activeOtp.UniqueIdentifier,
                     VerificationSessionStatus.Expired
                 );
-                
+
                 _persistor.Forward(sessionCommand);
-                
-                Sender.Tell(new VerifyCodeResponse
+
+                Sender.Tell(Result<VerifyCodeResponse, ShieldFailure>.Ok(new VerifyCodeResponse
                 {
                     Result = VerificationResult.Expired,
                     Message = _localizer["No active session or OTP."]
-                });
-                
+                }));
+
                 return;
             }
 
@@ -198,15 +218,16 @@ public class VerificationSessionActor : ReceiveActor
                     _activeOtp.UniqueIdentifier,
                     VerificationSessionStatus.Verified
                 );
-                
+
                 _persistor.Forward(sessionCommand);
-                
-                Sender.Tell(new VerifyCodeResponse
-                {
-                    Result = VerificationResult.Succeeded,
-                    Message = _localizer["Verification succeeded."]
-                });
-                
+
+                Sender.Tell(Result<VerifyCodeResponse, ShieldFailure>.Ok(
+                    new VerifyCodeResponse
+                    {
+                        Result = VerificationResult.Succeeded,
+                        Message = _localizer["Verification succeeded."]
+                    }));
+
                 PostStop();
                 Context.Stop(Self);
             }
@@ -216,16 +237,17 @@ public class VerificationSessionActor : ReceiveActor
                     _activeOtp.UniqueIdentifier,
                     VerificationSessionStatus.Failed
                 );
-                
+
                 _persistor.Forward(sessionCommand);
-                
-                Sender.Tell(new VerifyCodeResponse
+
+                Sender.Tell(Result<VerifyCodeResponse, ShieldFailure>.Ok(new VerifyCodeResponse
                 {
-                    Result = VerificationResult.InvalidCode,
+                    Result = VerificationResult.InvalidOtp,
                     Message = _localizer["Invalid code. Please try again."]
-                });
+                }));
             }
         });
+        ReceiveAsync<CreateMembershipActorCommand>(HandleCreateMembershipActorCommand);
         ReceiveAsync<InitiateResendVerificationRequestActorCommand>(
             HandleInitiateResendVerificationRequestActorCommand);
         ReceiveAsync<ResendOtpCommand>(HandleResendOtp);
@@ -240,16 +262,23 @@ public class VerificationSessionActor : ReceiveActor
         });
     }
 
+    private async Task HandleCreateMembershipActorCommand(
+        CreateMembershipActorCommand command)
+    {
+        Result<MembershipQueryRecord, ShieldFailure> result =
+            await _persistor.Ask<Result<MembershipQueryRecord, ShieldFailure>>(command);
+
+        if (result.IsOk)
+        {
+        }
+
+        Sender.Tell(result.UnwrapErr());
+        ;
+    }
+
     private async Task HandleInitiateResendVerificationRequestActorCommand(
         InitiateResendVerificationRequestActorCommand command)
     {
-        if (command.ConnectId != _connectId)
-        {
-            Sender.Tell(Result<ResendOtpResponse, ShieldFailure>.Err(
-                ShieldFailure.Generic("Invalid connect ID")));
-            return;
-        }
-
         if (DateTime.UtcNow >= _sessionExpiresAt)
         {
             Sender.Tell(Result<ResendOtpResponse, ShieldFailure>.Err(
@@ -373,7 +402,7 @@ public class VerificationSessionActor : ReceiveActor
 
         if (_activeOtp is { IsActive: true })
         {
-            return; // Active OTP exists, ignore resend request
+            return;
         }
 
         if (DateTime.UtcNow >= _sessionExpiresAt)
@@ -384,7 +413,7 @@ public class VerificationSessionActor : ReceiveActor
 
         if (DateTime.UtcNow - _lastOtpSent < MinResendInterval)
         {
-            return; // Too soon to resend
+            return;
         }
 
         Result<OtpQueryRecord, ShieldFailure> result = await PrepareOtpAndSendAsync();
@@ -459,7 +488,7 @@ public class VerificationSessionActor : ReceiveActor
         }
 
         PostStop();
-        
+
         Context.Stop(Self);
     }
 

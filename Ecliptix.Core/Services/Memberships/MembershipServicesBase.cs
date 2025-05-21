@@ -10,17 +10,16 @@ using Grpc.Core;
 
 namespace Ecliptix.Core.Services.Memberships;
 
-public abstract class AuthVerificationServicesBase(
+public abstract class MembershipServicesBase(
     IActorRegistry actorRegistry,
-    ILogger<AuthVerificationServices> logger)
-    : Ecliptix.Protobuf.Authentication.AuthVerificationServices.AuthVerificationServicesBase
+    ILogger<MembershipServices> logger) : Ecliptix.Protobuf.Membership.MembershipServices.MembershipServicesBase
 {
-    protected readonly ILogger<AuthVerificationServices> Logger = logger;
-
-    protected readonly IActorRef VerificationSessionManagerActor = actorRegistry.Get<VerificationSessionManagerActor>();
+    protected readonly ILogger<MembershipServices> Logger = logger;
+    
+    protected readonly IActorRef MembershipActor = actorRegistry.Get<MembershipActor>();
 
     protected readonly IActorRef PhoneNumberValidatorActor = actorRegistry.Get<PhoneNumberValidatorActor>();
-
+    
     private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
 
     protected async Task<Result<byte[], ShieldFailure>> DecryptRequest(CipherPayload request, ServerCallContext context)

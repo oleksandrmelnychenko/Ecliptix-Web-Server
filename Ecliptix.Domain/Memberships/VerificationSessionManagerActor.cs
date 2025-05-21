@@ -7,23 +7,12 @@ using Microsoft.Extensions.Localization;
 
 namespace Ecliptix.Domain.Memberships;
 
-public record InitiateVerificationActorCommand(
-    uint ConnectId,
-    Guid PhoneNumberIdentifier,
-    Guid SystemDeviceIdentifier,
-    VerificationPurpose Purpose,
-    ChannelWriter<VerificationCountdownUpdate> Writer);
-
-public record VerifyCodeActorCommand(
-    uint ConnectId,
-    string Code,
-    VerificationPurpose VerificationPurpose,
-    Guid SystemDeviceIdentifier);
 
 public class VerificationSessionManagerActor : ReceiveActor
 {
     private readonly IStringLocalizer<VerificationSessionManagerActor> _localizer;
     private readonly IActorRef _persistor;
+    private readonly IActorRef _membershipActor;
     private readonly SNSProvider _snsProvider;
 
 
@@ -31,11 +20,13 @@ public class VerificationSessionManagerActor : ReceiveActor
 
     public VerificationSessionManagerActor(
         IActorRef persistor,
+        IActorRef membershipActor,
         SNSProvider snsProvider,
         IStringLocalizer<VerificationSessionManagerActor> localizer)
     {
         _localizer = localizer;
         _persistor = persistor;
+        _membershipActor = membershipActor;
         _snsProvider = snsProvider;
 
         Receive<VerifyCodeActorCommand>(HandleVerifyCode);
@@ -43,6 +34,7 @@ public class VerificationSessionManagerActor : ReceiveActor
         Receive<EnsurePhoneNumberActorCommand>(cmd =>
             _persistor.Forward(cmd));
 
+        Receive<CreateMembershipActorCommand>(HandleCreateMembershipActorCommand);
         Receive<InitiateResendVerificationRequestActorCommand>(actorCommand =>
         {
             if (_sessions.TryGetValue(actorCommand.ConnectId, out IActorRef? existing))
@@ -54,7 +46,15 @@ public class VerificationSessionManagerActor : ReceiveActor
         Receive<StopTimer>(HandleStopTimer);
         Receive<Terminated>(HandleTerminated);
     }
-
+    
+    private void HandleCreateMembershipActorCommand(CreateMembershipActorCommand actorCommand)
+    {
+        if (_sessions.TryGetValue(actorCommand.ConnectId, out IActorRef? existing))
+        {
+            existing.Forward(actorCommand);
+        }
+    }
+    
     private void HandleVerifyCode(VerifyCodeActorCommand actorCommand)
     {
         if (_sessions.TryGetValue(actorCommand.ConnectId, out IActorRef? existing))
@@ -104,6 +104,7 @@ public class VerificationSessionManagerActor : ReceiveActor
             command.Purpose,
             command.Writer,
             _persistor,
+            _membershipActor,
             _snsProvider,
             _localizer
         ));
@@ -113,7 +114,7 @@ public class VerificationSessionManagerActor : ReceiveActor
         Context.Watch(verificationSessionActorRef);
     }
 
-    public static Props Build(IActorRef persistor, SNSProvider snsProvider,
+    public static Props Build(IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
         IStringLocalizer<VerificationSessionManagerActor> localizer) =>
-        Props.Create(() => new VerificationSessionManagerActor(persistor, snsProvider, localizer));
+        Props.Create(() => new VerificationSessionManagerActor(persistor,membershipActor, snsProvider, localizer));
 }

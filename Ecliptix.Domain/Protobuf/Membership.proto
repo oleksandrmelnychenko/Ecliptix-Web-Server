@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package ecliptix.proto.app_device;
+option csharp_namespace = "Ecliptix.Protobuf.Membership";
+
+message Membership {
+  bytes unique_identifier = 1;
+
+  enum MembershipStatus {
+    ACTIVE = 0;
+    INACTIVE = 1;
+  }
+
+  MembershipStatus status = 3;
+}
+
+message CreateMembershipRequest {
+  bytes app_device_identifier = 1;
+  bytes session_identifier = 2;
+  bytes secure_key = 3;
+}
+
+message CreateMembershipResponse {
+  enum MembershipResult {
+    SUCCEEDED = 0;
+    INVALID_SESSION = 1;
+    EXPIRED = 3;
+  }
+
+  MembershipResult result = 1;
+  optional string message = 2;
+  Membership membership = 3;
+}
+
+message SignInMembershipRequest {
+  string phone_number = 2;
+  bytes secure_key = 3;
+}
+message SignInMembershipResponse {
+  enum SignInResult {
+    SUCCEEDED = 0;
+    INVALID_CREDENTIALS = 3;
+  }
+
+  SignInResult result = 1;
+  optional string message = 2;
+  Membership membership = 3;
+}

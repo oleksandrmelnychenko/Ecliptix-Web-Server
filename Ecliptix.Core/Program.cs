@@ -99,20 +99,32 @@ try
                 VerificationSessionPersistorActor.Build(npgsqlDataSource),
                 "MembershipVerificationSessionPersistorActor");
 
+            IActorRef membershipPersistorActor = system.ActorOf(
+                MembershipPersistorActor.Build(npgsqlDataSource),
+                "MembershipPersistorActor");
+            
+            //MembershipActor
+            IActorRef membershipActor = system.ActorOf(
+                MembershipActor.Build(membershipPersistorActor),
+                "MembershipActor");
+            
             IActorRef verificationSessionManagerActor = system.ActorOf(
-                VerificationSessionManagerActor.Build(membershipVerificationSessionPersistorActor,
+                VerificationSessionManagerActor.Build(membershipVerificationSessionPersistorActor,membershipActor,
                     snsProvider, localizer),
                 "VerificationSessionManagerActor");
 
             IActorRef phoneNumberValidatorActor = system.ActorOf(
                 PhoneNumberValidatorActor.Build(),
                 "PhoneNumberValidatorActor");
-
+            
+            
             registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
             registry.Register<AppDevicePersistorActor>(appDevicePersistor);
             registry.Register<VerificationSessionPersistorActor>(membershipVerificationSessionPersistorActor);
             registry.Register<VerificationSessionManagerActor>(verificationSessionManagerActor);
             registry.Register<PhoneNumberValidatorActor>(phoneNumberValidatorActor);
+            registry.Register<MembershipPersistorActor>(membershipPersistorActor);
+            registry.Register<MembershipActor>(membershipActor);
 
             logger.LogInformation("Registered top-level actors: {ProtocolActorPath}, {PersistorActorPath}",
                 protocolSystemActor.Path, appDevicePersistor.Path);
@@ -141,8 +153,7 @@ try
 
     app.MapGrpcService<AppDeviceServices>();
     app.MapGrpcService<AuthVerificationServices>();
-
-    // .RequireRateLimiting("grpc");
+    app.MapGrpcService<MembershipServices>();
 
     app.MapGet("/", () => Results.Ok("Ecliptix Service is operational."));
     app.MapHealthChecks("/healthz");

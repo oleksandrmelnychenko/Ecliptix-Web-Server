@@ -37,7 +37,9 @@
         <Protobuf Include="Protobuf\AppDeviceServiceActions.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
         <Protobuf Include="Protobuf\CipherPayload.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
         <Protobuf Include="Protobuf\PubKeyExchange.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-
+        <Protobuf Include="Protobuf\Membership.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+        <Protobuf Include="Protobuf\MembershipServices.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+        
         <Protobuf Include="Protobuf\HealthCheck.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
         <Protobuf Include="Protobuf\KeyMaterials.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
         <Protobuf Include="Protobuf\AuthVerification.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
