@@ -1,7 +1,7 @@
 syntax = "proto3";
 import "CipherPayload.proto";
 
-package ecliptix.proto.verification;
+package ecliptix.proto.membership;
 option csharp_namespace = "Ecliptix.Protobuf.Membership";
 
 service MembershipServices {

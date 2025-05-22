@@ -27,11 +27,9 @@ public class ShieldFailure
             ShieldFailureType.EphemeralMissing => StatusCode.FailedPrecondition,
             ShieldFailureType.StateMissing => StatusCode.FailedPrecondition,
             ShieldFailureType.AuthenticationFailed => StatusCode.Unauthenticated, // Added mapping
-            // Add other specific mappings here if needed for new types
             _ => StatusCode.Internal
         };
 
-        // For internal errors, use a generic message to avoid leaking sensitive details
         string message = (code == StatusCode.Internal && failure.Type != ShieldFailureType.Generic)
             ? "An internal error occurred."
             : failure.Message;

@@ -4,7 +4,7 @@ using Npgsql;
 
 namespace Ecliptix.Domain.Persistors;
 
-public abstract class PersistorBase(NpgsqlDataSource npgsqlDataSource) :ReceiveActor
+public abstract class PersistorBase(NpgsqlDataSource npgsqlDataSource) : ReceiveActor
 {
     protected NpgsqlDataSource NpgsqlDataSource { get; } = npgsqlDataSource;
 
@@ -30,7 +30,7 @@ public abstract class PersistorBase(NpgsqlDataSource npgsqlDataSource) :ReceiveA
                 ShieldFailure.Generic($"Unexpected error during {operationName}: {ex.Message}", ex)));
         }
     }
-    
+
     protected static NpgsqlCommand CreateCommand(NpgsqlConnection connection, string sql,
         params NpgsqlParameter[] parameters)
     {

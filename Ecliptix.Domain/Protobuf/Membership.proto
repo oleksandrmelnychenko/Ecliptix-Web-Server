@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package ecliptix.proto.app_device;
+package ecliptix.proto.membership;
 option csharp_namespace = "Ecliptix.Protobuf.Membership";
 
 message Membership {
@@ -9,6 +9,7 @@ message Membership {
   enum MembershipStatus {
     ACTIVE = 0;
     INACTIVE = 1;
+    NOT_FOUND = 2;
   }
 
   MembershipStatus status = 3;
@@ -44,5 +45,5 @@ message SignInMembershipResponse {
 
   SignInResult result = 1;
   optional string message = 2;
-  Membership membership = 3;
+  optional Membership membership = 3;
 }

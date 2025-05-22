@@ -8,8 +8,14 @@ using NpgsqlTypes;
 
 namespace Ecliptix.Domain.Persistors;
 
-public class MembershipPersistorActor : PersistorBase
+public sealed class MembershipPersistorActor : PersistorBase
 {
+    private static readonly Dictionary<string, Membership.Types.MembershipStatus> MembershipStatusMap = new()
+    {
+        ["active"] = Membership.Types.MembershipStatus.Active,
+        ["inactive"] = Membership.Types.MembershipStatus.Inactive,
+    };
+
     public MembershipPersistorActor(NpgsqlDataSource npgsqlDataSource) : base(npgsqlDataSource)
     {
         Become(Ready);
@@ -24,117 +30,137 @@ public class MembershipPersistorActor : PersistorBase
         ReceiveAsync<SignInMembershipActorCommand>(HandleSignInMembershipActorCommand);
     }
 
-    private async Task HandleSignInMembershipActorCommand(SignInMembershipActorCommand cmd)
-    {
-        await ExecuteWithConnection(
-            async conn =>
+    private async Task HandleSignInMembershipActorCommand(SignInMembershipActorCommand cmd) =>
+        await ExecuteWithConnection(async npgsqlConnection =>
+        {
+            NpgsqlParameter[] parameters =
+            [
+                new("phone_number", NpgsqlDbType.Varchar) { Value = cmd.PhoneNumber },
+                new("secure_key", NpgsqlDbType.Bytea) { Value = cmd.SecureKey }
+            ];
+
+            const string sql =
+                "SELECT membership_unique_id, status, outcome FROM login_membership(@phone_number, @secure_key)";
+
+            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, sql, parameters);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+
+            if (!await reader.ReadAsync())
             {
-                NpgsqlParameter[] parameters =
-                [
-                    new("phone_number", NpgsqlDbType.Varchar) { Value = cmd.PhoneNumber },
-                    new("secure_key", NpgsqlDbType.Varchar) { Value = cmd.SecureKey }
-                ];
+                return Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
+                    ShieldFailure.DataAccess("Stored procedure login_membership returned no results."));
+            }
 
-                const string sql = @"
-                    SELECT membership_unique_id, status, outcome
-                    FROM login_membership(@phone_number, @secure_key)";
+            Option<Guid> membershipIdOpt =
+                reader.IsDBNull(0) ? Option<Guid>.None : Option<Guid>.Some(reader.GetGuid(0));
+            Option<string> statusStrOpt =
+                reader.IsDBNull(1) ? Option<string>.None : Option<string>.Some(reader.GetString(1));
+            string outcome = reader.GetString(2);
 
-                await using NpgsqlCommand command = CreateCommand(conn, sql, parameters);
-                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
-
-                if (!await reader.ReadAsync())
-                {
-                    return Result<MembershipQueryRecord, ShieldFailure>.Err(
-                        ShieldFailure.DataAccess("Stored procedure login_membership returned no results."));
-                }
-
-                int membershipIdOrdinal = reader.GetOrdinal("membership_unique_id");
-                int statusOrdinal = reader.GetOrdinal("status");
-                int outcomeOrdinal = reader.GetOrdinal("outcome");
-
-                Guid? membershipId = reader.IsDBNull(membershipIdOrdinal) ? null : reader.GetGuid(membershipIdOrdinal);
-                string? statusStr = reader.IsDBNull(statusOrdinal) ? null : reader.GetString(statusOrdinal);
-                string outcome = reader.GetString(outcomeOrdinal);
-
-                Membership.Types.MembershipStatus status = statusStr switch
-                {
-                    "active" => Membership.Types.MembershipStatus.Active,
-                    "inactive" => Membership.Types.MembershipStatus.Inactive,
-                    _ => throw new InvalidOperationException($"Unknown membership status: {statusStr}")
-                };
-
-                return (membershipId, outcome) switch
-                {
-                    (Guid id, "success") => Result<MembershipQueryRecord, ShieldFailure>.Ok(
-                        new MembershipQueryRecord
+            return (membershipIdOpt, statusStrOpt, outcome) switch
+            {
+                ({ HasValue: true, Value: var id }, { HasValue: true, Value: var statusStr }, "success") =>
+                    Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(
+                        Option<MembershipQueryRecord>.Some(new MembershipQueryRecord
                         {
                             UniqueIdentifier = id,
-                            Status = status
-                        }),
-                    (null, var err) => Result<MembershipQueryRecord, ShieldFailure>.Err(
-                        ShieldFailure.InvalidInput($"Login failed: {err}")),
-                    _ => Result<MembershipQueryRecord, ShieldFailure>.Err(
-                        ShieldFailure.DataAccess($"Unexpected outcome: {outcome}"))
-                };
-            },
-            "login membership");
-    }
+                            Status = MapStatus(statusStr, outcome)
+                        })),
+
+                ({ HasValue: false }, _, "membership_not_found") =>
+                    Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(Option<MembershipQueryRecord>.None),
+
+                ({ HasValue: false }, _, "phone_number_not_found") =>
+                    Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(Option<MembershipQueryRecord>.None),
+
+                var (_, _, error) when IsKnownLoginError(error) =>
+                    Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
+                        ShieldFailure.InvalidInput($"Login failed: {error}")),
+
+                _ => Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
+                    ShieldFailure.DataAccess($"Login failed with unexpected outcome: {outcome}"))
+            };
+        }, "login membership");
+
 
     private async Task HandleCreateMembershipActorCommand(CreateMembershipActorCommand cmd)
     {
-        await ExecuteWithConnection(
-            async conn =>
+        await ExecuteWithConnection(async npgsqlConnection =>
+        {
+            NpgsqlParameter[] parameters =
+            [
+                new("session_unique_id", NpgsqlDbType.Uuid) { Value = cmd.SessionIdentifier },
+                new("connection_id", NpgsqlDbType.Bigint) { Value = cmd.ConnectId },
+                new("secure_key", NpgsqlDbType.Bytea) { Value = cmd.SecureKey }
+            ];
+
+            const string sql =
+                "SELECT membership_unique_id, status, outcome FROM create_membership(@session_unique_id, @connection_id, @secure_key)";
+
+            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, sql, parameters);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+
+            if (!await reader.ReadAsync())
             {
-                NpgsqlParameter[] parameters =
-                [
-                    new("session_unique_id", NpgsqlDbType.Uuid) { Value = cmd.SessionIdentifier },
-                    new("connection_id", NpgsqlDbType.Bigint) { Value = cmd.ConnectId },
-                    new("secure_key", NpgsqlDbType.Varchar) { Value = cmd.SecureKey }
-                ];
+                return Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
+                    ShieldFailure.DataAccess("Stored procedure create_membership returned no results."));
+            }
 
-                const string sql = @"
-                    SELECT membership_unique_id, status, outcome
-                    FROM create_membership(@session_unique_id, @connection_id, @secure_key)";
+            Option<Guid> membershipIdOpt =
+                reader.IsDBNull(0) ? Option<Guid>.None : Option<Guid>.Some(reader.GetGuid(0));
+            Option<string> statusStrOpt =
+                reader.IsDBNull(1) ? Option<string>.None : Option<string>.Some(reader.GetString(1));
+            string outcome = reader.GetString(2);
 
-                await using NpgsqlCommand command = CreateCommand(conn, sql, parameters);
-                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            return (membershipIdOpt, statusStrOpt, outcome) switch
+            {
+                ({ HasValue: true, Value: var id }, { HasValue: true, Value: var statusStr }, var oc) when
+                    oc is "created" or "membership_already_exists" =>
+                    Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(
+                        Option<MembershipQueryRecord>.Some(new MembershipQueryRecord
+                        {
+                            UniqueIdentifier = id,
+                            Status = MapStatus(statusStr, oc)
+                        })),
 
-                if (!await reader.ReadAsync())
-                {
-                    return Result<MembershipQueryRecord, ShieldFailure>.Err(
-                        ShieldFailure.DataAccess("Stored procedure create_membership returned no results."));
-                }
+                var (_, _, error) when IsKnownCreationError(error) =>
+                    Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
+                        ShieldFailure.InvalidInput($"Membership creation failed: {error}")),
 
-                int membershipIdOrdinal = reader.GetOrdinal("membership_unique_id");
-                int statusOrdinal = reader.GetOrdinal("status");
-                int outcomeOrdinal = reader.GetOrdinal("outcome");
+                _ => Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
+                    ShieldFailure.DataAccess($"Membership creation failed with unexpected outcome: {outcome}"))
+            };
+        }, "create membership");
+    }
 
-                Guid? membershipId = reader.IsDBNull(membershipIdOrdinal) ? null : reader.GetGuid(membershipIdOrdinal);
-                string? statusStr = reader.IsDBNull(statusOrdinal) ? null : reader.GetString(statusOrdinal);
-                string outcome = reader.GetString(outcomeOrdinal);
+    private static bool IsKnownLoginError(string outcome) => outcome is
+        "invalid_secure_key"
+        or "inactive_membership"
+        or "phone_number_cannot_be_empty"
+        or "secure_key_cannot_be_empty"
+        or "secure_key_too_long";
 
-                Membership.Types.MembershipStatus status = statusStr switch
-                {
-                    "active" => Membership.Types.MembershipStatus.Active,
-                    "inactive" => Membership.Types.MembershipStatus.Inactive,
-                    _ => throw new InvalidOperationException($"Unknown membership status: {statusStr}")
-                };
+    private static bool IsKnownCreationError(string outcome) => outcome is
+        "secure_key_cannot_be_empty"
+        or "secure_key_too_long"
+        or "verification_session_not_found"
+        or "verification_session_not_verified"
+        or "otp_not_verified";
 
-                return (membershipId, outcome) switch
-                {
-                    (Guid id, "created" or "membership_already_exists") => Result<MembershipQueryRecord, ShieldFailure>
-                        .Ok(
-                            new MembershipQueryRecord
-                            {
-                                UniqueIdentifier = id,
-                                Status = status
-                            }),
-                    (null, var err) => Result<MembershipQueryRecord, ShieldFailure>.Err(
-                        ShieldFailure.InvalidInput($"Membership creation failed: {err}")),
-                    _ => Result<MembershipQueryRecord, ShieldFailure>.Err(
-                        ShieldFailure.DataAccess($"Unexpected outcome: {outcome}"))
-                };
-            },
-            "create membership");
+    private static Membership.Types.MembershipStatus MapStatus(string? statusStr, string outcomeForContext)
+    {
+        if (statusStr == null)
+        {
+            throw new InvalidOperationException(
+                $"Membership status string was null for a successful-like outcome '{outcomeForContext}'. This indicates an unexpected DB state.");
+        }
+
+        if (!MembershipStatusMap.TryGetValue(statusStr, out Membership.Types.MembershipStatus status))
+        {
+            throw new InvalidOperationException(
+                $"Unknown membership status string: '{statusStr}' received from database for outcome '{outcomeForContext}'.");
+        }
+
+        return status;
     }
 }
