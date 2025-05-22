@@ -10,6 +10,35 @@ namespace Ecliptix.Domain.Persistors;
 
 public sealed class MembershipPersistorActor : PersistorBase
 {
+    private const string LoginMembershipSql =
+        "SELECT membership_unique_id, status, outcome FROM login_membership(@phone_number, @secure_key)";
+
+    private const string CreateMembershipSql =
+        "SELECT membership_unique_id, status, outcome FROM create_membership(@session_unique_id, @connection_id, @secure_key)";
+
+    private const string LoginNoResultsError = "Stored procedure login_membership returned no results.";
+    private const string CreateNoResultsError = "Stored procedure create_membership returned no results.";
+
+    private const string SuccessOutcome = "success";
+    private const string MembershipNotFoundOutcome = "membership_not_found";
+    private const string PhoneNumberNotFoundOutcome = "phone_number_not_found";
+    private const string InvalidSecureKeyOutcome = "invalid_secure_key";
+    private const string InactiveMembershipOutcome = "inactive_membership";
+    private const string PhoneNumberCannotBeEmptyOutcome = "phone_number_cannot_be_empty";
+    private const string SecureKeyCannotBeEmptyOutcome = "secure_key_cannot_be_empty";
+    private const string SecureKeyTooLongOutcome = "secure_key_too_long";
+    private const string VerificationSessionNotFoundOutcome = "verification_session_not_found";
+    private const string VerificationSessionNotVerifiedOutcome = "verification_session_not_verified";
+    private const string OtpNotVerifiedOutcome = "otp_not_verified";
+    private const string CreatedOutcome = "created";
+    private const string MembershipAlreadyExistsOutcome = "membership_already_exists";
+
+    private const string NullStatusErrorFormat =
+        "Membership status string was null for a successful-like outcome '{0}'. This indicates an unexpected DB state.";
+
+    private const string UnknownStatusErrorFormat =
+        "Unknown membership status string: '{0}' received from database for outcome '{1}'.";
+
     private static readonly Dictionary<string, Membership.Types.MembershipStatus> MembershipStatusMap = new()
     {
         ["active"] = Membership.Types.MembershipStatus.Active,
@@ -39,16 +68,13 @@ public sealed class MembershipPersistorActor : PersistorBase
                 new("secure_key", NpgsqlDbType.Bytea) { Value = cmd.SecureKey }
             ];
 
-            const string sql =
-                "SELECT membership_unique_id, status, outcome FROM login_membership(@phone_number, @secure_key)";
-
-            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, sql, parameters);
+            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, LoginMembershipSql, parameters);
             await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
 
             if (!await reader.ReadAsync())
             {
                 return Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
-                    ShieldFailure.DataAccess("Stored procedure login_membership returned no results."));
+                    ShieldFailure.DataAccess(LoginNoResultsError));
             }
 
             Option<Guid> membershipIdOpt =
@@ -57,9 +83,16 @@ public sealed class MembershipPersistorActor : PersistorBase
                 reader.IsDBNull(1) ? Option<string>.None : Option<string>.Some(reader.GetString(1));
             string outcome = reader.GetString(2);
 
+            if (int.TryParse(outcome, out int waitMinutes))
+            {
+                return Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
+                    ShieldFailure.InvalidInput($"{waitMinutes}"));
+            }
+
             return (membershipIdOpt, statusStrOpt, outcome) switch
             {
-                ({ HasValue: true, Value: var id }, { HasValue: true, Value: var statusStr }, "success") =>
+                ({ HasValue: true, Value: var id },
+                    { HasValue: true, Value: var statusStr }, SuccessOutcome) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(
                         Option<MembershipQueryRecord>.Some(new MembershipQueryRecord
                         {
@@ -67,24 +100,22 @@ public sealed class MembershipPersistorActor : PersistorBase
                             Status = MapStatus(statusStr, outcome)
                         })),
 
-                ({ HasValue: false }, _, "membership_not_found") =>
+                ({ HasValue: false }, _, MembershipNotFoundOutcome) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(Option<MembershipQueryRecord>.None),
 
-                ({ HasValue: false }, _, "phone_number_not_found") =>
+                ({ HasValue: false }, _, PhoneNumberNotFoundOutcome) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(Option<MembershipQueryRecord>.None),
 
                 var (_, _, error) when IsKnownLoginError(error) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
-                        ShieldFailure.InvalidInput($"Login failed: {error}")),
+                        ShieldFailure.InvalidInput(error)),
 
                 _ => Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
-                    ShieldFailure.DataAccess($"Login failed with unexpected outcome: {outcome}"))
+                    ShieldFailure.DataAccess(outcome))
             };
         }, "login membership");
 
-
-    private async Task HandleCreateMembershipActorCommand(CreateMembershipActorCommand cmd)
-    {
+    private async Task HandleCreateMembershipActorCommand(CreateMembershipActorCommand cmd) =>
         await ExecuteWithConnection(async npgsqlConnection =>
         {
             NpgsqlParameter[] parameters =
@@ -94,16 +125,13 @@ public sealed class MembershipPersistorActor : PersistorBase
                 new("secure_key", NpgsqlDbType.Bytea) { Value = cmd.SecureKey }
             ];
 
-            const string sql =
-                "SELECT membership_unique_id, status, outcome FROM create_membership(@session_unique_id, @connection_id, @secure_key)";
-
-            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, sql, parameters);
+            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, CreateMembershipSql, parameters);
             await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
 
             if (!await reader.ReadAsync())
             {
                 return Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
-                    ShieldFailure.DataAccess("Stored procedure create_membership returned no results."));
+                    ShieldFailure.DataAccess(CreateNoResultsError));
             }
 
             Option<Guid> membershipIdOpt =
@@ -114,8 +142,8 @@ public sealed class MembershipPersistorActor : PersistorBase
 
             return (membershipIdOpt, statusStrOpt, outcome) switch
             {
-                ({ HasValue: true, Value: var id }, { HasValue: true, Value: var statusStr }, var oc) when
-                    oc is "created" or "membership_already_exists" =>
+                ({ HasValue: true, Value: var id }, { HasValue: true, Value: var statusStr }, var oc
+                    and (CreatedOutcome or MembershipAlreadyExistsOutcome)) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(
                         Option<MembershipQueryRecord>.Some(new MembershipQueryRecord
                         {
@@ -125,40 +153,38 @@ public sealed class MembershipPersistorActor : PersistorBase
 
                 var (_, _, error) when IsKnownCreationError(error) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
-                        ShieldFailure.InvalidInput($"Membership creation failed: {error}")),
+                        ShieldFailure.InvalidInput(error)),
 
                 _ => Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
-                    ShieldFailure.DataAccess($"Membership creation failed with unexpected outcome: {outcome}"))
+                    ShieldFailure.DataAccess(outcome))
             };
         }, "create membership");
-    }
 
-    private static bool IsKnownLoginError(string outcome) => outcome is
-        "invalid_secure_key"
-        or "inactive_membership"
-        or "phone_number_cannot_be_empty"
-        or "secure_key_cannot_be_empty"
-        or "secure_key_too_long";
+    private static bool IsKnownLoginError(string outcome) =>
+        outcome is InvalidSecureKeyOutcome
+            or InactiveMembershipOutcome
+            or PhoneNumberCannotBeEmptyOutcome
+            or SecureKeyCannotBeEmptyOutcome
+            or SecureKeyTooLongOutcome
+        && !int.TryParse(outcome, out _);
 
     private static bool IsKnownCreationError(string outcome) => outcome is
-        "secure_key_cannot_be_empty"
-        or "secure_key_too_long"
-        or "verification_session_not_found"
-        or "verification_session_not_verified"
-        or "otp_not_verified";
+        SecureKeyCannotBeEmptyOutcome
+        or SecureKeyTooLongOutcome
+        or VerificationSessionNotFoundOutcome
+        or VerificationSessionNotVerifiedOutcome
+        or OtpNotVerifiedOutcome;
 
     private static Membership.Types.MembershipStatus MapStatus(string? statusStr, string outcomeForContext)
     {
         if (statusStr == null)
         {
-            throw new InvalidOperationException(
-                $"Membership status string was null for a successful-like outcome '{outcomeForContext}'. This indicates an unexpected DB state.");
+            throw new InvalidOperationException(string.Format(NullStatusErrorFormat, outcomeForContext));
         }
 
         if (!MembershipStatusMap.TryGetValue(statusStr, out Membership.Types.MembershipStatus status))
         {
-            throw new InvalidOperationException(
-                $"Unknown membership status string: '{statusStr}' received from database for outcome '{outcomeForContext}'.");
+            throw new InvalidOperationException(string.Format(UnknownStatusErrorFormat, statusStr, outcomeForContext));
         }
 
         return status;

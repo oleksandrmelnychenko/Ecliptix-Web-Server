@@ -1,7 +1,9 @@
 using Akka.Actor;
+using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
+using Microsoft.Extensions.Localization;
 
 namespace Ecliptix.Domain.Memberships;
 
@@ -10,22 +12,26 @@ public record SignInMembershipActorCommand(string PhoneNumber, byte[] SecureKey)
 public class MembershipActor : ReceiveActor
 {
     private readonly IActorRef _persistor;
+    private readonly IStringLocalizer<MembershipActor> _localizer;
 
-    private const string MembershipNotFoundMessageKey = "Membership not found.";
+    private const string InvalidCredentials = "invalid_credentials";
 
-    public MembershipActor(IActorRef persistor)
+    private const string MinutesUntilLoginRetry = "minutes_until_login_retry";
+    
+    public MembershipActor(IActorRef persistor, IStringLocalizer<MembershipActor> localizer)
     {
         _persistor = persistor;
+        _localizer = localizer;
 
         Become(Ready);
     }
 
-    public static Props Build(IActorRef persistor) =>
-        Props.Create(() => new MembershipActor(persistor));
+    public static Props Build(IActorRef persistor, IStringLocalizer<MembershipActor> localizer) =>
+        Props.Create(() => new MembershipActor(persistor, localizer));
 
     private void Ready()
     {
-        Receive<CreateMembershipActorCommand>(HandleCreateMembershipActorCommand);
+        ReceiveAsync<CreateMembershipActorCommand>(HandleCreateMembershipActorCommand);
         ReceiveAsync<SignInMembershipActorCommand>(HandleSignInMembershipActorCommand);
     }
 
@@ -34,41 +40,73 @@ public class MembershipActor : ReceiveActor
         Result<Option<MembershipQueryRecord>, ShieldFailure> result =
             await _persistor.Ask<Result<Option<MembershipQueryRecord>, ShieldFailure>>(command);
 
-        Result<SignInMembershipResponse, ShieldFailure> operationResult = result.Match(membershipQueryRecord =>
-            {
-                if (!membershipQueryRecord.HasValue)
-                {
-                    SignInMembershipResponse signInMembershipResponse = new()
-                    {
-                        Membership = new Membership(),
-                        Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
-                        Message = MembershipNotFoundMessageKey
-                    };
-
-                    return Result<SignInMembershipResponse, ShieldFailure>.Ok(signInMembershipResponse);
-                }
-                else
-                {
-                    SignInMembershipResponse signInMembershipResponse = new()
+        Result<SignInMembershipResponse, ShieldFailure> operationResult = result.Match(
+            ok: option => option.Match(
+                record => Result<SignInMembershipResponse, ShieldFailure>.Ok(
+                    new SignInMembershipResponse
                     {
                         Membership = new Membership
                         {
-                            UniqueIdentifier = Helpers.GuidToByteString(membershipQueryRecord.Value!.UniqueIdentifier),
-                            Status = membershipQueryRecord.Value.Status
+                            UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
+                            Status = record.Status
                         },
-                        Result = SignInMembershipResponse.Types.SignInResult.Succeeded,
-                    };
-
-                    return Result<SignInMembershipResponse, ShieldFailure>.Ok(signInMembershipResponse);
+                        Result = SignInMembershipResponse.Types.SignInResult.Succeeded
+                    }
+                ),
+                () => Result<SignInMembershipResponse, ShieldFailure>.Ok(
+                    new SignInMembershipResponse
+                    {
+                        Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
+                        Message = _localizer[InvalidCredentials].Value
+                    }
+                )
+            ),
+            err =>
+            {
+                if (err.Type == ShieldFailureType.InvalidInput)
+                {
+                    return Result<SignInMembershipResponse, ShieldFailure>.Ok(
+                        new SignInMembershipResponse
+                        {
+                            Result = SignInMembershipResponse.Types.SignInResult.LoginAttemptExceeded,
+                            Message = _localizer[MinutesUntilLoginRetry].Value,
+                            MinutesUntilRetry = err.Message
+                        }
+                    );
                 }
-            },
-            Result<SignInMembershipResponse, ShieldFailure>.Err);
+
+                return Result<SignInMembershipResponse, ShieldFailure>.Err(err);
+            }
+        );
 
         Sender.Tell(operationResult);
     }
 
-    private void HandleCreateMembershipActorCommand(CreateMembershipActorCommand command)
+    private async Task HandleCreateMembershipActorCommand(CreateMembershipActorCommand command)
     {
-        _persistor.Forward(command);
+        Result<Option<MembershipQueryRecord>, ShieldFailure> result =
+            await _persistor.Ask<Result<Option<MembershipQueryRecord>, ShieldFailure>>(command);
+
+        Result<CreateMembershipResponse, ShieldFailure> operationResult = result.Match(
+            ok: option => option.Match(
+                record => Result<CreateMembershipResponse, ShieldFailure>.Ok(
+                    new CreateMembershipResponse
+                    {
+                        Membership = new Membership
+                        {
+                            UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
+                            Status = record.Status
+                        },
+                        Result = CreateMembershipResponse.Types.MembershipResult.Succeeded
+                    }
+                ),
+                () => Result<CreateMembershipResponse, ShieldFailure>.Err(
+                    ShieldFailure.DataAccess("Unexpected None value for create membership")
+                )
+            ),
+            err: Result<CreateMembershipResponse, ShieldFailure>.Err
+        );
+
+        Sender.Tell(operationResult);
     }
 }

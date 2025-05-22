@@ -24,13 +24,13 @@ message CreateMembershipRequest {
 message CreateMembershipResponse {
   enum MembershipResult {
     SUCCEEDED = 0;
-    INVALID_SESSION = 1;
+    INVALID_CREDENTIALS = 1;
     EXPIRED = 3;
   }
 
   MembershipResult result = 1;
   optional string message = 2;
-  Membership membership = 3;
+  optional Membership membership = 3;
 }
 
 message SignInMembershipRequest {
@@ -40,10 +40,12 @@ message SignInMembershipRequest {
 message SignInMembershipResponse {
   enum SignInResult {
     SUCCEEDED = 0;
-    INVALID_CREDENTIALS = 3;
+    INVALID_CREDENTIALS = 1;
+    LOGIN_ATTEMPT_EXCEEDED = 2;
   }
 
   SignInResult result = 1;
   optional string message = 2;
   optional Membership membership = 3;
+  optional string minutes_until_retry = 4;
 }

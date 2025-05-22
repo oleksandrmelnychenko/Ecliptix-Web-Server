@@ -73,6 +73,8 @@ try
         {
             ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
             SNSProvider snsProvider = serviceProvider.GetRequiredService<SNSProvider>();
+            IStringLocalizer<MembershipActor> membershipLocalizer = serviceProvider
+                .GetRequiredService<IStringLocalizer<MembershipActor>>();
 
             using (LogContext.PushProperty("ActorSystemName", system.Name))
             {
@@ -102,22 +104,20 @@ try
             IActorRef membershipPersistorActor = system.ActorOf(
                 MembershipPersistorActor.Build(npgsqlDataSource),
                 "MembershipPersistorActor");
-            
-            //MembershipActor
+
             IActorRef membershipActor = system.ActorOf(
-                MembershipActor.Build(membershipPersistorActor),
+                MembershipActor.Build(membershipPersistorActor, membershipLocalizer),
                 "MembershipActor");
-            
+
             IActorRef verificationSessionManagerActor = system.ActorOf(
-                VerificationSessionManagerActor.Build(membershipVerificationSessionPersistorActor,membershipActor,
+                VerificationSessionManagerActor.Build(membershipVerificationSessionPersistorActor, membershipActor,
                     snsProvider, localizer),
                 "VerificationSessionManagerActor");
 
             IActorRef phoneNumberValidatorActor = system.ActorOf(
                 PhoneNumberValidatorActor.Build(),
                 "PhoneNumberValidatorActor");
-            
-            
+
             registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
             registry.Register<AppDevicePersistorActor>(appDevicePersistor);
             registry.Register<VerificationSessionPersistorActor>(membershipVerificationSessionPersistorActor);
