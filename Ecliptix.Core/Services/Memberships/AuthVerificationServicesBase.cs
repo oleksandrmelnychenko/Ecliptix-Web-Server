@@ -13,7 +13,7 @@ namespace Ecliptix.Core.Services.Memberships;
 public abstract class AuthVerificationServicesBase(
     IActorRegistry actorRegistry,
     ILogger<AuthVerificationServices> logger)
-    : Ecliptix.Protobuf.Authentication.AuthVerificationServices.AuthVerificationServicesBase
+    : Ecliptix.Protobuf.Membership.AuthVerificationServices.AuthVerificationServicesBase
 {
     protected readonly ILogger<AuthVerificationServices> Logger = logger;
 

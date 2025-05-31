@@ -15,7 +15,7 @@ public sealed class OneTimePassword(IStringLocalizer localizer)
 
     public DateTime ExpiresAt { get; } = DateTime.UtcNow.AddSeconds(20);
 
-    public Guid UniqueIdentifier { get; private set; }
+    public Guid UniqueIdentifier { get; set; }
 
     public void SetOtpQueryRecordIdentifier(Guid identifier) =>
         UniqueIdentifier = identifier;
@@ -34,7 +34,7 @@ public sealed class OneTimePassword(IStringLocalizer localizer)
         return smsSentResult.Match(
             ok: _ =>
             {
-                (string hash, string salt) = OtpHashing.HashOtp(otp);
+                (string hash, string salt) = OneTimePasswordHashing.HashOtp(otp);
                 OtpQueryRecord otpQueryRecord = new()
                 {
                     PhoneNumberIdentifier = phoneNumberQueryRecord.UniqueIdentifier,
@@ -69,7 +69,7 @@ public sealed class OneTimePassword(IStringLocalizer localizer)
             return Task.FromResult(false);
         }
 
-        bool isValid = OtpHashing.VerifyOtp(code, record.OtpHash, record.OtpSalt);
+        bool isValid = OneTimePasswordHashing.VerifyOtp(code, record.OtpHash, record.OtpSalt);
         if (!isValid)
         {
             return Task.FromResult(false);

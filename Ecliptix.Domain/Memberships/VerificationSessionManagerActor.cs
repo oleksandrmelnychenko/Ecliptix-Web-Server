@@ -1,12 +1,9 @@
 using System.Collections.Concurrent;
-using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.Domain.Persistors;
-using Ecliptix.Protobuf.Authentication;
 using Microsoft.Extensions.Localization;
 
 namespace Ecliptix.Domain.Memberships;
-
 
 public class VerificationSessionManagerActor : ReceiveActor
 {
@@ -14,7 +11,6 @@ public class VerificationSessionManagerActor : ReceiveActor
     private readonly IActorRef _persistor;
     private readonly IActorRef _membershipActor;
     private readonly SNSProvider _snsProvider;
-
 
     private readonly ConcurrentDictionary<uint, IActorRef> _sessions = new();
 
@@ -34,7 +30,6 @@ public class VerificationSessionManagerActor : ReceiveActor
         Receive<EnsurePhoneNumberActorCommand>(cmd =>
             _persistor.Forward(cmd));
 
-        Receive<CreateMembershipActorCommand>(HandleCreateMembershipActorCommand);
         Receive<InitiateResendVerificationRequestActorCommand>(actorCommand =>
         {
             if (_sessions.TryGetValue(actorCommand.ConnectId, out IActorRef? existing))
@@ -45,14 +40,6 @@ public class VerificationSessionManagerActor : ReceiveActor
 
         Receive<StopTimer>(HandleStopTimer);
         Receive<Terminated>(HandleTerminated);
-    }
-    
-    private void HandleCreateMembershipActorCommand(CreateMembershipActorCommand actorCommand)
-    {
-        if (_sessions.TryGetValue(actorCommand.ConnectId, out IActorRef? existing))
-        {
-            existing.Forward(actorCommand);
-        }
     }
     
     private void HandleVerifyCode(VerifyCodeActorCommand actorCommand)

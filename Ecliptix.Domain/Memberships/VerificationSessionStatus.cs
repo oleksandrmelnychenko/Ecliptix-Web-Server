@@ -2,8 +2,9 @@ namespace Ecliptix.Domain.Memberships;
 
 public enum VerificationSessionStatus
 {
-    Failed,
+    Pending,
     Verified,
+    Failed,
     Expired,
     Postponed
 }

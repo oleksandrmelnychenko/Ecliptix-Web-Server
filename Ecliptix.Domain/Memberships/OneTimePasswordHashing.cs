@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Ecliptix.Domain.Memberships;
 
-public static class OtpHashing
+public static class OneTimePasswordHashing
 {
     public static (string hash, string salt) HashOtp(string otp)
     {

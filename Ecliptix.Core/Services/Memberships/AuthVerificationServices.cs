@@ -5,7 +5,6 @@ using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Utilities;
-using Ecliptix.Protobuf.Authentication;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Protobuf.PubKeyExchange;
@@ -55,7 +54,6 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
             HandleError(sessionResult.UnwrapErr(), context);
         }
     }
-
 
     public override async Task<CipherPayload> InitiateResendVerification(CipherPayload request,
         ServerCallContext context)

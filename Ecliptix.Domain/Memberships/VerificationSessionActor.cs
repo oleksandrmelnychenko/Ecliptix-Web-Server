@@ -4,7 +4,7 @@ using Akka.Actor;
 using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
-using Ecliptix.Protobuf.Authentication;
+using Ecliptix.Protobuf.Membership;
 using Microsoft.Extensions.Localization;
 
 namespace Ecliptix.Domain.Memberships;
@@ -19,6 +19,8 @@ public record SessionExpired;
 
 public record InitiateResendVerificationRequestActorCommand(uint ConnectId, Guid SessionIdentifier);
 
+public record CreateMembershipActorCommand(uint ConnectId, Guid SessionIdentifier, Guid OtpIdentifier);
+
 public record InitiateVerificationActorCommand(
     uint ConnectId,
     Guid PhoneNumberIdentifier,
@@ -28,11 +30,9 @@ public record InitiateVerificationActorCommand(
 
 public record VerifyCodeActorCommand(
     uint ConnectId,
-    string Code,
+    string OneTimePassword,
     VerificationPurpose VerificationPurpose,
     Guid SystemDeviceIdentifier);
-
-public record CreateMembershipActorCommand(uint ConnectId, Guid SessionIdentifier, byte[] SecureKey);
 
 public class VerificationSessionActor : ReceiveActor
 {
@@ -104,7 +104,7 @@ public class VerificationSessionActor : ReceiveActor
 
     private void Initializing()
     {
-        Receive<Result<Option<VerificationSessionQueryRecord>, ShieldFailure>>(HandleExistingSessionCheck);
+        ReceiveAsync<Result<Option<VerificationSessionQueryRecord>, ShieldFailure>>(HandleExistingSessionCheck);
         Receive<Result<PhoneNumberQueryRecord, ShieldFailure>>(HandlePhoneNumberQueryRecord);
         Receive<Status.Failure>(failure =>
         {
@@ -132,7 +132,7 @@ public class VerificationSessionActor : ReceiveActor
             .PipeTo(Self);
     }
 
-    private void HandleExistingSessionCheck(Result<Option<VerificationSessionQueryRecord>, ShieldFailure> result)
+    private async Task HandleExistingSessionCheck(Result<Option<VerificationSessionQueryRecord>, ShieldFailure> result)
     {
         if (result.IsErr)
         {
@@ -142,17 +142,42 @@ public class VerificationSessionActor : ReceiveActor
         }
 
         Option<VerificationSessionQueryRecord> maybeSession = result.Unwrap();
-        if (maybeSession.HasValue && maybeSession.Value!.ExpiresAt > DateTime.UtcNow)
+
+        if (maybeSession.HasValue && maybeSession.Value.ExpiresAt > DateTime.UtcNow)
         {
             _verificationSessionQueryRecord = maybeSession;
             _sessionExpiresAt = maybeSession.Value.ExpiresAt;
-            PrepareOtpAndSendAsync().ContinueWith(t => new StartTimer()).PipeTo(Self);
-            Become(Running);
+
+            if (maybeSession.Value.Status == VerificationSessionStatus.Verified)
+            {
+                await _writer.WriteAsync(new VerificationCountdownUpdate
+                {
+                    SecondsRemaining = 0,
+                    SessionIdentifier = Helpers.GuidToByteString(maybeSession.Value.UniqueIdentifier),
+                    AlreadyVerified = true
+                });
+                PostStop();
+                Context.Stop(Self);
+            }
+            else
+            {
+                Result<OtpQueryRecord, ShieldFailure> otpResult = await PrepareOtpAndSendAsync();
+                if (otpResult.IsOk)
+                {
+                    Self.Tell(new StartTimer());
+                    Become(Running);
+                }
+                else
+                {
+                    _writer.TryComplete(otpResult.UnwrapErr().InnerException);
+                    Context.Stop(Self);
+                }
+            }
         }
         else
         {
             Become(CreatingSession);
-            _persistor.Ask<Result<Guid, ShieldFailure>>(
+            await _persistor.Ask<Result<Guid, ShieldFailure>>(
                     new CreateVerificationSessionCommand(
                         _phoneNumberIdentifier, _appDeviceIdentifier, _purpose,
                         DateTime.UtcNow + _sessionTimeout, _connectId))
@@ -211,22 +236,39 @@ public class VerificationSessionActor : ReceiveActor
                 return;
             }
 
-            bool isVerified = await _activeOtp.VerifyAsync(command.Code);
+            bool isVerified = await _activeOtp.VerifyAsync(command.OneTimePassword);
             if (isVerified)
             {
-                UpdateOtpStatusActorCommand sessionCommand = new(
+                UpdateOtpStatusActorCommand updateOtpStatusActorCommand = new(
                     _activeOtp.UniqueIdentifier,
                     VerificationSessionStatus.Verified
                 );
 
-                _persistor.Forward(sessionCommand);
+                _ = await _persistor.Ask<Result<Unit, ShieldFailure>>(updateOtpStatusActorCommand);
 
-                Sender.Tell(Result<VerifyCodeResponse, ShieldFailure>.Ok(
-                    new VerifyCodeResponse
-                    {
-                        Result = VerificationResult.Succeeded,
-                        Message = _localizer["Verification succeeded."]
-                    }));
+                CreateMembershipActorCommand createMembershipActorCommand = new(
+                    _connectId, _verificationSessionQueryRecord.Value!.UniqueIdentifier, _activeOtp.UniqueIdentifier);
+
+                Result<MembershipQueryRecord, ShieldFailure> createMembershipResult = await _membershipActor
+                    .Ask<Result<MembershipQueryRecord, ShieldFailure>>(createMembershipActorCommand);
+
+                if (createMembershipResult.IsOk)
+                {
+                    MembershipQueryRecord membershipRecord = createMembershipResult.Unwrap();
+
+                    Sender.Tell(Result<VerifyCodeResponse, ShieldFailure>.Ok(
+                        new VerifyCodeResponse
+                        {
+                            Result = VerificationResult.Succeeded,
+                            Message = _localizer["verification_succeeded"],
+                            Membership = new Membership
+                            {
+                                UniqueIdentifier = Helpers.GuidToByteString(
+                                    membershipRecord.UniqueIdentifier),
+                                Status = membershipRecord.Status
+                            }
+                        }));
+                }
 
                 PostStop();
                 Context.Stop(Self);
@@ -253,12 +295,11 @@ public class VerificationSessionActor : ReceiveActor
         ReceiveAsync<ResendOtpCommand>(HandleResendOtp);
         Receive<StopTimer>(msg =>
         {
-            if (msg.ConnectId == _connectId)
-            {
-                _otpTimer?.Cancel();
-                _sessionTimer?.Cancel();
-                Context.Stop(Self);
-            }
+            if (msg.ConnectId != _connectId) return;
+
+            _otpTimer?.Cancel();
+            _sessionTimer?.Cancel();
+            Context.Stop(Self);
         });
     }
 
@@ -273,7 +314,6 @@ public class VerificationSessionActor : ReceiveActor
         }
 
         Sender.Tell(result.UnwrapErr());
-        ;
     }
 
     private async Task HandleInitiateResendVerificationRequestActorCommand(
@@ -306,6 +346,8 @@ public class VerificationSessionActor : ReceiveActor
                 ShieldFailure.Generic("Active OTP already exists")));
             return;
         }
+
+        //InitiateResendVerificationRequestActorCommand
 
         Result<OtpQueryRecord, ShieldFailure> result = await PrepareOtpAndSendAsync();
         if (result.IsOk)

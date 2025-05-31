@@ -2,7 +2,7 @@ using Akka.Actor;
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
-using Ecliptix.Protobuf.Authentication;
+using Ecliptix.Protobuf.Membership;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -32,16 +32,19 @@ public readonly struct CreateOtpRecordResult(Guid otpUniqueId)
 }
 
 public record GetPhoneNumberActorCommand(Guid PhoneNumberIdentifier);
+
 public record UpdateVerificationSessionStatusActorCommand(Guid SessionId, VerificationSessionStatus Status);
+
 public record CreateOtpActorCommand(OtpQueryRecord OtpRecord);
+
 public record UpdateOtpStatusActorCommand(Guid OtpIdentified, VerificationSessionStatus Status);
 
-public class VerificationSessionPersistorActor : ReceiveActor
+public class VerificationSessionPersistorActor : PersistorBase
 {
-    private readonly NpgsqlDataSource _dataSource;
-
     private const string GetSessionSql =
-        "SELECT session_unique_id, phone_number_unique_id_out, connection_id, app_device_id_out, phone_number_out, phone_region_out, phone_type_out, expires_at_out, status_out, purpose_out, otp_count_out FROM get_verification_session(@app_device_id, @phone_unique_id, @purpose::verification_purpose)";
+        "SELECT session_unique_id, phone_number_unique_id_out, connection_id, app_device_id_out, phone_number_out, " +
+        "phone_region_out, phone_type_out, expires_at_out, status_out, purpose_out, otp_count_out, otp_unique_id, " +
+        "otp_hash, otp_salt, otp_expires_at, otp_status FROM get_verification_session(@app_device_id, @phone_unique_id, @purpose::verification_purpose)";
 
     private const string CreateSessionSql =
         "SELECT session_unique_id, outcome FROM create_verification_session(@app_device_id, @phone_unique_id, @purpose::verification_purpose, @expires_at, @connect_id)";
@@ -49,18 +52,14 @@ public class VerificationSessionPersistorActor : ReceiveActor
     private const string UpdateStatusSql =
         "SELECT update_verification_session_status(@session_unique_id, @status::verification_status)";
 
-    private const string VerifyCodeSql =
-        "SELECT set_otp_verify_status(@session_unique_id, @verification_outcome)";
-
     private const string AppDeviceIdParam = "app_device_id";
     private const string PhoneNumberIdentifierParam = "phone_unique_id";
     private const string SessionUniqueIdParam = "session_unique_id";
     private const string PurposeParam = "purpose";
     private const string StatusParam = "status";
 
-    public VerificationSessionPersistorActor(NpgsqlDataSource dataSource)
+    public VerificationSessionPersistorActor(NpgsqlDataSource dataSource) : base(dataSource)
     {
-        _dataSource = dataSource;
         Become(Ready);
     }
 
@@ -110,9 +109,8 @@ public class VerificationSessionPersistorActor : ReceiveActor
                 return Result<Unit, ShieldFailure>.Err(
                     ShieldFailure.DataAccess("Failed to update OTP status: no result returned."));
             },
-            "update OTP status"); // Fixed operation name from "insert OTP record"
+            "update OTP status");
     }
-
 
     private async Task HandleGetPhoneNumberCommand(GetPhoneNumberActorCommand cmd)
     {
@@ -188,7 +186,7 @@ public class VerificationSessionPersistorActor : ReceiveActor
 
     private async Task HandleGetVerificationSession(GetVerificationSessionCommand cmd) =>
         await ExecuteWithConnection(
-            conn =>
+            async conn =>
             {
                 NpgsqlParameter[] parameters =
                 [
@@ -196,7 +194,7 @@ public class VerificationSessionPersistorActor : ReceiveActor
                     new(PhoneNumberIdentifierParam, NpgsqlDbType.Uuid) { Value = cmd.PhoneNumberIdentifier },
                     new(PurposeParam, NpgsqlDbType.Varchar) { Value = cmd.Purpose.ToString().ToLowerInvariant() }
                 ];
-                return ReadSessionQueryRecord(conn, parameters);
+                return await ReadSessionQueryRecord(conn, parameters);
             },
             "session retrieval");
 
@@ -250,7 +248,7 @@ public class VerificationSessionPersistorActor : ReceiveActor
                     ShieldFailure.DataAccess("Failed to insert OTP record."));
             },
             "insert OTP record");
-    
+
     private async Task HandleEnsurePhoneNumberCommand(EnsurePhoneNumberActorCommand cmd)
     {
         await ExecuteWithConnection(
@@ -264,20 +262,28 @@ public class VerificationSessionPersistorActor : ReceiveActor
                 ];
 
                 const string sql =
-                    "SELECT ensure_phone_number(@phone_number_string, @region, @type::phone_number_type)";
+                    "SELECT unique_id, outcome, success, message FROM ensure_phone_number(@phone_number_string, @region, @type::phone_number_type)";
 
                 await using NpgsqlCommand command = CreateCommand(conn, sql, parameters);
-                object? result = await command.ExecuteScalarAsync();
+                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
 
-                if (result is not Guid guid)
+                if (!await reader.ReadAsync())
+                {
                     return Result<Guid, ShieldFailure>.Err(
-                        ShieldFailure.DataAccess("Failed to ensure phone number."));
+                        ShieldFailure.DataAccess("Failed to ensure phone number: no result."));
+                }
 
-                return Result<Guid, ShieldFailure>.Ok(guid);
+                if (!reader.GetBoolean(2)) // success
+                {
+                    return Result<Guid, ShieldFailure>.Err(
+                        ShieldFailure.DataAccess(reader.GetString(3))); // message
+                }
+
+                Guid uniqueId = reader.GetGuid(0);
+                return Result<Guid, ShieldFailure>.Ok(uniqueId);
             },
             "ensure phone number");
     }
-
 
     private static async Task<Result<Option<VerificationSessionQueryRecord>, ShieldFailure>> ReadSessionQueryRecord(
         NpgsqlConnection conn, NpgsqlParameter[] parameters)
@@ -318,36 +324,5 @@ public class VerificationSessionPersistorActor : ReceiveActor
 
         return Result<Option<VerificationSessionQueryRecord>, ShieldFailure>.Ok(
             Option<VerificationSessionQueryRecord>.Some(record));
-    }
-
-    private async Task ExecuteWithConnection<T>(
-        Func<NpgsqlConnection, Task<Result<T, ShieldFailure>>> operation,
-        string operationName)
-    {
-        try
-        {
-            await using NpgsqlConnection conn = _dataSource.CreateConnection();
-            await conn.OpenAsync();
-            Result<T, ShieldFailure> result = await operation(conn);
-            Sender.Tell(result);
-        }
-        catch (NpgsqlException dbEx)
-        {
-            Sender.Tell(Result<T, ShieldFailure>.Err(
-                ShieldFailure.DataAccess($"Database error during {operationName}: {dbEx.Message}", dbEx)));
-        }
-        catch (Exception ex)
-        {
-            Sender.Tell(Result<T, ShieldFailure>.Err(
-                ShieldFailure.Generic($"Unexpected error during {operationName}: {ex.Message}", ex)));
-        }
-    }
-
-    private static NpgsqlCommand CreateCommand(NpgsqlConnection connection, string sql,
-        params NpgsqlParameter[] parameters)
-    {
-        NpgsqlCommand command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddRange(parameters);
-        return command;
     }
 }

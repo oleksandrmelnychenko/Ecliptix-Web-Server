@@ -13,9 +13,6 @@ public sealed class MembershipPersistorActor : PersistorBase
     private const string LoginMembershipSql =
         "SELECT membership_unique_id, status, outcome FROM login_membership(@phone_number, @secure_key)";
 
-    private const string CreateMembershipSql =
-        "SELECT membership_unique_id, status, outcome FROM create_membership(@session_unique_id, @connection_id, @secure_key)";
-
     private const string LoginNoResultsError = "Stored procedure login_membership returned no results.";
     private const string CreateNoResultsError = "Stored procedure create_membership returned no results.";
 
@@ -55,6 +52,7 @@ public sealed class MembershipPersistorActor : PersistorBase
 
     private void Ready()
     {
+        ReceiveAsync<UpdateMembershipSecureKeyCommand>(HandleUpdateMembershipSecureKeyCommand);
         ReceiveAsync<CreateMembershipActorCommand>(HandleCreateMembershipActorCommand);
         ReceiveAsync<SignInMembershipActorCommand>(HandleSignInMembershipActorCommand);
     }
@@ -86,7 +84,7 @@ public sealed class MembershipPersistorActor : PersistorBase
             if (int.TryParse(outcome, out int waitMinutes))
             {
                 return Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
-                    ShieldFailure.InvalidInput($"{waitMinutes}"));
+                    ShieldFailure.InvalidInput($"Too many login attempts. Wait {waitMinutes} minutes."));
             }
 
             return (membershipIdOpt, statusStrOpt, outcome) switch
@@ -115,23 +113,66 @@ public sealed class MembershipPersistorActor : PersistorBase
             };
         }, "login membership");
 
-    private async Task HandleCreateMembershipActorCommand(CreateMembershipActorCommand cmd) =>
+    private async Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyCommand cmd) =>
         await ExecuteWithConnection(async npgsqlConnection =>
         {
+            const string UpdateSecureKeySql = @"
+            SELECT success, message
+            FROM update_membership_secure_key(@membership_unique_id, @secure_key)";
+
             NpgsqlParameter[] parameters =
             [
-                new("session_unique_id", NpgsqlDbType.Uuid) { Value = cmd.SessionIdentifier },
-                new("connection_id", NpgsqlDbType.Bigint) { Value = cmd.ConnectId },
+                new("membership_unique_id", NpgsqlDbType.Uuid) { Value = cmd.MembershipIdentifier },
                 new("secure_key", NpgsqlDbType.Bytea) { Value = cmd.SecureKey }
             ];
 
-            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, CreateMembershipSql, parameters);
+            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, UpdateSecureKeySql, parameters);
             await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
 
             if (!await reader.ReadAsync())
             {
                 return Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
-                    ShieldFailure.DataAccess(CreateNoResultsError));
+                    ShieldFailure.DataAccess("No results returned from secure key update"));
+            }
+
+            bool success = reader.GetBoolean(0);
+            string message = reader.GetString(1);
+
+            if (!success)
+            {
+                return Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
+                    ShieldFailure.InvalidInput(message));
+            }
+
+            return Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(
+                Option<MembershipQueryRecord>.Some(new MembershipQueryRecord
+                {
+                    UniqueIdentifier = cmd.MembershipIdentifier,
+                    Status = Membership.Types.MembershipStatus.Active
+                }));
+        }, "update membership secure key");
+
+    private async Task HandleCreateMembershipActorCommand(CreateMembershipActorCommand cmd) =>
+        await ExecuteWithConnection(async npgsqlConnection =>
+        {
+            const string createMembershipSql = @"
+            SELECT membership_unique_id, status, outcome
+            FROM create_membership(@session_unique_id, @connection_id, @otp_unique_id)";
+
+            NpgsqlParameter[] parameters =
+            [
+                new("session_unique_id", NpgsqlDbType.Uuid) { Value = cmd.SessionIdentifier },
+                new("connection_id", NpgsqlDbType.Bigint) { Value = (long)cmd.ConnectId },
+                new("otp_unique_id", NpgsqlDbType.Uuid) { Value = cmd.OtpIdentifier }
+            ];
+
+            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, createMembershipSql, parameters);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+
+            if (!await reader.ReadAsync())
+            {
+                return Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
+                    ShieldFailure.DataAccess("No results returned from membership creation"));
             }
 
             Option<Guid> membershipIdOpt =
@@ -140,10 +181,16 @@ public sealed class MembershipPersistorActor : PersistorBase
                 reader.IsDBNull(1) ? Option<string>.None : Option<string>.Some(reader.GetString(1));
             string outcome = reader.GetString(2);
 
+            if (int.TryParse(outcome, out int waitMinutes))
+            {
+                return Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
+                    ShieldFailure.InvalidInput($"Too many membership attempts. Wait {waitMinutes} minutes."));
+            }
+
             return (membershipIdOpt, statusStrOpt, outcome) switch
             {
                 ({ HasValue: true, Value: var id }, { HasValue: true, Value: var statusStr }, var oc
-                    and (CreatedOutcome or MembershipAlreadyExistsOutcome)) =>
+                    and ("created" or "membership_already_exists")) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(
                         Option<MembershipQueryRecord>.Some(new MembershipQueryRecord
                         {
@@ -159,6 +206,7 @@ public sealed class MembershipPersistorActor : PersistorBase
                     ShieldFailure.DataAccess(outcome))
             };
         }, "create membership");
+
 
     private static bool IsKnownLoginError(string outcome) =>
         outcome is InvalidSecureKeyOutcome

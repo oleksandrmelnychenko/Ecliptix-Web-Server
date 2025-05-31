@@ -1,6 +1,6 @@
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Utilities;
-using Ecliptix.Protobuf.Authentication;
+using Ecliptix.Protobuf.Membership;
 
 namespace Ecliptix.Domain.Persistors.QueryRecords;
 

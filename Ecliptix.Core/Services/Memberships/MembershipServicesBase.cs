@@ -15,11 +15,11 @@ public abstract class MembershipServicesBase(
     ILogger<MembershipServices> logger) : Ecliptix.Protobuf.Membership.MembershipServices.MembershipServicesBase
 {
     protected readonly ILogger<MembershipServices> Logger = logger;
-    
+
     protected readonly IActorRef MembershipActor = actorRegistry.Get<MembershipActor>();
 
     protected readonly IActorRef PhoneNumberValidatorActor = actorRegistry.Get<PhoneNumberValidatorActor>();
-    
+
     private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
 
     protected async Task<Result<byte[], ShieldFailure>> DecryptRequest(CipherPayload request, ServerCallContext context)
@@ -39,7 +39,7 @@ public abstract class MembershipServicesBase(
         return decryptResult;
     }
 
-    protected async Task<Result<CipherPayload, ShieldFailure>> EncryptRequest(byte[] payload,
+    private async Task<Result<CipherPayload, ShieldFailure>> EncryptRequest(byte[] payload,
         PubKeyExchangeType pubKeyExchangeType, ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
@@ -55,5 +55,24 @@ public abstract class MembershipServicesBase(
             );
 
         return encryptResult;
+    }
+
+    protected async Task<CipherPayload> EncryptAndReturnResponse(byte[] data, ServerCallContext context)
+    {
+        Result<CipherPayload, ShieldFailure> encryptResult =
+            await EncryptRequest(data, PubKeyExchangeType.DataCenterEphemeralConnect, context);
+        if (encryptResult.IsOk)
+        {
+            return encryptResult.Unwrap();
+        }
+
+        HandleError(encryptResult.UnwrapErr(), context);
+        return new CipherPayload();
+    }
+
+    protected void HandleError(ShieldFailure failure, ServerCallContext context)
+    {
+        context.Status = ShieldFailure.ToGrpcStatus(failure);
+        Logger.LogWarning("Error occurred: {Failure}", failure);
     }
 }

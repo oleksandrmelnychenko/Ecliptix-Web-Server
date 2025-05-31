@@ -8,6 +8,7 @@ using Microsoft.Extensions.Localization;
 namespace Ecliptix.Domain.Memberships;
 
 public record SignInMembershipActorCommand(string PhoneNumber, byte[] SecureKey);
+public record UpdateMembershipSecureKeyCommand(Guid MembershipIdentifier, byte[] SecureKey);
 
 public class MembershipActor : ReceiveActor
 {
@@ -31,8 +32,21 @@ public class MembershipActor : ReceiveActor
 
     private void Ready()
     {
+        ReceiveAsync<UpdateMembershipSecureKeyCommand>(HandleUpdateMembershipSecureKeyCommand);
         ReceiveAsync<CreateMembershipActorCommand>(HandleCreateMembershipActorCommand);
         ReceiveAsync<SignInMembershipActorCommand>(HandleSignInMembershipActorCommand);
+    }
+
+    private Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyCommand arg)
+    {
+        throw new NotImplementedException();
+    }
+
+    private async Task HandleCreateMembershipActorCommand(CreateMembershipActorCommand command)
+    {
+        Result<Option<MembershipQueryRecord>, ShieldFailure> operationResult =
+            await _persistor.Ask<Result<Option<MembershipQueryRecord>, ShieldFailure>>(command);
+        Sender.Tell(operationResult);
     }
 
     private async Task HandleSignInMembershipActorCommand(SignInMembershipActorCommand command)
@@ -77,34 +91,6 @@ public class MembershipActor : ReceiveActor
 
                 return Result<SignInMembershipResponse, ShieldFailure>.Err(err);
             }
-        );
-
-        Sender.Tell(operationResult);
-    }
-
-    private async Task HandleCreateMembershipActorCommand(CreateMembershipActorCommand command)
-    {
-        Result<Option<MembershipQueryRecord>, ShieldFailure> result =
-            await _persistor.Ask<Result<Option<MembershipQueryRecord>, ShieldFailure>>(command);
-
-        Result<CreateMembershipResponse, ShieldFailure> operationResult = result.Match(
-            ok: option => option.Match(
-                record => Result<CreateMembershipResponse, ShieldFailure>.Ok(
-                    new CreateMembershipResponse
-                    {
-                        Membership = new Membership
-                        {
-                            UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
-                            Status = record.Status
-                        },
-                        Result = CreateMembershipResponse.Types.MembershipResult.Succeeded
-                    }
-                ),
-                () => Result<CreateMembershipResponse, ShieldFailure>.Err(
-                    ShieldFailure.DataAccess("Unexpected None value for create membership")
-                )
-            ),
-            err: Result<CreateMembershipResponse, ShieldFailure>.Err
         );
 
         Sender.Tell(operationResult);

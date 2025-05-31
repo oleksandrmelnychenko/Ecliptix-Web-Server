@@ -1,8 +1,8 @@
 syntax = "proto3";
 import "CipherPayload.proto";
 
-package ecliptix.proto.verification;
-option csharp_namespace = "Ecliptix.Protobuf.Authentication";
+package ecliptix.proto.membership;
+option csharp_namespace = "Ecliptix.Protobuf.Membership";
 
 service AuthVerificationServices {
   rpc InitiateVerification(CipherPayload) returns (stream CipherPayload);

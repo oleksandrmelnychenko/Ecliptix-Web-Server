@@ -15,20 +15,18 @@ message Membership {
   MembershipStatus status = 3;
 }
 
-message CreateMembershipRequest {
-  bytes app_device_identifier = 1;
-  bytes session_identifier = 2;
-  bytes secure_key = 3;
+message UpdateMembershipWithSecureKeyRequest {
+  bytes secure_key = 1;
+  bytes verification_session_identifier = 2;
 }
 
-message CreateMembershipResponse {
-  enum MembershipResult {
+message UpdateMembershipWithSecureKeyResponse {
+  enum UpdateResult {
     SUCCEEDED = 0;
     INVALID_CREDENTIALS = 1;
-    EXPIRED = 3;
   }
 
-  MembershipResult result = 1;
+  UpdateResult result = 1;
   optional string message = 2;
   optional Membership membership = 3;
 }
