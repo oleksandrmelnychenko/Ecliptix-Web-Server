@@ -1,11 +1,9 @@
 using Akka.Actor;
 using Akka.Hosting;
-using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.Membership;
-using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 using Grpc.Core;
 
@@ -51,9 +49,32 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
         return new CipherPayload();
     }
 
-    public override Task<CipherPayload> UpdateMembershipWithSecureKey(CipherPayload request, ServerCallContext context)
+    public override async Task<CipherPayload> UpdateMembershipWithSecureKey(CipherPayload request,
+        ServerCallContext context)
     {
-        return base.UpdateMembershipWithSecureKey(request, context);
-    }
+        Result<byte[], ShieldFailure> decryptResult = await DecryptRequest(request, context);
+        if (decryptResult.IsErr)
+        {
+            HandleError(decryptResult.UnwrapErr(), context);
+            return new CipherPayload();
+        }
 
+        UpdateMembershipWithSecureKeyRequest updateMembershipWithSecureKeyRequest =
+            Helpers.ParseFromBytes<UpdateMembershipWithSecureKeyRequest>(decryptResult.Unwrap());
+
+        UpdateMembershipSecureKeyCommand command = new(
+            Helpers.FromByteStringToGuid(updateMembershipWithSecureKeyRequest.MembershipIdentifier),
+            Helpers.ReadMemoryToRetrieveBytes(updateMembershipWithSecureKeyRequest.SecureKey.Memory));
+
+        Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure> updateOperationResult =
+            await MembershipActor.Ask<Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure>>(command);
+
+        if (updateOperationResult.IsOk)
+        {
+            return await EncryptAndReturnResponse(updateOperationResult.Unwrap().ToByteArray(), context);
+        }
+
+        HandleError(updateOperationResult.UnwrapErr(), context);
+        return new CipherPayload();
+    }
 }

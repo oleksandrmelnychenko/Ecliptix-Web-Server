@@ -17,7 +17,7 @@ message Membership {
 
 message UpdateMembershipWithSecureKeyRequest {
   bytes secure_key = 1;
-  bytes verification_session_identifier = 2;
+  bytes membership_identifier = 2;
 }
 
 message UpdateMembershipWithSecureKeyResponse {
@@ -28,7 +28,6 @@ message UpdateMembershipWithSecureKeyResponse {
 
   UpdateResult result = 1;
   optional string message = 2;
-  optional Membership membership = 3;
 }
 
 message SignInMembershipRequest {

@@ -37,9 +37,11 @@ public class MembershipActor : ReceiveActor
         ReceiveAsync<SignInMembershipActorCommand>(HandleSignInMembershipActorCommand);
     }
 
-    private Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyCommand arg)
+    private async Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyCommand command)
     {
-        throw new NotImplementedException();
+        Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure> operationResult =
+            await _persistor.Ask<Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure>>(command);
+        Sender.Tell(operationResult);
     }
 
     private async Task HandleCreateMembershipActorCommand(CreateMembershipActorCommand command)
