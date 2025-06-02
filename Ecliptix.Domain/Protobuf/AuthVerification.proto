@@ -18,25 +18,15 @@ enum VerificationResult {
 }
 
 message InitiateVerificationRequest {
+  enum Type {
+    SEND_OTP = 0;
+    RESEND_OTP = 1;
+  }
+
   bytes phone_number_identifier = 1;
   bytes app_device_identifier = 2;
   VerificationPurpose purpose = 3;
-}
-
-message InitiateResendOtpRequest {
-  bytes session_identifier = 1;
-}
-
-message ResendOtpResponse {
-  VerificationResult result = 1;      
-  bytes session_identifier = 2;       
-  VerificationPurpose purpose = 3;   
-}
-
-message VerificationCountdownUpdate {
-  uint64 seconds_remaining = 1;
-  bytes session_identifier = 2;
-  bool already_verified = 3;
+  Type type = 4;
 }
 
 message InitiateVerificationResponse {
@@ -44,6 +34,12 @@ message InitiateVerificationResponse {
   string message = 2;
   bytes session_identifier = 3;
   VerificationPurpose purpose = 4;
+}
+
+message VerificationCountdownUpdate {
+  uint64 seconds_remaining = 1;
+  bytes session_identifier = 2;
+  bool already_verified = 3;
 }
 
 message VerifyCodeRequest {
@@ -55,7 +51,7 @@ message VerifyCodeRequest {
 message VerifyCodeResponse {
   VerificationResult result = 1;
   optional string message = 2;
-  optional Membership membership = 3; 
+  optional Membership membership = 3;
 }
 
 message ValidatePhoneNumberRequest {

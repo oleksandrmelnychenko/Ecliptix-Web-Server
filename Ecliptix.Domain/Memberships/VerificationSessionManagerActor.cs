@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using Akka.Actor;
 using Ecliptix.Domain.Persistors;
+using Ecliptix.Domain.Utilities;
+using Ecliptix.Protobuf.Membership;
 using Microsoft.Extensions.Localization;
 
 namespace Ecliptix.Domain.Memberships;
@@ -27,26 +29,23 @@ public class VerificationSessionManagerActor : ReceiveActor
 
         Receive<VerifyCodeActorCommand>(HandleVerifyCode);
         Receive<InitiateVerificationActorCommand>(HandleStartVerificationSession);
-        Receive<EnsurePhoneNumberActorCommand>(cmd =>
-            _persistor.Forward(cmd));
-
-        Receive<InitiateResendVerificationRequestActorCommand>(actorCommand =>
-        {
-            if (_sessions.TryGetValue(actorCommand.ConnectId, out IActorRef? existing))
-            {
-                existing.Forward(actorCommand);
-            }
-        });
-
+        Receive<EnsurePhoneNumberActorCommand>(cmd => _persistor.Forward(cmd));
         Receive<StopTimer>(HandleStopTimer);
         Receive<Terminated>(HandleTerminated);
     }
-    
+
     private void HandleVerifyCode(VerifyCodeActorCommand actorCommand)
     {
         if (_sessions.TryGetValue(actorCommand.ConnectId, out IActorRef? existing))
         {
             existing.Forward(actorCommand);
+        }
+        else
+        {
+            //TODO NO ACTIVE SESSION, WE NEED TO WAIT FOR THE SESSION TO BE CREATED..
+            
+            Sender.Tell(Result<VerifyCodeResponse, ShieldFailure>.Err(
+                ShieldFailure.Generic("No active session")));
         }
     }
 
@@ -58,7 +57,16 @@ public class VerificationSessionManagerActor : ReceiveActor
         }
         else
         {
-            CreateVerificationSessionActor(command);
+            if (command.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
+            {
+                CreateVerificationSessionActor(command);
+                Sender.Tell(Result<bool, ShieldFailure>.Ok(true));
+            }
+            else
+            {
+                Sender.Tell(Result<bool, ShieldFailure>.Err(
+                    ShieldFailure.Generic("No active session for resend")));
+            }
         }
     }
 
@@ -84,7 +92,7 @@ public class VerificationSessionManagerActor : ReceiveActor
 
     private void CreateVerificationSessionActor(InitiateVerificationActorCommand command)
     {
-        IActorRef? verificationSessionActorRef = Context.ActorOf(VerificationSessionActor.Build(
+        IActorRef verificationSessionActorRef = Context.ActorOf(VerificationSessionActor.Build(
             command.ConnectId,
             command.PhoneNumberIdentifier,
             command.SystemDeviceIdentifier,
@@ -103,5 +111,5 @@ public class VerificationSessionManagerActor : ReceiveActor
 
     public static Props Build(IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
         IStringLocalizer<VerificationSessionManagerActor> localizer) =>
-        Props.Create(() => new VerificationSessionManagerActor(persistor,membershipActor, snsProvider, localizer));
+        Props.Create(() => new VerificationSessionManagerActor(persistor, membershipActor, snsProvider, localizer));
 }
