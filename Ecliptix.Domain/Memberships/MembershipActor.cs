@@ -114,7 +114,7 @@ public class MembershipActor : ReceiveActor
                     return Result<SignInMembershipResponse, ShieldFailure>.Ok(
                         new SignInMembershipResponse
                         {
-                            Result = SignInMembershipResponse.Types.SignInResult.LoginAttemptExceeded,
+                            Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
                             Message = _localizer[MinutesUntilLoginRetry].Value,
                             MinutesUntilRetry = err.Message
                         }

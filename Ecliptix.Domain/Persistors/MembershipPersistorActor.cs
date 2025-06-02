@@ -11,9 +11,6 @@ namespace Ecliptix.Domain.Persistors;
 
 public sealed class MembershipPersistorActor : PersistorBase
 {
-    private const string LoginMembershipSql =
-        "SELECT membership_unique_id, status, creation_status, outcome FROM login_membership(@phone_number, @secure_key)";
-
     private const string LoginNoResultsError = "Stored procedure login_membership returned no results.";
     private const string CreateNoResultsError = "Stored procedure create_membership returned no results.";
 
@@ -58,6 +55,9 @@ public sealed class MembershipPersistorActor : PersistorBase
         ReceiveAsync<SignInMembershipActorCommand>(HandleSignInMembershipActorCommand);
     }
 
+    private const string LoginMembershipSql =
+        "SELECT membership_unique_id, status, outcome FROM login_membership(@phone_number, @secure_key)";
+
     private async Task HandleSignInMembershipActorCommand(SignInMembershipActorCommand cmd) =>
         await ExecuteWithConnection(async npgsqlConnection =>
         {
@@ -80,9 +80,7 @@ public sealed class MembershipPersistorActor : PersistorBase
                 reader.IsDBNull(0) ? Option<Guid>.None : Option<Guid>.Some(reader.GetGuid(0));
             Option<string> activityStatusStrOpt =
                 reader.IsDBNull(1) ? Option<string>.None : Option<string>.Some(reader.GetString(1));
-            Option<string> creationStatusStrOpt =
-                reader.IsDBNull(2) ? Option<string>.None : Option<string>.Some(reader.GetString(2));
-            string outcome = reader.GetString(3);
+            string outcome = reader.GetString(2);
 
             if (int.TryParse(outcome, out int waitMinutes))
             {
@@ -90,26 +88,23 @@ public sealed class MembershipPersistorActor : PersistorBase
                     ShieldFailure.InvalidInput($"Too many login attempts. Wait {waitMinutes} minutes."));
             }
 
-            return (membershipIdOpt, activityStatusStrOpt, creationStatusStrOpt, outcome) switch
+            return (membershipIdOpt, activityStatusStrOpt, outcome) switch
             {
-                ({ HasValue: true, Value: var id },
-                    { HasValue: true, Value: var activityStr },
-                    { HasValue: true, Value: var creationStr }, SuccessOutcome) =>
+                ({ HasValue: true, Value: var id }, { HasValue: true, Value: var activityStr }, SuccessOutcome) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(
                         Option<MembershipQueryRecord>.Some(new MembershipQueryRecord
                         {
                             UniqueIdentifier = id,
-                            ActivityStatus = MapActivityStatus(activityStr),
-                            CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(creationStr)
+                            ActivityStatus = MapActivityStatus(activityStr)
                         })),
 
-                ({ HasValue: false }, _, _, MembershipNotFoundOutcome) =>
+                ({ HasValue: false }, _, MembershipNotFoundOutcome) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(Option<MembershipQueryRecord>.None),
 
-                ({ HasValue: false }, _, _, PhoneNumberNotFoundOutcome) =>
+                ({ HasValue: false }, _, PhoneNumberNotFoundOutcome) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(Option<MembershipQueryRecord>.None),
 
-                var (_, _, _, error) when IsKnownLoginError(error) =>
+                var (_, _, error) when IsKnownLoginError(error) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
                         ShieldFailure.InvalidInput(error)),
 
