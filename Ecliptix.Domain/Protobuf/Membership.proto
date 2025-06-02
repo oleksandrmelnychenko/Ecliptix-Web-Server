@@ -6,13 +6,19 @@ option csharp_namespace = "Ecliptix.Protobuf.Membership";
 message Membership {
   bytes unique_identifier = 1;
 
-  enum MembershipStatus {
+  enum ActivityStatus {
     ACTIVE = 0;
     INACTIVE = 1;
-    NOT_FOUND = 2;
+  }
+  
+  enum CreationStatus {
+    OTP_VERIFIED = 0;
+    SECURE_KEY_SET = 1;
+    PASSPHRASE_SET = 2;
   }
 
-  MembershipStatus status = 3;
+  ActivityStatus status = 3;
+  CreationStatus creation_status = 4;
 }
 
 message UpdateMembershipWithSecureKeyRequest {
@@ -28,6 +34,7 @@ message UpdateMembershipWithSecureKeyResponse {
 
   UpdateResult result = 1;
   optional string message = 2;
+  optional Membership membership = 3;
 }
 
 message SignInMembershipRequest {

@@ -112,8 +112,7 @@ public class VerificationSessionPersistorActor : PersistorBase
             "update OTP status");
     }
 
-    private async Task HandleGetPhoneNumberCommand(GetPhoneNumberActorCommand cmd)
-    {
+    private async Task HandleGetPhoneNumberCommand(GetPhoneNumberActorCommand cmd) =>
         await ExecuteWithConnection(
             async conn =>
             {
@@ -147,7 +146,7 @@ public class VerificationSessionPersistorActor : PersistorBase
                     });
             },
             "get phone number");
-    }
+
 
     private async Task HandleCreateVerificationSessionRecord(CreateVerificationSessionCommand cmd) =>
         await ExecuteWithConnection(
@@ -249,8 +248,7 @@ public class VerificationSessionPersistorActor : PersistorBase
             },
             "insert OTP record");
 
-    private async Task HandleEnsurePhoneNumberCommand(EnsurePhoneNumberActorCommand cmd)
-    {
+    private async Task HandleEnsurePhoneNumberCommand(EnsurePhoneNumberActorCommand cmd) =>
         await ExecuteWithConnection(
             async conn =>
             {
@@ -273,17 +271,16 @@ public class VerificationSessionPersistorActor : PersistorBase
                         ShieldFailure.DataAccess("Failed to ensure phone number: no result."));
                 }
 
-                if (!reader.GetBoolean(2)) // success
+                if (!reader.GetBoolean(2))
                 {
                     return Result<Guid, ShieldFailure>.Err(
-                        ShieldFailure.DataAccess(reader.GetString(3))); // message
+                        ShieldFailure.DataAccess(reader.GetString(3)));
                 }
 
                 Guid uniqueId = reader.GetGuid(0);
                 return Result<Guid, ShieldFailure>.Ok(uniqueId);
             },
             "ensure phone number");
-    }
 
     private static async Task<Result<Option<VerificationSessionQueryRecord>, ShieldFailure>> ReadSessionQueryRecord(
         NpgsqlConnection conn, NpgsqlParameter[] parameters)

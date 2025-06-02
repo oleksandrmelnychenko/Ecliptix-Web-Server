@@ -5,13 +5,14 @@ using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Npgsql;
 using NpgsqlTypes;
+using static System.String;
 
 namespace Ecliptix.Domain.Persistors;
 
 public sealed class MembershipPersistorActor : PersistorBase
 {
     private const string LoginMembershipSql =
-        "SELECT membership_unique_id, status, outcome FROM login_membership(@phone_number, @secure_key)";
+        "SELECT membership_unique_id, status, creation_status, outcome FROM login_membership(@phone_number, @secure_key)";
 
     private const string LoginNoResultsError = "Stored procedure login_membership returned no results.";
     private const string CreateNoResultsError = "Stored procedure create_membership returned no results.";
@@ -36,10 +37,10 @@ public sealed class MembershipPersistorActor : PersistorBase
     private const string UnknownStatusErrorFormat =
         "Unknown membership status string: '{0}' received from database for outcome '{1}'.";
 
-    private static readonly Dictionary<string, Membership.Types.MembershipStatus> MembershipStatusMap = new()
+    private static readonly Dictionary<string, Membership.Types.ActivityStatus> MembershipStatusMap = new()
     {
-        ["active"] = Membership.Types.MembershipStatus.Active,
-        ["inactive"] = Membership.Types.MembershipStatus.Inactive,
+        ["active"] = Membership.Types.ActivityStatus.Active,
+        ["inactive"] = Membership.Types.ActivityStatus.Inactive,
     };
 
     public MembershipPersistorActor(NpgsqlDataSource npgsqlDataSource) : base(npgsqlDataSource)
@@ -77,9 +78,11 @@ public sealed class MembershipPersistorActor : PersistorBase
 
             Option<Guid> membershipIdOpt =
                 reader.IsDBNull(0) ? Option<Guid>.None : Option<Guid>.Some(reader.GetGuid(0));
-            Option<string> statusStrOpt =
+            Option<string> activityStatusStrOpt =
                 reader.IsDBNull(1) ? Option<string>.None : Option<string>.Some(reader.GetString(1));
-            string outcome = reader.GetString(2);
+            Option<string> creationStatusStrOpt =
+                reader.IsDBNull(2) ? Option<string>.None : Option<string>.Some(reader.GetString(2));
+            string outcome = reader.GetString(3);
 
             if (int.TryParse(outcome, out int waitMinutes))
             {
@@ -87,24 +90,26 @@ public sealed class MembershipPersistorActor : PersistorBase
                     ShieldFailure.InvalidInput($"Too many login attempts. Wait {waitMinutes} minutes."));
             }
 
-            return (membershipIdOpt, statusStrOpt, outcome) switch
+            return (membershipIdOpt, activityStatusStrOpt, creationStatusStrOpt, outcome) switch
             {
                 ({ HasValue: true, Value: var id },
-                    { HasValue: true, Value: var statusStr }, SuccessOutcome) =>
+                    { HasValue: true, Value: var activityStr },
+                    { HasValue: true, Value: var creationStr }, SuccessOutcome) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(
                         Option<MembershipQueryRecord>.Some(new MembershipQueryRecord
                         {
                             UniqueIdentifier = id,
-                            Status = MapStatus(statusStr, outcome)
+                            ActivityStatus = MapActivityStatus(activityStr),
+                            CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(creationStr)
                         })),
 
-                ({ HasValue: false }, _, MembershipNotFoundOutcome) =>
+                ({ HasValue: false }, _, _, MembershipNotFoundOutcome) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(Option<MembershipQueryRecord>.None),
 
-                ({ HasValue: false }, _, PhoneNumberNotFoundOutcome) =>
+                ({ HasValue: false }, _, _, PhoneNumberNotFoundOutcome) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(Option<MembershipQueryRecord>.None),
 
-                var (_, _, error) when IsKnownLoginError(error) =>
+                var (_, _, _, error) when IsKnownLoginError(error) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
                         ShieldFailure.InvalidInput(error)),
 
@@ -116,9 +121,9 @@ public sealed class MembershipPersistorActor : PersistorBase
     private async Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyCommand cmd) =>
         await ExecuteWithConnection(async npgsqlConnection =>
         {
-            const string UpdateSecureKeySql = @"
-            SELECT success, message
-            FROM update_membership_secure_key(@membership_unique_id, @secure_key)";
+            const string updateSecureKeySql = @"
+    SELECT success, message, membership_unique_id, status, creation_status
+    FROM update_membership_secure_key(@membership_unique_id, @secure_key)";
 
             NpgsqlParameter[] parameters =
             [
@@ -126,13 +131,13 @@ public sealed class MembershipPersistorActor : PersistorBase
                 new("secure_key", NpgsqlDbType.Bytea) { Value = cmd.SecureKey }
             ];
 
-            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, UpdateSecureKeySql, parameters);
+            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, updateSecureKeySql, parameters);
             await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
 
             if (!await reader.ReadAsync())
             {
                 return Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
-                    ShieldFailure.DataAccess("No results returned from secure key update"));
+                    ShieldFailure.DataAccess(CreateNoResultsError));
             }
 
             bool success = reader.GetBoolean(0);
@@ -144,26 +149,39 @@ public sealed class MembershipPersistorActor : PersistorBase
                     ShieldFailure.InvalidInput(message));
             }
 
-            return Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(
-                Option<MembershipQueryRecord>.Some(new MembershipQueryRecord
+            Option<Guid> membershipIdOpt =
+                reader.IsDBNull(2) ? Option<Guid>.None : Option<Guid>.Some(reader.GetGuid(2));
+            Option<string> activityStatusStrOpt =
+                reader.IsDBNull(3) ? Option<string>.None : Option<string>.Some(reader.GetString(3));
+            Option<string> creationStatusStrOpt =
+                reader.IsDBNull(4) ? Option<string>.None : Option<string>.Some(reader.GetString(4));
+
+            MembershipQueryRecord updateResponse =
+                new()
                 {
-                    UniqueIdentifier = cmd.MembershipIdentifier,
-                    Status = Membership.Types.MembershipStatus.Active
-                }));
+                    UniqueIdentifier = membershipIdOpt.HasValue ? membershipIdOpt.Value : Guid.Empty,
+                    ActivityStatus = MapActivityStatus(activityStatusStrOpt.Value),
+                    CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(creationStatusStrOpt.Value)
+                };
+
+            return Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(
+                Option<MembershipQueryRecord>.Some(updateResponse));
         }, "update membership secure key");
 
     private async Task HandleCreateMembershipActorCommand(CreateMembershipActorCommand cmd) =>
         await ExecuteWithConnection(async npgsqlConnection =>
         {
             const string createMembershipSql = @"
-            SELECT membership_unique_id, status, outcome
-            FROM create_membership(@session_unique_id, @connection_id, @otp_unique_id)";
+    SELECT membership_unique_id, status, creation_status, outcome
+    FROM create_membership(@session_unique_id, @connection_id, @otp_unique_id, @creation_status::membership_creation_status)";
 
             NpgsqlParameter[] parameters =
             [
                 new("session_unique_id", NpgsqlDbType.Uuid) { Value = cmd.SessionIdentifier },
                 new("connection_id", NpgsqlDbType.Bigint) { Value = (long)cmd.ConnectId },
-                new("otp_unique_id", NpgsqlDbType.Uuid) { Value = cmd.OtpIdentifier }
+                new("otp_unique_id", NpgsqlDbType.Uuid) { Value = cmd.OtpIdentifier },
+                new("creation_status", NpgsqlDbType.Text)
+                    { Value = MembershipCreationStatusHelper.GetCreationStatusString(cmd.CreationStatus) }
             ];
 
             await using NpgsqlCommand command = CreateCommand(npgsqlConnection, createMembershipSql, parameters);
@@ -172,14 +190,16 @@ public sealed class MembershipPersistorActor : PersistorBase
             if (!await reader.ReadAsync())
             {
                 return Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
-                    ShieldFailure.DataAccess("No results returned from membership creation"));
+                    ShieldFailure.DataAccess(CreateNoResultsError));
             }
 
             Option<Guid> membershipIdOpt =
                 reader.IsDBNull(0) ? Option<Guid>.None : Option<Guid>.Some(reader.GetGuid(0));
-            Option<string> statusStrOpt =
+            Option<string> activityStatusStrOpt =
                 reader.IsDBNull(1) ? Option<string>.None : Option<string>.Some(reader.GetString(1));
-            string outcome = reader.GetString(2);
+            Option<string> creationStatusStrOpt =
+                reader.IsDBNull(2) ? Option<string>.None : Option<string>.Some(reader.GetString(2));
+            string outcome = reader.GetString(3);
 
             if (int.TryParse(outcome, out int waitMinutes))
             {
@@ -187,18 +207,21 @@ public sealed class MembershipPersistorActor : PersistorBase
                     ShieldFailure.InvalidInput($"Too many membership attempts. Wait {waitMinutes} minutes."));
             }
 
-            return (membershipIdOpt, statusStrOpt, outcome) switch
+            return (membershipIdOpt, activityStatusStrOpt, creationStatusStrOpt, outcome) switch
             {
-                ({ HasValue: true, Value: var id }, { HasValue: true, Value: var statusStr }, var oc
-                    and ("created" or "membership_already_exists")) =>
+                ({ HasValue: true, Value: var id },
+                    { HasValue: true, Value: var activityStr },
+                    { HasValue: true, Value: var creationStr }, var oc
+                    and (CreatedOutcome or MembershipAlreadyExistsOutcome)) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Ok(
                         Option<MembershipQueryRecord>.Some(new MembershipQueryRecord
                         {
                             UniqueIdentifier = id,
-                            Status = MapStatus(statusStr, oc)
+                            ActivityStatus = MapActivityStatus(activityStr),
+                            CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(creationStr)
                         })),
 
-                var (_, _, error) when IsKnownCreationError(error) =>
+                var (_, _, _, error) when IsKnownCreationError(error) =>
                     Result<Option<MembershipQueryRecord>, ShieldFailure>.Err(
                         ShieldFailure.InvalidInput(error)),
 
@@ -206,7 +229,6 @@ public sealed class MembershipPersistorActor : PersistorBase
                     ShieldFailure.DataAccess(outcome))
             };
         }, "create membership");
-
 
     private static bool IsKnownLoginError(string outcome) =>
         outcome is InvalidSecureKeyOutcome
@@ -223,16 +245,11 @@ public sealed class MembershipPersistorActor : PersistorBase
         or VerificationSessionNotVerifiedOutcome
         or OtpNotVerifiedOutcome;
 
-    private static Membership.Types.MembershipStatus MapStatus(string? statusStr, string outcomeForContext)
+    private static Membership.Types.ActivityStatus MapActivityStatus(string? statusStr)
     {
-        if (statusStr == null)
+        if (!MembershipStatusMap.TryGetValue(statusStr, out Membership.Types.ActivityStatus status))
         {
-            throw new InvalidOperationException(string.Format(NullStatusErrorFormat, outcomeForContext));
-        }
-
-        if (!MembershipStatusMap.TryGetValue(statusStr, out Membership.Types.MembershipStatus status))
-        {
-            throw new InvalidOperationException(string.Format(UnknownStatusErrorFormat, statusStr, outcomeForContext));
+            throw new InvalidOperationException(Format(UnknownStatusErrorFormat, statusStr));
         }
 
         return status;

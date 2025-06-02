@@ -8,6 +8,7 @@ using Microsoft.Extensions.Localization;
 namespace Ecliptix.Domain.Memberships;
 
 public record SignInMembershipActorCommand(string PhoneNumber, byte[] SecureKey);
+
 public record UpdateMembershipSecureKeyCommand(Guid MembershipIdentifier, byte[] SecureKey);
 
 public class MembershipActor : ReceiveActor
@@ -18,7 +19,7 @@ public class MembershipActor : ReceiveActor
     private const string InvalidCredentials = "invalid_credentials";
 
     private const string MinutesUntilLoginRetry = "minutes_until_login_retry";
-    
+
     public MembershipActor(IActorRef persistor, IStringLocalizer<MembershipActor> localizer)
     {
         _persistor = persistor;
@@ -39,9 +40,38 @@ public class MembershipActor : ReceiveActor
 
     private async Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyCommand command)
     {
-        Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure> operationResult =
-            await _persistor.Ask<Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure>>(command);
-        Sender.Tell(operationResult);
+        Result<Option<MembershipQueryRecord>, ShieldFailure> operationResult =
+            await _persistor.Ask<Result<Option<MembershipQueryRecord>, ShieldFailure>>(command);
+
+        Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure> result = operationResult.Match(
+            ok: option => option.Match(
+                record =>
+                {
+                    UpdateMembershipWithSecureKeyResponse updateMembershipWithSecureKeyResponse =
+                        new()
+                        {
+                            Membership = new Membership
+                            {
+                                UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
+                                Status = record.ActivityStatus,
+                                CreationStatus = record.CreationStatus
+                            },
+                            Result = UpdateMembershipWithSecureKeyResponse.Types.UpdateResult.Succeeded
+                        };
+
+                    return Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure>.Ok(
+                        updateMembershipWithSecureKeyResponse);
+                },
+                () => Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure>.Ok(
+                    new UpdateMembershipWithSecureKeyResponse
+                    {
+                        Result = UpdateMembershipWithSecureKeyResponse.Types.UpdateResult.InvalidCredentials,
+                        Message = _localizer[InvalidCredentials].Value
+                    })
+            ),
+            Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure>.Err);
+
+        Sender.Tell(result);
     }
 
     private async Task HandleCreateMembershipActorCommand(CreateMembershipActorCommand command)
@@ -64,7 +94,7 @@ public class MembershipActor : ReceiveActor
                         Membership = new Membership
                         {
                             UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
-                            Status = record.Status
+                            Status = record.ActivityStatus
                         },
                         Result = SignInMembershipResponse.Types.SignInResult.Succeeded
                     }

@@ -19,7 +19,11 @@ public record SessionExpired;
 
 public record InitiateResendVerificationRequestActorCommand(uint ConnectId, Guid SessionIdentifier);
 
-public record CreateMembershipActorCommand(uint ConnectId, Guid SessionIdentifier, Guid OtpIdentifier);
+public record CreateMembershipActorCommand(
+    uint ConnectId,
+    Guid SessionIdentifier,
+    Guid OtpIdentifier,
+    Membership.Types.CreationStatus CreationStatus);
 
 public record InitiateVerificationActorCommand(
     uint ConnectId,
@@ -247,7 +251,8 @@ public class VerificationSessionActor : ReceiveActor
                 _ = await _persistor.Ask<Result<Unit, ShieldFailure>>(updateOtpStatusActorCommand);
 
                 CreateMembershipActorCommand createMembershipActorCommand = new(
-                    _connectId, _verificationSessionQueryRecord.Value!.UniqueIdentifier, _activeOtp.UniqueIdentifier);
+                    _connectId, _verificationSessionQueryRecord.Value!.UniqueIdentifier, _activeOtp.UniqueIdentifier,
+                    Membership.Types.CreationStatus.OtpVerified);
 
                 Result<Option<MembershipQueryRecord>, ShieldFailure> createMembershipResult = await _membershipActor
                     .Ask<Result<Option<MembershipQueryRecord>, ShieldFailure>>(createMembershipActorCommand);
@@ -268,7 +273,7 @@ public class VerificationSessionActor : ReceiveActor
                                 {
                                     UniqueIdentifier = Helpers.GuidToByteString(
                                         membership!.UniqueIdentifier),
-                                    Status = membership.Status
+                                    Status = membership.ActivityStatus
                                 }
                             }));
                     }

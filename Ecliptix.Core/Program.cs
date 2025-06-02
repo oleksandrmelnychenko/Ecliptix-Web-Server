@@ -60,12 +60,12 @@ try
     RegisterValidators(builder.Services);
     RegisterGrpc(builder.Services);
 
-    builder.Services.AddOpenTelemetry()
+    /*builder.Services.AddOpenTelemetry()
         .WithMetrics(metrics =>
         {
             metrics.AddAspNetCoreInstrumentation();
             metrics.AddConsoleExporter();
-        });
+        });*/
 
     builder.Services.AddAkka(systemActorName, (akkaBuilder, serviceProvider) =>
     {

@@ -5,6 +5,6 @@ namespace Ecliptix.Domain.Persistors.QueryRecords;
 public record MembershipQueryRecord
 {
     public required Guid UniqueIdentifier { get; init; }
-    
-    public required Membership.Types.MembershipStatus Status { get; init; }
+    public required Membership.Types.ActivityStatus ActivityStatus { get; init; }
+    public required Membership.Types.CreationStatus CreationStatus { get; init; }
 }
