@@ -249,25 +249,29 @@ public class VerificationSessionActor : ReceiveActor
                 CreateMembershipActorCommand createMembershipActorCommand = new(
                     _connectId, _verificationSessionQueryRecord.Value!.UniqueIdentifier, _activeOtp.UniqueIdentifier);
 
-                Result<MembershipQueryRecord, ShieldFailure> createMembershipResult = await _membershipActor
-                    .Ask<Result<MembershipQueryRecord, ShieldFailure>>(createMembershipActorCommand);
+                Result<Option<MembershipQueryRecord>, ShieldFailure> createMembershipResult = await _membershipActor
+                    .Ask<Result<Option<MembershipQueryRecord>, ShieldFailure>>(createMembershipActorCommand);
 
                 if (createMembershipResult.IsOk)
                 {
-                    MembershipQueryRecord membershipRecord = createMembershipResult.Unwrap();
+                    Option<MembershipQueryRecord> membershipRecord = createMembershipResult.Unwrap();
+                    if (membershipRecord.HasValue)
+                    {
+                        MembershipQueryRecord? membership = membershipRecord.Value;
 
-                    Sender.Tell(Result<VerifyCodeResponse, ShieldFailure>.Ok(
-                        new VerifyCodeResponse
-                        {
-                            Result = VerificationResult.Succeeded,
-                            Message = _localizer["verification_succeeded"],
-                            Membership = new Membership
+                        Sender.Tell(Result<VerifyCodeResponse, ShieldFailure>.Ok(
+                            new VerifyCodeResponse
                             {
-                                UniqueIdentifier = Helpers.GuidToByteString(
-                                    membershipRecord.UniqueIdentifier),
-                                Status = membershipRecord.Status
-                            }
-                        }));
+                                Result = VerificationResult.Succeeded,
+                                Message = _localizer["verification_succeeded"],
+                                Membership = new Membership
+                                {
+                                    UniqueIdentifier = Helpers.GuidToByteString(
+                                        membership!.UniqueIdentifier),
+                                    Status = membership.Status
+                                }
+                            }));
+                    }
                 }
 
                 PostStop();
