@@ -6,7 +6,9 @@ using Ecliptix.Core.Interceptors;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Services;
 using Ecliptix.Core.Services.Memberships;
+using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.Memberships;
+using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Persistors;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -83,26 +85,32 @@ try
 
             NpgsqlDataSource npgsqlDataSource = serviceProvider.GetRequiredService<NpgsqlDataSource>();
 
+            // Get all required loggers
             ILogger<EcliptixProtocolSystemActor> protocolActorLogger =
                 serviceProvider.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>();
-
-            IStringLocalizer<VerificationSessionManagerActor> localizer = serviceProvider
-                .GetRequiredService<IStringLocalizer<VerificationSessionManagerActor>>();
+            ILogger<VerificationFlowPersistorActor> verificationFlowLogger =
+                serviceProvider.GetRequiredService<ILogger<VerificationFlowPersistorActor>>();
+            ILogger<MembershipPersistorActor> membershipPersistorLogger =
+                serviceProvider.GetRequiredService<ILogger<MembershipPersistorActor>>();
+            IStringLocalizer<VerificationFlowManagerActor> localizer = serviceProvider
+                .GetRequiredService<IStringLocalizer<VerificationFlowManagerActor>>();
+            ILogger<AppDevicePersistorActor> appDevicePersistorLocalizer = serviceProvider
+                .GetRequiredService<ILogger<AppDevicePersistorActor>>();
 
             IActorRef protocolSystemActor = system.ActorOf(
                 EcliptixProtocolSystemActor.Build(protocolActorLogger),
                 "ProtocolSystem");
 
             IActorRef appDevicePersistor = system.ActorOf(
-                AppDevicePersistorActor.Build(npgsqlDataSource),
+                AppDevicePersistorActor.Build(npgsqlDataSource,appDevicePersistorLocalizer),
                 "AppDevicePersistor");
 
             IActorRef membershipVerificationSessionPersistorActor = system.ActorOf(
-                VerificationSessionPersistorActor.Build(npgsqlDataSource),
+                VerificationFlowPersistorActor.Build(npgsqlDataSource, verificationFlowLogger),
                 "MembershipVerificationSessionPersistorActor");
 
             IActorRef membershipPersistorActor = system.ActorOf(
-                MembershipPersistorActor.Build(npgsqlDataSource),
+                MembershipPersistorActor.Build(npgsqlDataSource, membershipPersistorLogger),
                 "MembershipPersistorActor");
 
             IActorRef membershipActor = system.ActorOf(
@@ -110,7 +118,7 @@ try
                 "MembershipActor");
 
             IActorRef verificationSessionManagerActor = system.ActorOf(
-                VerificationSessionManagerActor.Build(membershipVerificationSessionPersistorActor, membershipActor,
+                VerificationFlowManagerActor.Build(membershipVerificationSessionPersistorActor, membershipActor,
                     snsProvider, localizer),
                 "VerificationSessionManagerActor");
 
@@ -120,8 +128,8 @@ try
 
             registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
             registry.Register<AppDevicePersistorActor>(appDevicePersistor);
-            registry.Register<VerificationSessionPersistorActor>(membershipVerificationSessionPersistorActor);
-            registry.Register<VerificationSessionManagerActor>(verificationSessionManagerActor);
+            registry.Register<VerificationFlowPersistorActor>(membershipVerificationSessionPersistorActor);
+            registry.Register<VerificationFlowManagerActor>(verificationSessionManagerActor);
             registry.Register<PhoneNumberValidatorActor>(phoneNumberValidatorActor);
             registry.Register<MembershipPersistorActor>(membershipPersistorActor);
             registry.Register<MembershipActor>(membershipActor);

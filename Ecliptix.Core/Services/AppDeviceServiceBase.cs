@@ -1,6 +1,7 @@
 using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Core.Protocol.Actors;
+using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.Persistors;
 using Ecliptix.Protobuf.AppDeviceServices;
 

@@ -1,6 +1,6 @@
 namespace Ecliptix.Domain.Memberships;
 
-public enum VerificationSessionStatus
+public enum VerificationFlowStatus
 {
     Pending,
     Verified,

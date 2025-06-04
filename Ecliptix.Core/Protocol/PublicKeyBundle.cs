@@ -6,13 +6,13 @@ namespace Ecliptix.Core.Protocol;
 
 public record OneTimePreKeyRecord(uint PreKeyId, byte[] PublicKey)
 {
-    public static Result<OneTimePreKeyRecord, ShieldFailure> Create(uint preKeyId, byte[] publicKey)
+    public static Result<OneTimePreKeyRecord, EcliptixProtocolFailure> Create(uint preKeyId, byte[] publicKey)
     {
         if (publicKey.Length != Constants.Ed25519KeySize)
-            return Result<OneTimePreKeyRecord, ShieldFailure>.Err(
-                ShieldFailure.Decode($"One-time prekey public key must be {Constants.Ed25519KeySize} bytes."));
+            return Result<OneTimePreKeyRecord, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Decode($"One-time prekey public key must be {Constants.Ed25519KeySize} bytes."));
 
-        return Result<OneTimePreKeyRecord, ShieldFailure>.Ok(new OneTimePreKeyRecord(preKeyId, publicKey));
+        return Result<OneTimePreKeyRecord, EcliptixProtocolFailure>.Ok(new OneTimePreKeyRecord(preKeyId, publicKey));
     }
 }
 
@@ -76,15 +76,15 @@ public record LocalPublicKeyBundle(
         return proto;
     }
 
-    public static Result<LocalPublicKeyBundle, ShieldFailure> FromProtobufExchange(PublicKeyBundle? proto)
+    public static Result<LocalPublicKeyBundle, EcliptixProtocolFailure> FromProtobufExchange(PublicKeyBundle? proto)
     {
         if (proto == null)
         {
-            return Result<LocalPublicKeyBundle, ShieldFailure>.Err(
-                ShieldFailure.InvalidInput("Input Protobuf bundle cannot be null."));
+            return Result<LocalPublicKeyBundle, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput("Input Protobuf bundle cannot be null."));
         }
 
-        return Result<LocalPublicKeyBundle, ShieldFailure>.Try(
+        return Result<LocalPublicKeyBundle, EcliptixProtocolFailure>.Try(
             func: () =>
             {
                 byte[] identityEd25519 = proto.IdentityPublicKey.ToByteArray();
@@ -113,7 +113,7 @@ public record LocalPublicKeyBundle(
                 foreach (PublicKeyBundle.Types.OneTimePreKey? pOpk in proto.OneTimePreKeys)
                 {
                     byte[] opkPublicKey = pOpk.PublicKey.ToByteArray();
-                    Result<OneTimePreKeyRecord, ShieldFailure> opkResult = OneTimePreKeyRecord.Create(pOpk.PreKeyId, opkPublicKey);
+                    Result<OneTimePreKeyRecord, EcliptixProtocolFailure> opkResult = OneTimePreKeyRecord.Create(pOpk.PreKeyId, opkPublicKey);
                     if (opkResult.IsErr)
                     {
                         throw new ArgumentException(
@@ -137,9 +137,9 @@ public record LocalPublicKeyBundle(
             },
             errorMapper: ex => ex switch
             {
-                ArgumentException argEx => ShieldFailure.Decode(
+                ArgumentException argEx => EcliptixProtocolFailure.Decode(
                     $"Failed to create LocalPublicKeyBundle from Protobuf due to invalid data: {argEx.Message}", argEx),
-                _ => ShieldFailure.Decode($"Unexpected error creating LocalPublicKeyBundle from Protobuf: {ex.Message}",
+                _ => EcliptixProtocolFailure.Decode($"Unexpected error creating LocalPublicKeyBundle from Protobuf: {ex.Message}",
                     ex)
             }
         );

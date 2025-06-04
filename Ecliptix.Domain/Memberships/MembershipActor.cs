@@ -1,15 +1,14 @@
 using Akka.Actor;
+using Ecliptix.Domain.Memberships.Failures;
+using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Persistors;
-using Ecliptix.Domain.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Microsoft.Extensions.Localization;
 
 namespace Ecliptix.Domain.Memberships;
 
-public record SignInMembershipActorCommand(string PhoneNumber, byte[] SecureKey);
-
-public record UpdateMembershipSecureKeyCommand(Guid MembershipIdentifier, byte[] SecureKey);
+public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey);
 
 public class MembershipActor : ReceiveActor
 {
@@ -33,17 +32,17 @@ public class MembershipActor : ReceiveActor
 
     private void Ready()
     {
-        ReceiveAsync<UpdateMembershipSecureKeyCommand>(HandleUpdateMembershipSecureKeyCommand);
-        ReceiveAsync<CreateMembershipActorCommand>(HandleCreateMembershipActorCommand);
-        ReceiveAsync<SignInMembershipActorCommand>(HandleSignInMembershipActorCommand);
+        ReceiveAsync<UpdateMembershipSecureKeyEvent>(HandleUpdateMembershipSecureKeyCommand);
+        ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembershipActorCommand);
+        ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembershipActorCommand);
     }
 
-    private async Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyCommand command)
+    private async Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyEvent @event)
     {
-        Result<Option<MembershipQueryRecord>, ShieldFailure> operationResult =
-            await _persistor.Ask<Result<Option<MembershipQueryRecord>, ShieldFailure>>(command);
+        Result<Option<MembershipQueryRecord>, VerificationFlowFailure> operationResult =
+            await _persistor.Ask<Result<Option<MembershipQueryRecord>, VerificationFlowFailure>>(@event);
 
-        Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure> result = operationResult.Match(
+        Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure> result = operationResult.Match(
             ok: option => option.Match(
                 record =>
                 {
@@ -59,36 +58,36 @@ public class MembershipActor : ReceiveActor
                             Result = UpdateMembershipWithSecureKeyResponse.Types.UpdateResult.Succeeded
                         };
 
-                    return Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure>.Ok(
+                    return Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>.Ok(
                         updateMembershipWithSecureKeyResponse);
                 },
-                () => Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure>.Ok(
+                () => Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>.Ok(
                     new UpdateMembershipWithSecureKeyResponse
                     {
                         Result = UpdateMembershipWithSecureKeyResponse.Types.UpdateResult.InvalidCredentials,
                         Message = _localizer[InvalidCredentials].Value
                     })
             ),
-            Result<UpdateMembershipWithSecureKeyResponse, ShieldFailure>.Err);
+            Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>.Err);
 
         Sender.Tell(result);
     }
 
-    private async Task HandleCreateMembershipActorCommand(CreateMembershipActorCommand command)
+    private async Task HandleCreateMembershipActorCommand(CreateMembershipActorEvent @event)
     {
-        Result<Option<MembershipQueryRecord>, ShieldFailure> operationResult =
-            await _persistor.Ask<Result<Option<MembershipQueryRecord>, ShieldFailure>>(command);
+        Result<Option<MembershipQueryRecord>, VerificationFlowFailure> operationResult =
+            await _persistor.Ask<Result<Option<MembershipQueryRecord>, VerificationFlowFailure>>(@event);
         Sender.Tell(operationResult);
     }
 
-    private async Task HandleSignInMembershipActorCommand(SignInMembershipActorCommand command)
+    private async Task HandleSignInMembershipActorCommand(SignInMembershipActorEvent @event)
     {
-        Result<Option<MembershipQueryRecord>, ShieldFailure> result =
-            await _persistor.Ask<Result<Option<MembershipQueryRecord>, ShieldFailure>>(command);
+        Result<Option<MembershipQueryRecord>, VerificationFlowFailure> result =
+            await _persistor.Ask<Result<Option<MembershipQueryRecord>, VerificationFlowFailure>>(@event);
 
-        Result<SignInMembershipResponse, ShieldFailure> operationResult = result.Match(
+        Result<SignInMembershipResponse, VerificationFlowFailure> operationResult = result.Match(
             ok: option => option.Match(
-                record => Result<SignInMembershipResponse, ShieldFailure>.Ok(
+                record => Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
                     new SignInMembershipResponse
                     {
                         Membership = new Membership
@@ -99,7 +98,7 @@ public class MembershipActor : ReceiveActor
                         Result = SignInMembershipResponse.Types.SignInResult.Succeeded
                     }
                 ),
-                () => Result<SignInMembershipResponse, ShieldFailure>.Ok(
+                () => Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
                     new SignInMembershipResponse
                     {
                         Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
@@ -109,9 +108,9 @@ public class MembershipActor : ReceiveActor
             ),
             err =>
             {
-                if (err.Type == ShieldFailureType.InvalidInput)
+                if (err.FailureType == VerificationFlowFailureType.Validation)
                 {
-                    return Result<SignInMembershipResponse, ShieldFailure>.Ok(
+                    return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
                         new SignInMembershipResponse
                         {
                             Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
@@ -121,7 +120,7 @@ public class MembershipActor : ReceiveActor
                     );
                 }
 
-                return Result<SignInMembershipResponse, ShieldFailure>.Err(err);
+                return Result<SignInMembershipResponse, VerificationFlowFailure>.Err(err);
             }
         );
 

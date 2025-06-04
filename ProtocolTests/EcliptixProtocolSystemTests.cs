@@ -133,7 +133,7 @@ public class EcliptixProtocolSystemTests : IDisposable
             LocalPublicKeyBundle? alicePublicBundleProto = _aliceKeys.CreatePublicBundle().Unwrap();
             if (alicePublicBundleProto == null) throw new InvalidOperationException("Alice failed to create bundle");
 
-            Result<LocalPublicKeyBundle, ShieldFailure> bobBundleInternalResult =
+            Result<LocalPublicKeyBundle, EcliptixProtocolFailure> bobBundleInternalResult =
                 LocalPublicKeyBundle.FromProtobufExchange(bobPublicBundleProto.ToProtobufExchange());
             Assert.IsTrue(bobBundleInternalResult.IsOk,
                 bobBundleInternalResult.IsErr
@@ -141,7 +141,7 @@ public class EcliptixProtocolSystemTests : IDisposable
                     : "Failed parsing Bob's bundle");
             LocalPublicKeyBundle bobBundleInternal = bobBundleInternalResult.Unwrap();
 
-            Result<SodiumSecureMemoryHandle, ShieldFailure> aliceDeriveResult =
+            Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> aliceDeriveResult =
                 _aliceKeys.X3dhDeriveSharedSecret(bobBundleInternal, Constants.X3dhInfo);
             
             Assert.IsTrue(aliceDeriveResult.IsOk,
@@ -160,7 +160,7 @@ public class EcliptixProtocolSystemTests : IDisposable
 
             PublicKeyBundle receivedAliceBundleProto =
                 Helpers.ParseFromBytes<PublicKeyBundle>(initialMessageToBob.Payload.ToByteArray());
-            Result<SodiumSecureMemoryHandle, ShieldFailure> bobDeriveResult = _bobKeys.CalculateSharedSecretAsRecipient(
+            Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> bobDeriveResult = _bobKeys.CalculateSharedSecretAsRecipient(
                 receivedAliceBundleProto.IdentityX25519PublicKey.ToByteArray(),
                 receivedAliceBundleProto.EphemeralX25519PublicKey.ToByteArray(),
                 opkIdUsedByAlice,

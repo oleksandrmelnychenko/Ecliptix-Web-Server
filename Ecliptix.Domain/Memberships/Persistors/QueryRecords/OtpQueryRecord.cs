@@ -1,6 +1,4 @@
-using Ecliptix.Domain.Memberships;
-
-namespace Ecliptix.Domain.Persistors.QueryRecords;
+namespace Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 
 public class OtpQueryRecord
 {
@@ -10,6 +8,6 @@ public class OtpQueryRecord
     public string OtpHash { get; init; } = string.Empty;
     public string OtpSalt { get; init; } = string.Empty;
     public DateTime ExpiresAt { get; init; }
-    public VerificationSessionStatus Status { get; init; }
+    public VerificationFlowStatus Status { get; init; }
     public bool IsActive { get; set; }
 }

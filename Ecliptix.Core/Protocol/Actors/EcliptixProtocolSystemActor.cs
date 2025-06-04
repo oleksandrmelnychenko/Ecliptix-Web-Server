@@ -48,44 +48,44 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         _logger.LogInformation($"[ShieldPro] Beginning exchange {exchangeType}, generated Session ID: {connectId}");
 
         CreateConnectCommand createConnectCommand = new(connectId, peerPubKeyExchange);
-        Result<DeriveSharedSecretReply, ShieldFailure> result =
+        Result<DeriveSharedSecretReply, EcliptixProtocolFailure> result =
             await CreateConnectActorAndDeriveSecret(createConnectCommand);
 
         Sender.Tell(result);
     }
 
-    private async Task<Result<DeriveSharedSecretReply, ShieldFailure>> CreateConnectActorAndDeriveSecret(
+    private async Task<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>> CreateConnectActorAndDeriveSecret(
         CreateConnectCommand command)
     {
         uint connectId = command.ConnectId;
         PubKeyExchange exchangeType = command.PubKeyExchange;
 
-        Result<IActorRef, ShieldFailure> actorCreationalResult = Result<IActorRef, ShieldFailure>.Try(() =>
+        Result<IActorRef, EcliptixProtocolFailure> actorCreationalResult = Result<IActorRef, EcliptixProtocolFailure>.Try(() =>
         {
             IActorRef actorRef = Context.ActorOf(
                 EcliptixProtocolConnectActor.Build(),
                 $"connect-{connectId}");
             return actorRef;
-        }, err => ShieldFailure.ActorNotCreated($"Failed to create actor for connectId: {connectId}", err));
+        }, err => EcliptixProtocolFailure.ActorNotCreated($"Failed to create actor for connectId: {connectId}", err));
 
         if (actorCreationalResult.IsErr)
         {
-            return Result<DeriveSharedSecretReply, ShieldFailure>.Err(actorCreationalResult.UnwrapErr());
+            return Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(actorCreationalResult.UnwrapErr());
         }
 
         IActorRef actorRef = actorCreationalResult.Unwrap();
         _connectActorRefs.TryAdd(connectId, actorRef);
 
         DeriveSharedSecretCommand deriveSharedSecretCommand = new(connectId, exchangeType);
-        Result<DeriveSharedSecretReply, ShieldFailure> deriveSharedSecretResult =
-            await actorRef.Ask<Result<DeriveSharedSecretReply, ShieldFailure>>(deriveSharedSecretCommand);
+        Result<DeriveSharedSecretReply, EcliptixProtocolFailure> deriveSharedSecretResult =
+            await actorRef.Ask<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>>(deriveSharedSecretCommand);
 
         return deriveSharedSecretResult;
     }
 
     private async Task HandleCreateConnectCommand(CreateConnectCommand command)
     {
-        Result<DeriveSharedSecretReply, ShieldFailure> result = await CreateConnectActorAndDeriveSecret(command);
+        Result<DeriveSharedSecretReply, EcliptixProtocolFailure> result = await CreateConnectActorAndDeriveSecret(command);
         Sender.Tell(result);
     }
 
@@ -95,14 +95,14 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
         if (_connectActorRefs.TryGetValue(connectId, out IActorRef? actorRef))
         {
-            Result<CipherPayload, ShieldFailure> result =
-                await actorRef.Ask<Result<CipherPayload, ShieldFailure>>(actorCommand);
+            Result<CipherPayload, EcliptixProtocolFailure> result =
+                await actorRef.Ask<Result<CipherPayload, EcliptixProtocolFailure>>(actorCommand);
             Sender.Tell(result);
         }
         else
         {
-            Sender.Tell(Result<byte[], ShieldFailure>.Err(
-                ShieldFailure.ActorRefNotFound($"Connect actor with Id:{connectId} not found")));
+            Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.ActorRefNotFound($"Connect actor with Id:{connectId} not found")));
         }
     }
 
@@ -112,13 +112,13 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
         if (_connectActorRefs.TryGetValue(connectId, out IActorRef? actorRef))
         {
-            Result<byte[], ShieldFailure> result = await actorRef.Ask<Result<byte[], ShieldFailure>>(actorCommand);
+            Result<byte[], EcliptixProtocolFailure> result = await actorRef.Ask<Result<byte[], EcliptixProtocolFailure>>(actorCommand);
             Sender.Tell(result);
         }
         else
         {
-            Sender.Tell(Result<byte[], ShieldFailure>.Err(
-                ShieldFailure.ActorRefNotFound($"Connect actor with Id:{connectId} not found")));
+            Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.ActorRefNotFound($"Connect actor with Id:{connectId} not found")));
         }
     }
 

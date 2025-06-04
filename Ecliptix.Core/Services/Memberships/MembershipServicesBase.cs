@@ -22,12 +22,12 @@ public abstract class MembershipServicesBase(
 
     private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
 
-    protected async Task<Result<byte[], ShieldFailure>> DecryptRequest(CipherPayload request, ServerCallContext context)
+    protected async Task<Result<byte[], EcliptixProtocolFailure>> DecryptRequest(CipherPayload request, ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        Result<byte[], ShieldFailure> decryptResult = await _protocolActor
-            .Ask<Result<byte[], ShieldFailure>>(
+        Result<byte[], EcliptixProtocolFailure> decryptResult = await _protocolActor
+            .Ask<Result<byte[], EcliptixProtocolFailure>>(
                 new DecryptCipherPayloadActorCommand(
                     connectId,
                     PubKeyExchangeType.DataCenterEphemeralConnect,
@@ -39,13 +39,13 @@ public abstract class MembershipServicesBase(
         return decryptResult;
     }
 
-    private async Task<Result<CipherPayload, ShieldFailure>> EncryptRequest(byte[] payload,
+    private async Task<Result<CipherPayload, EcliptixProtocolFailure>> EncryptRequest(byte[] payload,
         PubKeyExchangeType pubKeyExchangeType, ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        Result<CipherPayload, ShieldFailure> encryptResult = await _protocolActor
-            .Ask<Result<CipherPayload, ShieldFailure>>(
+        Result<CipherPayload, EcliptixProtocolFailure> encryptResult = await _protocolActor
+            .Ask<Result<CipherPayload, EcliptixProtocolFailure>>(
                 new EncryptPayloadActorCommand(
                     connectId,
                     pubKeyExchangeType,
@@ -59,7 +59,7 @@ public abstract class MembershipServicesBase(
 
     protected async Task<CipherPayload> EncryptAndReturnResponse(byte[] data, ServerCallContext context)
     {
-        Result<CipherPayload, ShieldFailure> encryptResult =
+        Result<CipherPayload, EcliptixProtocolFailure> encryptResult =
             await EncryptRequest(data, PubKeyExchangeType.DataCenterEphemeralConnect, context);
         if (encryptResult.IsOk)
         {
@@ -70,9 +70,9 @@ public abstract class MembershipServicesBase(
         return new CipherPayload();
     }
 
-    protected void HandleError(ShieldFailure failure, ServerCallContext context)
+    protected void HandleError(EcliptixProtocolFailure failure, ServerCallContext context)
     {
-        context.Status = ShieldFailure.ToGrpcStatus(failure);
+        context.Status = EcliptixProtocolFailure.ToGrpcStatus(failure);
         Logger.LogWarning("Error occurred: {Failure}", failure);
     }
 }

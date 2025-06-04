@@ -1,7 +1,6 @@
 namespace Ecliptix.Domain.Utilities;
 
-// Ecliptix.Domain.Utilities
-public enum ShieldFailureType
+public enum EcliptixProtocolFailureType
 {
     Generic,
     DecodeFailed,
@@ -28,13 +27,5 @@ public enum ShieldFailureType
     PinningFailure,
     BufferTooSmall,
     DataTooLarge,
-    DataAccessError,
-    SessionExpired, // Added from your factory methods
-
-    // PasswordManager specific types - we can add these here or map existing ones
-    PasswordConfigInvalid,
-    PasswordValidationFailed,
-    PasswordHashingFailed,
-    PasswordVerificationFailed,
-    AuthenticationFailed
+    MemoryBufferError
 }

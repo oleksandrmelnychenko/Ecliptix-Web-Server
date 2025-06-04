@@ -1,53 +1,46 @@
-using Ecliptix.Domain.Persistors.QueryRecords;
+using Ecliptix.Domain.Memberships.Failures;
+using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
-using Microsoft.Extensions.Localization;
 using OtpNet;
 
 namespace Ecliptix.Domain.Memberships;
 
-public sealed class OneTimePassword(IStringLocalizer localizer)
+public sealed class OneTimePassword
 {
     private readonly byte[] _otpSecretKey = KeyGeneration.GenerateRandomKey(OtpHashMode.Sha256);
-
+    
     private Option<OtpQueryRecord> _otpQueryRecord = Option<OtpQueryRecord>.None;
 
     public bool IsActive { get; private set; }
-
     public DateTime ExpiresAt { get; } = DateTime.UtcNow.AddSeconds(20);
-
     public Guid UniqueIdentifier { get; set; }
 
-    public void SetOtpQueryRecordIdentifier(Guid identifier) =>
-        UniqueIdentifier = identifier;
-
-    public async Task<Result<OtpQueryRecord, ShieldFailure>> SendAsync(
-        PhoneNumberQueryRecord phoneNumberQueryRecord,
-        Func<string, string, Task<Result<Unit, ShieldFailure>>> send)
+    public Result<(OtpQueryRecord Record, string PlainOtp), VerificationFlowFailure> Generate(
+        PhoneNumberQueryRecord phoneNumberQueryRecord)
     {
-        Totp totp = new(secretKey: _otpSecretKey, mode: OtpHashMode.Sha256);
-        string otp = totp.ComputeTotp();
-        LocalizedString message = localizer["Auth code is: {0}", otp];
-
-        Result<Unit, ShieldFailure> smsSentResult =
-            await send(phoneNumberQueryRecord.PhoneNumber, message.Value);
-
-        return smsSentResult.Match(
-            ok: _ =>
+        return Result<(OtpQueryRecord, string), VerificationFlowFailure>.Try(
+            () =>
             {
+                Totp totp = new(secretKey: _otpSecretKey, mode: OtpHashMode.Sha256);
+                string otp = totp.ComputeTotp();
+
                 (string hash, string salt) = OneTimePasswordHashing.HashOtp(otp);
                 OtpQueryRecord otpQueryRecord = new()
                 {
                     PhoneNumberIdentifier = phoneNumberQueryRecord.UniqueIdentifier,
                     OtpHash = hash,
                     OtpSalt = salt,
-                    ExpiresAt = ExpiresAt
+                    ExpiresAt = ExpiresAt,
+                    IsActive = true
                 };
 
                 IsActive = true;
                 _otpQueryRecord = Option<OtpQueryRecord>.Some(otpQueryRecord);
-                return Result<OtpQueryRecord, ShieldFailure>.Ok(otpQueryRecord);
+
+                return (otpQueryRecord, otp);
             },
-            err: Result<OtpQueryRecord, ShieldFailure>.Err);
+            ex => VerificationFlowFailure.OtpGenerationFailed(
+                VerificationFlowMessageKeys.OtpGenerationFailed, ex));
     }
 
     public void ConsumeOtp()
@@ -55,34 +48,49 @@ public sealed class OneTimePassword(IStringLocalizer localizer)
         IsActive = false;
     }
 
-    public Task<bool> VerifyAsync(string code)
+    public bool VerifyAsync(string code)
     {
-        if (!_otpQueryRecord.HasValue || !IsActive)
-        {
-            return Task.FromResult(false);
-        }
+        if (!IsValidForVerification())
+            return false;
 
-        OtpQueryRecord? record = _otpQueryRecord.Value;
-        if (DateTime.UtcNow > record!.ExpiresAt)
-        {
-            IsActive = false;
-            return Task.FromResult(false);
-        }
+        if (!HasExpired()) return PerformVerification(code);
+        
+        ConsumeOtp();
+        return false;
+    }
 
-        bool isValid = OneTimePasswordHashing.VerifyOtp(code, record.OtpHash, record.OtpSalt);
-        if (!isValid)
-        {
-            return Task.FromResult(false);
-        }
+    private bool IsValidForVerification() => _otpQueryRecord.HasValue && IsActive;
 
-        Totp totp = new(_otpSecretKey, mode: OtpHashMode.Sha256);
-        isValid = totp.VerifyTotp(code, out _, new VerificationWindow(previous: 10, future: 0));
+    private bool HasExpired()
+    {
+        if (!_otpQueryRecord.HasValue) return true;
+
+        OtpQueryRecord record = _otpQueryRecord.Value!;
+        return DateTime.UtcNow > record.ExpiresAt;
+    }
+
+    private bool PerformVerification(string code)
+    {
+        OtpQueryRecord record = _otpQueryRecord.Value!;
+
+        if (!OneTimePasswordHashing.VerifyOtp(code, record.OtpHash, record.OtpSalt))
+            return false;
+
+        Result<bool, VerificationFlowFailure> totpVerificationResult = Result<bool, VerificationFlowFailure>.Try(
+            () =>
+            {
+                Totp totp = new(_otpSecretKey, mode: OtpHashMode.Sha256);
+                return totp.VerifyTotp(code, out _, new VerificationWindow(previous: 10, future: 0));
+            },
+            _ => VerificationFlowFailure.InvalidOtp());
+
+        bool isValid = totpVerificationResult.UnwrapOr(false);
 
         if (isValid)
         {
             ConsumeOtp();
         }
 
-        return Task.FromResult(isValid);
+        return isValid;
     }
 }

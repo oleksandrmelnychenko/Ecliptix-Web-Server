@@ -1,4 +1,5 @@
 using Amazon.Runtime;
+using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Utilities;
 using Polly;
 
@@ -10,7 +11,7 @@ public class SNSProvider
     {
     }
 
-    public Task<Result<Unit, ShieldFailure>> SendSmsAsync(string mobile, string message)
+    public Task<Result<Unit, VerificationFlowFailure>> SendSmsAsync(string mobile, string message)
     {
         /*// Prepare SNS request
         var request = new PublishRequest
@@ -33,6 +34,6 @@ public class SNSProvider
                 response.MessageId);
         });*/
 
-        return Task.FromResult(Result<Unit, ShieldFailure>.Ok(Unit.Value));
+        return Task.FromResult(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
     }
 }

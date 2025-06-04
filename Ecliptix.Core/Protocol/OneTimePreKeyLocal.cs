@@ -1,3 +1,4 @@
+using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
 using Sodium;
 
@@ -16,7 +17,7 @@ public readonly struct OneTimePreKeyLocal : IDisposable
         PublicKey = publicKey;
     }
 
-    public static Result<OneTimePreKeyLocal, ShieldFailure> Generate(uint preKeyId)
+    public static Result<OneTimePreKeyLocal, EcliptixProtocolFailure> Generate(uint preKeyId)
     {
         SodiumSecureMemoryHandle? securePrivateKey = null;
         byte[]? tempPrivateKeyBytes = null;
@@ -24,38 +25,46 @@ public readonly struct OneTimePreKeyLocal : IDisposable
 
         try
         {
-            Result<SodiumSecureMemoryHandle, ShieldFailure> allocResult =
-                SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
+            Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> allocResult =
+                SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize)
+                    .MapSodiumFailure();
+
             if (allocResult.IsErr)
-                return Result<OneTimePreKeyLocal, ShieldFailure>.Err(allocResult.UnwrapErr());
+            {
+                return Result<OneTimePreKeyLocal, EcliptixProtocolFailure>.Err(allocResult.UnwrapErr());
+            }
+
             securePrivateKey = allocResult.Unwrap();
 
             tempPrivateKeyBytes = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize);
 
-            Result<Unit, ShieldFailure> writeResult = securePrivateKey.Write(tempPrivateKeyBytes);
+            Result<Unit, EcliptixProtocolFailure> writeResult =
+                securePrivateKey.Write(tempPrivateKeyBytes).MapSodiumFailure();
             if (writeResult.IsErr)
             {
                 securePrivateKey.Dispose();
                 SodiumInterop.SecureWipe(tempPrivateKeyBytes).IgnoreResult();
-                return Result<OneTimePreKeyLocal, ShieldFailure>.Err(writeResult.UnwrapErr());
+                return Result<OneTimePreKeyLocal, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr());
             }
 
             SodiumInterop.SecureWipe(tempPrivateKeyBytes).IgnoreResult();
             tempPrivateKeyBytes = null;
 
             tempPrivKeyCopy = new byte[Constants.X25519PrivateKeySize];
-            Result<Unit, ShieldFailure> readResult = securePrivateKey.Read(tempPrivKeyCopy);
+            Result<Unit, EcliptixProtocolFailure> readResult = securePrivateKey.Read(tempPrivKeyCopy)
+                .MapSodiumFailure();
             if (readResult.IsErr)
             {
                 securePrivateKey.Dispose();
                 SodiumInterop.SecureWipe(tempPrivKeyCopy).IgnoreResult();
-                return Result<OneTimePreKeyLocal, ShieldFailure>.Err(readResult.UnwrapErr());
+                return Result<OneTimePreKeyLocal, EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
             }
 
-            Result<byte[], ShieldFailure> deriveResult = Result<byte[], ShieldFailure>.Try(
+            Result<byte[], EcliptixProtocolFailure> deriveResult = Result<byte[], EcliptixProtocolFailure>.Try(
                 func: () => ScalarMult.Base(tempPrivKeyCopy),
                 errorMapper: ex =>
-                    ShieldFailure.DeriveKey($"Failed to derive public key for OPK ID {preKeyId} using ScalarMult.Base.",
+                    EcliptixProtocolFailure.DeriveKey(
+                        $"Failed to derive public key for OPK ID {preKeyId} using ScalarMult.Base.",
                         ex)
             );
 
@@ -65,7 +74,7 @@ public readonly struct OneTimePreKeyLocal : IDisposable
             if (deriveResult.IsErr)
             {
                 securePrivateKey.Dispose();
-                return Result<OneTimePreKeyLocal, ShieldFailure>.Err(deriveResult.UnwrapErr());
+                return Result<OneTimePreKeyLocal, EcliptixProtocolFailure>.Err(deriveResult.UnwrapErr());
             }
 
             byte[] publicKeyBytes = deriveResult.Unwrap();
@@ -74,12 +83,12 @@ public readonly struct OneTimePreKeyLocal : IDisposable
             {
                 securePrivateKey.Dispose();
                 SodiumInterop.SecureWipe(publicKeyBytes).IgnoreResult();
-                return Result<OneTimePreKeyLocal, ShieldFailure>.Err(ShieldFailure.DeriveKey(
+                return Result<OneTimePreKeyLocal, EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.DeriveKey(
                     $"Derived public key for OPK ID {preKeyId} has incorrect size ({publicKeyBytes.Length})."));
             }
 
             OneTimePreKeyLocal opk = new(preKeyId, securePrivateKey, publicKeyBytes);
-            return Result<OneTimePreKeyLocal, ShieldFailure>.Ok(opk);
+            return Result<OneTimePreKeyLocal, EcliptixProtocolFailure>.Ok(opk);
         }
         catch (Exception ex)
         {
@@ -87,8 +96,8 @@ public readonly struct OneTimePreKeyLocal : IDisposable
             if (tempPrivateKeyBytes != null) SodiumInterop.SecureWipe(tempPrivateKeyBytes).IgnoreResult();
             if (tempPrivKeyCopy != null) SodiumInterop.SecureWipe(tempPrivKeyCopy).IgnoreResult();
 
-            return Result<OneTimePreKeyLocal, ShieldFailure>.Err(
-                ShieldFailure.Generic($"Unexpected failure during OPK Generation for ID {preKeyId}.", ex)
+            return Result<OneTimePreKeyLocal, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic($"Unexpected failure during OPK Generation for ID {preKeyId}.", ex)
             );
         }
     }

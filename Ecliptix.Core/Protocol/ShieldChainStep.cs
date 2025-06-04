@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Core.Protocol;
@@ -23,18 +24,20 @@ public sealed class ShieldChainStep : IDisposable
 
     private readonly uint _cacheWindow;
 
-    private static readonly Result<Unit, ShieldFailure> OkResult = Result<Unit, ShieldFailure>.Ok(Unit.Value);
+    private static readonly Result<Unit, EcliptixProtocolFailure> OkResult =
+        Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
 
-    public Result<uint, ShieldFailure> GetCurrentIndex() =>
+    public Result<uint, EcliptixProtocolFailure> GetCurrentIndex() =>
         _disposed
-            ? Result<uint, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(ShieldChainStep)))
-            : Result<uint, ShieldFailure>.Ok(_currentIndex);
+            ? Result<uint, EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.ObjectDisposed(nameof(ShieldChainStep)))
+            : Result<uint, EcliptixProtocolFailure>.Ok(_currentIndex);
 
-    internal Result<Unit, ShieldFailure> SetCurrentIndex(uint value)
+    internal Result<Unit, EcliptixProtocolFailure> SetCurrentIndex(uint value)
     {
         if (_disposed)
         {
-            return Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(ShieldChainStep)));
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.ObjectDisposed(nameof(ShieldChainStep)));
         }
 
         if (_currentIndex != value)
@@ -43,7 +46,7 @@ public sealed class ShieldChainStep : IDisposable
             _currentIndex = value;
         }
 
-        return Result<Unit, ShieldFailure>.Ok(Unit.Value);
+        return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
     private ShieldChainStep(
@@ -64,7 +67,7 @@ public sealed class ShieldChainStep : IDisposable
         Debug.WriteLine($"[ShieldChainStep] Created chain step of type {_stepType}");
     }
 
-    public static Result<ShieldChainStep, ShieldFailure> Create(
+    public static Result<ShieldChainStep, EcliptixProtocolFailure> Create(
         ChainStepType stepType,
         byte[] initialChainKey,
         byte[]? initialDhPrivateKey,
@@ -72,7 +75,7 @@ public sealed class ShieldChainStep : IDisposable
         uint cacheWindowSize = DefaultCacheWindowSize)
     {
         Debug.WriteLine($"[ShieldChainStep] Creating chain step of type {stepType}");
-        return Result<Unit, ShieldFailure>.Ok(Unit.Value)
+        return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value)
             .Bind(_ => ValidateInitialChainKey(initialChainKey))
             .Bind(_ => ValidateAndPrepareDhKeys(initialDhPrivateKey, initialDhPublicKey))
             .Bind(dhInfo =>
@@ -87,7 +90,7 @@ public sealed class ShieldChainStep : IDisposable
                             dhInfo.dhPublicKeyCloned,
                             actualCacheWindow);
                         Debug.WriteLine($"[ShieldChainStep] Chain step created successfully.");
-                        return Result<ShieldChainStep, ShieldFailure>.Ok(step);
+                        return Result<ShieldChainStep, EcliptixProtocolFailure>.Ok(step);
                     })
                     .MapErr(err =>
                     {
@@ -99,50 +102,52 @@ public sealed class ShieldChainStep : IDisposable
             );
     }
 
-    private static Result<Unit, ShieldFailure> ValidateInitialChainKey(byte[] initialChainKey) =>
+    private static Result<Unit, EcliptixProtocolFailure> ValidateInitialChainKey(byte[] initialChainKey) =>
         initialChainKey.Length == Constants.X25519KeySize
-            ? Result<Unit, ShieldFailure>.Ok(Unit.Value)
-            : Result<Unit, ShieldFailure>.Err(
-                ShieldFailure.InvalidInput($"Initial chain key must be {Constants.X25519KeySize} bytes."));
+            ? Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value)
+            : Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput($"Initial chain key must be {Constants.X25519KeySize} bytes."));
 
-    private static Result<(SodiumSecureMemoryHandle? dhPrivateKeyHandle, byte[]? dhPublicKeyCloned), ShieldFailure>
+    private static Result<(SodiumSecureMemoryHandle? dhPrivateKeyHandle, byte[]? dhPublicKeyCloned),
+            EcliptixProtocolFailure>
         ValidateAndPrepareDhKeys(byte[]? initialDhPrivateKey, byte[]? initialDhPublicKey)
     {
         Debug.WriteLine("[ShieldChainStep] Validating and preparing DH keys");
         if (initialDhPrivateKey == null && initialDhPublicKey == null)
         {
-            return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Ok((null, null));
+            return Result<(SodiumSecureMemoryHandle?, byte[]?), EcliptixProtocolFailure>.Ok((null, null));
         }
 
         if (initialDhPrivateKey == null || initialDhPublicKey == null)
         {
-            return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
-                ShieldFailure.InvalidInput("Both DH private and public keys must be provided, or neither."));
+            return Result<(SodiumSecureMemoryHandle?, byte[]?), EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput("Both DH private and public keys must be provided, or neither."));
         }
 
         if (initialDhPrivateKey.Length != Constants.X25519PrivateKeySize)
         {
-            return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
-                ShieldFailure.InvalidInput(
+            return Result<(SodiumSecureMemoryHandle?, byte[]?), EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput(
                     $"Initial DH private key must be {Constants.X25519PrivateKeySize} bytes."));
         }
 
         if (initialDhPublicKey.Length != Constants.X25519KeySize)
         {
-            return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
-                ShieldFailure.InvalidInput($"Initial DH public key must be {Constants.X25519KeySize} bytes."));
+            return Result<(SodiumSecureMemoryHandle?, byte[]?), EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput(
+                    $"Initial DH public key must be {Constants.X25519KeySize} bytes."));
         }
 
         SodiumSecureMemoryHandle? dhPrivateKeyHandle = null;
         try
         {
-            return SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize)
+            return SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize).MapSodiumFailure()
                 .Bind(handle =>
                 {
                     dhPrivateKeyHandle = handle;
                     Debug.WriteLine(
                         $"[ShieldChainStep] Writing initial DH private key: {Convert.ToHexString(initialDhPrivateKey)}");
-                    return handle.Write(initialDhPrivateKey);
+                    return handle.Write(initialDhPrivateKey).MapSodiumFailure();
                 })
                 .Map(_ =>
                 {
@@ -161,20 +166,21 @@ public sealed class ShieldChainStep : IDisposable
         {
             Debug.WriteLine($"[ShieldChainStep] Unexpected error preparing DH keys: {ex.Message}");
             dhPrivateKeyHandle?.Dispose();
-            return Result<(SodiumSecureMemoryHandle?, byte[]?), ShieldFailure>.Err(
-                ShieldFailure.Generic("Unexpected error preparing DH keys.", ex));
+            return Result<(SodiumSecureMemoryHandle?, byte[]?), EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Unexpected error preparing DH keys.", ex));
         }
     }
 
-    private static Result<SodiumSecureMemoryHandle, ShieldFailure> AllocateAndWriteChainKey(byte[] initialChainKey)
+    private static Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> AllocateAndWriteChainKey(
+        byte[] initialChainKey)
     {
         SodiumSecureMemoryHandle? chainKeyHandle = null;
-        return SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize)
+        return SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize).MapSodiumFailure()
             .Bind(handle =>
             {
                 chainKeyHandle = handle;
                 Debug.WriteLine($"[ShieldChainStep] Writing initial chain key: {Convert.ToHexString(initialChainKey)}");
-                return handle.Write(initialChainKey);
+                return handle.Write(initialChainKey).MapSodiumFailure();
             })
             .Map(_ => chainKeyHandle!)
             .MapErr(err =>
@@ -185,36 +191,38 @@ public sealed class ShieldChainStep : IDisposable
             });
     }
 
-    internal Result<ShieldMessageKey, ShieldFailure> GetOrDeriveKeyFor(uint targetIndex,
+    internal Result<ShieldMessageKey, EcliptixProtocolFailure> GetOrDeriveKeyFor(uint targetIndex,
         SortedDictionary<uint, ShieldMessageKey> messageKeys)
     {
         if (_disposed)
-            return Result<ShieldMessageKey, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(ShieldChainStep)));
+            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.ObjectDisposed(nameof(ShieldChainStep)));
 
         if (messageKeys.TryGetValue(targetIndex, out var cachedKey))
         {
             Debug.WriteLine($"[ShieldChainStep] Returning cached key for index {targetIndex}");
-            return Result<ShieldMessageKey, ShieldFailure>.Ok(cachedKey);
+            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Ok(cachedKey);
         }
 
-        Result<uint, ShieldFailure> currentIndexResult = GetCurrentIndex();
+        Result<uint, EcliptixProtocolFailure> currentIndexResult = GetCurrentIndex();
         if (currentIndexResult.IsErr)
-            return Result<ShieldMessageKey, ShieldFailure>.Err(currentIndexResult.UnwrapErr());
+            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(currentIndexResult.UnwrapErr());
 
         uint currentIndex = currentIndexResult.Unwrap();
 
         if (targetIndex <= currentIndex)
-            return Result<ShieldMessageKey, ShieldFailure>.Err(
-                ShieldFailure.InvalidInput(
+            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput(
                     $"[{_stepType}] Requested index {targetIndex} is not future (current: {currentIndex}) and not cached."));
 
         Debug.WriteLine(
             $"[ShieldChainStep] Starting derivation for target index: {targetIndex}, current index: {currentIndex}");
 
-        Result<byte[], ShieldFailure> chainKeyResult = _chainKeyHandle.ReadBytes(Constants.X25519KeySize);
+        Result<byte[], EcliptixProtocolFailure> chainKeyResult = _chainKeyHandle.ReadBytes(Constants.X25519KeySize)
+            .MapSodiumFailure();
         if (chainKeyResult.IsErr)
         {
-            return Result<ShieldMessageKey, ShieldFailure>.Err(chainKeyResult.UnwrapErr());
+            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(chainKeyResult.UnwrapErr());
         }
 
         byte[] chainKey = chainKeyResult.Unwrap();
@@ -242,16 +250,16 @@ public sealed class ShieldChainStep : IDisposable
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"[ShieldChainStep] Error deriving keys at index {idx}: {ex.Message}");
-                    return Result<ShieldMessageKey, ShieldFailure>.Err(
-                        ShieldFailure.DeriveKey($"HKDF failed during derivation at index {idx}.", ex));
+                    return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.DeriveKey($"HKDF failed during derivation at index {idx}.", ex));
                 }
 
                 byte[] msgKeyClone = msgKey.ToArray();
 
-                Result<ShieldMessageKey, ShieldFailure> keyResult = ShieldMessageKey.New(idx, msgKeyClone);
+                Result<ShieldMessageKey, EcliptixProtocolFailure> keyResult = ShieldMessageKey.New(idx, msgKeyClone);
                 if (keyResult.IsErr)
                 {
-                    return Result<ShieldMessageKey, ShieldFailure>.Err(keyResult.UnwrapErr());
+                    return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(keyResult.UnwrapErr());
                 }
 
                 ShieldMessageKey messageKey = keyResult.Unwrap();
@@ -259,25 +267,27 @@ public sealed class ShieldChainStep : IDisposable
                 if (!messageKeys.TryAdd(idx, messageKey))
                 {
                     messageKey.Dispose();
-                    return Result<ShieldMessageKey, ShieldFailure>.Err(
-                        ShieldFailure.Generic($"Key for index {idx} unexpectedly appeared during derivation."));
+                    return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.Generic(
+                            $"Key for index {idx} unexpectedly appeared during derivation."));
                 }
 
-                Result<Unit, ShieldFailure> writeResult = _chainKeyHandle.Write(nextChainKey);
+                Result<Unit, EcliptixProtocolFailure> writeResult =
+                    _chainKeyHandle.Write(nextChainKey).MapSodiumFailure();
                 if (writeResult.IsErr)
                 {
                     messageKeys.Remove(idx, out var removedKey);
                     removedKey?.Dispose();
-                    return Result<ShieldMessageKey, ShieldFailure>.Err(writeResult.UnwrapErr());
+                    return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr());
                 }
 
                 nextChainKey.CopyTo(currentChainKey);
             }
 
-            Result<Unit, ShieldFailure> setIndexResult = SetCurrentIndex(targetIndex);
+            Result<Unit, EcliptixProtocolFailure> setIndexResult = SetCurrentIndex(targetIndex);
             if (setIndexResult.IsErr)
             {
-                return Result<ShieldMessageKey, ShieldFailure>.Err(setIndexResult.UnwrapErr());
+                return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(setIndexResult.UnwrapErr());
             }
 
             PruneOldKeys(messageKeys);
@@ -285,13 +295,14 @@ public sealed class ShieldChainStep : IDisposable
             if (messageKeys.TryGetValue(targetIndex, out var finalKey))
             {
                 Debug.WriteLine($"[ShieldChainStep] Derived key for index {targetIndex} successfully.");
-                return Result<ShieldMessageKey, ShieldFailure>.Ok(finalKey);
+                return Result<ShieldMessageKey, EcliptixProtocolFailure>.Ok(finalKey);
             }
             else
             {
                 Debug.WriteLine($"[ShieldChainStep] Derived key for index {targetIndex} not found in cache.");
-                return Result<ShieldMessageKey, ShieldFailure>.Err(
-                    ShieldFailure.Generic($"Derived key for index {targetIndex} missing after derivation loop."));
+                return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic(
+                        $"Derived key for index {targetIndex} missing after derivation loop."));
             }
         }
         finally
@@ -300,17 +311,18 @@ public sealed class ShieldChainStep : IDisposable
         }
     }
 
-    internal Result<Unit, ShieldFailure> UpdateKeysAfterDhRatchet(byte[] newChainKey, byte[]? newDhPrivateKey = null,
+    internal Result<Unit, EcliptixProtocolFailure> UpdateKeysAfterDhRatchet(byte[] newChainKey,
+        byte[]? newDhPrivateKey = null,
         byte[]? newDhPublicKey = null)
     {
         Debug.WriteLine($"[ShieldChainStep] Updating keys after DH ratchet for {_stepType}");
-        return Result<Unit, ShieldFailure>.Ok(Unit.Value)
+        return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value)
             .Bind(_ => CheckDisposed())
             .Bind(_ => ValidateNewChainKey(newChainKey))
             .Bind(_ =>
             {
                 Debug.WriteLine($"[ShieldChainStep] Writing new chain key: {Convert.ToHexString(newChainKey)}");
-                return _chainKeyHandle.Write(newChainKey);
+                return _chainKeyHandle.Write(newChainKey).MapSodiumFailure();
             })
             .Bind(_ => SetCurrentIndex(0))
             .Bind(_ => HandleDhKeyUpdate(newDhPrivateKey, newDhPublicKey))
@@ -322,18 +334,18 @@ public sealed class ShieldChainStep : IDisposable
             });
     }
 
-    private Result<Unit, ShieldFailure> CheckDisposed() =>
+    private Result<Unit, EcliptixProtocolFailure> CheckDisposed() =>
         _disposed
-            ? Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(ShieldChainStep)))
-            : Result<Unit, ShieldFailure>.Ok(Unit.Value);
+            ? Result<Unit, EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.ObjectDisposed(nameof(ShieldChainStep)))
+            : Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
 
-    private static Result<Unit, ShieldFailure> ValidateNewChainKey(byte[] newChainKey) =>
+    private static Result<Unit, EcliptixProtocolFailure> ValidateNewChainKey(byte[] newChainKey) =>
         newChainKey.Length == Constants.X25519KeySize
-            ? Result<Unit, ShieldFailure>.Ok(Unit.Value)
-            : Result<Unit, ShieldFailure>.Err(
-                ShieldFailure.InvalidInput($"New chain key must be {Constants.X25519KeySize} bytes."));
+            ? Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value)
+            : Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput($"New chain key must be {Constants.X25519KeySize} bytes."));
 
-    private Result<Unit, ShieldFailure> HandleDhKeyUpdate(byte[]? newDhPrivateKey, byte[]? newDhPublicKey)
+    private Result<Unit, EcliptixProtocolFailure> HandleDhKeyUpdate(byte[]? newDhPrivateKey, byte[]? newDhPublicKey)
     {
         if (newDhPrivateKey == null && newDhPublicKey == null)
         {
@@ -348,13 +360,14 @@ public sealed class ShieldChainStep : IDisposable
         {
             Debug.WriteLine($"[ShieldChainStep] Updating DH keys.");
 
-            Result<Unit, ShieldFailure> handleResult = EnsureDhPrivateKeyHandle();
+            Result<Unit, EcliptixProtocolFailure> handleResult = EnsureDhPrivateKeyHandle();
             if (handleResult.IsErr)
             {
                 return handleResult.MapErr(e => e);
             }
 
-            Result<Unit, ShieldFailure> writeResult = _dhPrivateKeyHandle!.Write(newDhPrivateKey!.AsSpan());
+            Result<Unit, EcliptixProtocolFailure> writeResult = _dhPrivateKeyHandle!.Write(newDhPrivateKey!.AsSpan())
+                .MapSodiumFailure();
             if (writeResult.IsErr)
             {
                 return writeResult.MapErr(e => e);
@@ -367,34 +380,35 @@ public sealed class ShieldChainStep : IDisposable
         });
     }
 
-    private Result<Unit, ShieldFailure> EnsureDhPrivateKeyHandle()
+    private Result<Unit, EcliptixProtocolFailure> EnsureDhPrivateKeyHandle()
     {
         if (_dhPrivateKeyHandle != null)
         {
             return OkResult;
         }
 
-        Result<SodiumSecureMemoryHandle, ShieldFailure> allocResult =
-            SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
+        Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> allocResult =
+            SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize).MapSodiumFailure();
         if (allocResult.IsErr)
         {
-            return Result<Unit, ShieldFailure>.Err(allocResult.UnwrapErr());
+            return Result<Unit, EcliptixProtocolFailure>.Err(allocResult.UnwrapErr());
         }
 
         _dhPrivateKeyHandle = allocResult.Unwrap();
         return OkResult;
     }
 
-    private static Result<Unit, ShieldFailure> ValidateAll(params Func<Result<Unit, ShieldFailure>>[]? validators)
+    private static Result<Unit, EcliptixProtocolFailure> ValidateAll(
+        params Func<Result<Unit, EcliptixProtocolFailure>>[]? validators)
     {
         if (validators is null || validators.Length == 0)
         {
             return OkResult;
         }
 
-        foreach (Func<Result<Unit, ShieldFailure>> validate in validators)
+        foreach (Func<Result<Unit, EcliptixProtocolFailure>> validate in validators)
         {
-            Result<Unit, ShieldFailure> result = validate();
+            Result<Unit, EcliptixProtocolFailure> result = validate();
             if (result.IsErr)
             {
                 return result;
@@ -404,7 +418,7 @@ public sealed class ShieldChainStep : IDisposable
         return OkResult;
     }
 
-    private static Result<Unit, ShieldFailure> ValidateDhKeysNotNull(byte[]? privateKey, byte[]? publicKey)
+    private static Result<Unit, EcliptixProtocolFailure> ValidateDhKeysNotNull(byte[]? privateKey, byte[]? publicKey)
     {
         if (privateKey == null && publicKey == null)
         {
@@ -413,14 +427,14 @@ public sealed class ShieldChainStep : IDisposable
 
         if (privateKey == null || publicKey == null)
         {
-            return Result<Unit, ShieldFailure>.Err(
-                ShieldFailure.InvalidInput("Both DH private and public keys must be provided together."));
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput("Both DH private and public keys must be provided together."));
         }
 
         return OkResult;
     }
 
-    private static Result<Unit, ShieldFailure> ValidateDhPrivateKeySize(byte[]? privateKey)
+    private static Result<Unit, EcliptixProtocolFailure> ValidateDhPrivateKeySize(byte[]? privateKey)
     {
         if (privateKey == null)
         {
@@ -429,11 +443,12 @@ public sealed class ShieldChainStep : IDisposable
 
         return privateKey.Length == Constants.X25519PrivateKeySize
             ? OkResult
-            : Result<Unit, ShieldFailure>.Err(
-                ShieldFailure.InvalidInput($"DH private key must be {Constants.X25519PrivateKeySize} bytes."));
+            : Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput(
+                    $"DH private key must be {Constants.X25519PrivateKeySize} bytes."));
     }
 
-    private static Result<Unit, ShieldFailure> ValidateDhPublicKeySize(byte[]? publicKey)
+    private static Result<Unit, EcliptixProtocolFailure> ValidateDhPublicKeySize(byte[]? publicKey)
     {
         if (publicKey == null)
         {
@@ -442,11 +457,11 @@ public sealed class ShieldChainStep : IDisposable
 
         return publicKey.Length == Constants.X25519KeySize
             ? OkResult
-            : Result<Unit, ShieldFailure>.Err(
-                ShieldFailure.InvalidInput($"DH public key must be {Constants.X25519KeySize} bytes."));
+            : Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput($"DH public key must be {Constants.X25519KeySize} bytes."));
     }
 
-    internal Result<byte[]?, ShieldFailure> ReadDhPublicKey() =>
+    internal Result<byte[]?, EcliptixProtocolFailure> ReadDhPublicKey() =>
         CheckDisposed().Map<byte[]?>(_ =>
         {
             byte[]? result = (byte[])_dhPublicKey?.Clone()!;
@@ -474,7 +489,7 @@ public sealed class ShieldChainStep : IDisposable
     {
         if (_disposed || _cacheWindow == 0 || messageKeys.Count == 0) return;
 
-        Result<uint, ShieldFailure> currentIndexResult = GetCurrentIndex();
+        Result<uint, EcliptixProtocolFailure> currentIndexResult = GetCurrentIndex();
         if (currentIndexResult.IsErr) return;
         uint indexToPruneAgainst = currentIndexResult.Unwrap();
 
@@ -496,6 +511,8 @@ public sealed class ShieldChainStep : IDisposable
         }
     }
 
-    private static Result<Unit, ShieldFailure> WipeIfNotNull(byte[]? data) =>
-        data == null ? Result<Unit, ShieldFailure>.Ok(Unit.Value) : SodiumInterop.SecureWipe(data);
+    private static Result<Unit, EcliptixProtocolFailure> WipeIfNotNull(byte[]? data) =>
+        data == null
+            ? Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value)
+            : SodiumInterop.SecureWipe(data).MapSodiumFailure();
 }

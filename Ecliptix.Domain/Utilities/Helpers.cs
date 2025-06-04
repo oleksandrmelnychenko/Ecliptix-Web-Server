@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using Ecliptix.Protobuf.CipherPayload;
 using Google.Protobuf;
+using Grpc.Core;
 
 namespace Ecliptix.Domain.Utilities;
 
@@ -8,7 +10,7 @@ public static class Helpers
 {
     private static readonly RandomNumberGenerator Rng = RandomNumberGenerator.Create();
     private const string InvalidPayloadDataLengthMessage = "Invalid payload data length.";
-    
+
     public static uint GenerateRandomUInt32(bool excludeZero = false)
     {
         byte[] buffer = new byte[sizeof(uint)];
@@ -18,6 +20,7 @@ public static class Helpers
             Rng.GetBytes(buffer);
             value = BitConverter.ToUInt32(buffer, 0);
         } while (excludeZero && value == 0);
+
         return value;
     }
 
@@ -26,7 +29,10 @@ public static class Helpers
         MessageParser<T> parser = new(() => new T());
         return parser.ParseFrom(data);
     }
-    
+
+   
+
+
     public static ByteString GuidToByteString(Guid guid)
     {
         byte[] bytes = guid.ToByteArray();

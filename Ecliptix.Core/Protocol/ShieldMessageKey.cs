@@ -1,3 +1,4 @@
+using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Core.Protocol;
@@ -16,46 +17,51 @@ public sealed class ShieldMessageKey : IDisposable, IEquatable<ShieldMessageKey>
         _disposed = false;
     }
 
-    public static Result<ShieldMessageKey, ShieldFailure> New(uint index, ReadOnlySpan<byte> keyMaterial)
+    public static Result<ShieldMessageKey, EcliptixProtocolFailure> New(uint index, ReadOnlySpan<byte> keyMaterial)
     {
         if (keyMaterial.Length != Constants.X25519KeySize)
         {
-            return Result<ShieldMessageKey, ShieldFailure>.Err(
-                ShieldFailure.InvalidInput(
+            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput(
                     $"Key material must be exactly {Constants.X25519KeySize} bytes long, but was {keyMaterial.Length}."));
         }
 
-        Result<SodiumSecureMemoryHandle, ShieldFailure> allocateResult =
-            SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize);
+        Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> allocateResult =
+            SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize).MapSodiumFailure();
         if (allocateResult.IsErr)
         {
-            return Result<ShieldMessageKey, ShieldFailure>.Err(allocateResult.UnwrapErr());
+            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(allocateResult.UnwrapErr());
         }
 
         SodiumSecureMemoryHandle keyHandle = allocateResult.Unwrap();
 
-        Result<Unit, ShieldFailure> writeResult = keyHandle.Write(keyMaterial);
+        Result<Unit, EcliptixProtocolFailure> writeResult = keyHandle.Write(keyMaterial).MapSodiumFailure();
         if (writeResult.IsErr)
         {
             keyHandle.Dispose();
-            return Result<ShieldMessageKey, ShieldFailure>.Err(writeResult.UnwrapErr());
+            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr());
         }
 
         ShieldMessageKey messageKey = new(index, keyHandle);
-        return Result<ShieldMessageKey, ShieldFailure>.Ok(messageKey);
+        return Result<ShieldMessageKey, EcliptixProtocolFailure>.Ok(messageKey);
     }
 
-    public Result<Unit, ShieldFailure> ReadKeyMaterial(Span<byte> destination)
+    public Result<Unit, EcliptixProtocolFailure> ReadKeyMaterial(Span<byte> destination)
     {
         if (_disposed)
-            return Result<Unit, ShieldFailure>.Err(ShieldFailure.ObjectDisposed(nameof(ShieldMessageKey)));
+        {
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.ObjectDisposed(nameof(ShieldMessageKey)));
+        }
 
         if (destination.Length < Constants.X25519KeySize)
-            return Result<Unit, ShieldFailure>.Err(
-                ShieldFailure.BufferTooSmall(
+        {
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.BufferTooSmall(
                     $"Destination buffer must be at least {Constants.X25519KeySize} bytes, but was {destination.Length}."));
+        }
 
-        return _keyHandle.Read(destination[..Constants.X25519KeySize]);
+        return _keyHandle.Read(destination[..Constants.X25519KeySize]).MapSodiumFailure();
     }
 
     public void Dispose()
