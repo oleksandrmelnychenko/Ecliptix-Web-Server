@@ -1,11 +1,13 @@
 using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Domain.Memberships;
+using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.Membership;
 using Google.Protobuf;
 using Grpc.Core;
+using Status = Grpc.Core.Status;
 
 namespace Ecliptix.Core.Services.Memberships;
 
@@ -26,8 +28,8 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
 
         ValidatePhoneNumberActorEvent actorActorEvent = new(signInRequest.PhoneNumber);
 
-        Result<PhoneNumberValidationResult, EcliptixProtocolFailure> validationResult = await PhoneNumberValidatorActor
-            .Ask<Result<PhoneNumberValidationResult, EcliptixProtocolFailure>>(actorActorEvent);
+        Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult = await PhoneNumberValidatorActor
+            .Ask<Result<PhoneNumberValidationResult, VerificationFlowFailure>>(actorActorEvent);
 
         if (validationResult.IsOk)
         {
@@ -36,8 +38,8 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
             SignInMembershipActorEvent @event = new(phoneNumberValidationResult.ParsedPhoneNumberE164!,
                 Helpers.ReadMemoryToRetrieveBytes(signInRequest.SecureKey.Memory));
 
-            Result<SignInMembershipResponse, EcliptixProtocolFailure> signInResult =
-                await MembershipActor.Ask<Result<SignInMembershipResponse, EcliptixProtocolFailure>>(@event);
+            Result<SignInMembershipResponse, VerificationFlowFailure> signInResult =
+                await MembershipActor.Ask<Result<SignInMembershipResponse, VerificationFlowFailure>>(@event);
 
             if (signInResult.IsOk)
             {
@@ -45,7 +47,7 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
             }
         }
 
-        HandleError(validationResult.UnwrapErr(), context);
+        HandleVerificationError(validationResult.UnwrapErr(), context);
         return new CipherPayload();
     }
 
@@ -66,15 +68,34 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
             Helpers.FromByteStringToGuid(updateMembershipWithSecureKeyRequest.MembershipIdentifier),
             Helpers.ReadMemoryToRetrieveBytes(updateMembershipWithSecureKeyRequest.SecureKey.Memory));
 
-        Result<UpdateMembershipWithSecureKeyResponse, EcliptixProtocolFailure> updateOperationResult =
-            await MembershipActor.Ask<Result<UpdateMembershipWithSecureKeyResponse, EcliptixProtocolFailure>>(@event);
+        Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure> updateOperationResult =
+            await MembershipActor.Ask<Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>>(@event);
 
         if (updateOperationResult.IsOk)
         {
             return await EncryptAndReturnResponse(updateOperationResult.Unwrap().ToByteArray(), context);
         }
 
-        HandleError(updateOperationResult.UnwrapErr(), context);
+        HandleVerificationError(updateOperationResult.UnwrapErr(), context);
         return new CipherPayload();
+    }
+    
+    private void HandleVerificationError(VerificationFlowFailure failure, ServerCallContext context)
+    {
+        if (failure.IsSecurityRelated)
+        {
+            Logger.LogWarning("Security-related verification error: {Error}", failure.ToStructuredLog());
+        }
+        else if (!failure.IsUserFacing)
+        {
+            Logger.LogError("System verification error: {Error}", failure.ToStructuredLog());
+        }
+        else
+        {
+            Logger.LogInformation("User verification error: {Error}", failure.ToStructuredLog());
+        }
+
+        Status status = failure.ToGrpcStatus();
+        throw new RpcException(status);
     }
 }

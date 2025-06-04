@@ -30,9 +30,6 @@ public static class Helpers
         return parser.ParseFrom(data);
     }
 
-   
-
-
     public static ByteString GuidToByteString(Guid guid)
     {
         byte[] bytes = guid.ToByteArray();
