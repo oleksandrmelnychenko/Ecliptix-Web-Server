@@ -13,9 +13,20 @@ public static class FailureExtensions
     /// </summary>
     public static Status ToGrpcStatus(this VerificationFlowFailure failure)
     {
+        if (failure.IsUserFacing)
+        {
+        }
+
+        if (failure.IsRecoverable)
+        {
+        }
+
+        if (failure.IsSecurityRelated)
+        {
+        }
+
         return failure.FailureType switch
         {
-            // UI Errors - User-friendly errors with localization keys
             VerificationFlowFailureType.NotFound => new Status(StatusCode.NotFound,
                 VerificationFlowMessageKeys.SessionNotFound),
             VerificationFlowFailureType.Expired => new Status(StatusCode.DeadlineExceeded,
@@ -33,11 +44,9 @@ public static class FailureExtensions
             VerificationFlowFailureType.Validation => new Status(StatusCode.InvalidArgument,
                 VerificationFlowMessageKeys.Validation),
 
-            // Semi-User Errors - SMS failed (user should know but it's not their fault)
             VerificationFlowFailureType.SmsSendFailed => new Status(StatusCode.Unavailable,
                 VerificationFlowMessageKeys.SmsSendFailed),
 
-            // System Errors - Generic messages for security (no localization keys exposed)
             VerificationFlowFailureType.Conflict => new Status(StatusCode.Internal,
                 ErrorMessages.ConflictOccurred),
             VerificationFlowFailureType.OtpGenerationFailed => new Status(StatusCode.Internal,

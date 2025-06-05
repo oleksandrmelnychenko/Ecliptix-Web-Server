@@ -17,38 +17,45 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
     public override async Task<CipherPayload> SignInMembership(CipherPayload request, ServerCallContext context)
     {
         Result<byte[], EcliptixProtocolFailure> decryptResult = await DecryptRequest(request, context);
-        if (decryptResult.IsErr)
-        {
-            HandleError(decryptResult.UnwrapErr(), context);
-            return new CipherPayload();
-        }
-
-        SignInMembershipRequest signInRequest =
-            Helpers.ParseFromBytes<SignInMembershipRequest>(decryptResult.Unwrap());
-
-        ValidatePhoneNumberActorEvent actorActorEvent = new(signInRequest.PhoneNumber);
-
-        Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult = await PhoneNumberValidatorActor
-            .Ask<Result<PhoneNumberValidationResult, VerificationFlowFailure>>(actorActorEvent);
-
-        if (validationResult.IsOk)
-        {
-            PhoneNumberValidationResult phoneNumberValidationResult = validationResult.Unwrap();
-
-            SignInMembershipActorEvent @event = new(phoneNumberValidationResult.ParsedPhoneNumberE164!,
-                Helpers.ReadMemoryToRetrieveBytes(signInRequest.SecureKey.Memory));
-
-            Result<SignInMembershipResponse, VerificationFlowFailure> signInResult =
-                await MembershipActor.Ask<Result<SignInMembershipResponse, VerificationFlowFailure>>(@event);
-
-            if (signInResult.IsOk)
+        return await decryptResult.Match<Task<CipherPayload>>(
+            ok: async decryptedBytes =>
             {
-                return await EncryptAndReturnResponse(signInResult.Unwrap().ToByteArray(), context);
+                SignInMembershipRequest signInRequest = Helpers.ParseFromBytes<SignInMembershipRequest>(decryptedBytes);
+                Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
+                    await PhoneNumberValidatorActor.Ask<Result<PhoneNumberValidationResult, VerificationFlowFailure>>(
+                        new ValidatePhoneNumberActorEvent(signInRequest.PhoneNumber));
+                return await validationResult.Match<Task<CipherPayload>>(
+                    ok: async phoneNumberValidationResult =>
+                    {
+                        SignInMembershipActorEvent signInEvent = new(
+                            phoneNumberValidationResult.ParsedPhoneNumberE164!,
+                            Helpers.ReadMemoryToRetrieveBytes(signInRequest.SecureKey.Memory));
+                        Result<SignInMembershipResponse, VerificationFlowFailure> signInResult =
+                            await MembershipActor.Ask<Result<SignInMembershipResponse, VerificationFlowFailure>>(
+                                signInEvent);
+                        return signInResult.Match(
+                            ok: signInResponse =>
+                                EncryptAndReturnResponse(signInResponse.ToByteArray(), context).Result,
+                            err: error =>
+                            {
+                                HandleVerificationError(error, context);
+                                return new CipherPayload();
+                            }
+                        );
+                    },
+                    err: error =>
+                    {
+                        HandleVerificationError(error, context);
+                        return Task.FromResult(new CipherPayload());
+                    }
+                );
+            },
+            err: error =>
+            {
+                HandleError(error, context);
+                return Task.FromResult(new CipherPayload());
             }
-        }
-
-        HandleVerificationError(validationResult.UnwrapErr(), context);
-        return new CipherPayload();
+        );
     }
 
     public override async Task<CipherPayload> UpdateMembershipWithSecureKey(CipherPayload request,
@@ -79,7 +86,7 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
         HandleVerificationError(updateOperationResult.UnwrapErr(), context);
         return new CipherPayload();
     }
-    
+
     private void HandleVerificationError(VerificationFlowFailure failure, ServerCallContext context)
     {
         if (failure.IsSecurityRelated)

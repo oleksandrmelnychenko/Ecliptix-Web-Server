@@ -55,7 +55,7 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
             Option<string> activityStatusStrOpt =
                 reader.IsDBNull(1) ? Option<string>.None : Option<string>.Some(reader.GetString(1));
             string outcome = reader.GetString(2);
-
+            
             if (int.TryParse(outcome, out int _))
             {
                 return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
