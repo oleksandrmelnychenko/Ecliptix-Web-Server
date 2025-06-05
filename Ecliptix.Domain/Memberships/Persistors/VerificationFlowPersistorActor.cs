@@ -61,7 +61,7 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                 }
 
                 return Result<Unit, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(LocalizationKeys.NoResultReturned));
+                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.NoResultReturned));
             }, OperationNames.UpdateOtpStatus);
 
 
@@ -80,7 +80,7 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                 if (!await reader.ReadAsync())
                 {
                     return Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.NotFound(LocalizationKeys.PhoneNotFound));
+                        VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.PhoneNotFound));
                 }
 
                 string phoneNumber = reader.GetString(0);
@@ -94,7 +94,6 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                         UniqueIdentifier = cmd.PhoneNumberIdentifier
                     });
             }, OperationNames.GetPhoneNumber);
-
 
     private async Task HandleCreateVerificationFlow(CreateVerificationFlowActorEvent cmd) =>
         await ExecuteWithConnection(
@@ -115,7 +114,7 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                 if (!await reader.ReadAsync())
                 {
                     return Result<Guid, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.PersistorAccess(LocalizationKeys.NoResultReturned));
+                        VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.NoResultReturned));
                 }
 
                 Option<Guid> identifier = reader.IsDBNull(0)
@@ -125,25 +124,26 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
 
                 return outcome switch
                 {
-                    DatabaseOutcomes.PhoneNotFound => Result<Guid, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.NotFound(LocalizationKeys.PhoneNotFound)),
+                    VerificationFlowMessageKeys.PhoneNotFound => Result<Guid, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.PhoneNotFound)),
 
-                    DatabaseOutcomes.ConflictUnresolved => Result<Guid, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.Conflict(LocalizationKeys.SessionConflictUnresolved)),
+                    VerificationFlowMessageKeys.ConflictUnresolved => Result<Guid, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.Conflict(VerificationFlowMessageKeys.VerificationFlowConflict)),
 
-                    DatabaseOutcomes.Created => identifier.HasValue
+                    VerificationFlowMessageKeys.Created => identifier.HasValue
                         ? Result<Guid, VerificationFlowFailure>.Ok(identifier.Value)
                         : Result<Guid, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.PersistorAccess(LocalizationKeys.UnexpectedOutcome)),
+                            VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.UnexpectedOutcome)),
 
-                    DatabaseOutcomes.ExistingSessionReusedAndUpdated or
-                        DatabaseOutcomes.ConflictResolvedToExisting => identifier.HasValue
+                    VerificationFlowMessageKeys.ExistingSessionReusedAndUpdated or
+                        VerificationFlowMessageKeys.ConflictResolvedToExisting => identifier.HasValue
                             ? Result<Guid, VerificationFlowFailure>.Ok(identifier.Value)
                             : Result<Guid, VerificationFlowFailure>.Err(
-                                VerificationFlowFailure.PersistorAccess(LocalizationKeys.UnexpectedOutcome)),
+                                VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.UnexpectedOutcome)),
 
                     _ => Result<Guid, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.PersistorAccess($"{LocalizationKeys.UnexpectedOutcome}: {outcome}"))
+                        VerificationFlowFailure.PersistorAccess(
+                            $"{VerificationFlowMessageKeys.UnexpectedOutcome}: {outcome}"))
                 };
             }, OperationNames.CreateVerificationSession);
 
@@ -197,7 +197,7 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                 if (!await reader.ReadAsync())
                 {
                     return Result<CreateOtpRecordResult, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.PersistorAccess(LocalizationKeys.NoResultReturned));
+                        VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
                 }
 
                 Option<Guid> otpUniqueId = reader.IsDBNull(0)
@@ -207,22 +207,25 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
 
                 return outcome switch
                 {
-                    DatabaseOutcomes.Created => otpUniqueId.HasValue
+                    VerificationFlowMessageKeys.Created => otpUniqueId.HasValue
                         ? Result<CreateOtpRecordResult, VerificationFlowFailure>.Ok(
                             new CreateOtpRecordResult(otpUniqueId.Value))
                         : Result<CreateOtpRecordResult, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.PersistorAccess(LocalizationKeys.UnexpectedOutcome)),
+                            VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.UnexpectedOutcome)),
 
-                    DatabaseOutcomes.SessionNotFoundOrInvalid => Result<CreateOtpRecordResult, VerificationFlowFailure>
+                    VerificationFlowMessageKeys.VerificationFlowNotFound => Result<CreateOtpRecordResult,
+                            VerificationFlowFailure>
                         .Err(
-                            VerificationFlowFailure.NotFound(LocalizationKeys.SessionNotFoundOrInvalid)),
+                            VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.VerificationFlowNotFound)),
 
-                    DatabaseOutcomes.MaxOtpAttemptsReached =>
+                    VerificationFlowMessageKeys.OtpMaxAttemptsReached =>
                         Result<CreateOtpRecordResult, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.OtpMaxAttemptsReached(LocalizationKeys.MaxOtpAttemptsReached)),
+                            VerificationFlowFailure.OtpMaxAttemptsReached(VerificationFlowMessageKeys
+                                .OtpMaxAttemptsReached)),
 
                     _ => Result<CreateOtpRecordResult, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.OtpGenerationFailed($"{LocalizationKeys.UnexpectedOutcome}: {outcome}"))
+                        VerificationFlowFailure.OtpGenerationFailed(
+                            $"{VerificationFlowMessageKeys.UnexpectedOutcome}: {outcome}"))
                 };
             }, OperationNames.CreateOtpRecord);
 
@@ -243,40 +246,54 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                 if (!await reader.ReadAsync())
                 {
                     return Result<Guid, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.PersistorAccess(LocalizationKeys.NoResultReturned));
+                        VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.NoResultReturned));
                 }
 
-                Option<Guid> uniqueId = reader.IsDBNull(0)
+                Option<Guid> uniqueIdOpt = reader.IsDBNull(0)
                     ? Option<Guid>.None
                     : Option<Guid>.Some(reader.GetGuid(0));
 
                 string outcome = reader.GetString(1);
                 bool success = reader.GetBoolean(2);
-                string message = reader.GetString(3);
 
                 if (!success)
                 {
                     return outcome switch
                     {
-                        DatabaseOutcomes.InvalidAppDeviceId => Result<Guid, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.Validation(LocalizationKeys.InvalidAppDeviceId)),
+                        VerificationFlowMessageKeys.AppDeviceInvalidId => Result<Guid, VerificationFlowFailure>.Err(
+                            VerificationFlowFailure.Validation(VerificationFlowMessageKeys
+                                .AppDeviceInvalidId)),
 
-                        DatabaseOutcomes.CreatedButInvalidAppDeviceId => Result<Guid, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.Validation(LocalizationKeys.CreatedButInvalidAppDeviceId)),
+                        VerificationFlowMessageKeys.AppDeviceCreatedButInvalidId =>
+                            Result<Guid, VerificationFlowFailure>.Err(
+                                VerificationFlowFailure.Validation(VerificationFlowMessageKeys
+                                    .AppDeviceCreatedButInvalidId)),
+
+                        _ when IsKnownEnsurePhoneNumberErrorKey(outcome) =>
+                            Result<Guid, VerificationFlowFailure>.Err(
+                                VerificationFlowFailure
+                                    .PhoneNumberInvalid(
+                                        outcome)),
 
                         _ => Result<Guid, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.PhoneNumberInvalid(message))
+                            VerificationFlowFailure.PhoneNumberInvalid(VerificationFlowMessageKeys
+                                .PhoneNumberInvalid))
                     };
                 }
 
-                if (!uniqueId.HasValue)
+                if (!uniqueIdOpt.HasValue)
                 {
                     return Result<Guid, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.PersistorAccess(LocalizationKeys.UnexpectedOutcome));
+                        VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.UnexpectedOutcome));
                 }
 
-                return Result<Guid, VerificationFlowFailure>.Ok(uniqueId.Value);
+                return Result<Guid, VerificationFlowFailure>.Ok(uniqueIdOpt.Value);
             }, OperationNames.EnsurePhoneNumber);
+
+    private static bool IsKnownEnsurePhoneNumberErrorKey(string outcomeKey) =>
+        outcomeKey is VerificationFlowMessageKeys.AppDeviceInvalidId or
+            VerificationFlowMessageKeys.AppDeviceCreatedButInvalidId or
+            VerificationFlowMessageKeys.PhoneNumberInvalid;
 
     private static async Task<Result<Option<VerificationFlowQueryRecord>, VerificationFlowFailure>>
         ReadSessionQueryRecord(NpgsqlConnection conn, NpgsqlParameter[] parameters)

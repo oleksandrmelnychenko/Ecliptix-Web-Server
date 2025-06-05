@@ -1,6 +1,6 @@
 namespace Ecliptix.Domain.Memberships.Persistors.Utilities;
 
-internal static class DatabaseOutcomes
+/*internal static class DatabaseOutcomes
 {
     public const string PhoneNotFound = "phone_not_found";
     public const string ExistingSessionReusedAndUpdated = "existing_session_reused_and_updated";
@@ -26,4 +26,4 @@ internal static class DatabaseOutcomes
     public const string VerificationSessionNotVerified = "verification_session_not_verified";
     public const string OtpNotVerified = "otp_not_verified";
     public const string MembershipAlreadyExists = "membership_already_exists";
-}
+}*/

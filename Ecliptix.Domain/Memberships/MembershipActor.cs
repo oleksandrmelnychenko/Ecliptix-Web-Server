@@ -1,7 +1,6 @@
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Microsoft.Extensions.Localization;
@@ -13,22 +12,22 @@ public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] S
 public class MembershipActor : ReceiveActor
 {
     private readonly IActorRef _persistor;
-    private readonly IStringLocalizer<MembershipActor> _localizer;
+    private readonly ILocalizationProvider _localizationProvider;
 
     private const string InvalidCredentials = "invalid_credentials";
 
     private const string MinutesUntilLoginRetry = "minutes_until_login_retry";
 
-    public MembershipActor(IActorRef persistor, IStringLocalizer<MembershipActor> localizer)
+    public MembershipActor(IActorRef persistor, ILocalizationProvider localizationProvider)
     {
         _persistor = persistor;
-        _localizer = localizer;
+        _localizationProvider = localizationProvider;
 
         Become(Ready);
     }
 
-    public static Props Build(IActorRef persistor, IStringLocalizer<MembershipActor> localizer) =>
-        Props.Create(() => new MembershipActor(persistor, localizer));
+    public static Props Build(IActorRef persistor, ILocalizationProvider localizationProvider) =>
+        Props.Create(() => new MembershipActor(persistor, localizationProvider));
 
     private void Ready()
     {
@@ -65,7 +64,7 @@ public class MembershipActor : ReceiveActor
                     new UpdateMembershipWithSecureKeyResponse
                     {
                         Result = UpdateMembershipWithSecureKeyResponse.Types.UpdateResult.InvalidCredentials,
-                        Message = _localizer[InvalidCredentials].Value
+                        Message = _localizationProvider.GetString(InvalidCredentials)
                     })
             ),
             Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>.Err);
@@ -102,7 +101,7 @@ public class MembershipActor : ReceiveActor
                     new SignInMembershipResponse
                     {
                         Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
-                        Message = _localizer[InvalidCredentials].Value
+                        Message = _localizationProvider.GetString(InvalidCredentials)
                     }
                 )
             ),
@@ -110,12 +109,14 @@ public class MembershipActor : ReceiveActor
             {
                 if (err.FailureType == VerificationFlowFailureType.Validation)
                 {
+                    var t = _localizationProvider.GetString(err.Message);
+                    
                     return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
                         new SignInMembershipResponse
                         {
                             Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
-                            Message = _localizer[MinutesUntilLoginRetry].Value,
-                            MinutesUntilRetry = err.Message
+                            Message = _localizationProvider.GetString(err.Message),
+                            MinutesUntilRetry = ""
                         }
                     );
                 }

@@ -23,17 +23,17 @@ public readonly struct VerificationFlowFailure : IEquatable<VerificationFlowFail
 
     public static VerificationFlowFailure NotFound(string? details = null) =>
         new(VerificationFlowFailureType.NotFound,
-            details ?? VerificationFlowMessageKeys.SessionNotFound,
+            details ?? VerificationFlowMessageKeys.VerificationFlowNotFound,
             ErrorCodes.SessionNotFound);
 
     public static VerificationFlowFailure Expired(string? details = null) =>
         new(VerificationFlowFailureType.Expired,
-            details ?? VerificationFlowMessageKeys.SessionExpired,
+            details ?? VerificationFlowMessageKeys.VerificationFlowExpiredExpired,
             ErrorCodes.SessionExpired);
 
     public static VerificationFlowFailure Conflict(string? details = null) =>
         new(VerificationFlowFailureType.Conflict,
-            details ?? VerificationFlowMessageKeys.SessionConflict,
+            details ?? VerificationFlowMessageKeys.VerificationFlowConflict,
             ErrorCodes.SessionConflict);
 
     public static VerificationFlowFailure InvalidOtp(string? details = null) =>
@@ -64,10 +64,11 @@ public readonly struct VerificationFlowFailure : IEquatable<VerificationFlowFail
             ErrorCodes.SmsSendFailed,
             innerException);
 
-    public static VerificationFlowFailure PhoneNumberInvalid(string? details = null) =>
+    public static VerificationFlowFailure
+        PhoneNumberInvalid(string? details = null, Exception? innerException = null) =>
         new(VerificationFlowFailureType.PhoneNumberInvalid,
             details ?? VerificationFlowMessageKeys.PhoneNumberInvalid,
-            ErrorCodes.PhoneNumberInvalid);
+            ErrorCodes.PhoneNumberInvalid, innerException);
 
     public static VerificationFlowFailure PersistorAccess(string? details = null, Exception? innerException = null) =>
         new(VerificationFlowFailureType.PersistorAccess,

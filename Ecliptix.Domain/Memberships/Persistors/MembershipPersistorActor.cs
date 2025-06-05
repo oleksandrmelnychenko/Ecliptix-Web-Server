@@ -47,7 +47,7 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
             if (!await reader.ReadAsync())
             {
                 return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(LocalizationKeys.LoginNoResultsError));
+                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
             }
 
             Option<Guid> membershipIdOpt =
@@ -55,17 +55,17 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
             Option<string> activityStatusStrOpt =
                 reader.IsDBNull(1) ? Option<string>.None : Option<string>.Some(reader.GetString(1));
             string outcome = reader.GetString(2);
-            
+
             if (int.TryParse(outcome, out int _))
             {
                 return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.RateLimitExceeded(LocalizationKeys
-                        .TooManyLoginAttempts));
+                    VerificationFlowFailure.RateLimitExceeded(VerificationFlowMessageKeys.TooManySigninAttempts));
             }
 
             return (membershipIdOpt, activityStatusStrOpt, outcome) switch
             {
-                ({ HasValue: true, Value: var id }, { HasValue: true, Value: var activityStr }, DatabaseOutcomes.Success
+                ({ HasValue: true, Value: var id }, { HasValue: true, Value: var activityStr },
+                    VerificationFlowMessageKeys.Success
                     ) =>
                     MapActivityStatus(activityStr) switch
                     {
@@ -78,14 +78,14 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
                                 })),
 
                         _ => Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.PersistorAccess(LocalizationKeys.InvalidActivityStatus))
+                            VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
                     },
 
-                ({ HasValue: false }, _, DatabaseOutcomes.MembershipNotFound) =>
+                ({ HasValue: false }, _, VerificationFlowMessageKeys.MembershipNotFound) =>
                     Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Ok(
                         Option<MembershipQueryRecord>.None),
 
-                ({ HasValue: false }, _, DatabaseOutcomes.PhoneNumberNotFound) =>
+                ({ HasValue: false }, _, VerificationFlowMessageKeys.PhoneNotFound) =>
                     Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Ok(
                         Option<MembershipQueryRecord>.None),
 
@@ -114,7 +114,7 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
             if (!await reader.ReadAsync())
             {
                 return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(LocalizationKeys.UpdateNoResultsError));
+                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
             }
 
             bool success = reader.GetBoolean(0);
@@ -136,14 +136,14 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
             if (!membershipIdOpt.HasValue || !activityStatusStrOpt.HasValue || !creationStatusStrOpt.HasValue)
             {
                 return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(LocalizationKeys.MissingRequiredData));
+                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
             }
 
             Option<Membership.Types.ActivityStatus> activityStatusOpt = MapActivityStatus(activityStatusStrOpt.Value);
             if (!activityStatusOpt.HasValue)
             {
                 return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(LocalizationKeys.InvalidActivityStatus));
+                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid));
             }
 
             MembershipQueryRecord updateResponse = new()
@@ -176,7 +176,7 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
             if (!await reader.ReadAsync())
             {
                 return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(LocalizationKeys.CreateNoResultsError));
+                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
             }
 
             Option<Guid> membershipIdOpt =
@@ -190,7 +190,7 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
             if (int.TryParse(outcome, out int _))
             {
                 return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.RateLimitExceeded(LocalizationKeys.TooManyMembershipAttempts));
+                    VerificationFlowFailure.RateLimitExceeded(VerificationFlowMessageKeys.TooManyMembershipAttempts));
             }
 
             return (membershipIdOpt, activityStatusStrOpt, creationStatusStrOpt, outcome) switch
@@ -198,7 +198,7 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
                 ({ HasValue: true, Value: var id },
                     { HasValue: true, Value: var activityStr },
                     { HasValue: true, Value: var creationStr }, var oc
-                    and (DatabaseOutcomes.Created or DatabaseOutcomes.MembershipAlreadyExists)) =>
+                    and (VerificationFlowMessageKeys.Created or VerificationFlowMessageKeys.MembershipAlreadyExists)) =>
                     MapActivityStatus(activityStr) switch
                     {
                         { HasValue: true, Value: var status } =>
@@ -211,7 +211,7 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
                                 })),
 
                         _ => Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.PersistorAccess(LocalizationKeys.InvalidActivityStatus))
+                            VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
                     },
 
                 var (_, _, _, error) when IsKnownCreationError(error) =>
@@ -225,19 +225,14 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
 
 
     private static bool IsKnownLoginError(string outcome) =>
-        outcome is DatabaseOutcomes.InvalidSecureKey
-            or DatabaseOutcomes.InactiveMembership
-            or DatabaseOutcomes.PhoneNumberCannotBeEmpty
-            or DatabaseOutcomes.SecureKeyCannotBeEmpty
-            or DatabaseOutcomes.SecureKeyTooLong
-        && !int.TryParse(outcome, out _);
+        outcome is VerificationFlowMessageKeys.InvalidSecureKey or
+            VerificationFlowMessageKeys.InactiveMembership or
+            VerificationFlowMessageKeys.PhoneNumberCannotBeEmpty or
+            VerificationFlowMessageKeys.SecureKeyCannotBeEmpty or
+            VerificationFlowMessageKeys.SecureKeyNotSet;
 
-    private static bool IsKnownCreationError(string outcome) => outcome is
-        DatabaseOutcomes.SecureKeyCannotBeEmpty
-        or DatabaseOutcomes.SecureKeyTooLong
-        or DatabaseOutcomes.VerificationSessionNotFound
-        or DatabaseOutcomes.VerificationSessionNotVerified
-        or DatabaseOutcomes.OtpNotVerified;
+    private static bool IsKnownCreationError(string outcome) =>
+        outcome is VerificationFlowMessageKeys.CreateMembershipVerificationFlowNotFound;
 
     private static Option<Membership.Types.ActivityStatus> MapActivityStatus(string? statusStr)
     {

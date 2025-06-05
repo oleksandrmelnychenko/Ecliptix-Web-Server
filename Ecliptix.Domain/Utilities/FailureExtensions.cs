@@ -28,9 +28,9 @@ public static class FailureExtensions
         return failure.FailureType switch
         {
             VerificationFlowFailureType.NotFound => new Status(StatusCode.NotFound,
-                VerificationFlowMessageKeys.SessionNotFound),
+                VerificationFlowMessageKeys.VerificationFlowNotFound),
             VerificationFlowFailureType.Expired => new Status(StatusCode.DeadlineExceeded,
-                VerificationFlowMessageKeys.SessionExpired),
+                VerificationFlowMessageKeys.VerificationFlowExpiredExpired),
             VerificationFlowFailureType.InvalidOtp => new Status(StatusCode.InvalidArgument,
                 VerificationFlowMessageKeys.InvalidOtp),
             VerificationFlowFailureType.OtpExpired => new Status(StatusCode.DeadlineExceeded,

@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+    <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+        <xsd:import namespace="http://www.w3.org/XML/1998/namespace"/>
+        <xsd:element name="root" msdata:IsDataSet="true">
+            <xsd:complexType>
+                <xsd:choice maxOccurs="unbounded">
+                    <xsd:element name="data">
+                        <xsd:complexType>
+                            <xsd:sequence>
+                                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1"/>
+                                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2"/>
+                            </xsd:sequence>
+                            <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1"/>
+                            <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3"/>
+                            <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4"/>
+                            <xsd:attribute ref="xml:space"/>
+                        </xsd:complexType>
+                    </xsd:element>
+                    <xsd:element name="resheader">
+                        <xsd:complexType>
+                            <xsd:sequence>
+                                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1"/>
+                            </xsd:sequence>
+                            <xsd:attribute name="name" type="xsd:string" use="required"/>
+                        </xsd:complexType>
+                    </xsd:element>
+                </xsd:choice>
+            </xsd:complexType>
+        </xsd:element>
+    </xsd:schema>
+    <resheader name="resmimetype">
+        <value>text/microsoft-resx</value>
+    </resheader>
+    <resheader name="version">
+        <value>2.0</value>
+    </resheader>
+    <resheader name="reader">
+        <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral,
+            PublicKeyToken=b77a5c561934e089
+        </value>
+    </resheader>
+    <resheader name="writer">
+        <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral,
+            PublicKeyToken=b77a5c561934e089
+        </value>
+    </resheader>
+
+    <data name="verification_flow_conflict_resolved_to_existing" xml:space="preserve">
+    <value>Знайдено активну сесію; будь ласка, продовжуйте.</value>
+        <comment>VF005: Conflict resolved, existing session is active.</comment>
+  </data>
+    <data name="verification_flow_conflict_unresolved" xml:space="preserve">
+    <value>Конфлікт сесій; будь ласка, спробуйте ще раз.</value>
+        <comment>VF006: Could not resolve session conflict.</comment>
+  </data>
+    <data name="verification_flow_reused_and_updated" xml:space="preserve">
+    <value>Існуючу сесію оновлено; будь ласка, продовжуйте.</value>
+        <comment>VF004: An existing pending session was found and its expiration updated.</comment>
+  </data>
+    <data name="verification_flow_conflict" xml:space="preserve">
+    <value>Активна сесія існує, завершіть або скасуйте її.</value>
+        <comment>VF003: Attempt to start a new session while another is active. (Mapped from session.conflict)</comment>
+  </data>
+    <data name="verification_flow_expired" xml:space="preserve">
+    <value>Сесія закінчилася, почніть нову.</value>
+        <comment>VF002: The verification session timed out. (Mapped from session.expired)</comment>
+  </data>
+    <data name="verification_flow_not_found" xml:space="preserve">
+    <value>Сесію не знайдено, почніть знову.</value>
+        <comment>VF001: User's verification session couldn't be located or is invalid. (Mapped from session.not_found)</comment>
+  </data>
+    <data name="verification_flow_not_verified" xml:space="preserve">
+    <value>Сесію не підтверджено; будь ласка, завершіть перевірку.</value>
+        <comment>VF009: The verification session exists but is not yet verified.</comment>
+  </data>
+    <data name="verification_session_not_found" xml:space="preserve">
+    <value>Дані для перевірки не знайдено; будь ласка, повторіть спробу.</value>
+        <comment>Specific to create_membership: the required verification session was not found.</comment>
+  </data>
+
+    <!-- OTP -->
+    <data name="otp_invalid" xml:space="preserve">
+    <value>Недійсний OTP, спробуйте ще раз.</value>
+        <comment>VF101: Incorrect OTP provided by the user.</comment>
+  </data>
+    <data name="otp_expired" xml:space="preserve">
+    <value>OTP прострочено, запросіть новий.</value>
+        <comment>VF102: OTP validity period has passed.</comment>
+  </data>
+    <data name="otp_generation_failed" xml:space="preserve">
+    <value>Не вдалося створити OTP, спробуйте ще раз.</value>
+        <comment>VF104: System error during OTP generation.</comment>
+  </data>
+    <data name="otp_max_attempts_reached" xml:space="preserve">
+    <value>Забагато спроб OTP, зачекайте або зверніться до підтримки.</value>
+        <comment>VF103: Too many failed OTP attempts.</comment>
+  </data>
+    <data name="otp_not_verified" xml:space="preserve">
+    <value>OTP не підтверджено; будь ласка, введіть код.</value>
+        <comment>VF105: The OTP for the session has not been successfully verified yet.</comment>
+  </data>
+
+    <data name="phone_invalid" xml:space="preserve">
+    <value>Недійсний номер телефону, перевірте його.</value>
+        <comment>VF202: User-facing message for invalid phone number format.</comment>
+  </data>
+    <data name="sms_send_failed" xml:space="preserve">
+    <value>SMS не надіслано, перевірте номер або повторіть.</value>
+        <comment>VF201: User-facing message for SMS failure.</comment>
+  </data>
+
+    <data name="data_concurrency_conflict" xml:space="preserve">
+    <value>Дані оновлено, оновіть і повторіть.</value>
+        <comment>VF302: User-facing message for data concurrency/staleness.</comment>
+  </data>
+    <data name="data_access_failed" xml:space="preserve">
+    <value>Проблема з доступом до даних, спробуйте пізніше.</value>
+        <comment>VF301: Generic data access issue message for user.</comment>
+  </data>
+
+    <data name="security_rate_limit_exceeded" xml:space="preserve">
+    <value>Забагато запитів, зачекайте і повторіть.</value>
+        <comment>VF401: User-facing message for rate limiting.</comment>
+  </data>
+    <data name="security_suspicious_activity" xml:space="preserve">
+    <value>Виявлено підозрілу активність, доступ обмежено.</value>
+        <comment>VF402: User-facing message for detected suspicious activity.</comment>
+  </data>
+    <data name="membership_too_many_attempts" xml:space="preserve">
+    <value>Забагато спроб членства, зачекайте {0} хв або зверніться до підтримки.</value>
+        <comment>VF403: Too many attempts to create or modify membership. {0} is wait minutes.</comment>
+  </data>
+    <data name="signin_too_many_attempts" xml:space="preserve">
+    <value>Забагато спроб входу, зачекайте {0} хв або зверніться до підтримки.</value>
+        <comment>VF404: Too many sign-in attempts. {0} is wait minutes.</comment>
+  </data>
+
+    <data name="activity_status_invalid" xml:space="preserve">
+    <value>Недійсний статус активності.</value>
+        <comment>VF505: Provided activity status is invalid.</comment>
+  </data>
+    <data name="app_device_created_but_invalid_id" xml:space="preserve">
+    <value>Додаток створено, але ID недійсний.</value>
+        <comment>VF504: App device was created but has an invalid ID.</comment>
+  </data>
+    <data name="app_device_invalid_id" xml:space="preserve">
+    <value>Недійсний ID додатку.</value>
+        <comment>VF503: Provided app device ID is invalid.</comment>
+  </data>
+    <data name="associated" xml:space="preserve">
+    <value>Номер телефону успішно прив'язано.</value>
+        <comment>Outcome from ensure_phone_number: existing phone associated with device.</comment>
+  </data>
+    <data name="phone_cannot_be_empty" xml:space="preserve">
+    <value>Номер телефону не може бути порожнім.</value>
+        <comment>VF506: Validation: phone number field is required.</comment>
+  </data>
+    <data name="created_and_associated" xml:space="preserve">
+    <value>Номер телефону створено та прив'язано.</value>
+        <comment>Outcome from ensure_phone_number: new phone created and associated.</comment>
+  </data>
+    <data name="exists" xml:space="preserve">
+    <value>Номер телефону вже існує.</value>
+        <comment>Outcome from ensure_phone_number: phone number found.</comment>
+  </data>
+    <data name="phone_number_not_found" xml:space="preserve">
+    <value>Номер телефону для входу не знайдено.</value>
+        <comment>Outcome from login_membership: phone number not registered.</comment>
+  </data>
+    <data name="phone_not_found" xml:space="preserve">
+    <value>Номер телефону не знайдено.</value>
+        <comment>VF502: Phone number does not exist in the system (general use).</comment>
+  </data>
+    <data name="validation_failed" xml:space="preserve">
+    <value>Помилки у формі, перевірте виділені поля.</value>
+        <comment>VF501: Generic message when multiple validation errors occur on a form.</comment>
+  </data>
+
+    <data name="invalid_credentials" xml:space="preserve">
+    <value>Неправильне ім'я користувача або пароль.</value>
+        <comment>VF531: User-facing: Invalid credentials provided during authentication.</comment>
+  </data>
+    <data name="password_complexity_requirements" xml:space="preserve">
+    <value>Пароль має бути {0}+ символів із великими, малими, цифрами, спеціальними.</value>
+        <comment>VF530: {0} = minimum length. Summary of password rules.</comment>
+  </data>
+    <data name="password_empty" xml:space="preserve">
+    <value>Пароль потрібен.</value>
+        <comment>VF513: User-facing: Password field is required.</comment>
+  </data>
+    <data name="password_hash_error" xml:space="preserve">
+    <value>Помилка обробки пароля, повторіть.</value>
+        <comment>VF521: Internal error, generic message to user.</comment>
+  </data>
+    <data name="password_hash_input_empty" xml:space="preserve">
+    <value>Не вдалося обробити пароль, повторіть.</value>
+        <comment>VF520: Internal error, generic message to user.</comment>
+  </data>
+    <data name="password_invalid_chars" xml:space="preserve">
+    <value>Недійсні символи в паролі.</value>
+        <comment>VF519: User-facing: Disallowed characters in password.</comment>
+  </data>
+    <data name="password_config_hash_algorithm_unsupported" xml:space="preserve">
+    <value>Помилка налаштування пароля, зверніться до підтримки.</value>
+        <comment>VF512: Internal config error, user action is to contact support.</comment>
+  </data>
+    <data name="password_config_iterations_invalid" xml:space="preserve">
+    <value>Проблема з налаштуванням пароля, зверніться до підтримки.</value>
+        <comment>VF510: Internal config error, user action is to contact support.</comment>
+  </data>
+    <data name="password_config_salt_size_invalid" xml:space="preserve">
+    <value>Проблема з конфігурацією пароля, зверніться до підтримки.</value>
+        <comment>VF511: Internal config error, user action is to contact support.</comment>
+  </data>
+    <data name="password_missing_digit" xml:space="preserve">
+    <value>Додайте цифру.</value>
+        <comment>VF517: User-facing: Password complexity requirement.</comment>
+  </data>
+    <data name="password_missing_lowercase" xml:space="preserve">
+    <value>Додайте малу літеру.</value>
+        <comment>VF515: User-facing: Password complexity requirement.</comment>
+  </data>
+    <data name="password_missing_special_char" xml:space="preserve">
+    <value>Додайте спеціальний символ.</value>
+        <comment>VF518: User-facing: Password complexity requirement (e.g., !@#$).</comment>
+  </data>
+    <data name="password_missing_uppercase" xml:space="preserve">
+    <value>Додайте велику літеру.</value>
+        <comment>VF516: User-facing: Password complexity requirement.</comment>
+  </data>
+    <data name="password_too_short" xml:space="preserve">
+    <value>Пароль закороткий, мін. {0} символів.</value>
+        <comment>VF514: {0} = minimum length. User-facing: Password length requirement.</comment>
+  </data>
+    <data name="password_verify_base64_error" xml:space="preserve">
+    <value>Помилка перевірки, повторіть.</value>
+        <comment>VF525: Internal error, generic message to user.</comment>
+  </data>
+    <data name="password_verify_error" xml:space="preserve">
+    <value>Перевірка не вдалася, повторіть.</value>
+        <comment>VF529: Internal error, generic message to user.</comment>
+  </data>
+    <data name="password_verify_hash_size_mismatch" xml:space="preserve">
+    <value>Невідповідність перевірки, повторіть.</value>
+        <comment>VF527: Internal error, generic message to user.</comment>
+  </data>
+    <data name="password_verify_input_empty" xml:space="preserve">
+    <value>Перевірка не вдалася, повторіть.</value>
+        <comment>VF522: Internal error, generic message to user.</comment>
+  </data>
+    <data name="password_verify_invalid_format" xml:space="preserve">
+    <value>Помилка формату перевірки, повторіть.</value>
+        <comment>VF524: Internal error, generic message to user.</comment>
+  </data>
+    <data name="password_verify_mismatch" xml:space="preserve">
+    <value>Неправильний пароль.</value>
+        <comment>VF528: User-facing: Password entered does not match stored password.</comment>
+  </data>
+    <data name="password_verify_salt_size_mismatch" xml:space="preserve">
+    <value>Невідповідність перевірки, повторіть.</value>
+        <comment>VF526: Internal error, generic message to user.</comment>
+  </data>
+    <data name="password_verify_stored_hash_empty" xml:space="preserve">
+    <value>Проблема з перевіркою, повторіть.</value>
+        <comment>VF523: Internal error, generic message to user.</comment>
+  </data>
+
+    <data name="inactive_membership" xml:space="preserve">
+    <value>Членство неактивне.</value>
+        <comment>VF603: The membership account is not currently active.</comment>
+  </data>
+    <data name="invalid_secure_key" xml:space="preserve">
+    <value>Надано недійсний ключ безпеки.</value>
+        <comment>VF602: The provided secure key is incorrect.</comment>
+  </data>
+    <data name="membership_already_exists" xml:space="preserve">
+    <value>Членство вже існує.</value>
+        <comment>VF606: A membership for this phone number and device already exists.</comment>
+  </data>
+    <data name="membership_not_found" xml:space="preserve">
+    <value>Членство не знайдено.</value>
+        <comment>VF601: No membership associated with the provided details.</comment>
+  </data>
+    <data name="secure_key_cannot_be_empty" xml:space="preserve">
+    <value>Ключ безпеки не може бути порожнім.</value>
+        <comment>VF604: Secure key is required.</comment>
+  </data>
+    <data name="secure_key_not_set" xml:space="preserve">
+    <value>Ключ безпеки для цього членства не встановлено.</value>
+        <comment>The membership exists but a secure key has not been established yet.</comment>
+  </data>
+    <data name="secure_key_too_long" xml:space="preserve">
+    <value>Ключ безпеки задовгий.</value>
+        <comment>VF605: The provided secure key exceeds the maximum allowed length.</comment>
+  </data>
+    <data name="secure_key_updated" xml:space="preserve">
+    <value>Ключ безпеки успішно оновлено.</value>
+        <comment>Confirmation that the secure key was updated.</comment>
+  </data>
+
+    <data name="created" xml:space="preserve">
+    <value>Успішно створено.</value>
+        <comment>Generic success message for creation operations.</comment>
+  </data>
+    <data name="generic_error" xml:space="preserve">
+    <value>Несподівана помилка, спробуйте пізніше.</value>
+        <comment>VF999: User-facing catch-all for unspecified errors, encouraging retry.</comment>
+  </data>
+    <data name="generic_no_result_returned" xml:space="preserve">
+    <value>Результат не повернуто; спробуйте ще раз.</value>
+        <comment>VF1001: Generic error when no result is returned.</comment>
+  </data>
+    <data name="generic_success" xml:space="preserve">
+    <value>Операція успішна.</value>
+        <comment>VF998: Generic success message.</comment>
+  </data>
+    <data name="generic_unexpected_outcome" xml:space="preserve">
+    <value>Несподіваний результат; спробуйте ще раз.</value>
+        <comment>VF1000: Generic error for unexpected results.</comment>
+  </data>
+
+    <!-- Phone Parsing/Validation Specific -->
+    <data name="phone_parsing_invalid_country_code" xml:space="preserve">
+    <value>Недійсний код країни в номері телефону.</value>
+        <comment>Phone number parsing: Country code is not valid.</comment>
+  </data>
+    <data name="phone_parsing_too_short" xml:space="preserve">
+    <value>Номер телефону закороткий.</value>
+        <comment>Phone number parsing: Number is too short to be valid.</comment>
+  </data>
+    <data name="phone_parsing_too_long" xml:space="preserve">
+    <value>Номер телефону задовгий.</value>
+        <comment>Phone number parsing: Number is too long to be valid.</comment>
+  </data>
+    <data name="phone_parsing_invalid_number" xml:space="preserve">
+    <value>Неправильний формат номера телефону.</value>
+        <comment>Phone number parsing: General invalid number format.</comment>
+  </data>
+    <data name="phone_parsing_possible_but_local_only" xml:space="preserve">
+    <value>Номер може бути дійсним локально; додайте код країни або регіон.</value>
+        <comment>Phone number parsing: Number seems like a local number without country context.</comment>
+  </data>
+    <data name="phone_parsing_generic_error" xml:space="preserve">
+    <value>Помилка розбору номера телефону.</value>
+        <comment>Phone number parsing: A generic error occurred during parsing.</comment>
+  </data>
+    <data name="phone_validation_unexpected_error" xml:space="preserve">
+    <value>Несподівана помилка під час перевірки номера телефону.</value>
+        <comment>An unexpected internal error occurred during phone number validation steps.</comment>
+  </data>
+</root>

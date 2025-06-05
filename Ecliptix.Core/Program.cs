@@ -4,8 +4,10 @@ using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Core.Interceptors;
 using Ecliptix.Core.Protocol.Actors;
+using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
 using Ecliptix.Core.Services.Memberships;
+using Ecliptix.Domain;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.Persistors;
@@ -62,22 +64,18 @@ try
     RegisterValidators(builder.Services);
     RegisterGrpc(builder.Services);
 
-    /*builder.Services.AddOpenTelemetry()
-        .WithMetrics(metrics =>
-        {
-            metrics.AddAspNetCoreInstrumentation();
-            metrics.AddConsoleExporter();
-        });*/
-
+    builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
+    
     builder.Services.AddAkka(systemActorName, (akkaBuilder, serviceProvider) =>
     {
         akkaBuilder.WithActors((system, registry) =>
         {
             ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
             SNSProvider snsProvider = serviceProvider.GetRequiredService<SNSProvider>();
-            IStringLocalizer<MembershipActor> membershipLocalizer = serviceProvider
-                .GetRequiredService<IStringLocalizer<MembershipActor>>();
 
+            ILocalizationProvider verificationFlowLocalizer =
+                serviceProvider.GetRequiredService<ILocalizationProvider>();
+            
             using (LogContext.PushProperty("ActorSystemName", system.Name))
             {
                 logger.LogInformation("Actor system {ActorSystemName} is starting up.", system.Name);
@@ -85,7 +83,6 @@ try
 
             NpgsqlDataSource npgsqlDataSource = serviceProvider.GetRequiredService<NpgsqlDataSource>();
 
-            // Get all required loggers
             ILogger<EcliptixProtocolSystemActor> protocolActorLogger =
                 serviceProvider.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>();
             ILogger<VerificationFlowPersistorActor> verificationFlowLogger =
@@ -114,7 +111,7 @@ try
                 "MembershipPersistorActor");
 
             IActorRef membershipActor = system.ActorOf(
-                MembershipActor.Build(membershipPersistorActor, membershipLocalizer),
+                MembershipActor.Build(membershipPersistorActor, verificationFlowLocalizer),
                 "MembershipActor");
 
             IActorRef verificationSessionManagerActor = system.ActorOf(

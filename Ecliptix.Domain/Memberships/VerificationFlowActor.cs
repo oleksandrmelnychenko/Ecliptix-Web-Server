@@ -229,7 +229,7 @@ public class VerificationFlowActor : ReceiveActor
     {
         if (!IsSessionActive())
         {
-            Sender.Tell(CreateVerifyResponse(VerificationResult.Expired, LocalizationKeys.NoActiveSessionOrOtp));
+            Sender.Tell(CreateVerifyResponse(VerificationResult.Expired, VerificationFlowMessageKeys.InvalidOtp));
             return;
         }
 
@@ -272,7 +272,7 @@ public class VerificationFlowActor : ReceiveActor
     private async Task HandleFailedVerification()
     {
         await UpdateOtpStatus(VerificationFlowStatus.Failed);
-        Sender.Tell(CreateVerifyResponse(VerificationResult.InvalidOtp, LocalizationKeys.InvalidOtp));
+        Sender.Tell(CreateVerifyResponse(VerificationResult.InvalidOtp, VerificationFlowMessageKeys.InvalidOtp));
     }
 
     private async Task HandleResendRequest(InitiateVerificationFlowActorEvent command)
@@ -482,7 +482,6 @@ public class VerificationFlowActor : ReceiveActor
         Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
         {
             Result = VerificationResult.Succeeded,
-            Message = _localizer[LocalizationKeys.VerificationSucceeded],
             Membership = new Membership
             {
                 UniqueIdentifier = Helpers.GuidToByteString(membership.UniqueIdentifier),

@@ -1,7 +1,7 @@
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Utilities;
-using PhoneNumbers;
+using PhoneNumbers; 
 
 namespace Ecliptix.Domain.Memberships;
 
@@ -15,35 +15,48 @@ public enum MobileCheckStatus
 
 public record PhoneNumberValidationResult
 {
-    public bool IsValid { get; init; }
-    public string? ParsedPhoneNumberE164 { get; init; }
-    public string? DetectedRegion { get; init; }
-    public MobileCheckStatus MobileStatus { get; init; }
-    public string? ErrorMessage { get; init; }
-    public ValidationFailureReason? FailureReason { get; init; }
+    public bool IsValid { get; }
+    public string? ParsedPhoneNumberE164 { get; }
+    public string? DetectedRegion { get; }
+    public MobileCheckStatus MobileStatus { get; }
+
+    public string? MessageKey { get; }
+    public object[]? MessageArgs { get; }
+    public ValidationFailureReason? LibFailureReason { get; }
 
     public PhoneNumberValidationResult(
         string parsedPhoneNumberE164,
         string detectedRegion,
-        MobileCheckStatus mobileStatus,
-        bool isValidNumber)
+        MobileCheckStatus mobileStatus)
     {
-        IsValid = isValidNumber;
+        IsValid = true;
         ParsedPhoneNumberE164 = parsedPhoneNumberE164;
         DetectedRegion = detectedRegion;
         MobileStatus = mobileStatus;
     }
 
-    public PhoneNumberValidationResult(
-        string? errorMessage,
-        ValidationFailureReason? failureReason = null,
-        string? parsedNumberIfAvailable = null)
+    // Private constructor for FAILURE, use static factory methods
+    private PhoneNumberValidationResult(
+        string messageKey,
+        ValidationFailureReason? libFailureReason,
+        string? parsedNumberIfAvailable = null,
+        object[]? messageArgs = null)
     {
         IsValid = false;
-        ErrorMessage = errorMessage;
-        FailureReason = failureReason;
+        MessageKey = messageKey;
+        LibFailureReason = libFailureReason;
         ParsedPhoneNumberE164 = parsedNumberIfAvailable;
         MobileStatus = MobileCheckStatus.IsNotMobile;
+        MessageArgs = messageArgs;
+    }
+
+    public static PhoneNumberValidationResult CreateInvalid(
+        string messageKey,
+        ValidationFailureReason libFailureReason,
+        string? parsedNumberIfAvailable = null,
+        object[]? messageArgs = null)
+    {
+        return new PhoneNumberValidationResult(messageKey, libFailureReason, parsedNumberIfAvailable, messageArgs);
     }
 }
 
@@ -56,7 +69,7 @@ public enum ValidationFailureReason
     TooLong,
     InvalidForRegion,
     PossibleButNotCertain,
-    InternalError
+    InternalError 
 }
 
 public class PhoneNumberValidatorActor : ReceiveActor
@@ -65,86 +78,110 @@ public class PhoneNumberValidatorActor : ReceiveActor
 
     public PhoneNumberValidatorActor()
     {
-        Receive<ValidatePhoneNumberActorEvent>(HandleValidatePhoneNumber);
+        Receive<ValidatePhoneNumberActorEvent>(actorEvent =>
+        {
+            Result<PhoneNumberValidationResult, VerificationFlowFailure> result =
+                HandleValidatePhoneNumberFunctional(actorEvent);
+            Sender.Tell(result);
+        });
     }
 
-    private void HandleValidatePhoneNumber(ValidatePhoneNumberActorEvent actorEvent)
+    private Result<PhoneNumberValidationResult, VerificationFlowFailure> HandleValidatePhoneNumberFunctional(
+        ValidatePhoneNumberActorEvent actorEvent)
     {
-        string originalPhoneNumberStr = actorEvent.PhoneNumber;
-        PhoneNumber parsedPhoneNumber;
-        string e164FormatKey;
+        return ParsePhoneNumber(actorEvent.PhoneNumber, actorEvent.DefaultRegion)
+            .Bind(parsedNumberDetails =>
+                ValidateLibPhoneNumber(parsedNumberDetails.PhoneNumber, parsedNumberDetails.E164Format))
+            .MapErr(failure => failure);
+    }
 
-        try
-        {
-            string? regionToParseWith = actorEvent.DefaultRegion;
-            if (string.IsNullOrEmpty(regionToParseWith) && originalPhoneNumberStr.StartsWith($"+"))
+    private record ParsedNumberDetails(PhoneNumber PhoneNumber, string E164Format);
+
+    private Result<ParsedNumberDetails, VerificationFlowFailure> ParsePhoneNumber(string phoneNumberStr,
+        string? defaultRegion)
+    {
+        return Result<ParsedNumberDetails, VerificationFlowFailure>.Try(() =>
             {
-                regionToParseWith = "ZZ";
-            }
-
-            parsedPhoneNumber = _phoneNumberUtil.Parse(originalPhoneNumberStr, regionToParseWith);
-            e164FormatKey = _phoneNumberUtil.Format(parsedPhoneNumber, PhoneNumberFormat.E164);
-        }
-        catch (NumberParseException ex)
-        {
-            Sender.Tell(Result<PhoneNumberValidationResult, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Generic($"Failed to parse phone number: {ex.ErrorType}", ex)));
-            return;
-        }
-
-        try
-        {
-            PhoneNumberValidationResult result;
-            bool isLibValidNumber = _phoneNumberUtil.IsValidNumber(parsedPhoneNumber);
-
-            if (!isLibValidNumber)
+                PhoneNumber parsedPhoneNumber = _phoneNumberUtil.Parse(phoneNumberStr, defaultRegion);
+                string e164Format = _phoneNumberUtil.Format(parsedPhoneNumber, PhoneNumberFormat.E164);
+                return new ParsedNumberDetails(parsedPhoneNumber, e164Format);
+            },
+            errorMapper: ex =>
             {
-                PhoneNumberUtil.ValidationResult possibility =
-                    _phoneNumberUtil.IsPossibleNumberWithReason(parsedPhoneNumber);
-                ValidationFailureReason failureReason = MapPossibilityToFailureReason(possibility);
-                string errorMessage = $"Invalid number. Reason: {possibility}";
-
-                if (possibility == PhoneNumberUtil.ValidationResult.IS_POSSIBLE_LOCAL_ONLY &&
-                    actorEvent.DefaultRegion == null && !originalPhoneNumberStr.StartsWith("+"))
+                if (ex is NumberParseException npe)
                 {
-                    errorMessage += ". Consider providing a DefaultRegion if this is a local number.";
+                    string errorKey = npe.ErrorType switch
+                    {
+                        ErrorType.INVALID_COUNTRY_CODE => VerificationFlowMessageKeys.PhoneParsingInvalidCountryCode,
+                        ErrorType.NOT_A_NUMBER => VerificationFlowMessageKeys.PhoneParsingInvalidNumber,
+                        ErrorType.TOO_SHORT_AFTER_IDD => VerificationFlowMessageKeys.PhoneParsingTooShort,
+                        ErrorType.TOO_SHORT_NSN => VerificationFlowMessageKeys.PhoneParsingTooShort,
+                        ErrorType.TOO_LONG => VerificationFlowMessageKeys.PhoneParsingTooLong,
+                        _ => VerificationFlowMessageKeys.PhoneParsingGenericError
+                    };
+                    return VerificationFlowFailure.PhoneNumberInvalid(errorKey, npe);
                 }
 
-                result = new PhoneNumberValidationResult(errorMessage, failureReason, e164FormatKey);
-            }
-            else
+                return VerificationFlowFailure.Generic(VerificationFlowMessageKeys.PhoneParsingGenericError, ex);
+            });
+    }
+
+    private Result<PhoneNumberValidationResult, VerificationFlowFailure> ValidateLibPhoneNumber(
+        PhoneNumber parsedPhoneNumber,
+        string e164Format
+    )
+    {
+        return Result<PhoneNumberValidationResult, VerificationFlowFailure>.Try(() =>
             {
+                if (!_phoneNumberUtil.IsValidNumber(parsedPhoneNumber))
+                {
+                    PhoneNumberUtil.ValidationResult possibility =
+                        _phoneNumberUtil.IsPossibleNumberWithReason(parsedPhoneNumber);
+                    ValidationFailureReason internalReason = MapLibValidationReasonToInternalReason(possibility);
+                    string messageKey = MapLibValidationReasonToMessageKey(possibility);
+
+                    return PhoneNumberValidationResult.CreateInvalid(messageKey, internalReason, e164Format);
+                }
+
                 PhoneNumberType libType = _phoneNumberUtil.GetNumberType(parsedPhoneNumber);
                 MobileCheckStatus mobileStatus = DetermineMobileStatus(libType);
                 string? detectedRegion = _phoneNumberUtil.GetRegionCodeForNumber(parsedPhoneNumber);
-                result = new PhoneNumberValidationResult(e164FormatKey, detectedRegion ?? "Unknown", mobileStatus,
-                    true);
-            }
-
-            Sender.Tell(Result<PhoneNumberValidationResult, VerificationFlowFailure>.Ok(result));
-        }
-        catch (Exception ex)
-        {
-            Sender.Tell(Result<PhoneNumberValidationResult, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Generic("An unexpected error occurred during phone number validation.", ex)));
-        }
+                return new PhoneNumberValidationResult(e164Format, detectedRegion ?? "Unknown", mobileStatus);
+            },
+            errorMapper: ex =>
+                VerificationFlowFailure.Generic(VerificationFlowMessageKeys.PhoneValidationUnexpectedError, ex)
+        );
     }
+
 
     private static MobileCheckStatus DetermineMobileStatus(PhoneNumberType libType) =>
         libType is PhoneNumberType.MOBILE or PhoneNumberType.FIXED_LINE_OR_MOBILE
             ? MobileCheckStatus.IsMobile
             : MobileCheckStatus.IsNotMobile;
 
-    private ValidationFailureReason MapPossibilityToFailureReason(PhoneNumberUtil.ValidationResult possibility)
+    private static ValidationFailureReason MapLibValidationReasonToInternalReason(PhoneNumberUtil.ValidationResult libReason)
     {
-        return possibility switch
+        return libReason switch
         {
             PhoneNumberUtil.ValidationResult.INVALID_COUNTRY_CODE => ValidationFailureReason.InvalidCountryCode,
             PhoneNumberUtil.ValidationResult.TOO_SHORT => ValidationFailureReason.TooShort,
             PhoneNumberUtil.ValidationResult.TOO_LONG => ValidationFailureReason.TooLong,
-            PhoneNumberUtil.ValidationResult.IS_POSSIBLE_LOCAL_ONLY =>
-                ValidationFailureReason.PossibleButNotCertain,
+            PhoneNumberUtil.ValidationResult.IS_POSSIBLE_LOCAL_ONLY => ValidationFailureReason.PossibleButNotCertain,
             _ => ValidationFailureReason.InvalidNumber
+        };
+    }
+
+    private static string MapLibValidationReasonToMessageKey(PhoneNumberUtil.ValidationResult libReason)
+    {
+        return libReason switch
+        {
+            PhoneNumberUtil.ValidationResult.INVALID_COUNTRY_CODE => VerificationFlowMessageKeys
+                .PhoneParsingInvalidCountryCode,
+            PhoneNumberUtil.ValidationResult.TOO_SHORT => VerificationFlowMessageKeys.PhoneParsingTooShort,
+            PhoneNumberUtil.ValidationResult.TOO_LONG => VerificationFlowMessageKeys.PhoneParsingTooLong,
+            PhoneNumberUtil.ValidationResult.IS_POSSIBLE_LOCAL_ONLY => VerificationFlowMessageKeys
+                .PhoneParsingPossibleButLocalOnly,
+            _ => VerificationFlowMessageKeys.PhoneParsingInvalidNumber
         };
     }
 
