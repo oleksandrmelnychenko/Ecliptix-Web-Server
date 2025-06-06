@@ -1,6 +1,8 @@
+using Ecliptix.Domain.Utilities;
+
 namespace Ecliptix.Domain;
 
 public interface ILocalizationProvider
 {
-    string GetString(string key);
+    string Localize(string key);
 }

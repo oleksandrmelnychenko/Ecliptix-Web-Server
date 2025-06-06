@@ -1,21 +1,30 @@
+using System.Globalization;
+using System.Resources;
 using Ecliptix.Domain;
-using Ecliptix.Domain.Memberships.Failures;
-using Microsoft.Extensions.Localization;
 
 namespace Ecliptix.Core.Resources;
 
 public class VerificationFlowLocalizer : ILocalizationProvider
 {
-    private readonly IStringLocalizer<VerificationFlowResource> _localizer;
+    private readonly ResourceManager _resourceManager = new(
+        "Ecliptix.Core.Resources.VerificationFlowRes",
+        typeof(VerificationFlowLocalizer).Assembly);
 
-    public VerificationFlowLocalizer(IStringLocalizer<VerificationFlowResource> localizer)
+    private string _defaultCultureName = "en-US";
+
+    public string Localize(string key)
     {
-        _localizer = localizer;
-        var r = _localizer[VerificationFlowMessageKeys.InvalidCredentials];
+        CultureInfo culture = CultureInfo.GetCultureInfo(_defaultCultureName);
+
+        string? localizedString = _resourceManager.GetString(key, culture);
+        if (string.IsNullOrEmpty(localizedString))
+        {
+            localizedString = key;
+        }
+
+        return localizedString;
     }
 
-    public string GetString(string key)
-    {
-        return _localizer[key].Value;
-    }
+    public void Initialize(string cultureName) =>
+        _defaultCultureName = cultureName;
 }

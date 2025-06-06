@@ -51,35 +51,17 @@
     </ItemGroup>
 
     <ItemGroup>
-      <EmbeddedResource Update="Resources\VerificationFlowResource.en-US.resx">
+      <EmbeddedResource Update="Resources\VerificationFlowRes.resx">
         <Generator>PublicResXFileCodeGenerator</Generator>
-        <LastGenOutput>VerificationFlow.Designer.cs</LastGenOutput>
-      </EmbeddedResource>
-      <EmbeddedResource Update="Resources\VerificationFlowResource.uk-UA.resx">
-        <Generator>PublicResXFileCodeGenerator</Generator>
-        <LastGenOutput>VerificationFlow.uk-UA.Designer.cs</LastGenOutput>
-      </EmbeddedResource>
-      <EmbeddedResource Update="Resources\VerificationFlowResource.resx">
-        <Generator>PublicResXFileCodeGenerator</Generator>
-        <LastGenOutput>VerificationFlowResource.Designer.cs</LastGenOutput>
+        <LastGenOutput>VerificationFlowRes.Designer.cs</LastGenOutput>
       </EmbeddedResource>
     </ItemGroup>
 
     <ItemGroup>
-      <Compile Update="Resources\VerificationFlowResource.en-US.Designer.cs">
+      <Compile Update="Resources\VerificationFlowRes.Designer.cs">
         <DesignTime>True</DesignTime>
         <AutoGen>True</AutoGen>
-        <DependentUpon>VerificationFlowResource.en-US.resx</DependentUpon>
-      </Compile>
-      <Compile Update="Resources\VerificationFlowResource.uk-UA.Designer.cs">
-        <DesignTime>True</DesignTime>
-        <AutoGen>True</AutoGen>
-        <DependentUpon>VerificationFlowResource.uk-UA.resx</DependentUpon>
-      </Compile>
-      <Compile Update="Resources\VerificationFlowResource.Designer.cs">
-        <DesignTime>True</DesignTime>
-        <AutoGen>True</AutoGen>
-        <DependentUpon>VerificationFlowResource.resx</DependentUpon>
+        <DependentUpon>VerificationFlowRes.resx</DependentUpon>
       </Compile>
     </ItemGroup>
 

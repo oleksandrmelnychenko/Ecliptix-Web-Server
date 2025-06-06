@@ -182,9 +182,11 @@ static void RegisterLocalization(IServiceCollection services)
     services.AddLocalization(options => options.ResourcesPath = "Resources");
     services.Configure<RequestLocalizationOptions>(options =>
     {
-        CultureInfo[] supported = [new("en-US"), new("uk-UA")];
-        options.DefaultRequestCulture = new RequestCulture("en-US");
+        CultureInfo[] supported = [new("en-us"), new("uk-ua")];
+        options.DefaultRequestCulture = new RequestCulture("en-us");
+        options.SupportedUICultures = supported;
         options.SupportedCultures = supported;
+        options.SetDefaultCulture("en-us");
         options.SupportedUICultures = supported;
         options.FallBackToParentUICultures = true;
     });
@@ -207,7 +209,7 @@ static void RegisterGrpc(IServiceCollection services)
     {
         options.ResponseCompressionLevel = CompressionLevel.Fastest;
         options.ResponseCompressionAlgorithm = "gzip";
-        options.EnableDetailedErrors = true;
+        options.EnableDetailedErrors = true; 
         options.Interceptors.Add<RequestMetaDataInterceptor>();
         options.Interceptors.Add<ThreadCultureInterceptor>();
     });

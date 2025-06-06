@@ -64,7 +64,7 @@ public class MembershipActor : ReceiveActor
                     new UpdateMembershipWithSecureKeyResponse
                     {
                         Result = UpdateMembershipWithSecureKeyResponse.Types.UpdateResult.InvalidCredentials,
-                        Message = _localizationProvider.GetString(InvalidCredentials)
+                        Message = _localizationProvider.Localize(InvalidCredentials)
                     })
             ),
             Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>.Err);
@@ -101,7 +101,7 @@ public class MembershipActor : ReceiveActor
                     new SignInMembershipResponse
                     {
                         Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
-                        Message = _localizationProvider.GetString(InvalidCredentials)
+                        Message = _localizationProvider.Localize(InvalidCredentials)
                     }
                 )
             ),
@@ -109,13 +109,13 @@ public class MembershipActor : ReceiveActor
             {
                 if (err.FailureType == VerificationFlowFailureType.Validation)
                 {
-                    var t = _localizationProvider.GetString(err.Message);
+                    var t = _localizationProvider.Localize(err.Message);
                     
                     return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
                         new SignInMembershipResponse
                         {
                             Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
-                            Message = _localizationProvider.GetString(err.Message),
+                            Message = _localizationProvider.Localize(err.Message),
                             MinutesUntilRetry = ""
                         }
                     );
