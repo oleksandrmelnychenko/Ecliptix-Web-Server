@@ -10,11 +10,11 @@ public class VerificationFlowLocalizer : ILocalizationProvider
         "Ecliptix.Core.Resources.VerificationFlowRes",
         typeof(VerificationFlowLocalizer).Assembly);
 
-    private string _defaultCultureName = "en-US";
+    private readonly CultureInfo _defaultSystemCultureInfo = CultureInfo.GetCultureInfo("en-US");
 
-    public string Localize(string key)
+    public string Localize(string key, string cultureName)
     {
-        CultureInfo culture = CultureInfo.GetCultureInfo(_defaultCultureName);
+        CultureInfo culture = CultureInfo.GetCultureInfo(cultureName);
 
         string? localizedString = _resourceManager.GetString(key, culture);
         if (string.IsNullOrEmpty(localizedString))
@@ -25,6 +25,14 @@ public class VerificationFlowLocalizer : ILocalizationProvider
         return localizedString;
     }
 
-    public void Initialize(string cultureName) =>
-        _defaultCultureName = cultureName;
+    public string Localize(string key)
+    {
+        string? localizedString = _resourceManager.GetString(key, _defaultSystemCultureInfo);
+        if (string.IsNullOrEmpty(localizedString))
+        {
+            localizedString = key;
+        }
+
+        return localizedString;
+    }
 }

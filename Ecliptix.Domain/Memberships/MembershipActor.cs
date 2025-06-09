@@ -3,20 +3,16 @@ using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
-using Microsoft.Extensions.Localization;
+using Serilog;
 
 namespace Ecliptix.Domain.Memberships;
 
-public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey);
+public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey, string CultureName);
 
 public class MembershipActor : ReceiveActor
 {
     private readonly IActorRef _persistor;
     private readonly ILocalizationProvider _localizationProvider;
-
-    private const string InvalidCredentials = "invalid_credentials";
-
-    private const string MinutesUntilLoginRetry = "minutes_until_login_retry";
 
     public MembershipActor(IActorRef persistor, ILocalizationProvider localizationProvider)
     {
@@ -64,7 +60,8 @@ public class MembershipActor : ReceiveActor
                     new UpdateMembershipWithSecureKeyResponse
                     {
                         Result = UpdateMembershipWithSecureKeyResponse.Types.UpdateResult.InvalidCredentials,
-                        Message = _localizationProvider.Localize(InvalidCredentials)
+                        Message = _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidCredentials,
+                            @event.CultureName)
                     })
             ),
             Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>.Err);
@@ -101,7 +98,8 @@ public class MembershipActor : ReceiveActor
                     new SignInMembershipResponse
                     {
                         Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
-                        Message = _localizationProvider.Localize(InvalidCredentials)
+                        Message = _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidCredentials,
+                            @event.CultureName),
                     }
                 )
             ),
@@ -109,16 +107,31 @@ public class MembershipActor : ReceiveActor
             {
                 if (err.FailureType == VerificationFlowFailureType.Validation)
                 {
-                    var t = _localizationProvider.Localize(err.Message);
+                    string message;
                     
+                    if (err.IsUserFacing)
+                    {
+                        message =_localizationProvider.Localize(err.Message);
+                        Log.Information("Sign-in failed for {PhoneNumber} with error: {ErrorMessage}",
+                            @event.PhoneNumber, message);
+                    }
+                    
+                    message = _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidCredentials,
+                        @event.CultureName);
+
                     return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
                         new SignInMembershipResponse
                         {
                             Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
-                            Message = _localizationProvider.Localize(err.Message),
-                            MinutesUntilRetry = ""
+                            Message = message,
+                            MinutesUntilRetry = string.Empty
                         }
                     );
+                }
+
+                if (err.FailureType == VerificationFlowFailureType.RateLimitExceeded)
+                {
+                    
                 }
 
                 return Result<SignInMembershipResponse, VerificationFlowFailure>.Err(err);

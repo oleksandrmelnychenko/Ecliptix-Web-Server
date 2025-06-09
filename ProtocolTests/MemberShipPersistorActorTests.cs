@@ -23,7 +23,7 @@ public class MemberShipPersistorActorTests : TestKit
 {
     private static readonly SignInMembershipActorEvent SignInEvent = new (
         PhoneNumber: "+380501234567",
-        SecureKey: [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        SecureKey: [1, 2, 3, 4, 5, 6, 7, 8, 9],"");
     
     [TestMethod]
     public async Task HandleSignInMembershipActorCommand_ReturnSuccess_WhenValidCredentials()

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Domain.Memberships;
@@ -17,10 +18,12 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
     public override async Task<CipherPayload> SignInMembership(CipherPayload request, ServerCallContext context)
     {
         Result<byte[], EcliptixProtocolFailure> decryptResult = await DecryptRequest(request, context);
+
         return await decryptResult.Match<Task<CipherPayload>>(
             ok: async decryptedBytes =>
             {
                 SignInMembershipRequest signInRequest = Helpers.ParseFromBytes<SignInMembershipRequest>(decryptedBytes);
+
                 Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
                     await PhoneNumberValidatorActor.Ask<Result<PhoneNumberValidationResult, VerificationFlowFailure>>(
                         new ValidatePhoneNumberActorEvent(signInRequest.PhoneNumber));
@@ -29,7 +32,7 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
                     {
                         SignInMembershipActorEvent signInEvent = new(
                             phoneNumberValidationResult.ParsedPhoneNumberE164!,
-                            Helpers.ReadMemoryToRetrieveBytes(signInRequest.SecureKey.Memory));
+                            Helpers.ReadMemoryToRetrieveBytes(signInRequest.SecureKey.Memory), PeerCulture);
                         Result<SignInMembershipResponse, VerificationFlowFailure> signInResult =
                             await MembershipActor.Ask<Result<SignInMembershipResponse, VerificationFlowFailure>>(
                                 signInEvent);
@@ -73,7 +76,7 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
 
         UpdateMembershipSecureKeyEvent @event = new(
             Helpers.FromByteStringToGuid(updateMembershipWithSecureKeyRequest.MembershipIdentifier),
-            Helpers.ReadMemoryToRetrieveBytes(updateMembershipWithSecureKeyRequest.SecureKey.Memory));
+            Helpers.ReadMemoryToRetrieveBytes(updateMembershipWithSecureKeyRequest.SecureKey.Memory), PeerCulture);
 
         Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure> updateOperationResult =
             await MembershipActor.Ask<Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>>(@event);

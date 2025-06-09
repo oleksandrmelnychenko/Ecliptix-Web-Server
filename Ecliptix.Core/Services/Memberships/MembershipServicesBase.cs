@@ -1,3 +1,4 @@
+using System.Globalization;
 using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Core.Protocol.Actors;
@@ -22,6 +23,8 @@ public abstract class MembershipServicesBase(
 
     private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
 
+    protected string PeerCulture { get; private set; } = CultureInfo.CurrentCulture.Name;
+    
     protected async Task<Result<byte[], EcliptixProtocolFailure>> DecryptRequest(CipherPayload request, ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
