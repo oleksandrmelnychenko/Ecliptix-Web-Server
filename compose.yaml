@@ -1,0 +1,6 @@
+﻿services:
+  ecliptix.core:
+    image: ecliptix.core
+    build:
+      context: .
+      dockerfile: Ecliptix.Core/Dockerfile
