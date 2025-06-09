@@ -20,8 +20,11 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Build
+      - name: Build with AOT
         run: dotnet build --no-restore --configuration Release
+
+      - name: Publish with AOT
+        run: dotnet publish --no-build --configuration Release --output ./publish
 
       - name: Test
         run: dotnet test --no-build --verbosity normal --configuration Release
