@@ -11,11 +11,9 @@ using Ecliptix.Domain;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.Persistors;
-using Ecliptix.Domain.Persistors;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Npgsql;
-using OpenTelemetry.Metrics;
 using Serilog;
 using Serilog.Context;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -58,7 +56,13 @@ try
         Log.Information("Building NpgsqlDataSource for EcliptixDb.");
         return dataSourceBuilder.Build();
     });
-
+    builder.Services.AddSingleton<IDbDataSource, NpgsqlDataSourceWrapper>();
+    /*builder.Services.AddSingleton(sp =>
+    {
+        var npgsqlDataSource = sp.GetRequiredService<NpgsqlDataSource>();
+        return new NpgsqlDataSourceWrapper(npgsqlDataSource);
+    });*/
+    
 
     RegisterLocalization(builder.Services);
     RegisterValidators(builder.Services);
@@ -81,8 +85,8 @@ try
                 logger.LogInformation("Actor system {ActorSystemName} is starting up.", system.Name);
             }
 
-            NpgsqlDataSource npgsqlDataSource = serviceProvider.GetRequiredService<NpgsqlDataSource>();
-
+            IDbDataSource dbDataSource = serviceProvider.GetRequiredService<IDbDataSource>(); 
+            
             ILogger<EcliptixProtocolSystemActor> protocolActorLogger =
                 serviceProvider.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>();
             ILogger<VerificationFlowPersistorActor> verificationFlowLogger =
@@ -99,15 +103,15 @@ try
                 "ProtocolSystem");
 
             IActorRef appDevicePersistor = system.ActorOf(
-                AppDevicePersistorActor.Build(npgsqlDataSource,appDevicePersistorLocalizer),
+                AppDevicePersistorActor.Build(dbDataSource,appDevicePersistorLocalizer),
                 "AppDevicePersistor");
 
             IActorRef membershipVerificationSessionPersistorActor = system.ActorOf(
-                VerificationFlowPersistorActor.Build(npgsqlDataSource, verificationFlowLogger),
+                VerificationFlowPersistorActor.Build(dbDataSource, verificationFlowLogger),
                 "MembershipVerificationSessionPersistorActor");
 
             IActorRef membershipPersistorActor = system.ActorOf(
-                MembershipPersistorActor.Build(npgsqlDataSource, membershipPersistorLogger),
+                MembershipPersistorActor.Build(dbDataSource, membershipPersistorLogger),
                 "MembershipPersistorActor");
 
             IActorRef membershipActor = system.ActorOf(

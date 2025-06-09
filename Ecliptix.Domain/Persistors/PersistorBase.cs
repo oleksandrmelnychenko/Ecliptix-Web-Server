@@ -7,7 +7,7 @@ using Npgsql;
 namespace Ecliptix.Domain.Persistors;
 
 public abstract class PersistorBase<TFailure>(
-    NpgsqlDataSource npgsqlDataSource,
+    IDbDataSource npgsqlDataSource,
     ILogger logger
 ) : ReceiveActor
     where TFailure : struct
@@ -15,7 +15,7 @@ public abstract class PersistorBase<TFailure>(
     private static readonly ActivitySource ActivitySource = new("Ecliptix.Persistor");
 
     protected async Task ExecuteWithConnection<TResult>(
-        Func<NpgsqlConnection, Task<Result<TResult, TFailure>>> operation,
+        Func<IDbConnection, Task<Result<TResult, TFailure>>> operation,
         string operationName = "Unknown")
     {
         using Activity? activity = StartActivity(operationName);
@@ -23,7 +23,7 @@ public abstract class PersistorBase<TFailure>(
 
         try
         {
-            await using NpgsqlConnection conn = await CreateAndOpenConnectionAsync();
+            await using IDbConnection conn = await CreateAndOpenConnectionAsync();
             SetConnectionTags(activity, conn);
 
             Result<TResult, TFailure> result = await operation(conn);
@@ -45,11 +45,16 @@ public abstract class PersistorBase<TFailure>(
         }
     }
 
-    protected static NpgsqlCommand CreateCommand(NpgsqlConnection connection, string sql,
+    protected static IDbCommand CreateCommand(IDbConnection connection, string sql,
         params NpgsqlParameter[] parameters)
     {
-        NpgsqlCommand command = new(sql, connection);
-        command.Parameters.AddRange(parameters);
+        IDbCommand command = connection.CreateCommand();
+        command.CommandText = sql;
+        foreach (var parameter in parameters)
+        {
+            command.Parameters.Add(parameter);
+        }
+
         return command;
     }
 
@@ -90,14 +95,21 @@ public abstract class PersistorBase<TFailure>(
         return activity;
     }
 
-    private async Task<NpgsqlConnection> CreateAndOpenConnectionAsync()
+    /*private async Task<NpgsqlConnection> CreateAndOpenConnectionAsync()
     {
         NpgsqlConnection conn = npgsqlDataSource.CreateConnection();
         await conn.OpenAsync();
         return conn;
+    }*/
+    
+    private async Task<IDbConnection> CreateAndOpenConnectionAsync()
+    {
+        IDbConnection conn = await npgsqlDataSource.CreateConnection();
+        await conn.OpenAsync();
+        return conn;
     }
 
-    private static void SetConnectionTags(Activity? activity, NpgsqlConnection conn)
+    private static void SetConnectionTags(Activity? activity, IDbConnection conn)
     {
         activity?.SetTag(ActivityTags.DbConnectionString, conn.Host);
     }

@@ -11,17 +11,17 @@ using static System.String;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
-public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
+public class MembershipPersistorActor : VerificationFlowPersistorBase
 {
     public MembershipPersistorActor(
-        NpgsqlDataSource npgsqlDataSource,
+        IDbDataSource npgsqlDataSource,
         ILogger<MembershipPersistorActor> logger)
         : base(npgsqlDataSource, logger)
     {
         Become(Ready);
     }
 
-    public static Props Build(NpgsqlDataSource npgsqlDataSource,
+    public static Props Build(IDbDataSource npgsqlDataSource,
         ILogger<MembershipPersistorActor> logger) =>
         Props.Create(() => new MembershipPersistorActor(npgsqlDataSource, logger));
 
@@ -32,7 +32,7 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
         ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembershipActorCommand);
     }
 
-    private async Task HandleSignInMembershipActorCommand(SignInMembershipActorEvent cmd) =>
+    public async Task HandleSignInMembershipActorCommand(SignInMembershipActorEvent cmd) =>
         await ExecuteWithConnection(async npgsqlConnection =>
         {
             NpgsqlParameter[] parameters =
@@ -41,8 +41,8 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
                 new(Parameters.SecureKey, NpgsqlDbType.Bytea) { Value = cmd.SecureKey }
             ];
 
-            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, Queries.LoginMembership, parameters);
-            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            await using IDbCommand command = CreateCommand(npgsqlConnection, Queries.LoginMembership, parameters);
+            await using IDbDataReader reader = await command.ExecuteReaderAsync();
 
             if (!await reader.ReadAsync())
             {
@@ -107,9 +107,9 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
                 new(Parameters.SecureKey, NpgsqlDbType.Bytea) { Value = cmd.SecureKey }
             ];
 
-            await using NpgsqlCommand command =
+            await using IDbCommand command =
                 CreateCommand(npgsqlConnection, Queries.UpdateMembershipSecureKey, parameters);
-            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            await using IDbDataReader reader = await command.ExecuteReaderAsync();
 
             if (!await reader.ReadAsync())
             {
@@ -170,8 +170,8 @@ public sealed class MembershipPersistorActor : VerificationFlowPersistorBase
                     { Value = MembershipCreationStatusHelper.GetCreationStatusString(cmd.CreationStatus) }
             ];
 
-            await using NpgsqlCommand command = CreateCommand(npgsqlConnection, Queries.CreateMembership, parameters);
-            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            await using IDbCommand command = CreateCommand(npgsqlConnection, Queries.CreateMembership, parameters);
+            await using IDbDataReader reader = await command.ExecuteReaderAsync();
 
             if (!await reader.ReadAsync())
             {

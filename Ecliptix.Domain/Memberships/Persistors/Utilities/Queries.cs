@@ -1,6 +1,6 @@
 namespace Ecliptix.Domain.Memberships.Persistors.Utilities;
 
-internal static class Queries
+public static class Queries
 {
     public const string GetVerificationFlow =
         "SELECT session_unique_id, phone_number_unique_id_out, connection_id, app_device_id_out, phone_number_out, " +

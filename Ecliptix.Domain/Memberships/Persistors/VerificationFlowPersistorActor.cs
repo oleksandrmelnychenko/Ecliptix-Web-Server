@@ -14,14 +14,14 @@ namespace Ecliptix.Domain.Memberships.Persistors;
 public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
 {
     public VerificationFlowPersistorActor(
-        NpgsqlDataSource dataSource,
+        IDbDataSource dataSource,
         ILogger<VerificationFlowPersistorActor> logger)
         : base(dataSource, logger)
     {
         Become(Ready);
     }
 
-    public static Props Build(NpgsqlDataSource dataSource,
+    public static Props Build(IDbDataSource dataSource,
         ILogger<VerificationFlowPersistorActor> logger) =>
         Props.Create(() => new VerificationFlowPersistorActor(dataSource, logger));
 
@@ -46,8 +46,8 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                     new(Parameters.Status, NpgsqlDbType.Varchar) { Value = cmd.Status.ToString().ToLowerInvariant() }
                 ];
 
-                await using NpgsqlCommand command = CreateCommand(conn, Queries.UpdateOtpStatus, parameters);
-                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+                await using IDbCommand command = CreateCommand(conn, Queries.UpdateOtpStatus, parameters);
+                await using IDbDataReader reader = await command.ExecuteReaderAsync();
 
                 if (await reader.ReadAsync())
                 {
@@ -74,8 +74,8 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                     new(Parameters.PhoneUniqueId, NpgsqlDbType.Uuid) { Value = cmd.PhoneNumberIdentifier }
                 ];
 
-                await using NpgsqlCommand command = CreateCommand(conn, Queries.GetPhoneNumber, parameters);
-                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+                await using IDbCommand command = CreateCommand(conn, Queries.GetPhoneNumber, parameters);
+                await using IDbDataReader reader = await command.ExecuteReaderAsync();
 
                 if (!await reader.ReadAsync())
                 {
@@ -108,8 +108,8 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                     new(Parameters.ConnectId, NpgsqlDbType.Bigint) { Value = (long)cmd.ConnectId }
                 ];
 
-                await using NpgsqlCommand command = CreateCommand(conn, Queries.CreateVerificationFlow, parameters);
-                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+                await using IDbCommand command = CreateCommand(conn, Queries.CreateVerificationFlow, parameters);
+                await using IDbDataReader reader = await command.ExecuteReaderAsync();
 
                 if (!await reader.ReadAsync())
                 {
@@ -171,7 +171,7 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                     new(Parameters.Status, NpgsqlDbType.Varchar) { Value = cmd.Status.ToString().ToLowerInvariant() }
                 ];
 
-                await using NpgsqlCommand command = CreateCommand(conn, Queries.UpdateSessionStatus, parameters);
+                await using IDbCommand command = CreateCommand(conn, Queries.UpdateSessionStatus, parameters);
                 await command.ExecuteNonQueryAsync();
                 return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
             }, OperationNames.UpdateSessionStatus);
@@ -191,8 +191,8 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                         { Value = cmd.OtpRecord.Status.ToString().ToLowerInvariant() }
                 ];
 
-                await using NpgsqlCommand command = CreateCommand(conn, Queries.CreateOtp, parameters);
-                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+                await using IDbCommand command = CreateCommand(conn, Queries.CreateOtp, parameters);
+                await using IDbDataReader reader = await command.ExecuteReaderAsync();
 
                 if (!await reader.ReadAsync())
                 {
@@ -240,8 +240,8 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                     new(Parameters.Region, NpgsqlDbType.Varchar) { Value = (object?)cmd.RegionCode ?? DBNull.Value }
                 ];
 
-                await using NpgsqlCommand command = CreateCommand(conn, Queries.EnsurePhoneNumber, parameters);
-                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+                await using IDbCommand command = CreateCommand(conn, Queries.EnsurePhoneNumber, parameters);
+                await using IDbDataReader reader = await command.ExecuteReaderAsync();
 
                 if (!await reader.ReadAsync())
                 {
@@ -296,10 +296,10 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
             VerificationFlowMessageKeys.PhoneNumberInvalid;
 
     private static async Task<Result<Option<VerificationFlowQueryRecord>, VerificationFlowFailure>>
-        ReadSessionQueryRecord(NpgsqlConnection conn, NpgsqlParameter[] parameters)
+        ReadSessionQueryRecord(IDbConnection conn, NpgsqlParameter[] parameters)
     {
-        await using NpgsqlCommand command = CreateCommand(conn, Queries.GetVerificationFlow, parameters);
-        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+        await using IDbCommand command = CreateCommand(conn, Queries.GetVerificationFlow, parameters);
+        await using IDbDataReader reader = await command.ExecuteReaderAsync();
 
         if (!await reader.ReadAsync())
         {

@@ -6,7 +6,7 @@ using Npgsql;
 namespace Ecliptix.Domain.Memberships.Persistors;
 
 public abstract class VerificationFlowPersistorBase(
-    NpgsqlDataSource npgsqlDataSource,
+    IDbDataSource npgsqlDataSource,
     ILogger logger
 ) : PersistorBase<VerificationFlowFailure>(npgsqlDataSource, logger)
 {

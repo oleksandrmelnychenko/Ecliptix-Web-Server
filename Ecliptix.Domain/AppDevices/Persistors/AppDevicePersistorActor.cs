@@ -12,13 +12,13 @@ namespace Ecliptix.Domain.AppDevices.Persistors;
 
 public class AppDevicePersistorActor : AppDevicePersistorBase
 {
-    public AppDevicePersistorActor(NpgsqlDataSource npgsqlDataSource, ILogger<AppDevicePersistorActor> logger)
+    public AppDevicePersistorActor(IDbDataSource npgsqlDataSource, ILogger<AppDevicePersistorActor> logger)
         : base(npgsqlDataSource, logger)
     {
         Become(Ready);
     }
 
-    public static Props Build(NpgsqlDataSource npgsqlDataSource, ILogger<AppDevicePersistorActor> logger) =>
+    public static Props Build(IDbDataSource npgsqlDataSource, ILogger<AppDevicePersistorActor> logger) =>
         Props.Create(() => new AppDevicePersistorActor(npgsqlDataSource, logger));
 
     private void Ready()
@@ -34,7 +34,7 @@ public class AppDevicePersistorActor : AppDevicePersistorBase
     private async Task RegisterAppDevice(AppDevice appDevice) =>
         await ExecuteWithConnection(async npgsqlConnection =>
         {
-            await using NpgsqlCommand cmd = CreateCommand(npgsqlConnection, Queries.RegisterAppDevice,
+            await using IDbCommand cmd = CreateCommand(npgsqlConnection, Queries.RegisterAppDevice,
                 new NpgsqlParameter(Parameters.AppInstanceId, NpgsqlDbType.Uuid)
                 {
                     Value = Helpers.FromByteStringToGuid(appDevice.AppInstanceId)
@@ -49,7 +49,7 @@ public class AppDevicePersistorActor : AppDevicePersistorBase
                 }
             );
 
-            await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync();
+            await using IDbDataReader reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
             {
                 return Result<(Guid, int), AppDeviceFailure>.Err(

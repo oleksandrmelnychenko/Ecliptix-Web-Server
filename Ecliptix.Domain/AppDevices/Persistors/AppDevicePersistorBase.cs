@@ -6,7 +6,7 @@ using Npgsql;
 namespace Ecliptix.Domain.AppDevices.Persistors;
 
 public abstract class AppDevicePersistorBase(
-    NpgsqlDataSource npgsqlDataSource,
+    IDbDataSource npgsqlDataSource,
     ILogger logger
 ) : PersistorBase<AppDeviceFailure>(npgsqlDataSource, logger)
 {
