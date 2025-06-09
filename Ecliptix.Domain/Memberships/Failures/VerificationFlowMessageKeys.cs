@@ -74,7 +74,7 @@ public static class VerificationFlowMessageKeys
     public const string Created = "created";
     public const string Generic = "generic_error";
     public const string NoResultReturned = "generic_no_result_returned";
-    public const string Success = "generic_success"; 
+    public const string Success = "success"; 
     public const string UnexpectedOutcome = "generic_unexpected_outcome";
     
     public const string PhoneParsingInvalidCountryCode = "phone_parsing_invalid_country_code";

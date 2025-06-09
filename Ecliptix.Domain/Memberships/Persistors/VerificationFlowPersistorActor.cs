@@ -45,7 +45,7 @@ public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
                     new(Parameters.OtpUniqueId, NpgsqlDbType.Uuid) { Value = cmd.OtpIdentified },
                     new(Parameters.Status, NpgsqlDbType.Varchar) { Value = cmd.Status.ToString().ToLowerInvariant() }
                 ];
-
+                
                 await using IDbCommand command = CreateCommand(conn, Queries.UpdateOtpStatus, parameters);
                 await using IDbDataReader reader = await command.ExecuteReaderAsync();
 
