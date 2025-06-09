@@ -1,0 +1,47 @@
+name: Build and Push to ECR
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test --no-build --verbosity normal --configuration Release
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 539051811727.dkr.ecr.eu-central-1.amazonaws.com
+
+      - name: Build Docker image
+        run: |
+          docker build -t ecliptixdev -f Ecliptix.Core/Dockerfile .
+
+      - name: Tag and Push
+        run: |
+          docker tag ecliptixdev:latest 539051811727.dkr.ecr.eu-central-1.amazonaws.com/ecliptixdev:latest
+          docker push 539051811727.dkr.ecr.eu-central-1.amazonaws.com/ecliptixdev:latest
