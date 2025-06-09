@@ -95,13 +95,6 @@ public abstract class PersistorBase<TFailure>(
         return activity;
     }
 
-    /*private async Task<NpgsqlConnection> CreateAndOpenConnectionAsync()
-    {
-        NpgsqlConnection conn = npgsqlDataSource.CreateConnection();
-        await conn.OpenAsync();
-        return conn;
-    }*/
-    
     private async Task<IDbConnection> CreateAndOpenConnectionAsync()
     {
         IDbConnection conn = await npgsqlDataSource.CreateConnection();

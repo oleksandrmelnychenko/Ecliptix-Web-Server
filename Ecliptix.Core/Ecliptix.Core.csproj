@@ -65,4 +65,8 @@
       </Compile>
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Init\" />
+    </ItemGroup>
+
 </Project>

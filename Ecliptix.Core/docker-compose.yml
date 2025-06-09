@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: postgres-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1111
+      POSTGRES_DB: Luxwave
+    volumes:
+      - ./Init:/docker-entrypoint-initdb.d
+  ecliptix:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ecliptix-app
+    ports:
+      - "5050:5050"
+      - "5051:5051"
+    depends_on:
+      - postgres
+    volumes:
+      - .:/app
+    

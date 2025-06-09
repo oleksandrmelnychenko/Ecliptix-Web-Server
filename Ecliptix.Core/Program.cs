@@ -57,11 +57,6 @@ try
         return dataSourceBuilder.Build();
     });
     builder.Services.AddSingleton<IDbDataSource, NpgsqlDataSourceWrapper>();
-    /*builder.Services.AddSingleton(sp =>
-    {
-        var npgsqlDataSource = sp.GetRequiredService<NpgsqlDataSource>();
-        return new NpgsqlDataSourceWrapper(npgsqlDataSource);
-    });*/
     
 
     RegisterLocalization(builder.Services);
