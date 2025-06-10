@@ -27,12 +27,12 @@ public class MembershipPersistorActor : VerificationFlowPersistorBase
 
     private void Ready()
     {
-        ReceiveAsync<UpdateMembershipSecureKeyEvent>(HandleUpdateMembershipSecureKeyCommand);
-        ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembershipActorCommand);
-        ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembershipActorCommand);
+        ReceiveAsync<UpdateMembershipSecureKeyEvent>(HandleUpdateMembershipSecureKeyEvent);
+        ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembershipActorEvent);
+        ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembershipActorEvent);
     }
 
-    public async Task HandleSignInMembershipActorCommand(SignInMembershipActorEvent cmd) =>
+    public async Task HandleSignInMembershipActorEvent(SignInMembershipActorEvent cmd) =>
         await ExecuteWithConnection(async npgsqlConnection =>
         {
             NpgsqlParameter[] parameters =
@@ -98,7 +98,7 @@ public class MembershipPersistorActor : VerificationFlowPersistorBase
             };
         }, OperationNames.SignInMembership);
 
-    private async Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyEvent cmd) =>
+    private async Task HandleUpdateMembershipSecureKeyEvent(UpdateMembershipSecureKeyEvent cmd) =>
         await ExecuteWithConnection(async npgsqlConnection =>
         {
             NpgsqlParameter[] parameters =
@@ -158,7 +158,7 @@ public class MembershipPersistorActor : VerificationFlowPersistorBase
                 Option<MembershipQueryRecord>.Some(updateResponse));
         }, OperationNames.UpdateMembershipSecureKey);
 
-    private async Task HandleCreateMembershipActorCommand(CreateMembershipActorEvent cmd) =>
+    private async Task HandleCreateMembershipActorEvent(CreateMembershipActorEvent cmd) =>
         await ExecuteWithConnection(async npgsqlConnection =>
         {
             NpgsqlParameter[] parameters =
