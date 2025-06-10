@@ -246,7 +246,7 @@ namespace ProtocolTests // Your test project namespace
             byte[] decryptedPlaintext = new byte[ciphertext.Length]; // Use byte[] for lambda
 
             // Act & Assert
-            var ex = Assert.ThrowsException<ShieldChainStepException>(() =>
+            var ex = Assert.ThrowsException<ProtocolChainStepException>(() =>
                 AesGcmService.Decrypt(key, nonce, ciphertext, corruptedTag, decryptedPlaintext, ad));
 
             Assert.IsNotNull(ex.InnerException);
@@ -265,7 +265,7 @@ namespace ProtocolTests // Your test project namespace
             byte[] decryptedPlaintext = new byte[originalCiphertext.Length];
 
             // Act & Assert
-            var ex = Assert.ThrowsException<ShieldChainStepException>(() =>
+            var ex = Assert.ThrowsException<ProtocolChainStepException>(() =>
                 AesGcmService.Decrypt(key, nonce, corruptedCiphertext, tag, decryptedPlaintext, ad));
 
             Assert.IsNotNull(ex.InnerException);
@@ -283,7 +283,7 @@ namespace ProtocolTests // Your test project namespace
             byte[] decryptedPlaintext = new byte[ciphertext.Length];
 
             // Act & Assert
-            var ex = Assert.ThrowsException<ShieldChainStepException>(() =>
+            var ex = Assert.ThrowsException<ProtocolChainStepException>(() =>
                 AesGcmService.Decrypt(key, nonce, ciphertext, tag, decryptedPlaintext, differentAD));
 
             Assert.IsNotNull(ex.InnerException);
@@ -300,7 +300,7 @@ namespace ProtocolTests // Your test project namespace
             byte[] decryptedPlaintext = new byte[ciphertext.Length];
 
             // Act & Assert
-            var ex = Assert.ThrowsException<ShieldChainStepException>(() =>
+            var ex = Assert.ThrowsException<ProtocolChainStepException>(() =>
                 AesGcmService.Decrypt(key2, nonce, ciphertext, tag, decryptedPlaintext, ad));
 
             Assert.IsNotNull(ex.InnerException);
@@ -317,7 +317,7 @@ namespace ProtocolTests // Your test project namespace
             byte[] decryptedPlaintext = new byte[ciphertext.Length];
 
             // Act & Assert
-            var ex = Assert.ThrowsException<ShieldChainStepException>(() =>
+            var ex = Assert.ThrowsException<ProtocolChainStepException>(() =>
                 AesGcmService.Decrypt(key, nonce2, ciphertext, tag, decryptedPlaintext, ad));
 
             Assert.IsNotNull(ex.InnerException);
@@ -413,7 +413,7 @@ namespace ProtocolTests // Your test project namespace
              (byte[] ciphertext, byte[] originalTag) = AesGcmService.EncryptAllocating(key, nonce, plaintext, ad);
              var corruptedTag = CorruptBytes(originalTag);
             // Act & Assert
-             var ex = Assert.ThrowsException<ShieldChainStepException>(() => AesGcmService.DecryptAllocating(key, nonce, ciphertext, corruptedTag, ad));
+             var ex = Assert.ThrowsException<ProtocolChainStepException>(() => AesGcmService.DecryptAllocating(key, nonce, ciphertext, corruptedTag, ad));
              Assert.IsNotNull(ex.InnerException);
              Assert.IsInstanceOfType(ex.InnerException, typeof(AuthenticationTagMismatchException));
              StringAssert.Contains(ex.Message, "authentication tag mismatch", StringComparison.OrdinalIgnoreCase);

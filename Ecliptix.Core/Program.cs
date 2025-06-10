@@ -56,9 +56,9 @@ try
         Log.Information("Building NpgsqlDataSource for EcliptixDb.");
         return dataSourceBuilder.Build();
     });
+    
     builder.Services.AddSingleton<IDbDataSource, NpgsqlDataSourceWrapper>();
     
-
     RegisterLocalization(builder.Services);
     RegisterValidators(builder.Services);
     RegisterGrpc(builder.Services);

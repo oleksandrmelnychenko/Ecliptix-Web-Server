@@ -33,7 +33,7 @@ public static class AesGcmService
     /// <exception cref="ArgumentNullException">Thrown if key, nonce, plaintext, ciphertextDestination, or tagDestination is implicitly null via default span.</exception>
     /// <exception cref="ArgumentException">Thrown for invalid key/nonce/tag lengths or if ciphertextDestination is too small.</exception>
     /// <exception cref="CryptographicException">Thrown for other cryptographic errors during encryption.</exception>
-    /// <exception cref="ShieldChainStepException">Wrapped cryptographic exceptions.</exception>
+    /// <exception cref="ProtocolChainStepException">Wrapped cryptographic exceptions.</exception>
     public static void Encrypt(
         ReadOnlySpan<byte> key,
         ReadOnlySpan<byte> nonce,
@@ -57,11 +57,11 @@ public static class AesGcmService
         }
         catch (CryptographicException cryptoEx)
         {
-            throw new ShieldChainStepException(ErrEncryptFail, cryptoEx);
+            throw new ProtocolChainStepException(ErrEncryptFail, cryptoEx);
         }
         catch (Exception ex) 
         {
-            throw new ShieldChainStepException(ErrEncryptFail, ex);
+            throw new ProtocolChainStepException(ErrEncryptFail, ex);
         }
     }
 
@@ -78,7 +78,7 @@ public static class AesGcmService
     /// <exception cref="ArgumentException">Thrown for invalid key/nonce/tag lengths or if plaintextDestination is too small.</exception>
     /// <exception cref="AuthenticationTagMismatchException">(Subclass of CryptographicException) Thrown if the tag is invalid.</exception>
     /// <exception cref="CryptographicException">Thrown for other cryptographic errors during decryption.</exception>
-    /// <exception cref="ShieldChainStepException">Wrapped cryptographic exceptions.</exception>
+    /// <exception cref="ProtocolChainStepException">Wrapped cryptographic exceptions.</exception>
     public static void Decrypt(
         ReadOnlySpan<byte> key,
         ReadOnlySpan<byte> nonce,
@@ -101,15 +101,15 @@ public static class AesGcmService
         }
         catch (AuthenticationTagMismatchException authEx)
         {
-            throw new ShieldChainStepException(ErrDecryptFail, authEx);
+            throw new ProtocolChainStepException(ErrDecryptFail, authEx);
         }
         catch (CryptographicException cryptoEx) 
         {
-            throw new ShieldChainStepException(ErrDecryptFail, cryptoEx); 
+            throw new ProtocolChainStepException(ErrDecryptFail, cryptoEx); 
         }
         catch (Exception ex) 
         {
-            throw new ShieldChainStepException(ErrDecryptFail, ex);
+            throw new ProtocolChainStepException(ErrDecryptFail, ex);
         }
     }
 

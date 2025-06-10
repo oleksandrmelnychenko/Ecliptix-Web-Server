@@ -3,25 +3,25 @@ using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Core.Protocol;
 
-public sealed class ShieldMessageKey : IDisposable, IEquatable<ShieldMessageKey>
+public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessageKey>
 {
     public uint Index { get; }
 
     private SodiumSecureMemoryHandle _keyHandle;
     private bool _disposed;
 
-    private ShieldMessageKey(uint index, SodiumSecureMemoryHandle keyHandle)
+    private EcliptixMessageKey(uint index, SodiumSecureMemoryHandle keyHandle)
     {
         Index = index;
         _keyHandle = keyHandle;
         _disposed = false;
     }
 
-    public static Result<ShieldMessageKey, EcliptixProtocolFailure> New(uint index, ReadOnlySpan<byte> keyMaterial)
+    public static Result<EcliptixMessageKey, EcliptixProtocolFailure> New(uint index, ReadOnlySpan<byte> keyMaterial)
     {
         if (keyMaterial.Length != Constants.X25519KeySize)
         {
-            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(
+            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput(
                     $"Key material must be exactly {Constants.X25519KeySize} bytes long, but was {keyMaterial.Length}."));
         }
@@ -30,7 +30,7 @@ public sealed class ShieldMessageKey : IDisposable, IEquatable<ShieldMessageKey>
             SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize).MapSodiumFailure();
         if (allocateResult.IsErr)
         {
-            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(allocateResult.UnwrapErr());
+            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(allocateResult.UnwrapErr());
         }
 
         SodiumSecureMemoryHandle keyHandle = allocateResult.Unwrap();
@@ -39,11 +39,11 @@ public sealed class ShieldMessageKey : IDisposable, IEquatable<ShieldMessageKey>
         if (writeResult.IsErr)
         {
             keyHandle.Dispose();
-            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr());
+            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr());
         }
 
-        ShieldMessageKey messageKey = new(index, keyHandle);
-        return Result<ShieldMessageKey, EcliptixProtocolFailure>.Ok(messageKey);
+        EcliptixMessageKey messageKey = new(index, keyHandle);
+        return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(messageKey);
     }
 
     public Result<Unit, EcliptixProtocolFailure> ReadKeyMaterial(Span<byte> destination)
@@ -51,7 +51,7 @@ public sealed class ShieldMessageKey : IDisposable, IEquatable<ShieldMessageKey>
         if (_disposed)
         {
             return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.ObjectDisposed(nameof(ShieldMessageKey)));
+                EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixMessageKey)));
         }
 
         if (destination.Length < Constants.X25519KeySize)
@@ -84,12 +84,12 @@ public sealed class ShieldMessageKey : IDisposable, IEquatable<ShieldMessageKey>
         }
     }
 
-    ~ShieldMessageKey()
+    ~EcliptixMessageKey()
     {
         Dispose(false);
     }
 
-    public bool Equals(ShieldMessageKey? other)
+    public bool Equals(EcliptixMessageKey? other)
     {
         if (other is null) return false;
         return
@@ -99,19 +99,19 @@ public sealed class ShieldMessageKey : IDisposable, IEquatable<ShieldMessageKey>
     }
 
     public override bool Equals(object? obj) =>
-        obj is ShieldMessageKey other && Equals(other);
+        obj is EcliptixMessageKey other && Equals(other);
 
     public override int GetHashCode() =>
         Index.GetHashCode();
 
-    public static bool operator ==(ShieldMessageKey? left, ShieldMessageKey? right)
+    public static bool operator ==(EcliptixMessageKey? left, EcliptixMessageKey? right)
     {
         if (ReferenceEquals(left, right)) return true;
         if (left is null || right is null) return false;
         return left.Equals(right);
     }
 
-    public static bool operator !=(ShieldMessageKey? left, ShieldMessageKey? right)
+    public static bool operator !=(EcliptixMessageKey? left, EcliptixMessageKey? right)
     {
         return !(left == right);
     }

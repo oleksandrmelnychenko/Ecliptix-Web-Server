@@ -4,7 +4,7 @@ using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Core.Protocol;
 
-public sealed class ShieldChainStep : IDisposable
+public sealed class EcliptixProtocolChainStep : IDisposable
 {
     private const uint DefaultCacheWindowSize = 1000;
 
@@ -29,7 +29,7 @@ public sealed class ShieldChainStep : IDisposable
 
     public Result<uint, EcliptixProtocolFailure> GetCurrentIndex() =>
         _disposed
-            ? Result<uint, EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.ObjectDisposed(nameof(ShieldChainStep)))
+            ? Result<uint, EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixProtocolChainStep)))
             : Result<uint, EcliptixProtocolFailure>.Ok(_currentIndex);
 
     internal Result<Unit, EcliptixProtocolFailure> SetCurrentIndex(uint value)
@@ -37,7 +37,7 @@ public sealed class ShieldChainStep : IDisposable
         if (_disposed)
         {
             return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.ObjectDisposed(nameof(ShieldChainStep)));
+                EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixProtocolChainStep)));
         }
 
         if (_currentIndex != value)
@@ -49,7 +49,7 @@ public sealed class ShieldChainStep : IDisposable
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
-    private ShieldChainStep(
+    private EcliptixProtocolChainStep(
         ChainStepType stepType,
         SodiumSecureMemoryHandle chainKeyHandle,
         SodiumSecureMemoryHandle? dhPrivateKeyHandle,
@@ -67,7 +67,7 @@ public sealed class ShieldChainStep : IDisposable
         Debug.WriteLine($"[ShieldChainStep] Created chain step of type {_stepType}");
     }
 
-    public static Result<ShieldChainStep, EcliptixProtocolFailure> Create(
+    public static Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> Create(
         ChainStepType stepType,
         byte[] initialChainKey,
         byte[]? initialDhPrivateKey,
@@ -83,14 +83,14 @@ public sealed class ShieldChainStep : IDisposable
                     .Bind(chainKeyHandle =>
                     {
                         uint actualCacheWindow = cacheWindowSize > 0 ? cacheWindowSize : DefaultCacheWindowSize;
-                        ShieldChainStep step = new(
+                        EcliptixProtocolChainStep step = new(
                             stepType,
                             chainKeyHandle,
                             dhInfo.dhPrivateKeyHandle,
                             dhInfo.dhPublicKeyCloned,
                             actualCacheWindow);
                         Debug.WriteLine($"[ShieldChainStep] Chain step created successfully.");
-                        return Result<ShieldChainStep, EcliptixProtocolFailure>.Ok(step);
+                        return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(step);
                     })
                     .MapErr(err =>
                     {
@@ -191,27 +191,27 @@ public sealed class ShieldChainStep : IDisposable
             });
     }
 
-    internal Result<ShieldMessageKey, EcliptixProtocolFailure> GetOrDeriveKeyFor(uint targetIndex,
-        SortedDictionary<uint, ShieldMessageKey> messageKeys)
+    internal Result<EcliptixMessageKey, EcliptixProtocolFailure> GetOrDeriveKeyFor(uint targetIndex,
+        SortedDictionary<uint, EcliptixMessageKey> messageKeys)
     {
         if (_disposed)
-            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.ObjectDisposed(nameof(ShieldChainStep)));
+            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixProtocolChainStep)));
 
         if (messageKeys.TryGetValue(targetIndex, out var cachedKey))
         {
             Debug.WriteLine($"[ShieldChainStep] Returning cached key for index {targetIndex}");
-            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Ok(cachedKey);
+            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(cachedKey);
         }
 
         Result<uint, EcliptixProtocolFailure> currentIndexResult = GetCurrentIndex();
         if (currentIndexResult.IsErr)
-            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(currentIndexResult.UnwrapErr());
+            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(currentIndexResult.UnwrapErr());
 
         uint currentIndex = currentIndexResult.Unwrap();
 
         if (targetIndex <= currentIndex)
-            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(
+            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput(
                     $"[{_stepType}] Requested index {targetIndex} is not future (current: {currentIndex}) and not cached."));
 
@@ -222,7 +222,7 @@ public sealed class ShieldChainStep : IDisposable
             .MapSodiumFailure();
         if (chainKeyResult.IsErr)
         {
-            return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(chainKeyResult.UnwrapErr());
+            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(chainKeyResult.UnwrapErr());
         }
 
         byte[] chainKey = chainKeyResult.Unwrap();
@@ -250,24 +250,24 @@ public sealed class ShieldChainStep : IDisposable
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"[ShieldChainStep] Error deriving keys at index {idx}: {ex.Message}");
-                    return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(
+                    return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
                         EcliptixProtocolFailure.DeriveKey($"HKDF failed during derivation at index {idx}.", ex));
                 }
 
                 byte[] msgKeyClone = msgKey.ToArray();
 
-                Result<ShieldMessageKey, EcliptixProtocolFailure> keyResult = ShieldMessageKey.New(idx, msgKeyClone);
+                Result<EcliptixMessageKey, EcliptixProtocolFailure> keyResult = EcliptixMessageKey.New(idx, msgKeyClone);
                 if (keyResult.IsErr)
                 {
-                    return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(keyResult.UnwrapErr());
+                    return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(keyResult.UnwrapErr());
                 }
 
-                ShieldMessageKey messageKey = keyResult.Unwrap();
+                EcliptixMessageKey messageKey = keyResult.Unwrap();
 
                 if (!messageKeys.TryAdd(idx, messageKey))
                 {
                     messageKey.Dispose();
-                    return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(
+                    return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
                         EcliptixProtocolFailure.Generic(
                             $"Key for index {idx} unexpectedly appeared during derivation."));
                 }
@@ -278,7 +278,7 @@ public sealed class ShieldChainStep : IDisposable
                 {
                     messageKeys.Remove(idx, out var removedKey);
                     removedKey?.Dispose();
-                    return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr());
+                    return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr());
                 }
 
                 nextChainKey.CopyTo(currentChainKey);
@@ -287,7 +287,7 @@ public sealed class ShieldChainStep : IDisposable
             Result<Unit, EcliptixProtocolFailure> setIndexResult = SetCurrentIndex(targetIndex);
             if (setIndexResult.IsErr)
             {
-                return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(setIndexResult.UnwrapErr());
+                return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(setIndexResult.UnwrapErr());
             }
 
             PruneOldKeys(messageKeys);
@@ -295,12 +295,12 @@ public sealed class ShieldChainStep : IDisposable
             if (messageKeys.TryGetValue(targetIndex, out var finalKey))
             {
                 Debug.WriteLine($"[ShieldChainStep] Derived key for index {targetIndex} successfully.");
-                return Result<ShieldMessageKey, EcliptixProtocolFailure>.Ok(finalKey);
+                return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(finalKey);
             }
             else
             {
                 Debug.WriteLine($"[ShieldChainStep] Derived key for index {targetIndex} not found in cache.");
-                return Result<ShieldMessageKey, EcliptixProtocolFailure>.Err(
+                return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic(
                         $"Derived key for index {targetIndex} missing after derivation loop."));
             }
@@ -336,7 +336,7 @@ public sealed class ShieldChainStep : IDisposable
 
     private Result<Unit, EcliptixProtocolFailure> CheckDisposed() =>
         _disposed
-            ? Result<Unit, EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.ObjectDisposed(nameof(ShieldChainStep)))
+            ? Result<Unit, EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixProtocolChainStep)))
             : Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
 
     private static Result<Unit, EcliptixProtocolFailure> ValidateNewChainKey(byte[] newChainKey) =>
@@ -485,7 +485,7 @@ public sealed class ShieldChainStep : IDisposable
         _dhPublicKey = null;
     }
 
-    internal void PruneOldKeys(SortedDictionary<uint, ShieldMessageKey> messageKeys)
+    internal void PruneOldKeys(SortedDictionary<uint, EcliptixMessageKey> messageKeys)
     {
         if (_disposed || _cacheWindow == 0 || messageKeys.Count == 0) return;
 
@@ -502,7 +502,7 @@ public sealed class ShieldChainStep : IDisposable
         {
             foreach (uint keyIndex in keysToRemove)
             {
-                if (messageKeys.Remove(keyIndex, out ShieldMessageKey? messageKeyToDispose))
+                if (messageKeys.Remove(keyIndex, out EcliptixMessageKey? messageKeyToDispose))
                 {
                     messageKeyToDispose.Dispose();
                     Debug.WriteLine($"[ShieldChainStep] Removed old key at index {keyIndex}");

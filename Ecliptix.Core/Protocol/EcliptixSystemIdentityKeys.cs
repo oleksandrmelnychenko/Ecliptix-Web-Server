@@ -302,22 +302,22 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
         return BitConverter.ToUInt32(buffer, 0);
     }
 
-    public Result<LocalPublicKeyBundle, EcliptixProtocolFailure> CreatePublicBundle()
+    public Result<PublicKeyBundle, EcliptixProtocolFailure> CreatePublicBundle()
     {
         if (_disposed)
         {
-            return Result<LocalPublicKeyBundle, EcliptixProtocolFailure>.Err(
+            return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixSystemIdentityKeys)));
         }
 
-        return Result<LocalPublicKeyBundle, EcliptixProtocolFailure>.Try(
+        return Result<PublicKeyBundle, EcliptixProtocolFailure>.Try(
             func: () =>
             {
                 List<OneTimePreKeyRecord> opkRecords = _oneTimePreKeysInternal
                     .Select(opkLocal => new OneTimePreKeyRecord(opkLocal.PreKeyId, opkLocal.PublicKey))
                     .ToList();
 
-                LocalPublicKeyBundle bundle = new(
+                PublicKeyBundle bundle = new(
                     IdentityEd25519: _ed25519PublicKey,
                     IdentityX25519: IdentityX25519PublicKey,
                     SignedPreKeyId: _signedPreKeyId,
@@ -343,8 +343,12 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
         _ephemeralSecretKeyHandle?.Dispose();
         _ephemeralSecretKeyHandle = null;
+        
         if (_ephemeralX25519PublicKey != null)
+        {
             SodiumInterop.SecureWipe(_ephemeralX25519PublicKey).IgnoreResult();
+        }
+        
         _ephemeralX25519PublicKey = null;
 
         Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> generationResult =
@@ -358,9 +362,8 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
         });
     }
 
-
     public Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> X3dhDeriveSharedSecret(
-        LocalPublicKeyBundle remoteBundle,
+        PublicKeyBundle remoteBundle,
         ReadOnlySpan<byte> info)
     {
         SodiumSecureMemoryHandle? ephemeralHandleUsed = null;
@@ -488,7 +491,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             ? Result<Unit, EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.DeriveKey("HKDF info cannot be empty."))
             : Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
 
-    private static Result<Unit, EcliptixProtocolFailure> ValidateRemoteBundle(LocalPublicKeyBundle? remoteBundle)
+    private static Result<Unit, EcliptixProtocolFailure> ValidateRemoteBundle(PublicKeyBundle? remoteBundle)
     {
         if (remoteBundle == null)
         {

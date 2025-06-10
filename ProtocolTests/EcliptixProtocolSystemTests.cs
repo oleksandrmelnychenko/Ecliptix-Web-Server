@@ -3,6 +3,7 @@ using Ecliptix.Core.Protocol;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
+using PublicKeyBundle = Ecliptix.Core.Protocol.PublicKeyBundle;
 
 namespace ProtocolTests;
 
@@ -126,20 +127,20 @@ public class EcliptixProtocolSystemTests : IDisposable
 
         try
         {
-            LocalPublicKeyBundle? bobPublicBundleProto = _bobKeys.CreatePublicBundle().Unwrap();
+            PublicKeyBundle? bobPublicBundleProto = _bobKeys.CreatePublicBundle().Unwrap();
             if (bobPublicBundleProto == null) throw new InvalidOperationException("Bob failed to create public bundle");
 
             _aliceKeys.GenerateEphemeralKeyPair();
-            LocalPublicKeyBundle? alicePublicBundleProto = _aliceKeys.CreatePublicBundle().Unwrap();
+            PublicKeyBundle? alicePublicBundleProto = _aliceKeys.CreatePublicBundle().Unwrap();
             if (alicePublicBundleProto == null) throw new InvalidOperationException("Alice failed to create bundle");
 
-            Result<LocalPublicKeyBundle, EcliptixProtocolFailure> bobBundleInternalResult =
-                LocalPublicKeyBundle.FromProtobufExchange(bobPublicBundleProto.ToProtobufExchange());
+            Result<PublicKeyBundle, EcliptixProtocolFailure> bobBundleInternalResult =
+                PublicKeyBundle.FromProtobufExchange(bobPublicBundleProto.ToProtobufExchange());
             Assert.IsTrue(bobBundleInternalResult.IsOk,
                 bobBundleInternalResult.IsErr
                     ? $"Failed parsing Bob's bundle: {bobBundleInternalResult.UnwrapErr()}"
                     : "Failed parsing Bob's bundle");
-            LocalPublicKeyBundle bobBundleInternal = bobBundleInternalResult.Unwrap();
+            PublicKeyBundle bobBundleInternal = bobBundleInternalResult.Unwrap();
 
             Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> aliceDeriveResult =
                 _aliceKeys.X3dhDeriveSharedSecret(bobBundleInternal, Constants.X3dhInfo);
@@ -158,8 +159,8 @@ public class EcliptixProtocolSystemTests : IDisposable
             };
             uint? opkIdUsedByAlice = bobBundleInternal.OneTimePreKeys.FirstOrDefault()?.PreKeyId;
 
-            PublicKeyBundle receivedAliceBundleProto =
-                Helpers.ParseFromBytes<PublicKeyBundle>(initialMessageToBob.Payload.ToByteArray());
+            Ecliptix.Protobuf.PubKeyExchange.PublicKeyBundle receivedAliceBundleProto =
+                Helpers.ParseFromBytes<Ecliptix.Protobuf.PubKeyExchange.PublicKeyBundle>(initialMessageToBob.Payload.ToByteArray());
             Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> bobDeriveResult = _bobKeys.CalculateSharedSecretAsRecipient(
                 receivedAliceBundleProto.IdentityX25519PublicKey.ToByteArray(),
                 receivedAliceBundleProto.EphemeralX25519PublicKey.ToByteArray(),

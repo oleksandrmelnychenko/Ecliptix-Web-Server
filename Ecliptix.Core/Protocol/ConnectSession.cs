@@ -18,11 +18,11 @@ public sealed class ConnectSession : IDisposable
     private const int AesGcmNonceSize = 12;
 
     private readonly uint _id;
-    private LocalPublicKeyBundle? _peerBundle;
-    private readonly ShieldChainStep? _sendingStep;
-    private ShieldChainStep? _receivingStep;
+    private PublicKeyBundle? _peerBundle;
+    private readonly EcliptixProtocolChainStep? _sendingStep;
+    private EcliptixProtocolChainStep? _receivingStep;
     private SodiumSecureMemoryHandle? _rootKeyHandle;
-    private readonly SortedDictionary<uint, ShieldMessageKey> _messageKeys;
+    private readonly SortedDictionary<uint, EcliptixMessageKey> _messageKeys;
     private ulong _nonceCounter;
     private readonly DateTimeOffset _createdAt;
     private byte[]? _peerDhPublicKey;
@@ -39,7 +39,7 @@ public sealed class ConnectSession : IDisposable
         uint id,
         bool isInitiator,
         SodiumSecureMemoryHandle initialSendingDhPrivateKeyHandle,
-        ShieldChainStep sendingStep,
+        EcliptixProtocolChainStep sendingStep,
         SodiumSecureMemoryHandle persistentDhPrivateKeyHandle,
         byte[] persistentDhPublicKey)
     {
@@ -53,7 +53,7 @@ public sealed class ConnectSession : IDisposable
         _peerBundle = null;
         _receivingStep = null;
         _rootKeyHandle = null;
-        _messageKeys = new SortedDictionary<uint, ShieldMessageKey>();
+        _messageKeys = new SortedDictionary<uint, EcliptixMessageKey>();
         _nonceCounter = 0;
         _createdAt = DateTimeOffset.UtcNow;
         _peerDhPublicKey = null;
@@ -69,7 +69,7 @@ public sealed class ConnectSession : IDisposable
         SodiumSecureMemoryHandle? initialSendingDhPrivateKeyHandle = null;
         byte[]? initialSendingDhPublicKey = null;
         byte[]? initialSendingDhPrivateKeyBytes = null;
-        ShieldChainStep? sendingStep = null;
+        EcliptixProtocolChainStep? sendingStep = null;
         SodiumSecureMemoryHandle? persistentDhPrivateKeyHandle = null;
         byte[]? persistentDhPublicKey = null;
 
@@ -99,7 +99,7 @@ public sealed class ConnectSession : IDisposable
                     Debug.WriteLine(
                         $"[ShieldSession] Generated Persistent DH Public Key: {Convert.ToHexString(persistentDhPublicKey)}");
                     byte[] tempChainKey = new byte[Constants.X25519KeySize];
-                    Result<ShieldChainStep, EcliptixProtocolFailure> stepResult = ShieldChainStep.Create(
+                    Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> stepResult = EcliptixProtocolChainStep.Create(
                         ChainStepType.Sender,
                         tempChainKey,
                         initialSendingDhPrivateKeyBytes,
@@ -223,11 +223,11 @@ public sealed class ConnectSession : IDisposable
     }
 
 
-    public Result<LocalPublicKeyBundle, EcliptixProtocolFailure> GetPeerBundle() =>
+    public Result<PublicKeyBundle, EcliptixProtocolFailure> GetPeerBundle() =>
         CheckDisposed().Bind(_ =>
             _peerBundle != null
-                ? Result<LocalPublicKeyBundle, EcliptixProtocolFailure>.Ok(_peerBundle)
-                : Result<LocalPublicKeyBundle, EcliptixProtocolFailure>.Err(
+                ? Result<PublicKeyBundle, EcliptixProtocolFailure>.Ok(_peerBundle)
+                : Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic("Peer bundle has not been set.")));
 
     public Result<bool, EcliptixProtocolFailure> GetIsInitiator() =>
@@ -240,7 +240,7 @@ public sealed class ConnectSession : IDisposable
             return u;
         });
 
-    internal void SetPeerBundle(LocalPublicKeyBundle peerBundle)
+    internal void SetPeerBundle(PublicKeyBundle peerBundle)
     {
         if (peerBundle == null)
         {
@@ -255,7 +255,7 @@ public sealed class ConnectSession : IDisposable
         byte[] initialPeerDhPublicKey)
     {
         SodiumSecureMemoryHandle? tempRootHandle = null;
-        ShieldChainStep? tempReceivingStep = null;
+        EcliptixProtocolChainStep? tempReceivingStep = null;
         byte[]? initialRootKeyCopy = null;
         byte[]? localSenderCk = null;
         byte[]? localReceiverCk = null;
@@ -298,7 +298,7 @@ public sealed class ConnectSession : IDisposable
                         });
                 })
                 .Bind(_ => _sendingStep!.UpdateKeysAfterDhRatchet(localSenderCk!))
-                .Bind(_ => ShieldChainStep.Create(ChainStepType.Receiver, localReceiverCk!, persistentPrivKeyBytes,
+                .Bind(_ => EcliptixProtocolChainStep.Create(ChainStepType.Receiver, localReceiverCk!, persistentPrivKeyBytes,
                     _persistentDhPublicKey))
                 .Map(receivingStep =>
                 {
@@ -395,11 +395,11 @@ public sealed class ConnectSession : IDisposable
         }
     }
 
-    internal Result<(ShieldMessageKey MessageKey, bool IncludeDhKey), EcliptixProtocolFailure> PrepareNextSendMessage()
+    internal Result<(EcliptixMessageKey MessageKey, bool IncludeDhKey), EcliptixProtocolFailure> PrepareNextSendMessage()
     {
-        ShieldChainStep? sendingStepLocal = null;
-        ShieldMessageKey? messageKey;
-        ShieldMessageKey? clonedMessageKey;
+        EcliptixProtocolChainStep? sendingStepLocal = null;
+        EcliptixMessageKey? messageKey;
+        EcliptixMessageKey? clonedMessageKey;
         byte[]? keyMaterial = null;
         bool includeDhKey = false;
 
@@ -437,7 +437,7 @@ public sealed class ConnectSession : IDisposable
                 {
                     keyMaterial = new byte[Constants.AesKeySize];
                     return originalKey.ReadKeyMaterial(keyMaterial)
-                        .Bind(_ => ShieldMessageKey.New(originalKey.Index, keyMaterial))
+                        .Bind(_ => EcliptixMessageKey.New(originalKey.Index, keyMaterial))
                         .Map(clone =>
                         {
                             clonedMessageKey = clone;
@@ -453,12 +453,12 @@ public sealed class ConnectSession : IDisposable
         }
     }
 
-    internal Result<ShieldMessageKey, EcliptixProtocolFailure> ProcessReceivedMessage(uint receivedIndex,
+    internal Result<EcliptixMessageKey, EcliptixProtocolFailure> ProcessReceivedMessage(uint receivedIndex,
         byte[]? receivedDhPublicKeyBytes)
     {
-        ShieldChainStep? receivingStepLocal = null;
+        EcliptixProtocolChainStep? receivingStepLocal = null;
         byte[]? peerDhPublicCopy = null;
-        ShieldMessageKey? messageKey;
+        EcliptixMessageKey? messageKey;
 
         try
         {
@@ -497,22 +497,22 @@ public sealed class ConnectSession : IDisposable
         }
     }
 
-    private Result<ShieldChainStep, EcliptixProtocolFailure> EnsureSendingStepInitialized() =>
+    private Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> EnsureSendingStepInitialized() =>
         CheckDisposed().Bind(_ =>
             _sendingStep != null
-                ? Result<ShieldChainStep, EcliptixProtocolFailure>.Ok(_sendingStep)
-                : Result<ShieldChainStep, EcliptixProtocolFailure>.Err(
+                ? Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(_sendingStep)
+                : Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic("Sending chain step not initialized.")));
 
-    private Result<ShieldChainStep, EcliptixProtocolFailure> EnsureReceivingStepInitialized() =>
+    private Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> EnsureReceivingStepInitialized() =>
         CheckDisposed().Bind(_ =>
             _receivingStep != null
-                ? Result<ShieldChainStep, EcliptixProtocolFailure>.Ok(_receivingStep)
-                : Result<ShieldChainStep, EcliptixProtocolFailure>.Err(
+                ? Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(_receivingStep)
+                : Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic("Receiving chain step not initialized.")));
 
     private Result<(bool performedRatchet, bool receivedNewKey), EcliptixProtocolFailure> MaybePerformSendingDhRatchet(
-        ShieldChainStep sendingStep)
+        EcliptixProtocolChainStep sendingStep)
     {
         return sendingStep.GetCurrentIndex().Bind(currentIndex =>
         {
@@ -535,7 +535,7 @@ public sealed class ConnectSession : IDisposable
         });
     }
 
-    private Result<Unit, EcliptixProtocolFailure> MaybePerformReceivingDhRatchet(ShieldChainStep receivingStep,
+    private Result<Unit, EcliptixProtocolFailure> MaybePerformReceivingDhRatchet(EcliptixProtocolChainStep receivingStep,
         byte[]? receivedDhPublicKeyBytes)
     {
         if (receivedDhPublicKeyBytes == null)
@@ -785,7 +785,7 @@ public sealed class ConnectSession : IDisposable
     private void ClearMessageKeyCache()
     {
         Debug.WriteLine($"[ShieldSession] Clearing message key cache for session {_id}");
-        foreach (KeyValuePair<uint, ShieldMessageKey> kvp in _messageKeys.ToList())
+        foreach (KeyValuePair<uint, EcliptixMessageKey> kvp in _messageKeys.ToList())
         {
             try
             {
