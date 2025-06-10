@@ -7,7 +7,9 @@ namespace Ecliptix.Core.Protocol;
 public sealed class EcliptixSystemIdentityKeys : IDisposable
 {
     private readonly SodiumSecureMemoryHandle _ed25519SecretKeyHandle;
+    
     private readonly SodiumSecureMemoryHandle _identityX25519SecretKeyHandle;
+    
     private readonly SodiumSecureMemoryHandle _signedPreKeySecretKeyHandle;
 
     private SodiumSecureMemoryHandle? _ephemeralSecretKeyHandle;
@@ -101,12 +103,10 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 edSkHandle?.Dispose();
                 idXSkHandle?.Dispose();
                 spkSkHandle?.Dispose();
-                if (opks != null)
+                if (opks == null) return overallResult;
+                foreach (OneTimePreKeyLocal opk in opks)
                 {
-                    foreach (OneTimePreKeyLocal opk in opks)
-                    {
-                        opk.Dispose();
-                    }
+                    opk.Dispose();
                 }
             }
 
@@ -117,12 +117,16 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             edSkHandle?.Dispose();
             idXSkHandle?.Dispose();
             spkSkHandle?.Dispose();
-            if (opks != null)
+            if (opks == null)
             {
-                foreach (OneTimePreKeyLocal opk in opks)
-                {
-                    opk.Dispose();
-                }
+                return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic($"Unexpected error initializing LocalKeyMaterial: {ex.Message}",
+                        ex));
+            }
+            
+            foreach (OneTimePreKeyLocal opk in opks)
+            {
+                opk.Dispose();
             }
 
             return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
@@ -132,9 +136,9 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
     private static Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> GenerateEd25519Keys()
     {
-        SodiumSecureMemoryHandle? skHandle = null;
+        SodiumSecureMemoryHandle? skHandle;
         byte[]? skBytes = null;
-        byte[]? pkBytes = null;
+        byte[]? pkBytes;
         try
         {
             return Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure>.Try(func: () =>
@@ -166,7 +170,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
     {
         SodiumSecureMemoryHandle? skHandle = null;
         byte[]? skBytes = null;
-        byte[]? pkBytes = null;
         byte[]? tempPrivCopy = null;
         try
         {
@@ -206,7 +209,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                     .Err(deriveResult.UnwrapErr());
             }
 
-            pkBytes = deriveResult.Unwrap();
+            byte[] pkBytes = deriveResult.Unwrap();
             if (pkBytes.Length != Constants.X25519PublicKeySize)
             {
                 skHandle.Dispose();

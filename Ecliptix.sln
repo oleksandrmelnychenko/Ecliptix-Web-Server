@@ -11,8 +11,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Domain", "Ecliptix
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProtocolTests", "ProtocolTests\ProtocolTests.csproj", "{31CB96A6-7EE9-4358-8DEB-56F8EE246EBB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Benchmarks", "Benchmarks\Benchmarks.csproj", "{2833C87B-B10C-4782-87D4-AF8267F208E4}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -31,9 +29,5 @@ Global
 		{31CB96A6-7EE9-4358-8DEB-56F8EE246EBB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{31CB96A6-7EE9-4358-8DEB-56F8EE246EBB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{31CB96A6-7EE9-4358-8DEB-56F8EE246EBB}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2833C87B-B10C-4782-87D4-AF8267F208E4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2833C87B-B10C-4782-87D4-AF8267F208E4}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2833C87B-B10C-4782-87D4-AF8267F208E4}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2833C87B-B10C-4782-87D4-AF8267F208E4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

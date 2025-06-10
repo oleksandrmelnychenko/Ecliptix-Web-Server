@@ -81,7 +81,7 @@ public class ShieldProProtocolBenchmarks
 
         for (int i = 0; i < 10; i++)
         {
-            alice.ProduceOutboundMessage(sessionId, _exchangeType, _sampleMessage);
+            alice.ProduceOutboundMessage(_exchangeType, _sampleMessage);
         }
     }
 
@@ -92,25 +92,25 @@ public class ShieldProProtocolBenchmarks
         for (int i = 0; i < 10; i++)
         {
             var cipher =
-                _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_aliceSessionId, _exchangeType,
+                _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_exchangeType,
                     _sampleMessage);
-            _bobEcliptixProtocolSystem.ProcessInboundMessage(_bobSessionId, _exchangeType, cipher);
+            _bobEcliptixProtocolSystem.ProcessInboundMessage(_exchangeType, cipher);
         }
     }
 
     [Benchmark(Description = "Message Encryption")]
     public void Message_Encryption()
     {
-        _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_aliceSessionId, _exchangeType, _sampleMessage);
+        _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_exchangeType, _sampleMessage);
     }
 
     [Benchmark(Description = "Message Decryption")]
     public void Message_Decryption()
     {
         var cipher =
-            _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_aliceSessionId, _exchangeType,
+            _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_exchangeType,
                 _sampleMessage);
-        _bobEcliptixProtocolSystem.ProcessInboundMessage(_bobSessionId, _exchangeType, cipher);
+        _bobEcliptixProtocolSystem.ProcessInboundMessage(_exchangeType, cipher);
     }
 
     [Benchmark(Description = "Single Session Throughput")]
@@ -119,12 +119,12 @@ public class ShieldProProtocolBenchmarks
         for (int i = 0; i < MessageCount; i++)
         {
             var cipher =
-                _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_aliceSessionId, _exchangeType,
+                _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_exchangeType,
                     _sampleMessage);
-            _bobEcliptixProtocolSystem.ProcessInboundMessage(_bobSessionId, _exchangeType, cipher);
-            var reply = _bobEcliptixProtocolSystem.ProduceOutboundMessage(_bobSessionId, _exchangeType,
+            _bobEcliptixProtocolSystem.ProcessInboundMessage(_exchangeType, cipher);
+            var reply = _bobEcliptixProtocolSystem.ProduceOutboundMessage(_exchangeType,
                 _sampleMessage);
-            _aliceEcliptixProtocolSystem.ProcessInboundMessage(_aliceSessionId, _exchangeType, reply);
+            _aliceEcliptixProtocolSystem.ProcessInboundMessage(_exchangeType, reply);
         }
     }
 
@@ -152,8 +152,8 @@ public class ShieldProProtocolBenchmarks
                 for (int i = 0; i < MessagesPerSession; i++)
                 {
                     CipherPayload cipher =
-                        alice.ProduceOutboundMessage(connectId, _exchangeType, _sampleMessage);
-                    bob.ProcessInboundMessage(connectId, _exchangeType, cipher);
+                        alice.ProduceOutboundMessage(_exchangeType, _sampleMessage);
+                    bob.ProcessInboundMessage(_exchangeType, cipher);
                 }
             });
         }

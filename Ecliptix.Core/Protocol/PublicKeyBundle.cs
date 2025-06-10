@@ -1,5 +1,4 @@
 using Ecliptix.Domain.Utilities;
-using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 
 namespace Ecliptix.Core.Protocol;

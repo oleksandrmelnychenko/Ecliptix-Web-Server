@@ -39,25 +39,23 @@ public class EcliptixProtocolConnectActor : ReceiveActor
 
     private void HandleEncryptCipherPayloadCommand(EncryptPayloadActorCommand actorCommand)
     {
-        CipherPayload cipherPayload = _ecliptixProtocolSystem!.ProduceOutboundMessage(actorCommand.ConnectId,
-            actorCommand.PubKeyExchangeType, actorCommand.Payload);
-        Sender.Tell(Result<CipherPayload, EcliptixProtocolFailure>.Ok(cipherPayload));
+        Result<CipherPayload, EcliptixProtocolFailure> cipherPayload =
+            _ecliptixProtocolSystem!.ProduceOutboundMessage(actorCommand.Payload);
+        Sender.Tell(cipherPayload);
     }
 
     private void HandleDecryptCipherPayloadCommand(DecryptCipherPayloadActorCommand actorCommand)
     {
-        byte[] payload = _ecliptixProtocolSystem!.ProcessInboundMessage(actorCommand.ConnectId,
-            actorCommand.PubKeyExchangeType, actorCommand.CipherPayload);
-        Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Ok(payload));
+        var payload = _ecliptixProtocolSystem!.ProcessInboundMessage(actorCommand.CipherPayload);
+        Sender.Tell(payload);
     }
 
     private void HandleProcessAndRespondToPubKeyExchangeCommand(DeriveSharedSecretCommand arg)
     {
-        PubKeyExchange pubKeyExchange =
+        var pubKeyExchange =
             _ecliptixProtocolSystem!.ProcessAndRespondToPubKeyExchange(arg.ConnectId, arg.PubKeyExchange);
 
-        Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(
-            new DeriveSharedSecretReply(pubKeyExchange)));
+        Sender.Tell(pubKeyExchange);
     }
 
     public static Props Build() =>
