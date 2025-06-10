@@ -52,10 +52,19 @@ public class EcliptixProtocolConnectActor : ReceiveActor
 
     private void HandleProcessAndRespondToPubKeyExchangeCommand(DeriveSharedSecretCommand arg)
     {
-        var pubKeyExchange =
+        Result<PubKeyExchange, EcliptixProtocolFailure> pubKeyExchange =
             _ecliptixProtocolSystem!.ProcessAndRespondToPubKeyExchange(arg.ConnectId, arg.PubKeyExchange);
 
-        Sender.Tell(pubKeyExchange);
+        if (pubKeyExchange.IsOk)
+        {
+            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(
+                new DeriveSharedSecretReply(pubKeyExchange.Unwrap())));
+        }
+        else
+        {
+            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(
+                pubKeyExchange.UnwrapErr()));
+        }
     }
 
     public static Props Build() =>
