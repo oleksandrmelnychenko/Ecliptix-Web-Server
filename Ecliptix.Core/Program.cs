@@ -14,7 +14,6 @@ using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.Persistors;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Npgsql;
 using Serilog;
 using Serilog.Context;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -34,30 +33,7 @@ try
 {
     IConfiguration configuration = builder.Configuration;
 
-    string? connectionString = configuration.GetConnectionString("EcliptixDb");
-    if (string.IsNullOrEmpty(connectionString))
-    {
-        throw new InvalidOperationException("Connection string 'EcliptixDb' not found or is empty in configuration.");
-    }
-
     builder.Services.AddSingleton<SNSProvider>();
-    builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
-    {
-        ILoggerFactory? loggerFactory = sp.GetService<ILoggerFactory>();
-        NpgsqlDataSourceBuilder dataSourceBuilder = new(connectionString);
-        if (loggerFactory != null)
-        {
-            dataSourceBuilder.UseLoggerFactory(loggerFactory);
-        }
-        else
-        {
-            Log.Warning("ILoggerFactory not found in service provider. Npgsql logging will be disabled.");
-        }
-
-        Log.Information("Building NpgsqlDataSource for EcliptixDb.");
-        return dataSourceBuilder.Build();
-    });
-
     builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
 
     RegisterLocalization(builder.Services);
@@ -148,8 +124,6 @@ try
     WebApplication app = builder.Build();
 
     app.UseSerilogRequestLogging();
-    // app.UseRateLimiter();
-    // app.UseHttpsRedirection();
     app.UseRequestLocalization();
     app.UseRouting();
     app.UseResponseCompression();
@@ -161,7 +135,6 @@ try
     app.MapGrpcService<MembershipServices>();
 
     app.MapGet("/", () => Results.Ok("Ecliptix Service is operational."));
-    app.MapHealthChecks("/healthz");
 
     Log.Information("Starting Ecliptix application host");
     app.Run();
@@ -195,12 +168,6 @@ static void RegisterLocalization(IServiceCollection services)
 static void RegisterValidators(IServiceCollection services)
 {
     services.AddResponseCompression();
-    services.AddHealthChecks()
-        .AddNpgSql(
-            sp => sp.GetRequiredService<NpgsqlDataSource>(),
-            name: "database_status",
-            failureStatus: HealthStatus.Unhealthy,
-            tags: ["db", "postgresql"]);
 }
 
 static void RegisterGrpc(IServiceCollection services)

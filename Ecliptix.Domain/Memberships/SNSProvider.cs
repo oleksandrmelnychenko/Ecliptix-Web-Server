@@ -1,7 +1,5 @@
-using Amazon.Runtime;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Utilities;
-using Polly;
 
 namespace Ecliptix.Domain.Memberships;
 

@@ -24,7 +24,7 @@ internal class LoginMembershipResult
 internal class UpdateSecureKeyResult
 {
     public bool Success { get; set; }
-    public string Message { get; set; } = string.Empty;
+    public string Message { get; set; } = Empty;
     public Guid? MembershipUniqueId { get; set; }
     public string? Status { get; set; }
     public string? CreationStatus { get; set; }
@@ -70,11 +70,11 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> SignInMembershipAsync(
         IDbConnection connection, SignInMembershipActorEvent cmd)
     {
-        var parameters = new DynamicParameters();
+        DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", cmd.PhoneNumber);
         parameters.Add("@SecureKey", cmd.SecureKey);
 
-        var result = await connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
+        LoginMembershipResult? result = await connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
@@ -119,7 +119,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> UpdateMembershipSecureKeyAsync(
         IDbConnection connection, UpdateMembershipSecureKeyEvent cmd)
     {
-        DynamicParameters parameters = new DynamicParameters();
+        DynamicParameters parameters = new();
         parameters.Add("@MembershipUniqueId", cmd.MembershipIdentifier);
         parameters.Add("@SecureKey", cmd.SecureKey);
 

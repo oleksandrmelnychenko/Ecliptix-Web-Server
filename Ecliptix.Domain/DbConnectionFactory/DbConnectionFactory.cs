@@ -10,7 +10,7 @@ public sealed class DbConnectionFactory : IDbConnectionFactory
 
     public DbConnectionFactory(IConfiguration configuration)
     {
-        string? connectionString = configuration.GetConnectionString("DB_CONNECTION_STRING");
+        string? connectionString = configuration.GetConnectionString("EcliptixMemberships");
         if (string.IsNullOrEmpty(connectionString))
         {
             throw new InvalidOperationException(
