@@ -290,7 +290,7 @@ public class VerificationFlowActor : ReceiveActor
         }
 
         _writer = command.ChannelWriter;
-        var result = await PrepareAndSendOtp();
+        Result<OtpQueryRecord, VerificationFlowFailure> result = await PrepareAndSendOtp();
         if (result.IsOk)
         {
             StartTimers();
@@ -306,7 +306,7 @@ public class VerificationFlowActor : ReceiveActor
         CancelTimers();
         if (_activeOtp?.IsActive != true) return;
 
-        var sessionDelay = _sessionExpiresAt - DateTime.UtcNow;
+        TimeSpan sessionDelay = _sessionExpiresAt - DateTime.UtcNow;
         if (sessionDelay > TimeSpan.Zero)
         {
             _sessionTimer = Context.System.Scheduler.ScheduleTellOnceCancelable(sessionDelay, Self,

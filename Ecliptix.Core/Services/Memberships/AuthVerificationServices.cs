@@ -157,7 +157,7 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
                     }
                     else
                     {
-                        logger.LogError("Failed to encrypt countdown update: {Error}", encryptResult.UnwrapErr());
+                        Logger.LogError("Failed to encrypt countdown update: {Error}", encryptResult.UnwrapErr());
                         break;
                     }
                 }
@@ -170,11 +170,11 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
         }
         catch (OperationCanceledException)
         {
-            logger.LogInformation("Streaming task was canceled because the client disconnected.");
+            Logger.LogInformation("Streaming task was canceled because the client disconnected.");
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "An unexpected error occurred in the streaming task.");
+            Logger.LogError(ex, "An unexpected error occurred in the streaming task.");
         }
     }
 

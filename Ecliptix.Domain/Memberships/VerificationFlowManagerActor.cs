@@ -66,12 +66,12 @@ public class VerificationFlowManagerActor : ReceiveActor
                 ), actorName);
 
                 Context.Watch(newFlowActor);
-                Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
+                //Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
             }
             else
             {
-                Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.NotFound("No active session found for resend request.")));
+                /*Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.NotFound("No active session found for resend request.")));*/
                 @event.ChannelWriter.TryComplete();
             }
         }
