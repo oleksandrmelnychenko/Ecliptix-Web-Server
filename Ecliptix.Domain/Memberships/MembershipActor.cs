@@ -34,39 +34,22 @@ public class MembershipActor : ReceiveActor
 
     private async Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyEvent @event)
     {
-        Result<Option<MembershipQueryRecord>, VerificationFlowFailure> operationResult =
-            await _persistor.Ask<Result<Option<MembershipQueryRecord>, VerificationFlowFailure>>(@event);
+        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
+            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
 
-        Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure> result = operationResult.Match(
-            ok: option => option.Match(
-                record =>
+        Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure> finalResult =
+            persistorResult.Map(record => new UpdateMembershipWithSecureKeyResponse
+            {
+                Membership = new Membership
                 {
-                    UpdateMembershipWithSecureKeyResponse updateMembershipWithSecureKeyResponse =
-                        new()
-                        {
-                            Membership = new Membership
-                            {
-                                UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
-                                Status = record.ActivityStatus,
-                                CreationStatus = record.CreationStatus
-                            },
-                            Result = UpdateMembershipWithSecureKeyResponse.Types.UpdateResult.Succeeded
-                        };
-
-                    return Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>.Ok(
-                        updateMembershipWithSecureKeyResponse);
+                    UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
+                    Status = record.ActivityStatus,
+                    CreationStatus = record.CreationStatus
                 },
-                () => Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>.Ok(
-                    new UpdateMembershipWithSecureKeyResponse
-                    {
-                        Result = UpdateMembershipWithSecureKeyResponse.Types.UpdateResult.InvalidCredentials,
-                        Message = _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidCredentials,
-                            @event.CultureName)
-                    })
-            ),
-            Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>.Err);
+                Result = UpdateMembershipWithSecureKeyResponse.Types.UpdateResult.Succeeded
+            });
 
-        Sender.Tell(result);
+        Sender.Tell(finalResult);
     }
 
     private async Task HandleCreateMembershipActorCommand(CreateMembershipActorEvent @event)
@@ -108,14 +91,14 @@ public class MembershipActor : ReceiveActor
                 if (err.FailureType == VerificationFlowFailureType.Validation)
                 {
                     string message;
-                    
+
                     if (err.IsUserFacing)
                     {
-                        message =_localizationProvider.Localize(err.Message);
+                        message = _localizationProvider.Localize(err.Message);
                         Log.Information("Sign-in failed for {PhoneNumber} with error: {ErrorMessage}",
                             @event.PhoneNumber, message);
                     }
-                    
+
                     message = _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidCredentials,
                         @event.CultureName);
 
@@ -131,7 +114,6 @@ public class MembershipActor : ReceiveActor
 
                 if (err.FailureType == VerificationFlowFailureType.RateLimitExceeded)
                 {
-                    
                 }
 
                 return Result<SignInMembershipResponse, VerificationFlowFailure>.Err(err);
