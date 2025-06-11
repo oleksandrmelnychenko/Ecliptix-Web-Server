@@ -3,6 +3,7 @@ using Ecliptix.Domain.Memberships.Events;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
+using Google.Protobuf;
 using Microsoft.Extensions.Localization;
 using Serilog;
 
@@ -66,12 +67,18 @@ public class VerificationFlowManagerActor : ReceiveActor
                 ), actorName);
 
                 Context.Watch(newFlowActor);
-                //Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
             }
             else
             {
-                /*Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.NotFound("No active session found for resend request.")));*/
+                @event.ChannelWriter.TryWrite(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                    new VerificationCountdownUpdate
+                    {
+                        SessionIdentifier = ByteString.Empty,
+                        AlreadyVerified = false,
+                        Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Expired,
+                        Message = VerificationFlowMessageKeys.VerificationFlowNotFound
+                    }));
+
                 @event.ChannelWriter.TryComplete();
             }
         }
@@ -88,7 +95,7 @@ public class VerificationFlowManagerActor : ReceiveActor
         else
         {
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.NotFound("No active verification flow found for this connection.")));
+                VerificationFlowFailure.NotFound()));
         }
     }
 

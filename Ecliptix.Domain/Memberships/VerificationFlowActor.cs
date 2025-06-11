@@ -12,12 +12,15 @@ using Serilog;
 namespace Ecliptix.Domain.Memberships;
 
 public record StartOtpTimerEvent;
+
 public record VerificationFlowExpiredEvent;
+
 public record CreateMembershipActorEvent(
     uint ConnectId,
     Guid VerificationFlowIdentifier,
     Guid OtpIdentifier,
     Membership.Types.CreationStatus CreationStatus);
+
 public record InitiateVerificationFlowActorEvent(
     uint ConnectId,
     Guid PhoneNumberIdentifier,
@@ -30,7 +33,7 @@ public record VerifyFlowActorEvent(uint ConnectId, string OneTimePassword);
 
 public class VerificationFlowActor : ReceiveActor
 {
-    private const int MaxOtpAttempts = 5;
+    private const int MaxOtpAttempts = 3;
     private static readonly TimeSpan SessionTimeout = TimeSpan.FromMinutes(5);
 
     private readonly uint _connectId;
@@ -249,11 +252,12 @@ public class VerificationFlowActor : ReceiveActor
 
         await UpdateOtpStatus(VerificationFlowStatus.Verified);
 
-        var createEvent = new CreateMembershipActorEvent(
+        CreateMembershipActorEvent createEvent = new(
             _connectId, _verificationFlowQueryRecord.Value!.UniqueIdentifier, _activeOtp!.UniqueIdentifier,
             Membership.Types.CreationStatus.OtpVerified);
 
-        var result = await _membershipActor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(createEvent);
+        Result<MembershipQueryRecord, VerificationFlowFailure> result =
+            await _membershipActor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(createEvent);
 
         if (result.IsOk)
         {
@@ -334,7 +338,8 @@ public class VerificationFlowActor : ReceiveActor
             new VerificationCountdownUpdate
             {
                 SecondsRemaining = _activeOtpRemainingSeconds,
-                SessionIdentifier = Helpers.GuidToByteString(_verificationFlowQueryRecord.Value!.UniqueIdentifier)
+                SessionIdentifier = Helpers.GuidToByteString(_verificationFlowQueryRecord.Value!.UniqueIdentifier),
+                Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Active
             }));
     }
 
@@ -345,44 +350,44 @@ public class VerificationFlowActor : ReceiveActor
 
     private async Task<Result<OtpQueryRecord, VerificationFlowFailure>> PrepareAndSendOtp()
     {
-        var otp = new OneTimePassword();
-        var generationResult =
+        OneTimePassword otp = new();
+        Result<(OtpQueryRecord Record, string PlainOtp), VerificationFlowFailure> generationResult =
             otp.Generate(_phoneNumberRecord.Value!, _verificationFlowQueryRecord.Value!.UniqueIdentifier);
 
         if (generationResult.IsErr)
+        {
             return Result<OtpQueryRecord, VerificationFlowFailure>.Err(generationResult.UnwrapErr());
+        }
 
-        var (otpRecord, plainOtp) = generationResult.Unwrap();
-        var message = _localizer["Auth code is: {0}", plainOtp];
+        (OtpQueryRecord otpRecord, string plainOtp) = generationResult.Unwrap();
+        LocalizedString message = _localizer["Auth code is: {0}", plainOtp];
 
-        var smsResult = await _snsProvider.SendSmsAsync(_phoneNumberRecord.Value!.PhoneNumber, message);
+        Result<Unit, VerificationFlowFailure> smsResult =
+            await _snsProvider.SendSmsAsync(_phoneNumberRecord.Value!.PhoneNumber, message);
         if (smsResult.IsErr)
             return Result<OtpQueryRecord, VerificationFlowFailure>.Err(smsResult.UnwrapErr());
 
-        var finalOtpRecord = CreateOtpRecord(otpRecord);
+        OtpQueryRecord finalOtpRecord = CreateOtpRecord(otpRecord);
         _activeOtp = otp;
 
-        var createResult =
+        Result<CreateOtpRecordResult, VerificationFlowFailure> createResult =
             await _persistor.Ask<Result<CreateOtpRecordResult, VerificationFlowFailure>>(
                 new CreateOtpActorEvent(finalOtpRecord));
+
         if (createResult.IsErr)
+        {
             return Result<OtpQueryRecord, VerificationFlowFailure>.Err(createResult.UnwrapErr());
+        }
 
         _otpAttempts++;
         _activeOtp.UniqueIdentifier = createResult.Unwrap().OtpUniqueId;
+
         return Result<OtpQueryRecord, VerificationFlowFailure>.Ok(finalOtpRecord);
     }
 
-    private OtpQueryRecord CreateOtpRecord(OtpQueryRecord originalRecord) => new()
+    private OtpQueryRecord CreateOtpRecord(OtpQueryRecord originalRecord) => originalRecord with
     {
-        UniqueIdentifier = _verificationFlowQueryRecord.Value!.UniqueIdentifier,
-        PhoneNumberIdentifier = originalRecord.PhoneNumberIdentifier,
-        OtpHash = originalRecord.OtpHash,
-        OtpSalt = originalRecord.OtpSalt,
-        ExpiresAt = originalRecord.ExpiresAt,
-        Status = originalRecord.Status,
-        IsActive = originalRecord.IsActive,
-        FlowUniqueId = originalRecord.FlowUniqueId
+        UniqueIdentifier = _verificationFlowQueryRecord.Value!.UniqueIdentifier
     };
 
     private async Task NotifyAlreadyVerified(VerificationFlowQueryRecord session)
@@ -392,7 +397,8 @@ public class VerificationFlowActor : ReceiveActor
             {
                 SecondsRemaining = 0,
                 SessionIdentifier = Helpers.GuidToByteString(session.UniqueIdentifier),
-                AlreadyVerified = true
+                AlreadyVerified = true,
+                Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Active
             }));
         Context.Stop(Self);
     }
@@ -425,6 +431,15 @@ public class VerificationFlowActor : ReceiveActor
             await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
                 new UpdateVerificationFlowStatusActorEvent(_verificationFlowQueryRecord.Value!.UniqueIdentifier,
                     status));
+
+            await _writer.WriteAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                new VerificationCountdownUpdate
+                {
+                    SessionIdentifier = Helpers.GuidToByteString(_verificationFlowQueryRecord.Value!.UniqueIdentifier),
+                    AlreadyVerified = false,
+                    Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Expired,
+                    Message = VerificationFlowMessageKeys.VerificationFlowExpired
+                }));
         }
 
         Context.Stop(Self);
@@ -434,7 +449,7 @@ public class VerificationFlowActor : ReceiveActor
 
     private static ulong CalculateRemainingSeconds(DateTime expiresAt)
     {
-        var remaining = expiresAt - DateTime.UtcNow;
+        TimeSpan remaining = expiresAt - DateTime.UtcNow;
         return (ulong)Math.Max(0, Math.Ceiling(remaining.TotalSeconds));
     }
 
@@ -446,7 +461,7 @@ public class VerificationFlowActor : ReceiveActor
             Message = _localizer[messageKey]
         });
 
-    private Result<VerifyCodeResponse, VerificationFlowFailure>
+    private static Result<VerifyCodeResponse, VerificationFlowFailure>
         CreateSuccessResponse(MembershipQueryRecord membership) =>
         Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
         {

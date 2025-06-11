@@ -163,6 +163,7 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
                 }
                 else
                 {
+                    ////TODO send with an error status
                     HandleVerificationError(updateResult.UnwrapErr(), context);
                     break;
                 }

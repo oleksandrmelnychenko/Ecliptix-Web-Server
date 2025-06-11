@@ -6,7 +6,7 @@ public static class VerificationFlowMessageKeys
     public const string ConflictUnresolved = "verification_flow_conflict_unresolved";
     public const string ExistingSessionReusedAndUpdated = "verification_flow_reused_and_updated";
     public const string VerificationFlowConflict = "verification_flow_conflict";
-    public const string VerificationFlowExpiredExpired = "verification_flow_expired";
+    public const string VerificationFlowExpired = "verification_flow_expired";
     public const string VerificationFlowNotFound = "verification_flow_not_found"; 
     public const string VerificationFlowNotVerified = "verification_flow_not_verified";
     public const string CreateMembershipVerificationFlowNotFound = "verification_session_not_found";

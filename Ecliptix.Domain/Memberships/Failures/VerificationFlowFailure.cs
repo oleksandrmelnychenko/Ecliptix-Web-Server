@@ -28,7 +28,7 @@ public readonly struct VerificationFlowFailure : IEquatable<VerificationFlowFail
 
     public static VerificationFlowFailure Expired(string? details = null) =>
         new(VerificationFlowFailureType.Expired,
-            details ?? VerificationFlowMessageKeys.VerificationFlowExpiredExpired,
+            details ?? VerificationFlowMessageKeys.VerificationFlowExpired,
             ErrorCodes.SessionExpired);
 
     public static VerificationFlowFailure Conflict(string? details = null) =>

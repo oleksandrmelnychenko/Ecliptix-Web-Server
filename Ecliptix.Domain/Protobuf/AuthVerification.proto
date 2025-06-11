@@ -5,7 +5,6 @@ package ecliptix.proto.membership;
 option csharp_namespace = "Ecliptix.Protobuf.Membership";
 
 enum VerificationPurpose {
-  
   REGISTRATION = 0;
   LOGIN = 1;
   PASSWORD_RECOVERY = 2;
@@ -41,6 +40,15 @@ message VerificationCountdownUpdate {
   uint64 seconds_remaining = 1;
   bytes session_identifier = 2;
   bool already_verified = 3;
+
+  enum CountdownUpdateStatus {
+    ACTIVE = 0;
+    EXPIRED = 1;
+    NOT_FOUND = 2; 
+  }
+
+  CountdownUpdateStatus status = 4;
+  optional string message = 5;
 }
 
 message VerifyCodeRequest {
@@ -57,7 +65,7 @@ message VerifyCodeResponse {
 
 message ValidatePhoneNumberRequest {
   string phone_number = 1;
-  bytes app_device_identifier = 2; 
+  bytes app_device_identifier = 2;
 }
 
 message ValidatePhoneNumberResponse {

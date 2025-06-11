@@ -30,7 +30,7 @@ public static class FailureExtensions
             VerificationFlowFailureType.NotFound => new Status(StatusCode.NotFound,
                 VerificationFlowMessageKeys.VerificationFlowNotFound),
             VerificationFlowFailureType.Expired => new Status(StatusCode.DeadlineExceeded,
-                VerificationFlowMessageKeys.VerificationFlowExpiredExpired),
+                VerificationFlowMessageKeys.VerificationFlowExpired),
             VerificationFlowFailureType.InvalidOtp => new Status(StatusCode.InvalidArgument,
                 VerificationFlowMessageKeys.InvalidOtp),
             VerificationFlowFailureType.OtpExpired => new Status(StatusCode.DeadlineExceeded,
