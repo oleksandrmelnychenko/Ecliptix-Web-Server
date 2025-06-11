@@ -28,23 +28,6 @@ internal class CreateVerificationFlowResult
     public string Outcome { get; set; } = string.Empty;
 }
 
-internal class VerificationFlowQueryResult
-{
-    public Guid FlowUniqueId { get; set; }
-    public Guid PhoneNumberUniqueId { get; set; }
-    public Guid AppDeviceId { get; set; }
-    public long? ConnectionId { get; set; }
-    public DateTime ExpiresAt { get; set; }
-    public string Status { get; set; } = string.Empty;
-    public string Purpose { get; set; } = string.Empty;
-    public short OtpCount { get; set; }
-    public Guid? OtpUniqueId { get; set; }
-    public string? OtpHash { get; set; }
-    public string? OtpSalt { get; set; }
-    public DateTime? OtpExpiresAt { get; set; }
-    public string? OtpStatus { get; set; }
-}
-
 internal class CreateOtpResult
 {
     public Guid? OtpUniqueId { get; set; }
@@ -105,7 +88,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     private async Task<Result<Unit, VerificationFlowFailure>> UpdateOtpStatusAsync(IDbConnection conn,
         UpdateOtpStatusActorEvent cmd)
     {
-        DynamicParameters parameters = new DynamicParameters();
+        DynamicParameters parameters = new();
         parameters.Add("@OtpUniqueId", cmd.OtpIdentified);
         parameters.Add("@NewStatus", cmd.Status.ToString().ToLowerInvariant());
 
@@ -117,16 +100,13 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     private async Task<Result<PhoneNumberQueryRecord, VerificationFlowFailure>> GetPhoneNumberAsync(IDbConnection conn,
         GetPhoneNumberActorEvent cmd)
     {
-        PhoneNumberQueryResult? result = await conn.QuerySingleOrDefaultAsync<PhoneNumberQueryResult>(
+        PhoneNumberQueryRecord? result = await conn.QuerySingleOrDefaultAsync<PhoneNumberQueryRecord>(
             "SELECT * FROM dbo.GetPhoneNumber(@PhoneUniqueId)",
             new { PhoneUniqueId = cmd.PhoneNumberIdentifier });
 
         if (result is not null)
         {
-            return Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Ok(new(result.PhoneNumber, result.Region)
-            {
-                UniqueIdentifier = result.UniqueId
-            });
+            return Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Ok(result);
         }
 
         return Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Err(
@@ -168,49 +148,41 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     private async Task<Result<Option<VerificationFlowQueryRecord>, VerificationFlowFailure>> GetVerificationFlowAsync(
         IDbConnection conn, GetVerificationFlowActorEvent cmd)
     {
-        VerificationFlowQueryResult? result = await conn.QuerySingleOrDefaultAsync<VerificationFlowQueryResult>(
+        VerificationFlowQueryRecord? finalRecord = null;
+
+        await conn.QueryAsync<VerificationFlowQueryRecord, OtpQueryRecord, VerificationFlowQueryRecord>(
             "dbo.GetVerificationFlow",
+            (flow, otp) =>
+            {
+                finalRecord ??= flow;
+
+                if (otp != null)
+                {
+                    finalRecord = finalRecord with { OtpActive = otp };
+                }
+
+                return finalRecord;
+            },
             new
             {
-                AppDeviceId = cmd.DeviceId, PhoneUniqueId = cmd.PhoneNumberIdentifier,
+                AppDeviceId = cmd.DeviceId,
+                PhoneUniqueId = cmd.PhoneNumberIdentifier,
                 Purpose = cmd.Purpose.ToString().ToLowerInvariant()
             },
-            commandType: CommandType.StoredProcedure);
+            commandType: CommandType.StoredProcedure,
+            splitOn: "OtpUniqueIdentifier"
+        );
 
-        if (result == null)
+        
+        if(finalRecord is null)
         {
             return Result<Option<VerificationFlowQueryRecord>, VerificationFlowFailure>.Ok(
                 Option<VerificationFlowQueryRecord>.None);
         }
-
-        Option<OtpQueryRecord> otpActive = result.OtpUniqueId.HasValue
-            ? Option<OtpQueryRecord>.Some(new OtpQueryRecord
-            {
-                UniqueIdentifier = result.OtpUniqueId.Value,
-                FlowUniqueId = result.FlowUniqueId,
-                OtpHash = result.OtpHash!,
-                OtpSalt = result.OtpSalt!,
-                ExpiresAt = result.OtpExpiresAt!.Value,
-                Status = Enum.Parse<VerificationFlowStatus>(result.OtpStatus!,
-                    true),
-                IsActive = true,
-                PhoneNumberIdentifier = default
-            })
-            : Option<OtpQueryRecord>.None;
-
-        VerificationFlowQueryRecord flowRecord =
-            new(result.FlowUniqueId, result.PhoneNumberUniqueId, result.AppDeviceId)
-            {
-                ConnectId = (uint?)result.ConnectionId,
-                ExpiresAt = result.ExpiresAt,
-                Status = Enum.Parse<VerificationFlowStatus>(result.Status, true),
-                Purpose = Enum.Parse<VerificationPurpose>(result.Purpose, true),
-                OtpCount = result.OtpCount,
-                OtpActive = otpActive
-            };
-
+        
         return Result<Option<VerificationFlowQueryRecord>, VerificationFlowFailure>.Ok(
-            Option<VerificationFlowQueryRecord>.Some(flowRecord));
+            Option<VerificationFlowQueryRecord>.Some(finalRecord)
+        );
     }
 
     private async Task<Result<Unit, VerificationFlowFailure>> UpdateVerificationFlowStatusAsync(IDbConnection conn,

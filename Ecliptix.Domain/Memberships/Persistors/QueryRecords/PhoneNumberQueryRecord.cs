@@ -1,18 +1,10 @@
-using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 
-public record PhoneNumberQueryRecord(
-    string PhoneNumber,
-    string? RegionCode)
+public record PhoneNumberQueryRecord
 {
-    public Guid UniqueIdentifier { get; init; }
-}
-
-internal class PhoneNumberQueryResult
-{
-    public string PhoneNumber { get; set; } = string.Empty;
-    public string? Region { get; set; }
+    public string PhoneNumber { get; init; } = string.Empty;
     
-    public Guid UniqueId { get; set; }
+    public string? Region { get; init; }
+    public Guid UniqueId { get; init; }
 }

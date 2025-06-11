@@ -1,4 +1,4 @@
-using Ecliptix.Domain.Memberships;
+namespace Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 
 public record OtpQueryRecord
 {

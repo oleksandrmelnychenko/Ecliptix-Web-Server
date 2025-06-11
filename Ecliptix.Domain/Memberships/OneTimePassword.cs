@@ -28,7 +28,7 @@ public sealed class OneTimePassword
                 OtpQueryRecord otpQueryRecord = new()
                 {
                     FlowUniqueId = flowUniqueIdentifier,
-                    PhoneNumberIdentifier = phoneNumberQueryRecord.UniqueIdentifier,
+                    PhoneNumberIdentifier = phoneNumberQueryRecord.UniqueId,
                     OtpHash = hash,
                     OtpSalt = salt,
                     ExpiresAt = ExpiresAt,

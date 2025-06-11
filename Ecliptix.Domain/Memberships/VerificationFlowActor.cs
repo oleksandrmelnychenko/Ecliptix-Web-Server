@@ -117,7 +117,7 @@ public class VerificationFlowActor : ReceiveActor
 
         _phoneNumberRecord = Option<PhoneNumberQueryRecord>.Some(result.Unwrap());
         _persistor.Ask<Result<Option<VerificationFlowQueryRecord>, VerificationFlowFailure>>(
-                new GetVerificationFlowActorEvent(_appDeviceIdentifier, _phoneNumberRecord.Value!.UniqueIdentifier,
+                new GetVerificationFlowActorEvent(_appDeviceIdentifier, _phoneNumberRecord.Value!.UniqueId,
                     _purpose))
             .PipeTo(Self);
     }
@@ -195,14 +195,20 @@ public class VerificationFlowActor : ReceiveActor
             return;
         }
 
-        _verificationFlowQueryRecord = Option<VerificationFlowQueryRecord>.Some(
-            new VerificationFlowQueryRecord(result.Unwrap(), _phoneNumberIdentifier, _appDeviceIdentifier)
-            {
-                ExpiresAt = _sessionExpiresAt,
-                Purpose = _purpose,
-                Status = VerificationFlowStatus.Pending,
-                OtpCount = 0
-            });
+        Guid flowUniqueId = result.Unwrap();
+        VerificationFlowQueryRecord newFlowRecord = new()
+        {
+            UniqueIdentifier = flowUniqueId,
+            PhoneNumberIdentifier = _phoneNumberIdentifier,
+            AppDeviceIdentifier = _appDeviceIdentifier,
+            ExpiresAt = _sessionExpiresAt,
+            Purpose = _purpose,
+            Status = VerificationFlowStatus.Pending,
+            OtpCount = 0,
+            ConnectId = _connectId
+        };
+
+        _verificationFlowQueryRecord = Option<VerificationFlowQueryRecord>.Some(newFlowRecord);
 
         Result<OtpQueryRecord, VerificationFlowFailure> otpResult = await PrepareAndSendOtp();
         if (otpResult.IsOk)
