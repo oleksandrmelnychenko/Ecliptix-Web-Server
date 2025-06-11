@@ -1,342 +1,308 @@
+using System.Data;
+using System.Data.Common;
 using Akka.Actor;
+using Dapper;
+using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Memberships.Events;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.Utilities;
+using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using Npgsql;
-using NpgsqlTypes;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
-public class VerificationFlowPersistorActor : VerificationFlowPersistorBase
+internal class EnsurePhoneNumberResult
+{
+    public Guid UniqueId { get; set; }
+    public string Outcome { get; set; } = string.Empty;
+    public bool Success { get; set; }
+}
+
+internal class CreateVerificationFlowResult
+{
+    public Guid? FlowUniqueId { get; set; }
+    public string Outcome { get; set; } = string.Empty;
+}
+
+internal class VerificationFlowQueryResult
+{
+    public Guid FlowUniqueId { get; set; }
+    public Guid PhoneNumberUniqueId { get; set; }
+    public Guid AppDeviceId { get; set; }
+    public long? ConnectionId { get; set; }
+    public DateTime ExpiresAt { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string Purpose { get; set; } = string.Empty;
+    public short OtpCount { get; set; }
+    public Guid? OtpUniqueId { get; set; }
+    public string? OtpHash { get; set; }
+    public string? OtpSalt { get; set; }
+    public DateTime? OtpExpiresAt { get; set; }
+    public string? OtpStatus { get; set; }
+}
+
+internal class CreateOtpResult
+{
+    public Guid? OtpUniqueId { get; set; }
+    public string Outcome { get; set; } = string.Empty;
+}
+
+internal class UpdateOtpStatusResult
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
+
+public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFailure>
 {
     public VerificationFlowPersistorActor(
-        IDbDataSource dataSource,
+        IDbConnectionFactory connectionFactory,
         ILogger<VerificationFlowPersistorActor> logger)
-        : base(dataSource, logger)
+        : base(connectionFactory, logger)
     {
         Become(Ready);
     }
 
-    public static Props Build(IDbDataSource dataSource,
+    public static Props Build(IDbConnectionFactory connectionFactory,
         ILogger<VerificationFlowPersistorActor> logger) =>
-        Props.Create(() => new VerificationFlowPersistorActor(dataSource, logger));
+        Props.Create(() => new VerificationFlowPersistorActor(connectionFactory, logger));
 
     private void Ready()
     {
-        ReceiveAsync<CreateVerificationFlowActorEvent>(HandleCreateVerificationFlow);
-        ReceiveAsync<GetVerificationFlowActorEvent>(HandleGetVerificationFlow);
-        ReceiveAsync<UpdateVerificationFlowStatusActorEvent>(HandleUpdateVerificationFlowStatus);
-        ReceiveAsync<EnsurePhoneNumberActorEvent>(HandleEnsurePhoneNumber);
-        ReceiveAsync<GetPhoneNumberActorEvent>(HandleGetPhoneNumber);
-        ReceiveAsync<CreateOtpActorEvent>(HandleCreateOtp);
-        ReceiveAsync<UpdateOtpStatusActorEvent>(HandleUpdateOtpStatus);
+        Receive<CreateVerificationFlowActorEvent>(cmd =>
+            Execute(conn => CreateVerificationFlowAsync(conn, cmd), "CreateVerificationFlow"));
+        Receive<GetVerificationFlowActorEvent>(cmd =>
+            Execute(conn => GetVerificationFlowAsync(conn, cmd), "GetVerificationFlow"));
+        Receive<UpdateVerificationFlowStatusActorEvent>(cmd =>
+            Execute(conn => UpdateVerificationFlowStatusAsync(conn, cmd), "UpdateVerificationFlowStatus"));
+        Receive<EnsurePhoneNumberActorEvent>(cmd =>
+            Execute(conn => EnsurePhoneNumberAsync(conn, cmd), "EnsurePhoneNumber"));
+        Receive<GetPhoneNumberActorEvent>(cmd => Execute(conn => GetPhoneNumberAsync(conn, cmd), "GetPhoneNumber"));
+        Receive<CreateOtpActorEvent>(cmd => Execute(conn => CreateOtpAsync(conn, cmd), "CreateOtp"));
+        Receive<UpdateOtpStatusActorEvent>(cmd => Execute(conn => UpdateOtpStatusAsync(conn, cmd), "UpdateOtpStatus"));
     }
 
-    private async Task HandleUpdateOtpStatus(UpdateOtpStatusActorEvent cmd) =>
-        await ExecuteWithConnection(
-            async conn =>
-            {
-                NpgsqlParameter[] parameters =
-                [
-                    new(Parameters.OtpUniqueId, NpgsqlDbType.Uuid) { Value = cmd.OtpIdentified },
-                    new(Parameters.Status, NpgsqlDbType.Varchar) { Value = cmd.Status.ToString().ToLowerInvariant() }
-                ];
-                
-                await using IDbCommand command = CreateCommand(conn, Queries.UpdateOtpStatus, parameters);
-                await using IDbDataReader reader = await command.ExecuteReaderAsync();
-
-                if (await reader.ReadAsync())
-                {
-                    bool success = reader.GetBoolean(0);
-                    string message = reader.GetString(1);
-
-                    return success
-                        ? Result<Unit, VerificationFlowFailure>.Ok(Unit.Value)
-                        : Result<Unit, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.PersistorAccess(message));
-                }
-
-                return Result<Unit, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.NoResultReturned));
-            }, OperationNames.UpdateOtpStatus);
-
-
-    private async Task HandleGetPhoneNumber(GetPhoneNumberActorEvent cmd) =>
-        await ExecuteWithConnection(
-            async conn =>
-            {
-                NpgsqlParameter[] parameters =
-                [
-                    new(Parameters.PhoneUniqueId, NpgsqlDbType.Uuid) { Value = cmd.PhoneNumberIdentifier }
-                ];
-
-                await using IDbCommand command = CreateCommand(conn, Queries.GetPhoneNumber, parameters);
-                await using IDbDataReader reader = await command.ExecuteReaderAsync();
-
-                if (!await reader.ReadAsync())
-                {
-                    return Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.PhoneNotFound));
-                }
-
-                string phoneNumber = reader.GetString(0);
-                Option<string> region = reader.IsDBNull(1)
-                    ? Option<string>.None
-                    : Option<string>.Some(reader.GetString(1));
-
-                return Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Ok(
-                    new PhoneNumberQueryRecord(phoneNumber, region)
-                    {
-                        UniqueIdentifier = cmd.PhoneNumberIdentifier
-                    });
-            }, OperationNames.GetPhoneNumber);
-
-    private async Task HandleCreateVerificationFlow(CreateVerificationFlowActorEvent cmd) =>
-        await ExecuteWithConnection(
-            async conn =>
-            {
-                NpgsqlParameter[] parameters =
-                [
-                    new(Parameters.AppDeviceId, NpgsqlDbType.Uuid) { Value = cmd.AppDeviceIdentifier },
-                    new(Parameters.PhoneUniqueId, NpgsqlDbType.Uuid) { Value = cmd.PhoneNumberIdentifier },
-                    new(Parameters.Purpose, NpgsqlDbType.Varchar) { Value = cmd.Purpose.ToString().ToLowerInvariant() },
-                    new(Parameters.ExpiresAt, NpgsqlDbType.TimestampTz) { Value = cmd.ExpiresAt },
-                    new(Parameters.ConnectId, NpgsqlDbType.Bigint) { Value = (long)cmd.ConnectId }
-                ];
-
-                await using IDbCommand command = CreateCommand(conn, Queries.CreateVerificationFlow, parameters);
-                await using IDbDataReader reader = await command.ExecuteReaderAsync();
-
-                if (!await reader.ReadAsync())
-                {
-                    return Result<Guid, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.NoResultReturned));
-                }
-
-                Option<Guid> identifier = reader.IsDBNull(0)
-                    ? Option<Guid>.None
-                    : Option<Guid>.Some(reader.GetGuid(0));
-                string outcome = reader.GetString(1);
-
-                return outcome switch
-                {
-                    VerificationFlowMessageKeys.PhoneNotFound => Result<Guid, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.PhoneNotFound)),
-
-                    VerificationFlowMessageKeys.ConflictUnresolved => Result<Guid, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.Conflict(VerificationFlowMessageKeys.VerificationFlowConflict)),
-
-                    VerificationFlowMessageKeys.Created => identifier.HasValue
-                        ? Result<Guid, VerificationFlowFailure>.Ok(identifier.Value)
-                        : Result<Guid, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.UnexpectedOutcome)),
-
-                    VerificationFlowMessageKeys.ExistingSessionReusedAndUpdated or
-                        VerificationFlowMessageKeys.ConflictResolvedToExisting => identifier.HasValue
-                            ? Result<Guid, VerificationFlowFailure>.Ok(identifier.Value)
-                            : Result<Guid, VerificationFlowFailure>.Err(
-                                VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.UnexpectedOutcome)),
-
-                    _ => Result<Guid, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.PersistorAccess(
-                            $"{VerificationFlowMessageKeys.UnexpectedOutcome}: {outcome}"))
-                };
-            }, OperationNames.CreateVerificationSession);
-
-
-    private async Task HandleGetVerificationFlow(GetVerificationFlowActorEvent cmd) =>
-        await ExecuteWithConnection(
-            async conn =>
-            {
-                NpgsqlParameter[] parameters =
-                [
-                    new(Parameters.AppDeviceId, NpgsqlDbType.Uuid) { Value = cmd.DeviceId },
-                    new(Parameters.PhoneUniqueId, NpgsqlDbType.Uuid) { Value = cmd.PhoneNumberIdentifier },
-                    new(Parameters.Purpose, NpgsqlDbType.Varchar) { Value = cmd.Purpose.ToString().ToLowerInvariant() }
-                ];
-                return await ReadSessionQueryRecord(conn, parameters);
-            }, OperationNames.GetVerificationSession);
-
-    private async Task HandleUpdateVerificationFlowStatus(UpdateVerificationFlowStatusActorEvent cmd) =>
-        await ExecuteWithConnection(
-            async conn =>
-            {
-                NpgsqlParameter[] parameters =
-                [
-                    new(Parameters.SessionUniqueId, NpgsqlDbType.Uuid) { Value = cmd.FlowIdentifier },
-                    new(Parameters.Status, NpgsqlDbType.Varchar) { Value = cmd.Status.ToString().ToLowerInvariant() }
-                ];
-
-                await using IDbCommand command = CreateCommand(conn, Queries.UpdateSessionStatus, parameters);
-                await command.ExecuteNonQueryAsync();
-                return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
-            }, OperationNames.UpdateSessionStatus);
-
-
-    private async Task HandleCreateOtp(CreateOtpActorEvent cmd) =>
-        await ExecuteWithConnection(
-            async conn =>
-            {
-                NpgsqlParameter[] parameters =
-                [
-                    new(Parameters.SessionId, NpgsqlDbType.Uuid) { Value = cmd.OtpRecord.SessionIdentifier },
-                    new(Parameters.OtpHash, NpgsqlDbType.Varchar) { Value = cmd.OtpRecord.OtpHash },
-                    new(Parameters.OtpSalt, NpgsqlDbType.Varchar) { Value = cmd.OtpRecord.OtpSalt },
-                    new(Parameters.ExpiresAt, NpgsqlDbType.TimestampTz) { Value = cmd.OtpRecord.ExpiresAt },
-                    new(Parameters.Status, NpgsqlDbType.Varchar)
-                        { Value = cmd.OtpRecord.Status.ToString().ToLowerInvariant() }
-                ];
-
-                await using IDbCommand command = CreateCommand(conn, Queries.CreateOtp, parameters);
-                await using IDbDataReader reader = await command.ExecuteReaderAsync();
-
-                if (!await reader.ReadAsync())
-                {
-                    return Result<CreateOtpRecordResult, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
-                }
-
-                Option<Guid> otpUniqueId = reader.IsDBNull(0)
-                    ? Option<Guid>.None
-                    : Option<Guid>.Some(reader.GetGuid(0));
-                string outcome = reader.GetString(1);
-
-                return outcome switch
-                {
-                    VerificationFlowMessageKeys.Created => otpUniqueId.HasValue
-                        ? Result<CreateOtpRecordResult, VerificationFlowFailure>.Ok(
-                            new CreateOtpRecordResult(otpUniqueId.Value))
-                        : Result<CreateOtpRecordResult, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.UnexpectedOutcome)),
-
-                    VerificationFlowMessageKeys.VerificationFlowNotFound => Result<CreateOtpRecordResult,
-                            VerificationFlowFailure>
-                        .Err(
-                            VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.VerificationFlowNotFound)),
-
-                    VerificationFlowMessageKeys.OtpMaxAttemptsReached =>
-                        Result<CreateOtpRecordResult, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.OtpMaxAttemptsReached(VerificationFlowMessageKeys
-                                .OtpMaxAttemptsReached)),
-
-                    _ => Result<CreateOtpRecordResult, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.OtpGenerationFailed(
-                            $"{VerificationFlowMessageKeys.UnexpectedOutcome}: {outcome}"))
-                };
-            }, OperationNames.CreateOtpRecord);
-
-
-    private async Task HandleEnsurePhoneNumber(EnsurePhoneNumberActorEvent cmd) =>
-        await ExecuteWithConnection(
-            async conn =>
-            {
-                NpgsqlParameter[] parameters =
-                [
-                    new(Parameters.PhoneNumberString, NpgsqlDbType.Varchar) { Value = cmd.PhoneNumber },
-                    new(Parameters.Region, NpgsqlDbType.Varchar) { Value = (object?)cmd.RegionCode ?? DBNull.Value }
-                ];
-
-                await using IDbCommand command = CreateCommand(conn, Queries.EnsurePhoneNumber, parameters);
-                await using IDbDataReader reader = await command.ExecuteReaderAsync();
-
-                if (!await reader.ReadAsync())
-                {
-                    return Result<Guid, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.NoResultReturned));
-                }
-
-                Option<Guid> uniqueIdOpt = reader.IsDBNull(0)
-                    ? Option<Guid>.None
-                    : Option<Guid>.Some(reader.GetGuid(0));
-
-                string outcome = reader.GetString(1);
-                bool success = reader.GetBoolean(2);
-
-                if (!success)
-                {
-                    return outcome switch
-                    {
-                        VerificationFlowMessageKeys.AppDeviceInvalidId => Result<Guid, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.Validation(VerificationFlowMessageKeys
-                                .AppDeviceInvalidId)),
-
-                        VerificationFlowMessageKeys.AppDeviceCreatedButInvalidId =>
-                            Result<Guid, VerificationFlowFailure>.Err(
-                                VerificationFlowFailure.Validation(VerificationFlowMessageKeys
-                                    .AppDeviceCreatedButInvalidId)),
-
-                        _ when IsKnownEnsurePhoneNumberErrorKey(outcome) =>
-                            Result<Guid, VerificationFlowFailure>.Err(
-                                VerificationFlowFailure
-                                    .PhoneNumberInvalid(
-                                        outcome)),
-
-                        _ => Result<Guid, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.PhoneNumberInvalid(VerificationFlowMessageKeys
-                                .PhoneNumberInvalid))
-                    };
-                }
-
-                if (!uniqueIdOpt.HasValue)
-                {
-                    return Result<Guid, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.UnexpectedOutcome));
-                }
-
-                return Result<Guid, VerificationFlowFailure>.Ok(uniqueIdOpt.Value);
-            }, OperationNames.EnsurePhoneNumber);
-
-    private static bool IsKnownEnsurePhoneNumberErrorKey(string outcomeKey) =>
-        outcomeKey is VerificationFlowMessageKeys.AppDeviceInvalidId or
-            VerificationFlowMessageKeys.AppDeviceCreatedButInvalidId or
-            VerificationFlowMessageKeys.PhoneNumberInvalid;
-
-    private static async Task<Result<Option<VerificationFlowQueryRecord>, VerificationFlowFailure>>
-        ReadSessionQueryRecord(IDbConnection conn, NpgsqlParameter[] parameters)
+    private void Execute<T>(Func<IDbConnection, Task<T>> operation, string operationName)
     {
-        await using IDbCommand command = CreateCommand(conn, Queries.GetVerificationFlow, parameters);
-        await using IDbDataReader reader = await command.ExecuteReaderAsync();
+        ExecuteWithConnection(async conn =>
+        {
+            T result = await operation(conn);
+            return Result<T, VerificationFlowFailure>.Ok(result);
+        }, operationName).PipeTo(Self, sender: Sender);
+    }
 
-        if (!await reader.ReadAsync())
+    private async Task<Result<Unit, VerificationFlowFailure>> UpdateOtpStatusAsync(IDbConnection conn,
+        UpdateOtpStatusActorEvent cmd)
+    {
+        DynamicParameters parameters = new DynamicParameters();
+        parameters.Add("@OtpUniqueId", cmd.OtpIdentified);
+        parameters.Add("@NewStatus", cmd.Status.ToString().ToLowerInvariant());
+        parameters.Add("@Success", dbType: DbType.Boolean, direction: ParameterDirection.Output);
+        parameters.Add("@Message", dbType: DbType.String, size: 255, direction: ParameterDirection.Output);
+
+        await conn.ExecuteAsync("dbo.UpdateOtpStatus", parameters, commandType: CommandType.StoredProcedure);
+
+        bool success = parameters.Get<bool>("@Success");
+        string message = parameters.Get<string>("@Message");
+
+        return success
+            ? Result<Unit, VerificationFlowFailure>.Ok(Unit.Value)
+            : Result<Unit, VerificationFlowFailure>.Err(VerificationFlowFailure.PersistorAccess(message));
+    }
+
+    private async Task<Result<PhoneNumberQueryRecord, VerificationFlowFailure>> GetPhoneNumberAsync(IDbConnection conn,
+        GetPhoneNumberActorEvent cmd)
+    {
+        PhoneNumberQueryRecord? result = await conn.QuerySingleOrDefaultAsync<PhoneNumberQueryRecord>(
+            "SELECT * FROM dbo.GetPhoneNumber(@PhoneUniqueId)",
+            new { PhoneUniqueId = cmd.PhoneNumberIdentifier });
+
+        return result != null
+            ? Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Ok(result)
+            : Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.PhoneNotFound));
+    }
+
+    private async Task<Result<Guid, VerificationFlowFailure>> CreateVerificationFlowAsync(IDbConnection conn,
+        CreateVerificationFlowActorEvent cmd)
+    {
+        DynamicParameters parameters = new();
+        parameters.Add("@AppDeviceId", cmd.AppDeviceIdentifier);
+        parameters.Add("@PhoneUniqueId", cmd.PhoneNumberIdentifier);
+        parameters.Add("@Purpose", cmd.Purpose.ToString().ToLowerInvariant());
+        parameters.Add("@ExpiresAt", cmd.ExpiresAt);
+        parameters.Add("@ConnectionId", (long)cmd.ConnectId);
+        parameters.Add("@FlowUniqueId", dbType: DbType.Guid, direction: ParameterDirection.Output);
+        parameters.Add("@Outcome", dbType: DbType.String, size: 50, direction: ParameterDirection.Output);
+
+        await conn.ExecuteAsync("dbo.CreateVerificationFlow", parameters, commandType: CommandType.StoredProcedure);
+
+        string outcome = parameters.Get<string>("@Outcome");
+        Guid? flowUniqueId = parameters.Get<Guid?>("@FlowUniqueId");
+
+        return outcome switch
+        {
+            VerificationFlowMessageKeys.Created or
+                VerificationFlowMessageKeys.ExistingSessionReusedAndUpdated or
+                VerificationFlowMessageKeys.ConflictResolvedToExisting
+                when flowUniqueId.HasValue => Result<Guid, VerificationFlowFailure>.Ok(flowUniqueId.Value),
+
+            VerificationFlowMessageKeys.PhoneNotFound => Result<Guid, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.NotFound(outcome)),
+            VerificationFlowMessageKeys.ConflictUnresolved => Result<Guid, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.Conflict(outcome)),
+            _ => Result<Guid, VerificationFlowFailure>.Err(VerificationFlowFailure.PersistorAccess(outcome))
+        };
+    }
+
+    private async Task<Result<Option<VerificationFlowQueryRecord>, VerificationFlowFailure>> GetVerificationFlowAsync(
+        IDbConnection conn, GetVerificationFlowActorEvent cmd)
+    {
+        VerificationFlowQueryResult? result = await conn.QuerySingleOrDefaultAsync<VerificationFlowQueryResult>(
+            "dbo.GetVerificationFlow",
+            new
+            {
+                AppDeviceId = cmd.DeviceId, PhoneUniqueId = cmd.PhoneNumberIdentifier,
+                Purpose = cmd.Purpose.ToString().ToLowerInvariant()
+            },
+            commandType: CommandType.StoredProcedure);
+
+        if (result == null)
         {
             return Result<Option<VerificationFlowQueryRecord>, VerificationFlowFailure>.Ok(
                 Option<VerificationFlowQueryRecord>.None);
         }
 
-        Option<OtpQueryRecord> otpActive = Option<OtpQueryRecord>.None;
-        if (!reader.IsDBNull(ColumnIndices.OtpUniqueId))
-        {
-            otpActive = Option<OtpQueryRecord>.Some(new OtpQueryRecord
+        Option<OtpQueryRecord> otpActive = result.OtpUniqueId.HasValue
+            ? Option<OtpQueryRecord>.Some(new OtpQueryRecord
             {
-                UniqueIdentifier = reader.GetGuid(ColumnIndices.OtpUniqueId),
-                SessionIdentifier = reader.GetGuid(ColumnIndices.SessionUniqueId),
-                OtpHash = reader.GetString(ColumnIndices.OtpHash),
-                OtpSalt = reader.GetString(ColumnIndices.OtpSalt),
-                ExpiresAt = reader.GetDateTime(ColumnIndices.OtpExpiresAt),
-                Status = Enum.Parse<VerificationFlowStatus>(reader.GetString(ColumnIndices.OtpStatus), true)
-            });
-        }
+                UniqueIdentifier = result.OtpUniqueId.Value,
+                FlowUniqueId = result.FlowUniqueId,
+                OtpHash = result.OtpHash!,
+                OtpSalt = result.OtpSalt!,
+                ExpiresAt = result.OtpExpiresAt!.Value,
+                Status = Enum.Parse<VerificationFlowStatus>(result.OtpStatus!,
+                    true),
+                IsActive = true,
+                PhoneNumberIdentifier = default
+            })
+            : Option<OtpQueryRecord>.None;
 
-        VerificationFlowQueryRecord record = new(
-            reader.GetGuid(ColumnIndices.SessionUniqueId),
-            reader.GetGuid(ColumnIndices.PhoneNumberUniqueId),
-            reader.GetGuid(ColumnIndices.AppDeviceId),
-            reader.IsDBNull(ColumnIndices.ConnectionId)
-                ? 0
-                : (uint)reader.GetInt64(ColumnIndices.ConnectionId))
-        {
-            ExpiresAt = reader.GetDateTime(ColumnIndices.ExpiresAt),
-            Status = Enum.Parse<VerificationFlowStatus>(reader.GetString(ColumnIndices.Status), true),
-            Purpose = Enum.Parse<VerificationPurpose>(reader.GetString(ColumnIndices.Purpose), true),
-            OtpCount = reader.GetInt16(ColumnIndices.OtpCount),
-            OtpActive = otpActive
-        };
+        VerificationFlowQueryRecord flowRecord =
+            new(result.FlowUniqueId, result.PhoneNumberUniqueId, result.AppDeviceId)
+            {
+                ConnectId = (uint?)result.ConnectionId,
+                ExpiresAt = result.ExpiresAt,
+                Status = Enum.Parse<VerificationFlowStatus>(result.Status, true),
+                Purpose = Enum.Parse<VerificationPurpose>(result.Purpose, true),
+                OtpCount = result.OtpCount,
+                OtpActive = otpActive
+            };
 
         return Result<Option<VerificationFlowQueryRecord>, VerificationFlowFailure>.Ok(
-            Option<VerificationFlowQueryRecord>.Some(record));
+            Option<VerificationFlowQueryRecord>.Some(flowRecord));
+    }
+
+    private async Task<Result<Unit, VerificationFlowFailure>> UpdateVerificationFlowStatusAsync(IDbConnection conn,
+        UpdateVerificationFlowStatusActorEvent cmd)
+    {
+        await conn.ExecuteAsync(
+            "dbo.UpdateVerificationFlowStatus",
+            new { FlowUniqueId = cmd.FlowIdentifier, NewStatus = cmd.Status.ToString().ToLowerInvariant() },
+            commandType: CommandType.StoredProcedure);
+
+        return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+    }
+
+    private async Task<Result<CreateOtpRecordResult, VerificationFlowFailure>> CreateOtpAsync(IDbConnection conn,
+        CreateOtpActorEvent cmd)
+    {
+        var parameters = new DynamicParameters();
+        parameters.Add("@FlowUniqueId", cmd.OtpRecord.FlowUniqueId);
+        parameters.Add("@OtpHash", cmd.OtpRecord.OtpHash);
+        parameters.Add("@OtpSalt", cmd.OtpRecord.OtpSalt);
+        parameters.Add("@ExpiresAt", cmd.OtpRecord.ExpiresAt);
+        parameters.Add("@Status", cmd.OtpRecord.Status.ToString().ToLowerInvariant());
+        parameters.Add("@OtpUniqueId", dbType: DbType.Guid, direction: ParameterDirection.Output);
+        parameters.Add("@Outcome", dbType: DbType.String, size: 50, direction: ParameterDirection.Output);
+
+        await conn.ExecuteAsync("dbo.InsertOtpRecord", parameters, commandType: CommandType.StoredProcedure);
+
+        string outcome = parameters.Get<string>("@Outcome");
+        Guid? otpUniqueId = parameters.Get<Guid?>("@OtpUniqueId");
+
+        return outcome switch
+        {
+            VerificationFlowMessageKeys.Created when otpUniqueId.HasValue => Result<CreateOtpRecordResult,
+                    VerificationFlowFailure>
+                .Ok(new CreateOtpRecordResult(otpUniqueId.Value)),
+            VerificationFlowMessageKeys.VerificationFlowNotFound => Result<CreateOtpRecordResult,
+                    VerificationFlowFailure>
+                .Err(VerificationFlowFailure.NotFound(outcome)),
+            VerificationFlowMessageKeys.OtpMaxAttemptsReached => Result<CreateOtpRecordResult, VerificationFlowFailure>
+                .Err(
+                    VerificationFlowFailure.OtpMaxAttemptsReached(outcome)),
+            _ => Result<CreateOtpRecordResult, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.OtpGenerationFailed(outcome))
+        };
+    }
+
+    private async Task<Result<Guid, VerificationFlowFailure>> EnsurePhoneNumberAsync(IDbConnection conn,
+        EnsurePhoneNumberActorEvent cmd)
+    {
+        DynamicParameters parameters = new();
+        parameters.Add("@PhoneNumberString", cmd.PhoneNumber);
+        parameters.Add("@Region", cmd.RegionCode);
+        parameters.Add("@AppDeviceId", cmd.AppDeviceIdentifier);
+
+        EnsurePhoneNumberResult? result = await conn.QuerySingleOrDefaultAsync<EnsurePhoneNumberResult>(
+            "dbo.EnsurePhoneNumber",
+            parameters,
+            commandType: CommandType.StoredProcedure);
+
+        if (result is null || (!result.Success && result.UniqueId == Guid.Empty))
+        {
+            return Result<Guid, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess(result?.Outcome ?? "Unknown error"));
+        }
+
+        if (!result.Success)
+        {
+            return Result<Guid, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(result.Outcome));
+        }
+
+        return Result<Guid, VerificationFlowFailure>.Ok(result.UniqueId);
+    }
+
+    protected override IDbDataParameter CreateParameter(string name, object value) => new SqlParameter(name, value);
+
+    protected override VerificationFlowFailure MapDbException(DbException ex)
+    {
+        if (ex is SqlException sqlEx)
+        {
+            return sqlEx.Number switch
+            {
+                2627 or 2601 => VerificationFlowFailure.ConcurrencyConflict(sqlEx.Message),
+                547 => VerificationFlowFailure.Validation($"Foreign key violation: {sqlEx.Message}"),
+                _ => VerificationFlowFailure.PersistorAccess(sqlEx)
+            };
+        }
+
+        return VerificationFlowFailure.PersistorAccess(ex);
+    }
+
+    protected override VerificationFlowFailure CreateTimeoutFailure(TimeoutException ex)
+    {
+        throw new NotImplementedException();
+    }
+
+    protected override VerificationFlowFailure CreateGenericFailure(Exception ex)
+    {
+        throw new NotImplementedException();
     }
 }
+

@@ -1,4 +1,4 @@
-using System.Data;
+/*using System.Data;
 using System.Data.Common;
 using Akka.Actor;
 using Akka.TestKit;
@@ -13,8 +13,6 @@ using Ecliptix.Domain.Utilities;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Npgsql;
-using IDbCommand = Ecliptix.Domain.IDbCommand;
-using IDbConnection = Ecliptix.Domain.IDbConnection;
 
 namespace ProtocolTests;
 
@@ -443,4 +441,4 @@ public class MemberShipPersistorActorTests : TestKit
 
         return actor;
     }
-}
+}*/

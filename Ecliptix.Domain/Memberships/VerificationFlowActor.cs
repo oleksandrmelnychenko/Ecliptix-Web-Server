@@ -2,7 +2,6 @@ using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.Events;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.Utilities;
 using Ecliptix.Domain.Utilities;
@@ -197,10 +196,12 @@ public class VerificationFlowActor : ReceiveActor
         }
 
         _sessionRecord = Option<VerificationFlowQueryRecord>.Some(
-            new VerificationFlowQueryRecord(result.Unwrap(), _phoneNumberIdentifier, _appDeviceIdentifier, _connectId)
+            new VerificationFlowQueryRecord(result.Unwrap(), _phoneNumberIdentifier, _appDeviceIdentifier)
             {
                 ExpiresAt = _sessionExpiresAt,
-                Purpose = _purpose
+                Purpose = _purpose,
+                Status = VerificationFlowStatus.Pending,
+                OtpCount = 0
             });
 
         Result<OtpQueryRecord, VerificationFlowFailure> otpResult = await PrepareAndSendOtp();
@@ -406,7 +407,7 @@ public class VerificationFlowActor : ReceiveActor
 
     private OtpQueryRecord CreateOtpRecord(OtpQueryRecord originalRecord) => new()
     {
-        SessionIdentifier = _sessionRecord.Value!.UniqueIdentifier,
+        UniqueIdentifier = _sessionRecord.Value!.UniqueIdentifier,
         PhoneNumberIdentifier = originalRecord.PhoneNumberIdentifier,
         OtpHash = originalRecord.OtpHash,
         OtpSalt = originalRecord.OtpSalt,

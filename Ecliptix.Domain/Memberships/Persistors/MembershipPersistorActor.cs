@@ -1,243 +1,233 @@
+using System.Data;
+using System.Data.Common;
 using Akka.Actor;
+using Dapper;
+using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.Domain.Memberships.Persistors.Utilities;
+using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using Npgsql;
-using NpgsqlTypes;
 using static System.String;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
-public class MembershipPersistorActor : VerificationFlowPersistorBase
+internal class LoginMembershipResult
+{
+    public Guid? MembershipUniqueId { get; set; }
+    public string? Status { get; set; }
+    public string Outcome { get; set; } = string.Empty;
+}
+
+internal class UpdateSecureKeyResult
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public Guid? MembershipUniqueId { get; set; }
+    public string? Status { get; set; }
+    public string? CreationStatus { get; set; }
+}
+
+internal class CreateMembershipResult
+{
+    public Guid? MembershipUniqueId { get; set; }
+    public string? Status { get; set; }
+    public string? CreationStatus { get; set; }
+    public string Outcome { get; set; } = Empty;
+}
+
+public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 {
     public MembershipPersistorActor(
-        IDbDataSource npgsqlDataSource,
+        IDbConnectionFactory connectionFactory,
         ILogger<MembershipPersistorActor> logger)
-        : base(npgsqlDataSource, logger)
+        : base(connectionFactory, logger)
     {
         Become(Ready);
     }
 
-    public static Props Build(IDbDataSource npgsqlDataSource,
+    public static Props Build(IDbConnectionFactory connectionFactory,
         ILogger<MembershipPersistorActor> logger) =>
-        Props.Create(() => new MembershipPersistorActor(npgsqlDataSource, logger));
+        Props.Create(() => new MembershipPersistorActor(connectionFactory, logger));
 
     private void Ready()
     {
-        ReceiveAsync<UpdateMembershipSecureKeyEvent>(HandleUpdateMembershipSecureKeyCommand);
-        ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembershipActorCommand);
-        ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembershipActorCommand);
+        Receive<UpdateMembershipSecureKeyEvent>(cmd =>
+            ExecuteWithConnection(conn => UpdateMembershipSecureKeyAsync(conn, cmd), "UpdateMembershipSecureKey")
+                .PipeTo(Self, sender: Sender));
+
+        Receive<CreateMembershipActorEvent>(cmd =>
+            ExecuteWithConnection(conn => CreateMembershipAsync(conn, cmd), "CreateMembership")
+                .PipeTo(Self, sender: Sender));
+
+        Receive<SignInMembershipActorEvent>(cmd =>
+            ExecuteWithConnection(conn => SignInMembershipAsync(conn, cmd), "LoginMembership")
+                .PipeTo(Self, sender: Sender));
     }
 
-    public async Task HandleSignInMembershipActorCommand(SignInMembershipActorEvent cmd) =>
-        await ExecuteWithConnection(async npgsqlConnection =>
+    private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> SignInMembershipAsync(
+        IDbConnection connection, SignInMembershipActorEvent cmd)
+    {
+        var parameters = new DynamicParameters();
+        parameters.Add("@PhoneNumber", cmd.PhoneNumber);
+        parameters.Add("@SecureKey", cmd.SecureKey);
+
+        var result = await connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
+            "dbo.LoginMembership",
+            parameters,
+            commandType: CommandType.StoredProcedure
+        );
+
+        if (result is null)
         {
-            NpgsqlParameter[] parameters =
-            [
-                new(Parameters.PhoneNumber, NpgsqlDbType.Varchar) { Value = cmd.PhoneNumber },
-                new(Parameters.SecureKey, NpgsqlDbType.Bytea) { Value = cmd.SecureKey }
-            ];
+            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
+        }
 
-            await using IDbCommand command = CreateCommand(npgsqlConnection, Queries.LoginMembership, parameters);
-            await using IDbDataReader reader = await command.ExecuteReaderAsync();
+        if (int.TryParse(result.Outcome, out int _))
+        {
+            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.RateLimitExceeded(VerificationFlowMessageKeys.TooManySigninAttempts));
+        }
 
-            if (!await reader.ReadAsync())
-            {
-                return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
-            }
+        return result.Outcome switch
+        {
+            "success" when result.MembershipUniqueId.HasValue && !IsNullOrEmpty(result.Status) =>
+                MapActivityStatus(result.Status).Match<Result<MembershipQueryRecord, VerificationFlowFailure>>(
+                    status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
+                        new MembershipQueryRecord
+                        {
+                            UniqueIdentifier = result.MembershipUniqueId.Value,
+                            ActivityStatus = status,
+                            CreationStatus = Membership.Types.CreationStatus.OtpVerified
+                        }),
+                    () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
+                ),
 
-            Option<Guid> membershipIdOpt =
-                reader.IsDBNull(0) ? Option<Guid>.None : Option<Guid>.Some(reader.GetGuid(0));
-            Option<string> activityStatusStrOpt =
-                reader.IsDBNull(1) ? Option<string>.None : Option<string>.Some(reader.GetString(1));
-            string outcome = reader.GetString(2);
+            var error when IsKnownLoginError(error) =>
+                Result<MembershipQueryRecord, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(error)),
 
-            if (int.TryParse(outcome, out int mins))
-            {
-                return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.RateLimitExceeded(VerificationFlowMessageKeys.TooManySigninAttempts));
-            }
-
-            return (membershipIdOpt, activityStatusStrOpt, outcome) switch
-            {
-                ({ HasValue: true, Value: var id }, { HasValue: true, Value: var activityStr },
-                    VerificationFlowMessageKeys.Success
-                    ) =>
-                    MapActivityStatus(activityStr) switch
-                    {
-                        { HasValue: true, Value: var status } =>
-                            Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Ok(
-                                Option<MembershipQueryRecord>.Some(new MembershipQueryRecord
-                                {
-                                    UniqueIdentifier = id,
-                                    ActivityStatus = status
-                                })),
-
-                        _ => Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
-                    },
-
-                ({ HasValue: false }, _, VerificationFlowMessageKeys.MembershipNotFound) =>
-                    Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Ok(
-                        Option<MembershipQueryRecord>.None),
-
-                ({ HasValue: false }, _, VerificationFlowMessageKeys.PhoneNotFound) =>
-                    Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Ok(
-                        Option<MembershipQueryRecord>.None),
-
-                var (_, _, error) when IsKnownLoginError(error) =>
-                    Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.Validation(error)),
-
-                _ => Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
+            var outcome =>
+                Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.PersistorAccess(outcome))
-            };
-        }, OperationNames.SignInMembership);
+        };
+    }
 
-    private async Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyEvent cmd) =>
-        await ExecuteWithConnection(async npgsqlConnection =>
+    private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> UpdateMembershipSecureKeyAsync(
+        IDbConnection connection, UpdateMembershipSecureKeyEvent cmd)
+    {
+        DynamicParameters parameters = new DynamicParameters();
+        parameters.Add("@MembershipUniqueId", cmd.MembershipIdentifier);
+        parameters.Add("@SecureKey", cmd.SecureKey);
+
+        UpdateSecureKeyResult? result = await connection.QuerySingleOrDefaultAsync<UpdateSecureKeyResult>(
+            "dbo.UpdateMembershipSecureKey",
+            parameters,
+            commandType: CommandType.StoredProcedure
+        );
+
+        if (result is null)
         {
-            NpgsqlParameter[] parameters =
-            [
-                new(Parameters.MembershipUniqueId, NpgsqlDbType.Uuid) { Value = cmd.MembershipIdentifier },
-                new(Parameters.SecureKey, NpgsqlDbType.Bytea) { Value = cmd.SecureKey }
-            ];
+            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
+        }
 
-            await using IDbCommand command =
-                CreateCommand(npgsqlConnection, Queries.UpdateMembershipSecureKey, parameters);
-            await using IDbDataReader reader = await command.ExecuteReaderAsync();
-
-            if (!await reader.ReadAsync())
-            {
-                return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
-            }
-
-            bool success = reader.GetBoolean(0);
-            string message = reader.GetString(1);
-
-            if (!success)
-            {
-                return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.Validation(message));
-            }
-
-            Option<Guid> membershipIdOpt =
-                reader.IsDBNull(2) ? Option<Guid>.None : Option<Guid>.Some(reader.GetGuid(2));
-            Option<string> activityStatusStrOpt =
-                reader.IsDBNull(3) ? Option<string>.None : Option<string>.Some(reader.GetString(3));
-            Option<string> creationStatusStrOpt =
-                reader.IsDBNull(4) ? Option<string>.None : Option<string>.Some(reader.GetString(4));
-
-            if (!membershipIdOpt.HasValue || !activityStatusStrOpt.HasValue || !creationStatusStrOpt.HasValue)
-            {
-                return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
-            }
-
-            Option<Membership.Types.ActivityStatus> activityStatusOpt = MapActivityStatus(activityStatusStrOpt.Value);
-            if (!activityStatusOpt.HasValue)
-            {
-                return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid));
-            }
-
-            MembershipQueryRecord updateResponse = new()
-            {
-                UniqueIdentifier = membershipIdOpt.Value,
-                ActivityStatus = activityStatusOpt.Value,
-                CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(creationStatusStrOpt.Value)
-            };
-
-
-            return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Ok(
-                Option<MembershipQueryRecord>.Some(updateResponse));
-        }, OperationNames.UpdateMembershipSecureKey);
-
-    private async Task HandleCreateMembershipActorCommand(CreateMembershipActorEvent cmd) =>
-        await ExecuteWithConnection(async npgsqlConnection =>
+        if (!result.Success)
         {
-            NpgsqlParameter[] parameters =
-            [
-                new(Parameters.SessionUniqueId, NpgsqlDbType.Uuid) { Value = cmd.SessionIdentifier },
-                new(Parameters.ConnectionId, NpgsqlDbType.Bigint) { Value = (long)cmd.ConnectId },
-                new(Parameters.OtpUniqueId, NpgsqlDbType.Uuid) { Value = cmd.OtpIdentifier },
-                new(Parameters.CreationStatus, NpgsqlDbType.Text)
-                    { Value = MembershipCreationStatusHelper.GetCreationStatusString(cmd.CreationStatus) }
-            ];
+            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.Validation(result.Message));
+        }
 
-            await using IDbCommand command = CreateCommand(npgsqlConnection, Queries.CreateMembership, parameters);
-            await using IDbDataReader reader = await command.ExecuteReaderAsync();
+        if (!result.MembershipUniqueId.HasValue || IsNullOrEmpty(result.Status) || IsNullOrEmpty(result.CreationStatus))
+        {
+            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess("Procedure returned success but missing required data."));
+        }
 
-            if (!await reader.ReadAsync())
-            {
-                return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
-            }
+        return MapActivityStatus(result.Status).Match<Result<MembershipQueryRecord, VerificationFlowFailure>>(
+            status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
+                new MembershipQueryRecord
+                {
+                    UniqueIdentifier = result.MembershipUniqueId.Value,
+                    ActivityStatus = status,
+                    CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(result.CreationStatus)
+                }),
+            () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
+        );
+    }
 
-            Option<Guid> membershipIdOpt =
-                reader.IsDBNull(0) ? Option<Guid>.None : Option<Guid>.Some(reader.GetGuid(0));
-            Option<string> activityStatusStrOpt =
-                reader.IsDBNull(1) ? Option<string>.None : Option<string>.Some(reader.GetString(1));
-            Option<string> creationStatusStrOpt =
-                reader.IsDBNull(2) ? Option<string>.None : Option<string>.Some(reader.GetString(2));
-            string outcome = reader.GetString(3);
+    private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> CreateMembershipAsync(
+        IDbConnection connection, CreateMembershipActorEvent cmd)
+    {
+        DynamicParameters parameters = new();
+        parameters.Add("@FlowUniqueId", cmd.SessionIdentifier);
+        parameters.Add("@ConnectionId", (long)cmd.ConnectId);
+        parameters.Add("@OtpUniqueId", cmd.OtpIdentifier);
+        parameters.Add("@CreationStatus", MembershipCreationStatusHelper.GetCreationStatusString(cmd.CreationStatus));
 
-            if (int.TryParse(outcome, out int _))
-            {
-                return Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.RateLimitExceeded(VerificationFlowMessageKeys.TooManyMembershipAttempts));
-            }
+        CreateMembershipResult? result = await connection.QuerySingleOrDefaultAsync<CreateMembershipResult>(
+            "dbo.CreateMembership",
+            parameters,
+            commandType: CommandType.StoredProcedure);
 
-            return (membershipIdOpt, activityStatusStrOpt, creationStatusStrOpt, outcome) switch
-            {
-                ({ HasValue: true, Value: var id },
-                    { HasValue: true, Value: var activityStr },
-                    { HasValue: true, Value: var creationStr }, var oc
-                    and (VerificationFlowMessageKeys.Created or VerificationFlowMessageKeys.MembershipAlreadyExists)) =>
-                    MapActivityStatus(activityStr) switch
-                    {
-                        { HasValue: true, Value: var status } =>
-                            Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Ok(
-                                Option<MembershipQueryRecord>.Some(new MembershipQueryRecord
-                                {
-                                    UniqueIdentifier = id,
-                                    ActivityStatus = status,
-                                    CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(creationStr)
-                                })),
+        if (result is null)
+        {
+            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
+        }
 
-                        _ => Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
-                    },
+        if (int.TryParse(result.Outcome, out int _))
+        {
+            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.RateLimitExceeded(VerificationFlowMessageKeys.TooManyMembershipAttempts));
+        }
 
-                var (_, _, _, error) when IsKnownCreationError(error) =>
-                    Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.Validation(error)),
+        return result.Outcome switch
+        {
+            VerificationFlowMessageKeys.Created
+                or VerificationFlowMessageKeys.MembershipAlreadyExists when result.MembershipUniqueId.HasValue &&
+                                                                            !IsNullOrEmpty(result.Status) &&
+                                                                            !IsNullOrEmpty(result.CreationStatus) =>
+                MapActivityStatus(result.Status).Match(
+                    status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
+                        new MembershipQueryRecord
+                        {
+                            UniqueIdentifier = result.MembershipUniqueId.Value,
+                            ActivityStatus = status,
+                            CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(result.CreationStatus)
+                        }),
+                    () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
+                ),
 
-                _ => Result<Option<MembershipQueryRecord>, VerificationFlowFailure>.Err(
+            var error when IsKnownCreationError(error) =>
+                Result<MembershipQueryRecord, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(error)),
+
+            var outcome =>
+                Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.PersistorAccess(outcome))
-            };
-        }, OperationNames.CreateMembership);
-
+        };
+    }
 
     private static bool IsKnownLoginError(string outcome) =>
         outcome is VerificationFlowMessageKeys.InvalidSecureKey or
             VerificationFlowMessageKeys.InactiveMembership or
             VerificationFlowMessageKeys.PhoneNumberCannotBeEmpty or
             VerificationFlowMessageKeys.SecureKeyCannotBeEmpty or
-            VerificationFlowMessageKeys.SecureKeyNotSet;
+            VerificationFlowMessageKeys.SecureKeyNotSet or
+            VerificationFlowMessageKeys.PhoneNotFound or
+            VerificationFlowMessageKeys.MembershipNotFound;
 
     private static bool IsKnownCreationError(string outcome) =>
         outcome is VerificationFlowMessageKeys.CreateMembershipVerificationFlowNotFound;
 
     private static Option<Membership.Types.ActivityStatus> MapActivityStatus(string? statusStr)
     {
-        if (IsNullOrEmpty(statusStr) ||
-            !MembershipStatusMap.TryGetValue(statusStr, out Membership.Types.ActivityStatus status))
+        if (IsNullOrEmpty(statusStr) || !MembershipStatusMap.TryGetValue(statusStr, out var status))
         {
             return Option<Membership.Types.ActivityStatus>.None;
         }
@@ -250,4 +240,34 @@ public class MembershipPersistorActor : VerificationFlowPersistorBase
         ["active"] = Membership.Types.ActivityStatus.Active,
         ["inactive"] = Membership.Types.ActivityStatus.Inactive,
     };
+
+    protected override IDbDataParameter CreateParameter(string name, object value)
+    {
+        return new SqlParameter(name, value);
+    }
+
+    protected override VerificationFlowFailure MapDbException(DbException ex)
+    {
+        if (ex is SqlException sqlEx)
+        {
+            return sqlEx.Number switch
+            {
+                2627 or 2601 => VerificationFlowFailure.ConcurrencyConflict(sqlEx.Message),
+                547 => VerificationFlowFailure.Validation($"Foreign key violation: {sqlEx.Message}"),
+                _ => VerificationFlowFailure.PersistorAccess(sqlEx)
+            };
+        }
+
+        return VerificationFlowFailure.PersistorAccess(ex);
+    }
+
+    protected override VerificationFlowFailure CreateTimeoutFailure(TimeoutException ex)
+    {
+        throw new NotImplementedException();
+    }
+
+    protected override VerificationFlowFailure CreateGenericFailure(Exception ex)
+    {
+        throw new NotImplementedException();
+    }
 }

@@ -75,14 +75,14 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
 
         Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult = await PhoneNumberValidatorActor
             .Ask<Result<PhoneNumberValidationResult, VerificationFlowFailure>>(actorActorEvent);
-
+        
         if (validationResult.IsOk)
         {
             PhoneNumberValidationResult phoneValidation = validationResult.Unwrap();
             if (phoneValidation.IsValid)
             {
                 EnsurePhoneNumberActorEvent ensurePhoneNumberActorEvent =
-                    new(phoneValidation.ParsedPhoneNumberE164!, phoneValidation.DetectedRegion);
+                    new(phoneValidation.ParsedPhoneNumberE164!, phoneValidation.DetectedRegion, Guid.Empty);
 
                 Result<Guid, VerificationFlowFailure> ensurePhoneNumberResult = await VerificationSessionManagerActor
                     .Ask<Result<Guid, VerificationFlowFailure>>(ensurePhoneNumberActorEvent);
@@ -176,7 +176,7 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
         HandleProtocolError(encryptResult.UnwrapErr(), context);
         return new CipherPayload();
     }
-    
+
     private void HandleProtocolError(EcliptixProtocolFailure failure, ServerCallContext context)
     {
         Logger.LogError("Protocol error: {Error}", failure);
@@ -202,5 +202,4 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
         Status status = failure.ToGrpcStatus();
         throw new RpcException(status);
     }
-
 }

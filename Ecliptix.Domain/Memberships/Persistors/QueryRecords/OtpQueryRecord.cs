@@ -1,13 +1,13 @@
-namespace Ecliptix.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.Domain.Memberships;
 
-public class OtpQueryRecord
+public record OtpQueryRecord
 {
     public Guid UniqueIdentifier { get; init; }
-    public Guid SessionIdentifier { get; init; }
+    public Guid FlowUniqueId { get; init; } 
     public Guid PhoneNumberIdentifier { get; init; }
-    public string OtpHash { get; init; } = string.Empty;
-    public string OtpSalt { get; init; } = string.Empty;
-    public DateTime ExpiresAt { get; init; }
-    public VerificationFlowStatus Status { get; init; }
-    public bool IsActive { get; set; }
+    public required string OtpHash { get; init; }
+    public required string OtpSalt { get; init; }
+    public required DateTime ExpiresAt { get; init; }
+    public required VerificationFlowStatus Status { get; init; }
+    public required bool IsActive { get; init; } 
 }

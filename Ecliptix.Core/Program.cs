@@ -9,6 +9,7 @@ using Ecliptix.Core.Services;
 using Ecliptix.Core.Services.Memberships;
 using Ecliptix.Domain;
 using Ecliptix.Domain.AppDevices.Persistors;
+using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.Persistors;
 using Microsoft.AspNetCore.Localization;
@@ -56,15 +57,15 @@ try
         Log.Information("Building NpgsqlDataSource for EcliptixDb.");
         return dataSourceBuilder.Build();
     });
-    
-    builder.Services.AddSingleton<IDbDataSource, NpgsqlDataSourceWrapper>();
-    
+
+    builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
+
     RegisterLocalization(builder.Services);
     RegisterValidators(builder.Services);
     RegisterGrpc(builder.Services);
 
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
-    
+
     builder.Services.AddAkka(systemActorName, (akkaBuilder, serviceProvider) =>
     {
         akkaBuilder.WithActors((system, registry) =>
@@ -74,14 +75,14 @@ try
 
             ILocalizationProvider verificationFlowLocalizer =
                 serviceProvider.GetRequiredService<ILocalizationProvider>();
-            
+
             using (LogContext.PushProperty("ActorSystemName", system.Name))
             {
                 logger.LogInformation("Actor system {ActorSystemName} is starting up.", system.Name);
             }
 
-            IDbDataSource dbDataSource = serviceProvider.GetRequiredService<IDbDataSource>(); 
-            
+            IDbConnectionFactory dbDataSource = serviceProvider.GetRequiredService<IDbConnectionFactory>();
+
             ILogger<EcliptixProtocolSystemActor> protocolActorLogger =
                 serviceProvider.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>();
             ILogger<VerificationFlowPersistorActor> verificationFlowLogger =
@@ -98,7 +99,7 @@ try
                 "ProtocolSystem");
 
             IActorRef appDevicePersistor = system.ActorOf(
-                AppDevicePersistorActor.Build(dbDataSource,appDevicePersistorLocalizer),
+                AppDevicePersistorActor.Build(dbDataSource, appDevicePersistorLocalizer),
                 "AppDevicePersistor");
 
             IActorRef membershipVerificationSessionPersistorActor = system.ActorOf(
@@ -208,7 +209,7 @@ static void RegisterGrpc(IServiceCollection services)
     {
         options.ResponseCompressionLevel = CompressionLevel.Fastest;
         options.ResponseCompressionAlgorithm = "gzip";
-        options.EnableDetailedErrors = true; 
+        options.EnableDetailedErrors = true;
         options.Interceptors.Add<RequestMetaDataInterceptor>();
         options.Interceptors.Add<ThreadCultureInterceptor>();
     });

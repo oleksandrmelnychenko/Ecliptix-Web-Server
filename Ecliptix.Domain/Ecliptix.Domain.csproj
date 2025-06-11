@@ -11,9 +11,10 @@
         <PackageReference Include="Akka" Version="1.5.40" />
         <PackageReference Include="Amazon.SimpleNotificationService.UtilExtensions" Version="1.0.0" />
         <PackageReference Include="AWSSDK.Core" Version="4.0.0.3" />
+        <PackageReference Include="Dapper" Version="2.1.66" />
         <PackageReference Include="Grpc.AspNetCore.Server" Version="2.70.0"/>
         <PackageReference Include="libphonenumber-csharp" Version="9.0.5" />
-        <PackageReference Include="Npgsql" Version="9.0.3" />
+        <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
         <PackageReference Include="Otp.NET" Version="1.4.0" />
         <PackageReference Include="Polly" Version="8.5.2" />
         <PackageReference Include="protobuf-net" Version="3.2.46"/>

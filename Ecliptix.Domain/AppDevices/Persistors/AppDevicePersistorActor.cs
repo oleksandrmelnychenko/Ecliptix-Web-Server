@@ -1,64 +1,79 @@
+using System.Data;
+using System.Data.Common;
 using Akka.Actor;
+using Dapper;
 using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Failures;
-using Ecliptix.Domain.AppDevices.Persistors.Utilities;
+using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.AppDevice;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using Npgsql;
-using NpgsqlTypes;
 
 namespace Ecliptix.Domain.AppDevices.Persistors;
 
 public class AppDevicePersistorActor : AppDevicePersistorBase
 {
-    public AppDevicePersistorActor(IDbDataSource npgsqlDataSource, ILogger<AppDevicePersistorActor> logger)
-        : base(npgsqlDataSource, logger)
+    public AppDevicePersistorActor(IDbConnectionFactory connectionFactory, ILogger<AppDevicePersistorActor> logger)
+        : base(connectionFactory, logger)
     {
         Become(Ready);
     }
 
-    public static Props Build(IDbDataSource npgsqlDataSource, ILogger<AppDevicePersistorActor> logger) =>
-        Props.Create(() => new AppDevicePersistorActor(npgsqlDataSource, logger));
+    public static Props Build(IDbConnectionFactory connectionFactory, ILogger<AppDevicePersistorActor> logger) =>
+        Props.Create(() => new AppDevicePersistorActor(connectionFactory, logger));
 
     private void Ready()
     {
-        ReceiveAsync<RegisterAppDeviceIfNotExistActorEvent>(HandleRegisterAppDeviceIfNotExistCommand);
+        Receive<RegisterAppDeviceIfNotExistActorEvent>(args =>
+            ExecuteWithConnection(conn => RegisterAppDeviceAsync(conn, args.AppDevice), "RegisterAppDevice")
+                .PipeTo(Sender));
     }
 
-    private async Task HandleRegisterAppDeviceIfNotExistCommand(RegisterAppDeviceIfNotExistActorEvent actorEvent)
+    private async Task<Result<(Guid UniqueId, int Status), AppDeviceFailure>> RegisterAppDeviceAsync(
+        IDbConnection connection, AppDevice appDevice)
     {
-        await RegisterAppDevice(actorEvent.AppDevice);
+        using IDbCommand cmd = CreateCommand(connection, "dbo.RegisterAppDeviceIfNotExists",
+            CommandType.StoredProcedure,
+            CreateParameter("@AppInstanceId", Helpers.FromByteStringToGuid(appDevice.AppInstanceId)),
+            CreateParameter("@DeviceId", Helpers.FromByteStringToGuid(appDevice.DeviceId)),
+            CreateParameter("@DeviceType", (int)appDevice.DeviceType)
+        );
+
+        (Guid UniqueId, int Status) result = await (cmd as DbCommand)!.ExecuteReaderAsync()
+            .ContinueWith(task =>
+            {
+                using DbDataReader reader = task.Result;
+                return reader.Parse<(Guid UniqueId, int Status)>().SingleOrDefault();
+            }, TaskScheduler.Default);
+
+        if (result.UniqueId == Guid.Empty)
+        {
+            return Result<(Guid, int), AppDeviceFailure>.Err(
+                AppDeviceFailure.PersistorAccess(AppDeviceMessageKeys.RegistrationNoResult));
+        }
+
+        return Result<(Guid, int), AppDeviceFailure>.Ok(result);
     }
 
-    private async Task RegisterAppDevice(AppDevice appDevice) =>
-        await ExecuteWithConnection(async npgsqlConnection =>
+    protected override IDbDataParameter CreateParameter(string name, object value)
+    {
+        return new SqlParameter(name, value);
+    }
+
+    protected override AppDeviceFailure MapDbException(DbException ex)
+    {
+        if (ex is SqlException sqlEx)
         {
-            await using IDbCommand cmd = CreateCommand(npgsqlConnection, Queries.RegisterAppDevice,
-                new NpgsqlParameter(Parameters.AppInstanceId, NpgsqlDbType.Uuid)
-                {
-                    Value = Helpers.FromByteStringToGuid(appDevice.AppInstanceId)
-                },
-                new NpgsqlParameter(Parameters.DeviceId, NpgsqlDbType.Uuid)
-                {
-                    Value = Helpers.FromByteStringToGuid(appDevice.DeviceId)
-                },
-                new NpgsqlParameter(Parameters.DeviceType, NpgsqlDbType.Integer)
-                {
-                    Value = (int)appDevice.DeviceType
-                }
+            return AppDeviceFailure.PersistorAccess(
+                $"SQL Error {sqlEx.Number}: {sqlEx.Message}",
+                sqlEx
             );
+        }
 
-            await using IDbDataReader reader = await cmd.ExecuteReaderAsync();
-            if (!await reader.ReadAsync())
-            {
-                return Result<(Guid, int), AppDeviceFailure>.Err(
-                    AppDeviceFailure.PersistorAccess(AppDeviceMessageKeys.RegistrationNoResult));
-            }
-
-            Guid uniqueId = reader.GetFieldValue<Guid>(0);
-            int status = reader.GetInt32(1);
-
-            return Result<(Guid, int), AppDeviceFailure>.Ok((uniqueId, status));
-        }, OperationNames.RegisterAppDevice);
+        return AppDeviceFailure.PersistorAccess(
+            $"Database Error: {ex.Message}",
+            ex
+        );
+    }
 }

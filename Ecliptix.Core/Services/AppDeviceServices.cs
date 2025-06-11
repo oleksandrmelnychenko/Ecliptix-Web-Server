@@ -64,8 +64,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
         AppDevice appDevice = Helpers.ParseFromBytes<AppDevice>(decryptResult.Unwrap());
         Result<(Guid, int), AppDeviceFailure> persistorResult = await AppDevicePersistorActor
             .Ask<Result<(Guid, int), AppDeviceFailure>>(
-                new RegisterAppDeviceIfNotExistActorEvent(appDevice),
-                context.CancellationToken
+                new RegisterAppDeviceIfNotExistActorEvent(appDevice)
             );
 
         if (persistorResult.IsErr)

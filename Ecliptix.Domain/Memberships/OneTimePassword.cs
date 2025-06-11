@@ -31,7 +31,8 @@ public sealed class OneTimePassword
                     OtpHash = hash,
                     OtpSalt = salt,
                     ExpiresAt = ExpiresAt,
-                    IsActive = true
+                    IsActive = true,
+                    Status = VerificationFlowStatus.Pending
                 };
 
                 IsActive = true;
