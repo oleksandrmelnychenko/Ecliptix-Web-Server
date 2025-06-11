@@ -71,8 +71,8 @@ public class MembershipActor : ReceiveActor
 
     private async Task HandleCreateMembershipActorCommand(CreateMembershipActorEvent @event)
     {
-        Result<Option<MembershipQueryRecord>, VerificationFlowFailure> operationResult =
-            await _persistor.Ask<Result<Option<MembershipQueryRecord>, VerificationFlowFailure>>(@event);
+        Result<MembershipQueryRecord, VerificationFlowFailure> operationResult =
+            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
         Sender.Tell(operationResult);
     }
 

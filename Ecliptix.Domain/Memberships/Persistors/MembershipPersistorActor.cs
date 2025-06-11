@@ -56,15 +56,15 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         Receive<UpdateMembershipSecureKeyEvent>(cmd =>
             ExecuteWithConnection(conn => UpdateMembershipSecureKeyAsync(conn, cmd), "UpdateMembershipSecureKey")
-                .PipeTo(Self, sender: Sender));
+                .PipeTo(Sender));
 
         Receive<CreateMembershipActorEvent>(cmd =>
             ExecuteWithConnection(conn => CreateMembershipAsync(conn, cmd), "CreateMembership")
-                .PipeTo(Self, sender: Sender));
+                .PipeTo(Sender));
 
         Receive<SignInMembershipActorEvent>(cmd =>
             ExecuteWithConnection(conn => SignInMembershipAsync(conn, cmd), "LoginMembership")
-                .PipeTo(Self, sender: Sender));
+                .PipeTo(Sender));
     }
 
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> SignInMembershipAsync(
@@ -164,7 +164,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         IDbConnection connection, CreateMembershipActorEvent cmd)
     {
         DynamicParameters parameters = new();
-        parameters.Add("@FlowUniqueId", cmd.SessionIdentifier);
+        parameters.Add("@FlowUniqueId", cmd.VerificationFlowIdentifier);
         parameters.Add("@ConnectionId", (long)cmd.ConnectId);
         parameters.Add("@OtpUniqueId", cmd.OtpIdentifier);
         parameters.Add("@CreationStatus", MembershipCreationStatusHelper.GetCreationStatusString(cmd.CreationStatus));

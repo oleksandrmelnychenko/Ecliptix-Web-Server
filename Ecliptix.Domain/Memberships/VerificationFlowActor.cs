@@ -18,7 +18,7 @@ public record VerificationFlowExpiredEvent;
 
 public record CreateMembershipActorEvent(
     uint ConnectId,
-    Guid SessionIdentifier,
+    Guid VerificationFlowIdentifier,
     Guid OtpIdentifier,
     Membership.Types.CreationStatus CreationStatus);
 
@@ -228,7 +228,7 @@ public class VerificationFlowActor : ReceiveActor
 
     private async Task HandleVerifyOtp(VerifyFlowActorEvent command)
     {
-        if (!IsSessionActive())
+        if (!IsVerificationFlowActive())
         {
             Sender.Tell(CreateVerifyResponse(VerificationResult.Expired, VerificationFlowMessageKeys.InvalidOtp));
             return;
@@ -254,12 +254,12 @@ public class VerificationFlowActor : ReceiveActor
             _connectId, _verificationFlowQueryRecord.Value!.UniqueIdentifier, _activeOtp!.UniqueIdentifier,
             Membership.Types.CreationStatus.OtpVerified);
 
-        Result<Option<MembershipQueryRecord>, VerificationFlowFailure> result =
-            await _membershipActor.Ask<Result<Option<MembershipQueryRecord>, VerificationFlowFailure>>(createEvent);
+        Result<MembershipQueryRecord, VerificationFlowFailure> result =
+            await _membershipActor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(createEvent);
 
-        if (result.IsOk && result.Unwrap().HasValue)
+        if (result.IsOk)
         {
-            MembershipQueryRecord membership = result.Unwrap().Value!;
+            MembershipQueryRecord membership = result.Unwrap();
             Sender.Tell(CreateSuccessResponse(membership));
             CleanupAndStop();
         }
@@ -366,7 +366,7 @@ public class VerificationFlowActor : ReceiveActor
         OneTimePassword otp = new();
 
         Result<(OtpQueryRecord Record, string PlainOtp), VerificationFlowFailure> generationResult =
-            otp.Generate(_phoneNumberRecord.Value!,_verificationFlowQueryRecord.Value.UniqueIdentifier);
+            otp.Generate(_phoneNumberRecord.Value!, _verificationFlowQueryRecord.Value.UniqueIdentifier);
 
         if (generationResult.IsErr)
             return Result<OtpQueryRecord, VerificationFlowFailure>.Err(generationResult.UnwrapErr());
@@ -454,13 +454,14 @@ public class VerificationFlowActor : ReceiveActor
         if (_verificationFlowQueryRecord.HasValue)
         {
             await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
-                new UpdateVerificationFlowStatusActorEvent(_verificationFlowQueryRecord.Value!.UniqueIdentifier, status));
+                new UpdateVerificationFlowStatusActorEvent(_verificationFlowQueryRecord.Value!.UniqueIdentifier,
+                    status));
         }
 
         CleanupAndStop();
     }
 
-    private bool IsSessionActive() =>
+    private bool IsVerificationFlowActive() =>
         _verificationFlowQueryRecord.HasValue && _activeOtp?.IsActive == true;
 
     private static ulong CalculateRemainingSeconds(DateTime expiresAt)
