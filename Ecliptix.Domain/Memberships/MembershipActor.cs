@@ -61,65 +61,85 @@ public class MembershipActor : ReceiveActor
 
     private async Task HandleSignInMembershipActorCommand(SignInMembershipActorEvent @event)
     {
-        Result<Option<MembershipQueryRecord>, VerificationFlowFailure> result =
-            await _persistor.Ask<Result<Option<MembershipQueryRecord>, VerificationFlowFailure>>(@event);
+        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
+            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
 
-        Result<SignInMembershipResponse, VerificationFlowFailure> operationResult = result.Match(
-            ok: option => option.Match(
-                record => Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
-                    new SignInMembershipResponse
+        Result<SignInMembershipResponse, VerificationFlowFailure> finalResult = persistorResult.Match(
+            ok: record => Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
+                new SignInMembershipResponse
+                {
+                    Membership = new Membership
                     {
-                        Membership = new Membership
-                        {
-                            UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
-                            Status = record.ActivityStatus
-                        },
-                        Result = SignInMembershipResponse.Types.SignInResult.Succeeded
-                    }
-                ),
-                () => Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
-                    new SignInMembershipResponse
-                    {
-                        Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
-                        Message = _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidCredentials,
-                            @event.CultureName),
-                    }
-                )
+                        UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
+                        Status = record.ActivityStatus
+                    },
+                    Result = SignInMembershipResponse.Types.SignInResult.Succeeded
+                }
             ),
-            err =>
+            err: failure =>
             {
-                if (err.FailureType == VerificationFlowFailureType.Validation)
+                switch (failure.FailureType)
                 {
-                    string message;
-
-                    if (err.IsUserFacing)
+                    case VerificationFlowFailureType.Validation:
+                    case VerificationFlowFailureType.NotFound:
                     {
-                        message = _localizationProvider.Localize(err.Message);
-                        Log.Information("Sign-in failed for {PhoneNumber} with error: {ErrorMessage}",
-                            @event.PhoneNumber, message);
+                        string message = _localizationProvider.Localize(
+                            VerificationFlowMessageKeys.InvalidCredentials,
+                            @event.CultureName
+                        );
+
+                        Log.Information(
+                            "Sign-in validation failed for {PhoneNumber} with internal error: {InternalError}",
+                            @event.PhoneNumber, failure.Message);
+
+                        return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
+                            new SignInMembershipResponse
+                            {
+                                Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
+                                Message = message
+                            }
+                        );
                     }
 
-                    message = _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidCredentials,
-                        @event.CultureName);
+                    case VerificationFlowFailureType.RateLimitExceeded:
+                    {
+                        string message = _localizationProvider.Localize(
+                            VerificationFlowMessageKeys.TooManySigninAttempts,
+                            @event.CultureName
+                        );
 
-                    return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
-                        new SignInMembershipResponse
-                        {
-                            Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
-                            Message = message,
-                            MinutesUntilRetry = string.Empty
-                        }
-                    );
+                        Log.Warning(
+                            "Sign-in rate limit exceeded for {PhoneNumber}. Wait for {Minutes} minutes.",
+                            @event.PhoneNumber, failure.Message);
+
+                        return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
+                            new SignInMembershipResponse
+                            {
+                                Result = SignInMembershipResponse.Types.SignInResult.LoginAttemptExceeded,
+                                Message = message,
+                                MinutesUntilRetry = failure.Message
+                            }
+                        );
+                    }
+
+                    case VerificationFlowFailureType.Expired:
+                    case VerificationFlowFailureType.Conflict:
+                    case VerificationFlowFailureType.InvalidOtp:
+                    case VerificationFlowFailureType.OtpExpired:
+                    case VerificationFlowFailureType.OtpMaxAttemptsReached:
+                    case VerificationFlowFailureType.OtpGenerationFailed:
+                    case VerificationFlowFailureType.SmsSendFailed:
+                    case VerificationFlowFailureType.PhoneNumberInvalid:
+                    case VerificationFlowFailureType.PersistorAccess:
+                    case VerificationFlowFailureType.ConcurrencyConflict:
+                    case VerificationFlowFailureType.SuspiciousActivity:
+                    case VerificationFlowFailureType.Generic:
+                    default:
+                        return Result<SignInMembershipResponse, VerificationFlowFailure>.Err(failure);
                 }
-
-                if (err.FailureType == VerificationFlowFailureType.RateLimitExceeded)
-                {
-                }
-
-                return Result<SignInMembershipResponse, VerificationFlowFailure>.Err(err);
             }
         );
 
-        Sender.Tell(operationResult);
+        Sender.Tell(finalResult);
     }
 }
