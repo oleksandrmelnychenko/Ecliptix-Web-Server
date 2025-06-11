@@ -39,25 +39,18 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> writer = channel.Writer;
 
         Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context);
+        context.CancellationToken.Register(() => StopVerificationFlowActor(context, connectId));
 
-        Result<bool, VerificationFlowFailure> sessionResult = await VerificationFlowManagerActor
-            .Ask<Result<bool, VerificationFlowFailure>>(new InitiateVerificationFlowActorEvent(
-                connectId,
-                Helpers.FromByteStringToGuid(initiateRequest.PhoneNumberIdentifier),
-                Helpers.FromByteStringToGuid(initiateRequest.AppDeviceIdentifier),
-                initiateRequest.Purpose,
-                initiateRequest.Type,
-                writer
-            ));
+        VerificationFlowManagerActor.Tell(new InitiateVerificationFlowActorEvent(
+            connectId,
+            Helpers.FromByteStringToGuid(initiateRequest.PhoneNumberIdentifier),
+            Helpers.FromByteStringToGuid(initiateRequest.AppDeviceIdentifier),
+            initiateRequest.Purpose,
+            initiateRequest.Type,
+            writer
+        ));
 
-        if (sessionResult.IsOk)
-        {
-            await streamingTask;
-        }
-        else
-        {
-            HandleVerificationError(sessionResult.UnwrapErr(), context);
-        }
+        await streamingTask;
     }
 
     public override async Task<CipherPayload> ValidatePhoneNumber(CipherPayload request, ServerCallContext context)
@@ -146,22 +139,42 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
         ChannelReader<Result<VerificationCountdownUpdate, VerificationFlowFailure>> reader,
         ServerCallContext context)
     {
-        await foreach (Result<VerificationCountdownUpdate, VerificationFlowFailure> update in reader.ReadAllAsync(
-                           context.CancellationToken))
+        try
         {
-            if (update.IsOk)
+            await foreach (Result<VerificationCountdownUpdate, VerificationFlowFailure> updateResult in
+                           reader.ReadAllAsync(context.CancellationToken))
             {
-                VerificationCountdownUpdate verificationCountdownUpdate = update.Unwrap();
-                Result<CipherPayload, EcliptixProtocolFailure> encryptResult = await EncryptRequest(
-                    verificationCountdownUpdate.ToByteArray(),
-                    PubKeyExchangeType.DataCenterEphemeralConnect,
-                    context);
-
-                if (encryptResult.IsOk)
+                if (updateResult.IsOk)
                 {
-                    await responseStream.WriteAsync(encryptResult.Unwrap());
+                    Result<CipherPayload, EcliptixProtocolFailure> encryptResult = await EncryptRequest(
+                        updateResult.Unwrap().ToByteArray(),
+                        PubKeyExchangeType.DataCenterEphemeralConnect,
+                        context);
+
+                    if (encryptResult.IsOk)
+                    {
+                        await responseStream.WriteAsync(encryptResult.Unwrap());
+                    }
+                    else
+                    {
+                        logger.LogError("Failed to encrypt countdown update: {Error}", encryptResult.UnwrapErr());
+                        break;
+                    }
+                }
+                else
+                {
+                    HandleVerificationError(updateResult.UnwrapErr(), context);
+                    break;
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogInformation("Streaming task was canceled because the client disconnected.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "An unexpected error occurred in the streaming task.");
         }
     }
 

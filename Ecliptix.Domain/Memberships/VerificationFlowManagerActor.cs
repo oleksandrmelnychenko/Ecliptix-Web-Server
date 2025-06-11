@@ -1,13 +1,14 @@
-using System.Collections.Concurrent;
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.Events;
-using Ecliptix.Domain.Persistors;
+using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Microsoft.Extensions.Localization;
-using Ecliptix.Domain.Memberships.Failures;
+using Serilog;
 
 namespace Ecliptix.Domain.Memberships;
+
+public record ClientDisconnectedEvent;
 
 public class VerificationFlowManagerActor : ReceiveActor
 {
@@ -15,8 +16,6 @@ public class VerificationFlowManagerActor : ReceiveActor
     private readonly IActorRef _persistor;
     private readonly IActorRef _membershipActor;
     private readonly SNSProvider _snsProvider;
-
-    private readonly ConcurrentDictionary<uint, IActorRef> _sessions = new();
 
     public VerificationFlowManagerActor(
         IActorRef persistor,
@@ -29,86 +28,76 @@ public class VerificationFlowManagerActor : ReceiveActor
         _membershipActor = membershipActor;
         _snsProvider = snsProvider;
 
-        Receive<VerifyFlowActorEvent>(HandleVerifyCode);
-        Receive<InitiateVerificationFlowActorEvent>(HandleStartVerificationSession);
-        Receive<EnsurePhoneNumberActorEvent>(cmd => _persistor.Forward(cmd));
-        Receive<CloseVerificationFlowEvent>(HandleStopTimer);
+        Become(Ready);
+    }
+
+    private void Ready()
+    {
+        Receive<InitiateVerificationFlowActorEvent>(HandleInitiateFlow);
+        Receive<VerifyFlowActorEvent>(HandleVerifyFlow);
         Receive<Terminated>(HandleTerminated);
+
+        Receive<EnsurePhoneNumberActorEvent>(cmd => _persistor.Forward(cmd));
     }
 
-    private void HandleVerifyCode(VerifyFlowActorEvent actorEvent)
+    private void HandleInitiateFlow(InitiateVerificationFlowActorEvent @event)
     {
-        if (_sessions.TryGetValue(actorEvent.ConnectId, out IActorRef? existing))
-        {
-            existing.Forward(actorEvent);
-        }
-        else
-        {
-            //TODO NO ACTIVE SESSION, WE NEED TO WAIT FOR THE SESSION TO BE CREATED..
-            
-            Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.NotFound("No active verification session found")));
-        }
-    }
+        string actorName = GetActorName(@event.ConnectId);
+        IActorRef? childActor = Context.Child(actorName);
 
-    private void HandleStartVerificationSession(InitiateVerificationFlowActorEvent @event)
-    {
-        if (_sessions.TryGetValue(@event.ConnectId, out IActorRef? existing))
+        if (!childActor.IsNobody())
         {
-            existing.Forward(@event);
+            childActor.Forward(@event);
         }
         else
         {
             if (@event.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
             {
-                CreateVerificationSessionActor(@event);
-                Sender.Tell(Result<bool, VerificationFlowFailure>.Ok(true));
+                IActorRef? newFlowActor = Context.ActorOf(VerificationFlowActor.Build(
+                    @event.ConnectId,
+                    @event.PhoneNumberIdentifier,
+                    @event.AppDeviceIdentifier,
+                    @event.Purpose,
+                    @event.ChannelWriter,
+                    _persistor,
+                    _membershipActor,
+                    _snsProvider,
+                    _localizer
+                ), actorName);
+
+                Context.Watch(newFlowActor);
+                Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
             }
             else
             {
-                Sender.Tell(Result<bool, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.NotFound("No active session for resend request")));
+                Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.NotFound("No active session found for resend request.")));
+                @event.ChannelWriter.TryComplete();
             }
         }
     }
 
-    private void HandleStopTimer(CloseVerificationFlowEvent msg)
+    private void HandleVerifyFlow(VerifyFlowActorEvent actorEvent)
     {
-        if (_sessions.TryGetValue(msg.ConnectId, out IActorRef? actor))
+        IActorRef? childActor = Context.Child(GetActorName(actorEvent.ConnectId));
+
+        if (!childActor.IsNobody())
         {
-            actor.Tell(msg);
+            childActor.Forward(actorEvent);
+        }
+        else
+        {
+            Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.NotFound("No active verification flow found for this connection.")));
         }
     }
 
     private void HandleTerminated(Terminated msg)
     {
-        foreach (KeyValuePair<uint, IActorRef> entry in _sessions)
-        {
-            if (entry.Value.Equals(msg.ActorRef))
-            {
-                _sessions.TryRemove(entry.Key, out _);
-                break;
-            }
-        }
+        Log.Information("Verification flow actor {ActorPath} has terminated.", msg.ActorRef.Path);
     }
 
-    private void CreateVerificationSessionActor(InitiateVerificationFlowActorEvent @event)
-    {
-        IActorRef verificationSessionActorRef = Context.ActorOf(VerificationFlowActor.Build(
-            @event.ConnectId,
-            @event.PhoneNumberIdentifier,
-            @event.AppDeviceIdentifier,
-            @event.Purpose,
-            @event.ChannelWriter,
-            _persistor,
-            _membershipActor,
-            _snsProvider,
-            _localizer
-        ));
-
-        _sessions[@event.ConnectId] = verificationSessionActorRef;
-        Context.Watch(verificationSessionActorRef);
-    }
+    private static string GetActorName(uint connectId) => $"flow-{connectId}";
 
     public static Props Build(IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
         IStringLocalizer<VerificationFlowManagerActor> localizer) =>

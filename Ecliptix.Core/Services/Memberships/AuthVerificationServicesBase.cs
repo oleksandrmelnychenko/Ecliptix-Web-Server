@@ -25,8 +25,34 @@ public abstract class AuthVerificationServicesBase(
     private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
 
     protected string PeerCulture { get; private set; } = CultureInfo.CurrentCulture.Name;
-    
-    protected async Task<Result<byte[], EcliptixProtocolFailure>> DecryptRequest(CipherPayload request, ServerCallContext context)
+
+    protected void StopVerificationFlowActor(ServerCallContext context, uint connectId)
+    {
+        try
+        {
+            ActorSystem actorSystem = context.GetHttpContext().RequestServices.GetRequiredService<ActorSystem>();
+
+            string actorName = $"flow-{connectId}";
+            string actorPath = $"/user/{nameof(VerificationFlowManagerActor)}/{actorName}";
+
+            ActorSelection? actorSelection = actorSystem.ActorSelection(actorPath);
+
+            actorSelection.Tell(PoisonPill.Instance);
+
+            Logger.LogInformation(
+                "Client for ConnectId {ConnectId} disconnected. Sent PoisonPill to actor selection [{ActorPath}]",
+                connectId, actorPath);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex,
+                "Failed to send stop signal to verification flow actor for ConnectId {ConnectId}.",
+                connectId);
+        }
+    }
+
+    protected async Task<Result<byte[], EcliptixProtocolFailure>> DecryptRequest(CipherPayload request,
+        ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
