@@ -40,7 +40,7 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
 
         Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context);
 
-        Result<bool, VerificationFlowFailure> sessionResult = await VerificationSessionManagerActor
+        Result<bool, VerificationFlowFailure> sessionResult = await VerificationFlowManagerActor
             .Ask<Result<bool, VerificationFlowFailure>>(new InitiateVerificationFlowActorEvent(
                 connectId,
                 Helpers.FromByteStringToGuid(initiateRequest.PhoneNumberIdentifier),
@@ -75,16 +75,17 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
 
         Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult = await PhoneNumberValidatorActor
             .Ask<Result<PhoneNumberValidationResult, VerificationFlowFailure>>(actorActorEvent);
-        
+
         if (validationResult.IsOk)
         {
             PhoneNumberValidationResult phoneValidation = validationResult.Unwrap();
             if (phoneValidation.IsValid)
             {
                 EnsurePhoneNumberActorEvent ensurePhoneNumberActorEvent =
-                    new(phoneValidation.ParsedPhoneNumberE164!, phoneValidation.DetectedRegion, Guid.Empty);
+                    new(phoneValidation.ParsedPhoneNumberE164!, phoneValidation.DetectedRegion,
+                        Helpers.FromByteStringToGuid(validateRequest.AppDeviceIdentifier));
 
-                Result<Guid, VerificationFlowFailure> ensurePhoneNumberResult = await VerificationSessionManagerActor
+                Result<Guid, VerificationFlowFailure> ensurePhoneNumberResult = await VerificationFlowManagerActor
                     .Ask<Result<Guid, VerificationFlowFailure>>(ensurePhoneNumberActorEvent);
 
                 if (ensurePhoneNumberResult.IsOk)
@@ -128,7 +129,7 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
 
         VerifyFlowActorEvent actorEvent = new(connectId, verifyRequest.Code);
 
-        Result<VerifyCodeResponse, VerificationFlowFailure> verificationResult = await VerificationSessionManagerActor
+        Result<VerifyCodeResponse, VerificationFlowFailure> verificationResult = await VerificationFlowManagerActor
             .Ask<Result<VerifyCodeResponse, VerificationFlowFailure>>(actorEvent);
 
         if (verificationResult.IsOk)

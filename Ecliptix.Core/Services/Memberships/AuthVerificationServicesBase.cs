@@ -18,7 +18,7 @@ public abstract class AuthVerificationServicesBase(
 {
     protected readonly ILogger<AuthVerificationServices> Logger = logger;
 
-    protected readonly IActorRef VerificationSessionManagerActor = actorRegistry.Get<VerificationFlowManagerActor>();
+    protected readonly IActorRef VerificationFlowManagerActor = actorRegistry.Get<VerificationFlowManagerActor>();
 
     protected readonly IActorRef PhoneNumberValidatorActor = actorRegistry.Get<PhoneNumberValidatorActor>();
 

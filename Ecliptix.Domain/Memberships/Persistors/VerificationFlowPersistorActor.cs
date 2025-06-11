@@ -74,25 +74,32 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     private void Ready()
     {
         Receive<CreateVerificationFlowActorEvent>(cmd =>
-            Execute(conn => CreateVerificationFlowAsync(conn, cmd), "CreateVerificationFlow"));
-        Receive<GetVerificationFlowActorEvent>(cmd =>
-            Execute(conn => GetVerificationFlowAsync(conn, cmd), "GetVerificationFlow"));
-        Receive<UpdateVerificationFlowStatusActorEvent>(cmd =>
-            Execute(conn => UpdateVerificationFlowStatusAsync(conn, cmd), "UpdateVerificationFlowStatus"));
-        Receive<EnsurePhoneNumberActorEvent>(cmd =>
-            Execute(conn => EnsurePhoneNumberAsync(conn, cmd), "EnsurePhoneNumber"));
-        Receive<GetPhoneNumberActorEvent>(cmd => Execute(conn => GetPhoneNumberAsync(conn, cmd), "GetPhoneNumber"));
-        Receive<CreateOtpActorEvent>(cmd => Execute(conn => CreateOtpAsync(conn, cmd), "CreateOtp"));
-        Receive<UpdateOtpStatusActorEvent>(cmd => Execute(conn => UpdateOtpStatusAsync(conn, cmd), "UpdateOtpStatus"));
-    }
+            ExecuteWithConnection(conn => CreateVerificationFlowAsync(conn, cmd), "CreateVerificationFlow")
+                .PipeTo(Sender));
 
-    private void Execute<T>(Func<IDbConnection, Task<T>> operation, string operationName)
-    {
-        ExecuteWithConnection(async conn =>
-        {
-            T result = await operation(conn);
-            return Result<T, VerificationFlowFailure>.Ok(result);
-        }, operationName).PipeTo(Self, sender: Sender);
+        Receive<GetVerificationFlowActorEvent>(cmd =>
+            ExecuteWithConnection(conn => GetVerificationFlowAsync(conn, cmd), "GetVerificationFlow")
+                .PipeTo(Sender));
+
+        Receive<UpdateVerificationFlowStatusActorEvent>(cmd =>
+            ExecuteWithConnection(conn => UpdateVerificationFlowStatusAsync(conn, cmd), "UpdateVerificationFlowStatus")
+                .PipeTo(Sender));
+
+        Receive<EnsurePhoneNumberActorEvent>(cmd =>
+            ExecuteWithConnection(conn => EnsurePhoneNumberAsync(conn, cmd), "EnsurePhoneNumber")
+                .PipeTo(Sender));
+
+        Receive<GetPhoneNumberActorEvent>(cmd =>
+            ExecuteWithConnection(conn => GetPhoneNumberAsync(conn, cmd), "GetPhoneNumber")
+                .PipeTo(Sender));
+
+        Receive<CreateOtpActorEvent>(cmd =>
+            ExecuteWithConnection(conn => CreateOtpAsync(conn, cmd), "CreateOtp")
+                .PipeTo(Sender));
+
+        Receive<UpdateOtpStatusActorEvent>(cmd =>
+            ExecuteWithConnection(conn => UpdateOtpStatusAsync(conn, cmd), "UpdateOtpStatus")
+                .PipeTo(Sender));
     }
 
     private async Task<Result<Unit, VerificationFlowFailure>> UpdateOtpStatusAsync(IDbConnection conn,
@@ -221,7 +228,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     private async Task<Result<CreateOtpRecordResult, VerificationFlowFailure>> CreateOtpAsync(IDbConnection conn,
         CreateOtpActorEvent cmd)
     {
-        var parameters = new DynamicParameters();
+        DynamicParameters parameters = new();
         parameters.Add("@FlowUniqueId", cmd.OtpRecord.FlowUniqueId);
         parameters.Add("@OtpHash", cmd.OtpRecord.OtpHash);
         parameters.Add("@OtpSalt", cmd.OtpRecord.OtpSalt);
@@ -305,4 +312,3 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         throw new NotImplementedException();
     }
 }
-

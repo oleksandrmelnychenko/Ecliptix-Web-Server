@@ -57,6 +57,7 @@ message VerifyCodeResponse {
 
 message ValidatePhoneNumberRequest {
   string phone_number = 1;
+  bytes app_device_identifier = 2; 
 }
 
 message ValidatePhoneNumberResponse {
