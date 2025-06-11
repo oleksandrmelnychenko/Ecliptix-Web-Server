@@ -124,14 +124,20 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     private async Task<Result<PhoneNumberQueryRecord, VerificationFlowFailure>> GetPhoneNumberAsync(IDbConnection conn,
         GetPhoneNumberActorEvent cmd)
     {
-        PhoneNumberQueryRecord? result = await conn.QuerySingleOrDefaultAsync<PhoneNumberQueryRecord>(
+        PhoneNumberQueryResult? result = await conn.QuerySingleOrDefaultAsync<PhoneNumberQueryResult>(
             "SELECT * FROM dbo.GetPhoneNumber(@PhoneUniqueId)",
             new { PhoneUniqueId = cmd.PhoneNumberIdentifier });
 
-        return result != null
-            ? Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Ok(result)
-            : Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.PhoneNotFound));
+        if (result is not null)
+        {
+            return Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Ok(new(result.PhoneNumber, result.Region)
+            {
+                UniqueIdentifier = result.UniqueId
+            });
+        }
+
+        return Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Err(
+            VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.PhoneNotFound));
     }
 
     private async Task<Result<Guid, VerificationFlowFailure>> CreateVerificationFlowAsync(IDbConnection conn,

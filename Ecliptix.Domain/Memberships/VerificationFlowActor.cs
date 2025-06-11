@@ -49,7 +49,7 @@ public class VerificationFlowActor : ReceiveActor
 
     private ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> _writer;
     private Option<PhoneNumberQueryRecord> _phoneNumberRecord = Option<PhoneNumberQueryRecord>.None;
-    private Option<VerificationFlowQueryRecord> _sessionRecord = Option<VerificationFlowQueryRecord>.None;
+    private Option<VerificationFlowQueryRecord> _verificationFlowQueryRecord = Option<VerificationFlowQueryRecord>.None;
 
     private ICancelable? _otpTimer;
     private ICancelable? _sessionTimer;
@@ -145,7 +145,7 @@ public class VerificationFlowActor : ReceiveActor
 
     private async Task HandleExistingSession(VerificationFlowQueryRecord session)
     {
-        _sessionRecord = Option<VerificationFlowQueryRecord>.Some(session);
+        _verificationFlowQueryRecord = Option<VerificationFlowQueryRecord>.Some(session);
         _sessionExpiresAt = session.ExpiresAt;
 
         if (session.Status == VerificationFlowStatus.Verified)
@@ -195,7 +195,7 @@ public class VerificationFlowActor : ReceiveActor
             return;
         }
 
-        _sessionRecord = Option<VerificationFlowQueryRecord>.Some(
+        _verificationFlowQueryRecord = Option<VerificationFlowQueryRecord>.Some(
             new VerificationFlowQueryRecord(result.Unwrap(), _phoneNumberIdentifier, _appDeviceIdentifier)
             {
                 ExpiresAt = _sessionExpiresAt,
@@ -251,7 +251,7 @@ public class VerificationFlowActor : ReceiveActor
         await UpdateOtpStatus(VerificationFlowStatus.Verified);
 
         CreateMembershipActorEvent createEvent = new(
-            _connectId, _sessionRecord.Value!.UniqueIdentifier, _activeOtp!.UniqueIdentifier,
+            _connectId, _verificationFlowQueryRecord.Value!.UniqueIdentifier, _activeOtp!.UniqueIdentifier,
             Membership.Types.CreationStatus.OtpVerified);
 
         Result<Option<MembershipQueryRecord>, VerificationFlowFailure> result =
@@ -352,7 +352,7 @@ public class VerificationFlowActor : ReceiveActor
             new VerificationCountdownUpdate
             {
                 SecondsRemaining = _activeOtpRemainingSeconds,
-                SessionIdentifier = Helpers.GuidToByteString(_sessionRecord.Value!.UniqueIdentifier)
+                SessionIdentifier = Helpers.GuidToByteString(_verificationFlowQueryRecord.Value!.UniqueIdentifier)
             }));
     }
 
@@ -365,16 +365,14 @@ public class VerificationFlowActor : ReceiveActor
     {
         OneTimePassword otp = new();
 
-        // Generate OTP first
         Result<(OtpQueryRecord Record, string PlainOtp), VerificationFlowFailure> generationResult =
-            otp.Generate(_phoneNumberRecord.Value!);
+            otp.Generate(_phoneNumberRecord.Value!,_verificationFlowQueryRecord.Value.UniqueIdentifier);
 
         if (generationResult.IsErr)
             return Result<OtpQueryRecord, VerificationFlowFailure>.Err(generationResult.UnwrapErr());
 
         (OtpQueryRecord otpRecord, string plainOtp) = generationResult.Unwrap();
 
-        // Format message using localizer
         string message = _localizer["Auth code is: {0}", plainOtp];
 
         // Send SMS
@@ -407,13 +405,14 @@ public class VerificationFlowActor : ReceiveActor
 
     private OtpQueryRecord CreateOtpRecord(OtpQueryRecord originalRecord) => new()
     {
-        UniqueIdentifier = _sessionRecord.Value!.UniqueIdentifier,
+        UniqueIdentifier = _verificationFlowQueryRecord.Value!.UniqueIdentifier,
         PhoneNumberIdentifier = originalRecord.PhoneNumberIdentifier,
         OtpHash = originalRecord.OtpHash,
         OtpSalt = originalRecord.OtpSalt,
         ExpiresAt = originalRecord.ExpiresAt,
         Status = originalRecord.Status,
-        IsActive = originalRecord.IsActive
+        IsActive = originalRecord.IsActive,
+        FlowUniqueId = originalRecord.FlowUniqueId
     };
 
     private async Task NotifyAlreadyVerified(VerificationFlowQueryRecord session)
@@ -452,17 +451,17 @@ public class VerificationFlowActor : ReceiveActor
 
     private async Task TerminateSession(VerificationFlowStatus status)
     {
-        if (_sessionRecord.HasValue)
+        if (_verificationFlowQueryRecord.HasValue)
         {
             await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
-                new UpdateVerificationFlowStatusActorEvent(_sessionRecord.Value!.UniqueIdentifier, status));
+                new UpdateVerificationFlowStatusActorEvent(_verificationFlowQueryRecord.Value!.UniqueIdentifier, status));
         }
 
         CleanupAndStop();
     }
 
     private bool IsSessionActive() =>
-        _sessionRecord.HasValue && _activeOtp?.IsActive == true;
+        _verificationFlowQueryRecord.HasValue && _activeOtp?.IsActive == true;
 
     private static ulong CalculateRemainingSeconds(DateTime expiresAt)
     {

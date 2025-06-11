@@ -8,7 +8,7 @@ namespace Ecliptix.Domain.Memberships;
 public sealed class OneTimePassword
 {
     private readonly byte[] _otpSecretKey = KeyGeneration.GenerateRandomKey(OtpHashMode.Sha256);
-    
+
     private Option<OtpQueryRecord> _otpQueryRecord = Option<OtpQueryRecord>.None;
 
     public bool IsActive { get; private set; }
@@ -16,7 +16,7 @@ public sealed class OneTimePassword
     public Guid UniqueIdentifier { get; set; }
 
     public Result<(OtpQueryRecord Record, string PlainOtp), VerificationFlowFailure> Generate(
-        PhoneNumberQueryRecord phoneNumberQueryRecord)
+        PhoneNumberQueryRecord phoneNumberQueryRecord, Guid flowUniqueIdentifier)
     {
         return Result<(OtpQueryRecord, string), VerificationFlowFailure>.Try(
             () =>
@@ -27,6 +27,7 @@ public sealed class OneTimePassword
                 (string hash, string salt) = OneTimePasswordHashing.HashOtp(otp);
                 OtpQueryRecord otpQueryRecord = new()
                 {
+                    FlowUniqueId = flowUniqueIdentifier,
                     PhoneNumberIdentifier = phoneNumberQueryRecord.UniqueIdentifier,
                     OtpHash = hash,
                     OtpSalt = salt,
@@ -55,7 +56,7 @@ public sealed class OneTimePassword
             return false;
 
         if (!HasExpired()) return PerformVerification(code);
-        
+
         ConsumeOtp();
         return false;
     }
