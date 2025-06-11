@@ -108,17 +108,10 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         DynamicParameters parameters = new DynamicParameters();
         parameters.Add("@OtpUniqueId", cmd.OtpIdentified);
         parameters.Add("@NewStatus", cmd.Status.ToString().ToLowerInvariant());
-        parameters.Add("@Success", dbType: DbType.Boolean, direction: ParameterDirection.Output);
-        parameters.Add("@Message", dbType: DbType.String, size: 255, direction: ParameterDirection.Output);
 
         await conn.ExecuteAsync("dbo.UpdateOtpStatus", parameters, commandType: CommandType.StoredProcedure);
 
-        bool success = parameters.Get<bool>("@Success");
-        string message = parameters.Get<string>("@Message");
-
-        return success
-            ? Result<Unit, VerificationFlowFailure>.Ok(Unit.Value)
-            : Result<Unit, VerificationFlowFailure>.Err(VerificationFlowFailure.PersistorAccess(message));
+        return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
     }
 
     private async Task<Result<PhoneNumberQueryRecord, VerificationFlowFailure>> GetPhoneNumberAsync(IDbConnection conn,
