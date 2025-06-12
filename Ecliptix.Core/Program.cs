@@ -78,9 +78,9 @@ try
                 AppDevicePersistorActor.Build(dbDataSource, appDevicePersistorLocalizer),
                 "AppDevicePersistor");
 
-            IActorRef membershipVerificationSessionPersistorActor = system.ActorOf(
+            IActorRef verificationFlowPersistorActor = system.ActorOf(
                 VerificationFlowPersistorActor.Build(dbDataSource, verificationFlowLogger),
-                "MembershipVerificationSessionPersistorActor");
+                "VerificationFlowPersistorActor");
 
             IActorRef membershipPersistorActor = system.ActorOf(
                 MembershipPersistorActor.Build(dbDataSource, membershipPersistorLogger),
@@ -90,10 +90,10 @@ try
                 MembershipActor.Build(membershipPersistorActor, verificationFlowLocalizer),
                 "MembershipActor");
 
-            IActorRef verificationSessionManagerActor = system.ActorOf(
-                VerificationFlowManagerActor.Build(membershipVerificationSessionPersistorActor, membershipActor,
+            IActorRef verificationFlowManagerActor = system.ActorOf(
+                VerificationFlowManagerActor.Build(verificationFlowPersistorActor, membershipActor,
                     snsProvider, localizer),
-                "VerificationSessionManagerActor");
+                "VerificationFlowManagerActor");
 
             IActorRef phoneNumberValidatorActor = system.ActorOf(
                 PhoneNumberValidatorActor.Build(),
@@ -101,8 +101,8 @@ try
 
             registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
             registry.Register<AppDevicePersistorActor>(appDevicePersistor);
-            registry.Register<VerificationFlowPersistorActor>(membershipVerificationSessionPersistorActor);
-            registry.Register<VerificationFlowManagerActor>(verificationSessionManagerActor);
+            registry.Register<VerificationFlowPersistorActor>(verificationFlowPersistorActor);
+            registry.Register<VerificationFlowManagerActor>(verificationFlowManagerActor);
             registry.Register<PhoneNumberValidatorActor>(phoneNumberValidatorActor);
             registry.Register<MembershipPersistorActor>(membershipPersistorActor);
             registry.Register<MembershipActor>(membershipActor);
@@ -134,7 +134,7 @@ try
     app.MapGrpcService<AuthVerificationServices>();
     app.MapGrpcService<MembershipServices>();
 
-    app.MapGet("/", () => Results.Ok("Ecliptix Service is operational."));
+    app.MapGet("/", () => Results.Ok(new { Status = "Success", Message = "Server is up and running" }));
 
     Log.Information("Starting Ecliptix application host");
     app.Run();
