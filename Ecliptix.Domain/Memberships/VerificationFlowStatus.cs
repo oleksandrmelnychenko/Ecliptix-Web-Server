@@ -6,5 +6,5 @@ public enum VerificationFlowStatus
     Verified,
     Failed,
     Expired,
-    Postponed
+    MaxAttemptsReached
 }

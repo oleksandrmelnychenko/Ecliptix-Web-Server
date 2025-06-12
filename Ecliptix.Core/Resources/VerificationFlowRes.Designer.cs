@@ -69,9 +69,9 @@ namespace Ecliptix.Core.Resources {
             }
         }
         
-        public static string verification_flow_expired {
+        public static string flow_expired {
             get {
-                return ResourceManager.GetString("verification_flow_expired", resourceCulture);
+                return ResourceManager.GetString("flow_expired", resourceCulture);
             }
         }
         
@@ -480,6 +480,24 @@ namespace Ecliptix.Core.Resources {
         public static string phone_validation_unexpected_error {
             get {
                 return ResourceManager.GetString("phone_validation_unexpected_error", resourceCulture);
+            }
+        }
+        
+        public static string authentication_code_is {
+            get {
+                return ResourceManager.GetString("authentication_code_is", resourceCulture);
+            }
+        }
+        
+        public static string resend_cooldown_active {
+            get {
+                return ResourceManager.GetString("resend_cooldown_active", resourceCulture);
+            }
+        }
+        
+        public static string max_otp_attempts_reached {
+            get {
+                return ResourceManager.GetString("max_otp_attempts_reached", resourceCulture);
             }
         }
     }

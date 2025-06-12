@@ -39,7 +39,7 @@
     <value>Active session exists; finish or cancel first.</value>
         <comment>VF003: Attempt to start a new session while another is active.</comment>
   </data>
-    <data name="verification_flow_expired" xml:space="preserve">
+    <data name="flow_expired" xml:space="preserve">
     <value>Session expired; start a new one.</value>
         <comment>VF002: The verification session timed out.</comment>
   </data>
@@ -325,4 +325,13 @@
     <value>Unexpected error validating phone number.</value>
         <comment>An unexpected internal error occurred during phone number validation steps.</comment>
   </data>
+    <data name="authentication_code_is" xml:space="preserve">
+        <value>Your verification code is</value>
+    </data>
+    <data name="resend_cooldown_active" xml:space="preserve">
+        <value>Please wait a moment before requesting a new code</value>
+    </data>
+    <data name="max_otp_attempts_reached" xml:space="preserve">
+        <value>You’ve reached the maximum number of OTP requests. Please try again later</value>
+    </data>
 </root>

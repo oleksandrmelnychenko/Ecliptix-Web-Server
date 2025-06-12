@@ -45,17 +45,22 @@ public sealed class OneTimePassword
                 VerificationFlowMessageKeys.OtpGenerationFailed, ex));
     }
 
-    public void ConsumeOtp()
+    private void ConsumeOtp()
     {
         IsActive = false;
     }
 
-    public bool VerifyAsync(string code)
+    public bool Verify(string code)
     {
         if (!IsValidForVerification())
+        {
             return false;
+        }
 
-        if (!HasExpired()) return PerformVerification(code);
+        if (!HasExpired())
+        {
+            return PerformVerification(code);
+        }
 
         ConsumeOtp();
         return false;
@@ -65,7 +70,10 @@ public sealed class OneTimePassword
 
     private bool HasExpired()
     {
-        if (!_otpQueryRecord.HasValue) return true;
+        if (!_otpQueryRecord.HasValue)
+        {
+            return true;
+        }
 
         OtpQueryRecord record = _otpQueryRecord.Value!;
         return DateTime.UtcNow > record.ExpiresAt;
@@ -76,7 +84,9 @@ public sealed class OneTimePassword
         OtpQueryRecord record = _otpQueryRecord.Value!;
 
         if (!OneTimePasswordHashing.VerifyOtp(code, record.OtpHash, record.OtpSalt))
+        {
             return false;
+        }
 
         Result<bool, VerificationFlowFailure> totpVerificationResult = Result<bool, VerificationFlowFailure>.Try(
             () =>
@@ -87,7 +97,6 @@ public sealed class OneTimePassword
             _ => VerificationFlowFailure.InvalidOtp());
 
         bool isValid = totpVerificationResult.UnwrapOr(false);
-
         if (isValid)
         {
             ConsumeOtp();

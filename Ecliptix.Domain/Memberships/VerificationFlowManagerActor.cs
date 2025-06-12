@@ -1,15 +1,13 @@
+using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.Events;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
-using Google.Protobuf;
 using Microsoft.Extensions.Localization;
 using Serilog;
 
 namespace Ecliptix.Domain.Memberships;
-
-public record ClientDisconnectedEvent;
 
 public class VerificationFlowManagerActor : ReceiveActor
 {
@@ -37,7 +35,6 @@ public class VerificationFlowManagerActor : ReceiveActor
         Receive<InitiateVerificationFlowActorEvent>(HandleInitiateFlow);
         Receive<VerifyFlowActorEvent>(HandleVerifyFlow);
         Receive<Terminated>(HandleTerminated);
-
         Receive<EnsurePhoneNumberActorEvent>(cmd => _persistor.Forward(cmd));
     }
 
@@ -67,18 +64,12 @@ public class VerificationFlowManagerActor : ReceiveActor
                 ), actorName);
 
                 Context.Watch(newFlowActor);
+                Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
             }
             else
             {
-                @event.ChannelWriter.TryWrite(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
-                    new VerificationCountdownUpdate
-                    {
-                        SessionIdentifier = ByteString.Empty,
-                        AlreadyVerified = false,
-                        Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Expired,
-                        Message = VerificationFlowMessageKeys.VerificationFlowNotFound
-                    }));
-
+                LocalizedString message = _localizer[VerificationFlowMessageKeys.VerificationFlowNotFound];
+                Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(VerificationFlowFailure.NotFound(message)));
                 @event.ChannelWriter.TryComplete();
             }
         }
@@ -95,7 +86,8 @@ public class VerificationFlowManagerActor : ReceiveActor
         else
         {
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.NotFound()));
+                VerificationFlowFailure.NotFound(
+                    "Verification flow not found. It may have expired or has been completed.")));
         }
     }
 

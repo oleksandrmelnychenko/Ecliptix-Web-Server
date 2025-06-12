@@ -31,7 +31,7 @@
     <value>Активна сесія існує, завершіть або скасуйте її.</value>
         <comment>VF003: Attempt to start a new session while another is active. (Mapped from session.conflict)</comment>
   </data>
-    <data name="verification_flow_expired" xml:space="preserve">
+    <data name="flow_expired" xml:space="preserve">
     <value>Сесія закінчилася, почніть нову.</value>
         <comment>VF002: The verification session timed out. (Mapped from session.expired)</comment>
   </data>
@@ -316,4 +316,13 @@
     <value>Несподівана помилка під час перевірки номера телефону.</value>
         <comment>An unexpected internal error occurred during phone number validation steps.</comment>
   </data>
+    <data name="authentication_code_is" xml:space="preserve">
+        <value>Ваш код автентифікації</value>
+    </data>
+    <data name="resend_cooldown_active" xml:space="preserve">
+        <value>Зачекайте кілька секунд перед повторним запитом коду</value>
+    </data>
+    <data name="max_otp_attempts_reached" xml:space="preserve">
+        <value>Ви досягли максимальної кількості запитів OTP. Спробуйте ще раз пізніше</value>
+    </data>
 </root>

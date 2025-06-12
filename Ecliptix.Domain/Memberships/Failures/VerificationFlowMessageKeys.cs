@@ -6,7 +6,7 @@ public static class VerificationFlowMessageKeys
     public const string ConflictUnresolved = "verification_flow_conflict_unresolved";
     public const string ExistingSessionReusedAndUpdated = "verification_flow_reused_and_updated";
     public const string VerificationFlowConflict = "verification_flow_conflict";
-    public const string VerificationFlowExpired = "verification_flow_expired";
+    public const string VerificationFlowExpired = "flow_expired";
     public const string VerificationFlowNotFound = "verification_flow_not_found"; 
     public const string VerificationFlowNotVerified = "verification_flow_not_verified";
     public const string CreateMembershipVerificationFlowNotFound = "verification_session_not_found";
@@ -14,9 +14,13 @@ public static class VerificationFlowMessageKeys
     public const string InvalidOtp = "otp_invalid";
     public const string OtpExpired = "otp_expired";
     public const string OtpGenerationFailed = "otp_generation_failed";
-    public const string OtpMaxAttemptsReached = "otp_max_attempts_reached";
-    public const string OtpNotVerified = "otp_not_verified";
+    public const string OtpMaxAttemptsReached = "max_otp_attempts_reached";
+    public const string ResendAllowed = "resend_allowed";
 
+    public const string ResendCooldown = "resend_cooldown_active";
+    
+    public const string AuthenticationCodeIs = "authentication_code_is";
+    
     public const string PhoneNumberInvalid = "phone_invalid";
     public const string SmsSendFailed = "sms_send_failed";
 

@@ -20,7 +20,7 @@ public abstract class PersistorBase<TFailure>(
         Func<IDbConnection, Task<Result<TResult, TFailure>>> operation,
         string operationName)
     {
-        using var activity = StartActivity(operationName);
+        using Activity? activity = StartActivity(operationName);
         Stopwatch stopwatch = Stopwatch.StartNew();
 
         try

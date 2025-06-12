@@ -41,14 +41,24 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
         Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context);
         context.CancellationToken.Register(() => StopVerificationFlowActor(context, connectId));
 
-        VerificationFlowManagerActor.Tell(new InitiateVerificationFlowActorEvent(
-            connectId,
-            Helpers.FromByteStringToGuid(initiateRequest.PhoneNumberIdentifier),
-            Helpers.FromByteStringToGuid(initiateRequest.AppDeviceIdentifier),
-            initiateRequest.Purpose,
-            initiateRequest.Type,
-            writer
-        ));
+        Result<Unit, VerificationFlowFailure> initiationResult = await VerificationFlowManagerActor
+            .Ask<Result<Unit, VerificationFlowFailure>>(new InitiateVerificationFlowActorEvent(
+                connectId,
+                Helpers.FromByteStringToGuid(initiateRequest.PhoneNumberIdentifier),
+                Helpers.FromByteStringToGuid(initiateRequest.AppDeviceIdentifier),
+                initiateRequest.Purpose,
+                initiateRequest.Type,
+                writer
+            ));
+
+        //TimeSpan.FromSeconds(5)
+        
+        if (initiationResult.IsErr)
+        {
+            HandleVerificationError(initiationResult.UnwrapErr(), context);
+            channel.Writer.TryComplete();
+            return;
+        }
 
         await streamingTask;
     }
