@@ -16,7 +16,10 @@ using Status = Grpc.Core.Status;
 
 namespace Ecliptix.Core.Services.Memberships;
 
-public class AuthVerificationServices(IActorRegistry actorRegistry,IPhoneNumberValidator phoneNumberValidator, ILogger<AuthVerificationServices> logger)
+public class AuthVerificationServices(
+    IActorRegistry actorRegistry,
+    IPhoneNumberValidator phoneNumberValidator,
+    ILogger<AuthVerificationServices> logger)
     : AuthVerificationServicesBase(actorRegistry, logger)
 {
     public override async Task InitiateVerification(CipherPayload request,
@@ -49,15 +52,13 @@ public class AuthVerificationServices(IActorRegistry actorRegistry,IPhoneNumberV
                 Helpers.FromByteStringToGuid(initiateRequest.AppDeviceIdentifier),
                 initiateRequest.Purpose,
                 initiateRequest.Type,
-                writer
+                writer, PeerCulture
             ));
-
-        //TimeSpan.FromSeconds(5)
 
         if (initiationResult.IsErr)
         {
             HandleVerificationError(initiationResult.UnwrapErr(), context);
-            channel.Writer.TryComplete();
+            channel.Writer.Complete();
             return;
         }
 
@@ -75,7 +76,7 @@ public class AuthVerificationServices(IActorRegistry actorRegistry,IPhoneNumberV
 
         ValidatePhoneNumberRequest validateRequest =
             Helpers.ParseFromBytes<ValidatePhoneNumberRequest>(decryptResult.Unwrap());
-        
+
         Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
             phoneNumberValidator.ValidatePhoneNumber(validateRequest.PhoneNumber, PeerCulture);
 
@@ -139,7 +140,7 @@ public class AuthVerificationServices(IActorRegistry actorRegistry,IPhoneNumberV
 
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        VerifyFlowActorEvent actorEvent = new(connectId, verifyRequest.Code);
+        VerifyFlowActorEvent actorEvent = new(connectId, verifyRequest.Code, PeerCulture);
 
         Result<VerifyCodeResponse, VerificationFlowFailure> verificationResult = await VerificationFlowManagerActor
             .Ask<Result<VerifyCodeResponse, VerificationFlowFailure>>(actorEvent);

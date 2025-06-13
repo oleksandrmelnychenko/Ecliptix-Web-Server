@@ -18,4 +18,16 @@ public sealed class ThreadCultureInterceptor : Interceptor
 
         return await continuation(request, context);
     }
+
+    public override Task ServerStreamingServerHandler<TRequest, TResponse>(TRequest request, IServerStreamWriter<TResponse> responseStream,
+        ServerCallContext context, ServerStreamingServerMethod<TRequest, TResponse> continuation)
+    {
+        string clientCulture = GrpcMetadataHandler.GetRequestedLocale(context.RequestHeaders);
+
+        CultureInfo requestedCulture = new(clientCulture);
+        Thread.CurrentThread.CurrentCulture = requestedCulture;
+        Thread.CurrentThread.CurrentUICulture = requestedCulture;
+        
+        return base.ServerStreamingServerHandler(request, responseStream, context, continuation);
+    }
 }

@@ -60,7 +60,8 @@ public class VerificationFlowManagerActor : ReceiveActor
                     _persistor,
                     _membershipActor,
                     _snsProvider,
-                    _localizationProvider
+                    _localizationProvider,
+                    actorEvent.PeerCulture
                 ), actorName);
 
                 Context.Watch(newFlowActor);

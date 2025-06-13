@@ -21,12 +21,13 @@ public record InitiateVerificationFlowActorEvent(
     VerificationPurpose Purpose,
     InitiateVerificationRequest.Types.Type RequestType,
     ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> ChannelWriter,
-    string PeerCulture = "en-US"
+    string PeerCulture
 );
 
 public record VerifyFlowActorEvent(
     uint ConnectId,
-    string OneTimePassword
+    string OneTimePassword,
+    string PeerCulture
 );
 
 public record CreateMembershipActorEvent(
@@ -38,7 +39,7 @@ public record CreateMembershipActorEvent(
 
 public record StartOtpTimerEvent;
 
-public record VerificationFlowExpiredEvent;
+public record VerificationFlowExpiredEvent(string PeerCulture);
 
 public class VerificationFlowActor : ReceiveActor, IWithStash
 {
@@ -48,6 +49,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private readonly IActorRef _membershipActor;
     private readonly SNSProvider _snsProvider;
     private readonly ILocalizationProvider _localizationProvider;
+    private readonly string _peerCulture;
 
     private ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> _writer;
     private VerificationFlowQueryRecord _flow;
@@ -63,7 +65,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> writer,
         IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
-        ILocalizationProvider localizationProvider)
+        ILocalizationProvider localizationProvider, string peerCulture)
     {
         _connectId = connectId;
         _phoneNumberIdentifier = phoneNumberIdentifier;
@@ -72,6 +74,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         _membershipActor = membershipActor;
         _snsProvider = snsProvider;
         _localizationProvider = localizationProvider;
+        _peerCulture = peerCulture;
 
         Become(WaitingForFlow);
 
@@ -84,9 +87,9 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> writer,
         IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
-        ILocalizationProvider localizationProvider) =>
+        ILocalizationProvider localizationProvider, string peerCulture) =>
         Props.Create(() => new VerificationFlowActor(connectId, phoneNumberIdentifier, appDeviceIdentifier, purpose,
-            writer, persistor, membershipActor, snsProvider, localizationProvider));
+            writer, persistor, membershipActor, snsProvider, localizationProvider, peerCulture));
 
     private void WaitingForFlow()
     {
@@ -97,7 +100,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 VerificationFlowFailure verificationFlowFailure = result.UnwrapErr();
                 if (verificationFlowFailure is { IsUserFacing: true, IsSecurityRelated: true })
                 {
-                    string localizedString = _localizationProvider.Localize(verificationFlowFailure.Message);
+                    string message = _localizationProvider.Localize(verificationFlowFailure.Message, _peerCulture);
 
                     await _writer.WriteAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
                         new VerificationCountdownUpdate
@@ -105,7 +108,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                             SecondsRemaining = 0,
                             SessionIdentifier = ByteString.Empty,
                             Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Failed,
-                            Message = localizedString
+                            Message = message
                         }));
                 }
                 else
@@ -141,7 +144,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
     private async Task ContinueWithOtp()
     {
-        Result<Unit, VerificationFlowFailure> otpResult = await PrepareAndSendOtp();
+        Result<Unit, VerificationFlowFailure> otpResult = await PrepareAndSendOtp(_peerCulture);
         otpResult.Switch(
             _ =>
             {
@@ -162,7 +165,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         ReceiveAsync<InitiateVerificationFlowActorEvent>(HandleResendRequest);
     }
 
-    private async Task HandleVerifyOtp(VerifyFlowActorEvent command)
+    private async Task HandleVerifyOtp(VerifyFlowActorEvent actorEvent)
     {
         if (_activeOtp?.IsActive != true)
         {
@@ -170,13 +173,13 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             return;
         }
 
-        if (_activeOtp.Verify(command.OneTimePassword))
+        if (_activeOtp.Verify(actorEvent.OneTimePassword))
         {
             await HandleSuccessfulVerification();
         }
         else
         {
-            await HandleFailedVerification();
+            await HandleFailedVerification(actorEvent.PeerCulture);
         }
     }
 
@@ -201,16 +204,19 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         Context.Stop(Self);
     }
 
-    private async Task HandleFailedVerification()
+    private async Task HandleFailedVerification(string peerCulture)
     {
         await UpdateOtpStatus(VerificationFlowStatus.Failed);
-        Sender.Tell(CreateVerifyResponse(VerificationResult.InvalidOtp, VerificationFlowMessageKeys.InvalidOtp));
+
+        string message = _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidOtp, peerCulture);
+
+        Sender.Tell(CreateVerifyResponse(VerificationResult.InvalidOtp, message));
     }
 
-    private async Task HandleResendRequest(InitiateVerificationFlowActorEvent command)
+    private async Task HandleResendRequest(InitiateVerificationFlowActorEvent actorEvent)
     {
-        if (command.RequestType != InitiateVerificationRequest.Types.Type.ResendOtp ||
-            command.ConnectId != _connectId)
+        if (actorEvent.RequestType != InitiateVerificationRequest.Types.Type.ResendOtp ||
+            actorEvent.ConnectId != _connectId)
         {
             return;
         }
@@ -228,16 +234,16 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         switch (outcome)
         {
             case VerificationFlowMessageKeys.ResendAllowed:
-                _writer = command.ChannelWriter;
+                _writer = actorEvent.ChannelWriter;
                 await ContinueWithOtp();
                 break;
             case VerificationFlowMessageKeys.VerificationFlowExpired:
                 await TerminateVerificationFlow(VerificationFlowStatus.Expired,
-                    VerificationFlowMessageKeys.VerificationFlowExpired);
+                    VerificationFlowMessageKeys.VerificationFlowExpired, actorEvent.PeerCulture);
                 break;
             case VerificationFlowMessageKeys.OtpMaxAttemptsReached:
                 await TerminateVerificationFlow(VerificationFlowStatus.MaxAttemptsReached,
-                    VerificationFlowMessageKeys.OtpMaxAttemptsReached);
+                    VerificationFlowMessageKeys.OtpMaxAttemptsReached, actorEvent.PeerCulture);
                 break;
             case VerificationFlowMessageKeys.ResendCooldown:
                 await _writer.WriteAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
@@ -269,7 +275,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         if (sessionDelay > TimeSpan.Zero)
         {
             _sessionTimer = Context.System.Scheduler.ScheduleTellOnceCancelable(sessionDelay, Self,
-                new VerificationFlowExpiredEvent(), ActorRefs.NoSender);
+                new VerificationFlowExpiredEvent(string.Empty), ActorRefs.NoSender);
         }
 
         _activeOtpRemainingSeconds = CalculateRemainingSeconds(_activeOtp.ExpiresAt);
@@ -298,11 +304,11 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             }));
     }
 
-    private async Task HandleSessionExpired(VerificationFlowExpiredEvent _) =>
+    private async Task HandleSessionExpired(VerificationFlowExpiredEvent actorEvent) =>
         await TerminateVerificationFlow(VerificationFlowStatus.Expired,
-            VerificationFlowMessageKeys.VerificationFlowExpired);
+            VerificationFlowMessageKeys.VerificationFlowExpired, actorEvent.PeerCulture);
 
-    private async Task<Result<Unit, VerificationFlowFailure>> PrepareAndSendOtp()
+    private async Task<Result<Unit, VerificationFlowFailure>> PrepareAndSendOtp(string peerCulture)
     {
         GetPhoneNumberActorEvent getPhoneNumberActorEvent = new(_phoneNumberIdentifier);
 
@@ -326,7 +332,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         (OtpQueryRecord otpRecord, string plainOtp) = generationResult.Unwrap();
 
-        string localizedString = _localizationProvider.Localize(VerificationFlowMessageKeys.AuthenticationCodeIs);
+        string localizedString =
+            _localizationProvider.Localize(VerificationFlowMessageKeys.AuthenticationCodeIs, peerCulture);
         StringBuilder messageBuilder = new(localizedString + ": " + plainOtp);
 
         Result<Unit, VerificationFlowFailure> smsResult =
@@ -387,7 +394,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         }
     }
 
-    private async Task TerminateVerificationFlow(VerificationFlowStatus status, string messageKey)
+    private async Task TerminateVerificationFlow(VerificationFlowStatus status, string messageKey, string peerCulture)
     {
         await _persistor.Ask<Result<int, VerificationFlowFailure>>(
             new UpdateVerificationFlowStatusActorEvent(_flow.UniqueIdentifier, status));
@@ -399,7 +406,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 Status = status == VerificationFlowStatus.Expired
                     ? VerificationCountdownUpdate.Types.CountdownUpdateStatus.Expired
                     : VerificationCountdownUpdate.Types.CountdownUpdateStatus.MaxAttemptsReached,
-                Message = _localizationProvider.Localize(messageKey)
+                Message = _localizationProvider.Localize(messageKey, peerCulture)
             }));
 
         Context.Stop(Self);
@@ -408,10 +415,10 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private static ulong CalculateRemainingSeconds(DateTime expiresAt) =>
         (ulong)Math.Max(0, Math.Ceiling((expiresAt - DateTime.UtcNow).TotalSeconds));
 
-    private Result<VerifyCodeResponse, VerificationFlowFailure> CreateVerifyResponse(VerificationResult result,
-        string messageKey) =>
+    private static Result<VerifyCodeResponse, VerificationFlowFailure> CreateVerifyResponse(VerificationResult result,
+        string message) =>
         Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
-            { Result = result, Message = _localizationProvider.Localize(messageKey) });
+            { Result = result, Message = message });
 
     private Result<VerifyCodeResponse, VerificationFlowFailure>
         CreateSuccessResponse(MembershipQueryRecord membership) =>
@@ -429,7 +436,15 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     //TODO: Test and make properly handle errors
     private void CompleteWithError(VerificationFlowFailure failure)
     {
-        _writer.TryComplete(failure.InnerException);
+        if (failure.InnerException is not null)
+        {
+            _writer.TryComplete(failure.InnerException);
+        }
+        else
+        {
+            _writer.Complete();
+        }
+
         Context.Stop(Self);
     }
 
@@ -449,7 +464,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     protected override void PostStop()
     {
         CancelTimers();
-        _writer.Complete();
+        _writer.TryComplete();
         Log.Information("VerificationFlowActor for ConnectId {ConnectId} stopped.", _connectId);
         base.PostStop();
     }
