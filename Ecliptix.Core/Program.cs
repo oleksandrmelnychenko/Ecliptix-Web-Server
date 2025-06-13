@@ -13,6 +13,7 @@ using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
+using Ecliptix.Domain.Memberships.WorkerActors;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Serilog;

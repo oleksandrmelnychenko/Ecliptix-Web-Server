@@ -1,13 +1,11 @@
-using System.Threading.Channels;
 using Akka.Actor;
-using Ecliptix.Domain.Memberships.Events;
+using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
-using Microsoft.Extensions.Localization;
 using Serilog;
 
-namespace Ecliptix.Domain.Memberships;
+namespace Ecliptix.Domain.Memberships.WorkerActors;
 
 public class VerificationFlowManagerActor : ReceiveActor
 {
@@ -35,7 +33,7 @@ public class VerificationFlowManagerActor : ReceiveActor
         Receive<InitiateVerificationFlowActorEvent>(HandleInitiateFlow);
         Receive<VerifyFlowActorEvent>(HandleVerifyFlow);
         Receive<Terminated>(HandleTerminated);
-        Receive<EnsurePhoneNumberActorEvent>(cmd => _persistor.Forward(cmd));
+        Receive<EnsurePhoneNumberActorEvent>(actorEvent => _persistor.Forward(actorEvent));
     }
 
     private void HandleInitiateFlow(InitiateVerificationFlowActorEvent actorEvent)
@@ -61,7 +59,7 @@ public class VerificationFlowManagerActor : ReceiveActor
                     _membershipActor,
                     _snsProvider,
                     _localizationProvider,
-                    actorEvent.PeerCulture
+                    actorEvent.CultureName
                 ), actorName);
 
                 Context.Watch(newFlowActor);
@@ -70,7 +68,7 @@ public class VerificationFlowManagerActor : ReceiveActor
             else
             {
                 string message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowNotFound,
-                    actorEvent.PeerCulture);
+                    actorEvent.CultureName);
                 Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(VerificationFlowFailure.NotFound(message)));
                 actorEvent.ChannelWriter.TryComplete();
             }

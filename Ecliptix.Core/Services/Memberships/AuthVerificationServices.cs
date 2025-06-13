@@ -3,7 +3,7 @@ using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Memberships;
-using Ecliptix.Domain.Memberships.Events;
+using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Ecliptix.Domain.Utilities;
@@ -52,7 +52,7 @@ public class AuthVerificationServices(
                 Helpers.FromByteStringToGuid(initiateRequest.AppDeviceIdentifier),
                 initiateRequest.Purpose,
                 initiateRequest.Type,
-                writer, PeerCulture
+                writer, CultureName
             ));
 
         if (initiationResult.IsErr)
@@ -78,7 +78,7 @@ public class AuthVerificationServices(
             Helpers.ParseFromBytes<ValidatePhoneNumberRequest>(decryptResult.Unwrap());
 
         Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
-            phoneNumberValidator.ValidatePhoneNumber(validateRequest.PhoneNumber, PeerCulture);
+            phoneNumberValidator.ValidatePhoneNumber(validateRequest.PhoneNumber, CultureName);
 
         if (validationResult.IsOk)
         {
@@ -140,7 +140,7 @@ public class AuthVerificationServices(
 
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        VerifyFlowActorEvent actorEvent = new(connectId, verifyRequest.Code, PeerCulture);
+        VerifyFlowActorEvent actorEvent = new(connectId, verifyRequest.Code, CultureName);
 
         Result<VerifyCodeResponse, VerificationFlowFailure> verificationResult = await VerificationFlowManagerActor
             .Ask<Result<VerifyCodeResponse, VerificationFlowFailure>>(actorEvent);

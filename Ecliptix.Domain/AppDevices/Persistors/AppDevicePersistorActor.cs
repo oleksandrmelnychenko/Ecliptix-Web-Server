@@ -56,7 +56,7 @@ public class AppDevicePersistorActor : AppDevicePersistorBase
         return Result<(Guid, int), AppDeviceFailure>.Ok(result);
     }
 
-    protected override IDbDataParameter CreateParameter(string name, object value)
+    protected virtual IDbDataParameter CreateParameter(string name, object value)
     {
         return new SqlParameter(name, value);
     }

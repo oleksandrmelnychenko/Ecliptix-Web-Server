@@ -2,8 +2,10 @@ using System.Globalization;
 using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Domain.Memberships;
+using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
+using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.Membership;
@@ -33,7 +35,7 @@ public class MembershipServices(
         SignInMembershipRequest signInRequest = Helpers.ParseFromBytes<SignInMembershipRequest>(decryptedBytes);
 
         Result<PhoneNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
-            phoneNumberValidator.ValidatePhoneNumber(signInRequest.PhoneNumber, PeerCulture);
+            phoneNumberValidator.ValidatePhoneNumber(signInRequest.PhoneNumber, CultureName);
 
         if (phoneNumberValidationResult.IsErr)
         {
@@ -67,7 +69,7 @@ public class MembershipServices(
 
         SignInMembershipActorEvent signInEvent = new(
             phoneNumberResult.ParsedPhoneNumberE164!,
-            Helpers.ReadMemoryToRetrieveBytes(signInRequest.SecureKey.Memory), PeerCulture);
+            Helpers.ReadMemoryToRetrieveBytes(signInRequest.SecureKey.Memory), CultureName);
 
         Result<SignInMembershipResponse, VerificationFlowFailure> signInResult =
             await MembershipActor.Ask<Result<SignInMembershipResponse, VerificationFlowFailure>>(
@@ -99,7 +101,7 @@ public class MembershipServices(
 
         UpdateMembershipSecureKeyEvent @event = new(
             Helpers.FromByteStringToGuid(updateMembershipWithSecureKeyRequest.MembershipIdentifier),
-            Helpers.ReadMemoryToRetrieveBytes(updateMembershipWithSecureKeyRequest.SecureKey.Memory), PeerCulture);
+            Helpers.ReadMemoryToRetrieveBytes(updateMembershipWithSecureKeyRequest.SecureKey.Memory), CultureName);
 
         Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure> updateOperationResult =
             await MembershipActor.Ask<Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>>(@event);

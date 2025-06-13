@@ -61,7 +61,6 @@ public abstract class PersistorBase<TFailure>(
         return command;
     }
 
-    protected abstract IDbDataParameter CreateParameter(string name, object value);
     protected abstract TFailure MapDbException(DbException ex);
     protected abstract TFailure CreateTimeoutFailure(TimeoutException ex);
     protected abstract TFailure CreateGenericFailure(Exception ex);
@@ -79,7 +78,7 @@ public abstract class PersistorBase<TFailure>(
         }
         else
         {
-            var error = result.UnwrapErr();
+            TFailure error = result.UnwrapErr();
             logger.LogWarning("Operation {OperationName} failed with error: {Error}", operationName, error);
             activity?.SetTag("error.message", error.ToString());
         }
@@ -139,24 +138,33 @@ public abstract class PersistorBase<TFailure>(
         return activity;
     }
 
-    private static void SetConnectionTags(Activity? activity, IDbConnection conn)
-    {
+    private static void SetConnectionTags(Activity? activity, IDbConnection conn) =>
         activity?.SetTag("db.name", conn.Database);
-    }
 
     private static void CompleteActivity(Stopwatch stopwatch, Activity? activity, bool isSuccess)
     {
-        if (activity is null) return;
+        if (activity is null)
+        {
+            return;
+        }
+
         activity.SetTag("otel.duration_ms", stopwatch.ElapsedMilliseconds);
         activity.SetStatus(isSuccess ? ActivityStatusCode.Ok : ActivityStatusCode.Error);
     }
 
     private static void SetErrorActivity(Activity? activity, string message, string errorType, string? errorCode = null)
     {
-        if (activity is null) return;
+        if (activity is null)
+        {
+            return;
+        }
+
         activity.SetStatus(ActivityStatusCode.Error, message);
         activity.SetTag("error.type", errorType);
+
         if (!string.IsNullOrEmpty(errorCode))
+        {
             activity.SetTag("error.code", errorCode);
+        }
     }
 }

@@ -9,11 +9,11 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
     private readonly PhoneNumberUtil _phoneNumberUtil = PhoneNumberUtil.GetInstance();
 
     public Result<PhoneNumberValidationResult, VerificationFlowFailure> ValidatePhoneNumber(
-        string phoneNumber, string peerCulture, string? defaultRegion = null)
+        string phoneNumber, string cultureName, string? defaultRegion = null)
     {
         if (string.IsNullOrWhiteSpace(phoneNumber))
         {
-            string message = localizationProvider.Localize(VerificationFlowMessageKeys.PhoneNumberEmpty, peerCulture);
+            string message = localizationProvider.Localize(VerificationFlowMessageKeys.PhoneNumberEmpty, cultureName);
             return Result<PhoneNumberValidationResult, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PhoneNumberInvalid(message, null)
             );
@@ -23,22 +23,22 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
             !_phoneNumberUtil.GetSupportedRegions().Contains(defaultRegion))
         {
             string message =
-                localizationProvider.Localize(VerificationFlowMessageKeys.InvalidDefaultRegion, peerCulture);
+                localizationProvider.Localize(VerificationFlowMessageKeys.InvalidDefaultRegion, cultureName);
             return Result<PhoneNumberValidationResult, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Generic(message, null)
             );
         }
 
-        return ParsePhoneNumber(phoneNumber, peerCulture, defaultRegion)
+        return ParsePhoneNumber(phoneNumber, cultureName, defaultRegion)
             .Bind(parsedNumberDetails =>
-                ValidateLibPhoneNumber(parsedNumberDetails.PhoneNumber, parsedNumberDetails.E164Format, peerCulture))
+                ValidateLibPhoneNumber(parsedNumberDetails.PhoneNumber, parsedNumberDetails.E164Format, cultureName))
             .MapErr(failure => failure);
     }
 
     private record ParsedNumberDetails(PhoneNumber PhoneNumber, string E164Format);
 
     private Result<ParsedNumberDetails, VerificationFlowFailure> ParsePhoneNumber(
-        string phoneNumberStr, string peerCulture, string? defaultRegion)
+        string phoneNumberStr, string cultureName, string? defaultRegion)
     {
         return Result<ParsedNumberDetails, VerificationFlowFailure>.Try(() =>
         {
@@ -59,18 +59,18 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
                     _ => VerificationFlowMessageKeys.PhoneParsingGenericError
                 };
 
-                string message = localizationProvider.Localize(errorKey, peerCulture);
+                string message = localizationProvider.Localize(errorKey, cultureName);
                 return VerificationFlowFailure.PhoneNumberInvalid(message, npe);
             }
 
             string genericMessage =
-                localizationProvider.Localize(VerificationFlowMessageKeys.PhoneParsingGenericError, peerCulture);
+                localizationProvider.Localize(VerificationFlowMessageKeys.PhoneParsingGenericError, cultureName);
             return VerificationFlowFailure.Generic(genericMessage, ex);
         });
     }
 
     private Result<PhoneNumberValidationResult, VerificationFlowFailure> ValidateLibPhoneNumber(
-        PhoneNumber parsedPhoneNumber, string e164Format, string peerCulture)
+        PhoneNumber parsedPhoneNumber, string e164Format, string cultureName)
     {
         return Result<PhoneNumberValidationResult, VerificationFlowFailure>.Try(() =>
         {
@@ -81,7 +81,7 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
                 ValidationFailureReason internalReason = MapLibValidationReasonToInternalReason(possibility);
 
                 string messageKey = MapLibValidationReasonToMessageKey(possibility);
-                string message = localizationProvider.Localize(messageKey, peerCulture);
+                string message = localizationProvider.Localize(messageKey, cultureName);
 
                 return PhoneNumberValidationResult.CreateInvalid(message, internalReason, e164Format);
             }
@@ -93,7 +93,7 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
         }, errorMapper: ex =>
         {
             string message = localizationProvider.Localize(VerificationFlowMessageKeys.PhoneValidationUnexpectedError,
-                peerCulture);
+                cultureName);
             return VerificationFlowFailure.Generic(message, ex);
         });
     }

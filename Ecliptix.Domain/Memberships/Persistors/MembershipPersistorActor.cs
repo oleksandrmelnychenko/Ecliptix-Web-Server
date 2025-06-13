@@ -3,40 +3,18 @@ using System.Data.Common;
 using Akka.Actor;
 using Dapper;
 using Ecliptix.Domain.DbConnectionFactory;
+using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.Domain.Memberships.Persistors.QueryResults;
+using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using static System.String;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
-
-internal class LoginMembershipResult
-{
-    public Guid? MembershipUniqueId { get; set; }
-    public string? Status { get; set; }
-    public string Outcome { get; set; } = string.Empty;
-}
-
-internal class UpdateSecureKeyResult
-{
-    public bool Success { get; set; }
-    public string Message { get; set; } = Empty;
-    public Guid? MembershipUniqueId { get; set; }
-    public string? Status { get; set; }
-    public string? CreationStatus { get; set; }
-}
-
-internal class CreateMembershipResult
-{
-    public Guid? MembershipUniqueId { get; set; }
-    public string? Status { get; set; }
-    public string? CreationStatus { get; set; }
-    public string Outcome { get; set; } = Empty;
-}
 
 public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 {
@@ -94,8 +72,8 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
         return result.Outcome switch
         {
-            "success" when result.MembershipUniqueId.HasValue && !IsNullOrEmpty(result.Status) =>
-                MapActivityStatus(result.Status).Match<Result<MembershipQueryRecord, VerificationFlowFailure>>(
+            "success" when result.MembershipUniqueId.HasValue && !string.IsNullOrEmpty(result.Status) =>
+                MapActivityStatus(result.Status).Match(
                     status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
                         new MembershipQueryRecord
                         {
@@ -141,13 +119,14 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 VerificationFlowFailure.Validation(result.Message));
         }
 
-        if (!result.MembershipUniqueId.HasValue || IsNullOrEmpty(result.Status) || IsNullOrEmpty(result.CreationStatus))
+        if (!result.MembershipUniqueId.HasValue || string.IsNullOrEmpty(result.Status) ||
+            string.IsNullOrEmpty(result.CreationStatus))
         {
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess("Procedure returned success but missing required data."));
         }
 
-        return MapActivityStatus(result.Status).Match<Result<MembershipQueryRecord, VerificationFlowFailure>>(
+        return MapActivityStatus(result.Status).Match(
             status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
                 new MembershipQueryRecord
                 {
@@ -160,7 +139,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         );
     }
 
-    private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> CreateMembershipAsync(
+    private static async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> CreateMembershipAsync(
         IDbConnection connection, CreateMembershipActorEvent cmd)
     {
         DynamicParameters parameters = new();
@@ -190,8 +169,9 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         {
             VerificationFlowMessageKeys.Created
                 or VerificationFlowMessageKeys.MembershipAlreadyExists when result.MembershipUniqueId.HasValue &&
-                                                                            !IsNullOrEmpty(result.Status) &&
-                                                                            !IsNullOrEmpty(result.CreationStatus) =>
+                                                                            !string.IsNullOrEmpty(result.Status) &&
+                                                                            !string.IsNullOrEmpty(result.CreationStatus)
+                =>
                 MapActivityStatus(result.Status).Match(
                     status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
                         new MembershipQueryRecord
@@ -227,7 +207,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
     private static Option<Membership.Types.ActivityStatus> MapActivityStatus(string? statusStr)
     {
-        if (IsNullOrEmpty(statusStr) || !MembershipStatusMap.TryGetValue(statusStr, out var status))
+        if (string.IsNullOrEmpty(statusStr) || !MembershipStatusMap.TryGetValue(statusStr, out var status))
         {
             return Option<Membership.Types.ActivityStatus>.None;
         }
@@ -240,11 +220,6 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         ["active"] = Membership.Types.ActivityStatus.Active,
         ["inactive"] = Membership.Types.ActivityStatus.Inactive,
     };
-
-    protected override IDbDataParameter CreateParameter(string name, object value)
-    {
-        return new SqlParameter(name, value);
-    }
 
     protected override VerificationFlowFailure MapDbException(DbException ex)
     {
@@ -261,13 +236,9 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         return VerificationFlowFailure.PersistorAccess(ex);
     }
 
-    protected override VerificationFlowFailure CreateTimeoutFailure(TimeoutException ex)
-    {
-        throw new NotImplementedException();
-    }
+    protected override VerificationFlowFailure CreateTimeoutFailure(TimeoutException ex) =>
+        VerificationFlowFailure.PersistorAccess("Database operation timed out.", ex);
 
-    protected override VerificationFlowFailure CreateGenericFailure(Exception ex)
-    {
-        throw new NotImplementedException();
-    }
+    protected override VerificationFlowFailure CreateGenericFailure(Exception ex) =>
+        VerificationFlowFailure.Generic(VerificationFlowMessageKeys.Generic, ex);
 }

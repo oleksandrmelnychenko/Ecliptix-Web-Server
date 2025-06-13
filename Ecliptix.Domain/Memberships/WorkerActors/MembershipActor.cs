@@ -1,11 +1,12 @@
 using Akka.Actor;
+using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Serilog;
 
-namespace Ecliptix.Domain.Memberships;
+namespace Ecliptix.Domain.Memberships.WorkerActors;
 
 public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey, string CultureName);
 

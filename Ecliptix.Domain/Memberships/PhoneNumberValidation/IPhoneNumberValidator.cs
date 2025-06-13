@@ -6,5 +6,5 @@ namespace Ecliptix.Domain.Memberships.PhoneNumberValidation;
 public interface IPhoneNumberValidator
 {
     Result<PhoneNumberValidationResult, VerificationFlowFailure> ValidatePhoneNumber(
-        string phoneNumber, string peerCulture, string? defaultRegion = null);
+        string phoneNumber, string cultureName, string? defaultRegion = null);
 }

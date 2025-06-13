@@ -3,10 +3,10 @@ using System.Data.Common;
 using Akka.Actor;
 using Dapper;
 using Ecliptix.Domain.DbConnectionFactory;
-using Ecliptix.Domain.Memberships.Events;
+using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.Domain.Memberships.Persistors.Utilities;
+using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
@@ -14,61 +14,6 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
-
-public record InitiateFlowAndReturnStateEvent(
-    Guid AppDeviceId,
-    Guid PhoneNumberId,
-    VerificationPurpose Purpose,
-    uint? ConnectId
-);
-
-public record RequestResendOtpActorEvent(
-    Guid FlowUniqueId
-);
-
-internal class EnsurePhoneNumberResult
-{
-    public Guid UniqueId { get; set; }
-    public string Outcome { get; set; } = string.Empty;
-    public bool Success { get; set; }
-}
-
-internal class RequestResendOtpResult
-{
-    public string Outcome { get; set; } = string.Empty;
-}
-
-internal class InitiateVerificationFlowResult
-{
-    public Guid UniqueIdentifier { get; set; }
-    public Guid PhoneNumberIdentifier { get; set; }
-    public Guid AppDeviceIdentifier { get; set; }
-    public long? ConnectId { get; set; }
-    public DateTime ExpiresAt { get; set; }
-    public string Status { get; set; } = string.Empty;
-    public string Purpose { get; set; } = string.Empty;
-    public short OtpCount { get; set; }
-    public string Outcome { get; set; } = string.Empty;
-    public Guid? Otp_UniqueIdentifier { get; set; }
-    public Guid? Otp_FlowUniqueId { get; set; }
-    public string? Otp_OtpHash { get; set; }
-    public string? Otp_OtpSalt { get; set; }
-    public DateTime? Otp_ExpiresAt { get; set; }
-    public string? Otp_Status { get; set; }
-    public bool? Otp_IsActive { get; set; }
-}
-
-internal class CreateOtpResult
-{
-    public Guid OtpUniqueId { get; set; }
-    public string Outcome { get; set; } = string.Empty;
-}
-
-internal class UpdateOtpStatusResult
-{
-    public bool Success { get; set; }
-    public string Message { get; set; } = string.Empty;
-}
 
 public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFailure>
 {
@@ -86,28 +31,28 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
     private void Ready()
     {
-        Receive<InitiateFlowAndReturnStateEvent>(cmd =>
-            ExecuteWithConnection(conn => InitiateFlowAsync(conn, cmd), "InitiateVerificationFlow").PipeTo(Sender));
-
-        Receive<RequestResendOtpActorEvent>(cmd =>
-            ExecuteWithConnection(conn => RequestResendOtpAsync(conn, cmd), "RequestResendOtp").PipeTo(Sender));
-
-        Receive<UpdateVerificationFlowStatusActorEvent>(cmd =>
-            ExecuteWithConnection(conn => UpdateVerificationFlowStatusAsync(conn, cmd), "UpdateVerificationFlowStatus")
+        Receive<InitiateFlowAndReturnStateActorEvent>(actorEvent =>
+            ExecuteWithConnection(conn => InitiateFlowAsync(conn, actorEvent), "InitiateVerificationFlow")
                 .PipeTo(Sender));
-
-        Receive<EnsurePhoneNumberActorEvent>(cmd =>
-            ExecuteWithConnection(conn => EnsurePhoneNumberAsync(conn, cmd), "EnsurePhoneNumber").PipeTo(Sender));
-        Receive<GetPhoneNumberActorEvent>(cmd =>
-            ExecuteWithConnection(conn => GetPhoneNumberAsync(conn, cmd), "GetPhoneNumber").PipeTo(Sender));
-        Receive<CreateOtpActorEvent>(cmd =>
-            ExecuteWithConnection(conn => CreateOtpAsync(conn, cmd), "CreateOtp").PipeTo(Sender));
-        Receive<UpdateOtpStatusActorEvent>(cmd =>
-            ExecuteWithConnection(conn => UpdateOtpStatusAsync(conn, cmd), "UpdateOtpStatus").PipeTo(Sender));
+        Receive<RequestResendOtpActorEvent>(actorEvent =>
+            ExecuteWithConnection(conn => RequestResendOtpAsync(conn, actorEvent), "RequestResendOtp").PipeTo(Sender));
+        Receive<UpdateVerificationFlowStatusActorEvent>(actorEvent =>
+            ExecuteWithConnection(conn => UpdateVerificationFlowStatusAsync(conn, actorEvent),
+                    "UpdateVerificationFlowStatus")
+                .PipeTo(Sender));
+        Receive<EnsurePhoneNumberActorEvent>(actorEvent =>
+            ExecuteWithConnection(conn => EnsurePhoneNumberAsync(conn, actorEvent), "EnsurePhoneNumber")
+                .PipeTo(Sender));
+        Receive<GetPhoneNumberActorEvent>(actorEvent =>
+            ExecuteWithConnection(conn => GetPhoneNumberAsync(conn, actorEvent), "GetPhoneNumber").PipeTo(Sender));
+        Receive<CreateOtpActorEvent>(actorEvent =>
+            ExecuteWithConnection(conn => CreateOtpAsync(conn, actorEvent), "CreateOtp").PipeTo(Sender));
+        Receive<UpdateOtpStatusActorEvent>(actorEvent =>
+            ExecuteWithConnection(conn => UpdateOtpStatusAsync(conn, actorEvent), "UpdateOtpStatus").PipeTo(Sender));
     }
 
     private async Task<Result<VerificationFlowQueryRecord, VerificationFlowFailure>> InitiateFlowAsync(
-        IDbConnection conn, InitiateFlowAndReturnStateEvent cmd)
+        IDbConnection conn, InitiateFlowAndReturnStateActorEvent cmd)
     {
         DynamicParameters parameters = new();
         parameters.Add("@AppDeviceId", cmd.AppDeviceId);
@@ -212,7 +157,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             "max_otp_attempts_reached" =>
                 Result<CreateOtpResult, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.OtpMaxAttemptsReached(result.Outcome)),
-
             _ => Result<CreateOtpResult, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.OtpGenerationFailed(result.Outcome))
         };
@@ -241,7 +185,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             : Result<Guid, VerificationFlowFailure>.Ok(result.UniqueId);
     }
 
-    private Result<VerificationFlowQueryRecord, VerificationFlowFailure> MapToVerificationFlowRecord(
+    private static Result<VerificationFlowQueryRecord, VerificationFlowFailure> MapToVerificationFlowRecord(
         InitiateVerificationFlowResult result)
     {
         Option<OtpQueryRecord> otpActive = result.Otp_UniqueIdentifier.HasValue
@@ -273,8 +217,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Ok(flowRecord);
     }
-
-    protected override IDbDataParameter CreateParameter(string name, object value) => new SqlParameter(name, value);
 
     protected override VerificationFlowFailure MapDbException(DbException ex)
     {

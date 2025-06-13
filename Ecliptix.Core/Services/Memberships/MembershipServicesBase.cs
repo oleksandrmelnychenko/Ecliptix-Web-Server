@@ -4,6 +4,7 @@ using Akka.Hosting;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Memberships;
+using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
@@ -21,7 +22,7 @@ public abstract class MembershipServicesBase(
 
     private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
 
-    protected string PeerCulture { get; private set; } = CultureInfo.CurrentCulture.Name;
+    protected string CultureName { get; private set; } = CultureInfo.CurrentCulture.Name;
     
     protected async Task<Result<byte[], EcliptixProtocolFailure>> DecryptRequest(CipherPayload request, ServerCallContext context)
     {
