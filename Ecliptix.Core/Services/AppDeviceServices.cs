@@ -4,7 +4,6 @@ using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Failures;
-using Ecliptix.Domain.Persistors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.AppDevice;
 using Ecliptix.Protobuf.CipherPayload;

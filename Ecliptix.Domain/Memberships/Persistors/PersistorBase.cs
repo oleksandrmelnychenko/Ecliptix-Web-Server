@@ -6,7 +6,7 @@ using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Utilities;
 using Microsoft.Extensions.Logging;
 
-namespace Ecliptix.Domain.Persistors;
+namespace Ecliptix.Domain.Memberships.Persistors;
 
 public abstract class PersistorBase<TFailure>(
     IDbConnectionFactory connectionFactory,

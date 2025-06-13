@@ -1,6 +1,6 @@
 using Ecliptix.Domain.AppDevices.Failures;
 using Ecliptix.Domain.DbConnectionFactory;
-using Ecliptix.Domain.Persistors;
+using Ecliptix.Domain.Memberships.Persistors;
 using Microsoft.Extensions.Logging;
 
 namespace Ecliptix.Domain.AppDevices.Persistors;
