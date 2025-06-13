@@ -5,6 +5,7 @@ using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.Events;
 using Ecliptix.Domain.Memberships.Failures;
+using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.Membership;
@@ -15,7 +16,7 @@ using Status = Grpc.Core.Status;
 
 namespace Ecliptix.Core.Services.Memberships;
 
-public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<AuthVerificationServices> logger)
+public class AuthVerificationServices(IActorRegistry actorRegistry,IPhoneNumberValidator phoneNumberValidator, ILogger<AuthVerificationServices> logger)
     : AuthVerificationServicesBase(actorRegistry, logger)
 {
     public override async Task InitiateVerification(CipherPayload request,
@@ -75,9 +76,8 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
         ValidatePhoneNumberRequest validateRequest =
             Helpers.ParseFromBytes<ValidatePhoneNumberRequest>(decryptResult.Unwrap());
         
-        ValidatePhoneNumberActorEvent actorEvent = new(validateRequest.PhoneNumber, PeerCulture);
-        Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult = await PhoneNumberValidatorActor
-            .Ask<Result<PhoneNumberValidationResult, VerificationFlowFailure>>(actorEvent);
+        Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
+            phoneNumberValidator.ValidatePhoneNumber(validateRequest.PhoneNumber, PeerCulture);
 
         if (validationResult.IsOk)
         {

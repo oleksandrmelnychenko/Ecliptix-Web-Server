@@ -12,6 +12,7 @@ using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.Persistors;
+using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Serilog;
@@ -40,7 +41,8 @@ try
     RegisterGrpc(builder.Services);
 
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
-
+    builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
+    
     builder.Services.AddAkka(systemActorName, (akkaBuilder, serviceProvider) =>
     {
         akkaBuilder.WithActors((system, registry) =>
@@ -95,15 +97,10 @@ try
                     snsProvider, localizationProvider),
                 "VerificationFlowManagerActor");
 
-            IActorRef phoneNumberValidatorActor = system.ActorOf(
-                PhoneNumberValidatorActor.Build(localizationProvider),
-                "PhoneNumberValidatorActor");
-
             registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
             registry.Register<AppDevicePersistorActor>(appDevicePersistor);
             registry.Register<VerificationFlowPersistorActor>(verificationFlowPersistorActor);
             registry.Register<VerificationFlowManagerActor>(verificationFlowManagerActor);
-            registry.Register<PhoneNumberValidatorActor>(phoneNumberValidatorActor);
             registry.Register<MembershipPersistorActor>(membershipPersistorActor);
             registry.Register<MembershipActor>(membershipActor);
 

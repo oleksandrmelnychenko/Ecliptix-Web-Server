@@ -20,8 +20,6 @@ public abstract class AuthVerificationServicesBase(
 
     protected readonly IActorRef VerificationFlowManagerActor = actorRegistry.Get<VerificationFlowManagerActor>();
 
-    protected readonly IActorRef PhoneNumberValidatorActor = actorRegistry.Get<PhoneNumberValidatorActor>();
-
     private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
 
     protected string PeerCulture { get; private set; } = CultureInfo.CurrentCulture.Name;

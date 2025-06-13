@@ -3,6 +3,7 @@ using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.Failures;
+using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.Membership;
@@ -12,7 +13,10 @@ using Status = Grpc.Core.Status;
 
 namespace Ecliptix.Core.Services.Memberships;
 
-public class MembershipServices(IActorRegistry actorRegistry, ILogger<MembershipServices> logger)
+public class MembershipServices(
+    IActorRegistry actorRegistry,
+    IPhoneNumberValidator phoneNumberValidator,
+    ILogger<MembershipServices> logger)
     : MembershipServicesBase(actorRegistry, logger)
 {
     public override async Task<CipherPayload> SignInMembership(CipherPayload request, ServerCallContext context)
@@ -28,10 +32,8 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
         byte[] decryptedBytes = decryptionResult.Unwrap();
         SignInMembershipRequest signInRequest = Helpers.ParseFromBytes<SignInMembershipRequest>(decryptedBytes);
 
-        ValidatePhoneNumberActorEvent actorEvent = new(signInRequest.PhoneNumber, PeerCulture);
         Result<PhoneNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
-            await PhoneNumberValidatorActor.Ask<Result<PhoneNumberValidationResult, VerificationFlowFailure>>(
-                actorEvent);
+            phoneNumberValidator.ValidatePhoneNumber(signInRequest.PhoneNumber, PeerCulture);
 
         if (phoneNumberValidationResult.IsErr)
         {
@@ -46,7 +48,7 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
 
                 return await EncryptAndReturnResponse(signInMembershipResponse, context);
             }
-            
+
             HandleVerificationError(verificationFlowFailure, context);
             return new CipherPayload();
         }
