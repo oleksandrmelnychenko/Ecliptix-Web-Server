@@ -41,6 +41,11 @@ public readonly record struct Option<T>
     {
         return HasValue ? Option<TResult>.Some(selector(Value!)) : Option<TResult>.None;
     }
+
+    public static Option<T> From(T? value)
+    {
+        return value is not null ? Some(value) : None;
+    }
 }
 
 public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
@@ -61,6 +66,7 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
         _error = error;
         IsOk = false;
     }
+
 
     public static Result<T, TE> Ok(T value)
     {
@@ -233,17 +239,6 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
         else onErr(_error!);
     }
 
-
-    public bool IsOkAnd(Func<T, bool> predicate)
-    {
-        return IsOk && predicate(_value!);
-    }
-
-    public bool IsErrAnd(Func<TE, bool> predicate)
-    {
-        return !IsOk && predicate(_error!);
-    }
-
     public override string ToString()
     {
         return IsOk ? "Ok" : "Err";
@@ -290,5 +285,15 @@ public static class ResultExtensions
 {
     public static void IgnoreResult<T, TE>(this Result<T, TE> result) where TE : notnull
     {
+    }
+
+    public static async Task<Result<TNextSuccess, TFailure>> BindAsync<TSuccess, TNextSuccess, TFailure>(
+        this Task<Result<TSuccess, TFailure>> task,
+        Func<TSuccess, Task<Result<TNextSuccess, TFailure>>> func)
+    {
+        Result<TSuccess, TFailure> result = await task;
+        if (result.IsErr) return Result<TNextSuccess, TFailure>.Err(result.UnwrapErr());
+
+        return await func(result.Unwrap());
     }
 }

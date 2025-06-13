@@ -43,7 +43,7 @@ public abstract class AuthVerificationServicesBase(
         catch (Exception ex)
         {
             Logger.LogWarning(ex,
-                "Failed to send stop signal to verification flow actor for ConnectId {ConnectId}.",
+                "Failed to send stop signal to verification flow actor for ConnectId {ConnectId}",
                 connectId);
         }
     }
@@ -55,7 +55,7 @@ public abstract class AuthVerificationServicesBase(
 
         Result<byte[], EcliptixProtocolFailure> decryptResult = await _protocolActor
             .Ask<Result<byte[], EcliptixProtocolFailure>>(
-                new DecryptCipherPayloadActorCommand(
+                new DecryptCipherPayloadActorActorEvent(
                     connectId,
                     PubKeyExchangeType.DataCenterEphemeralConnect,
                     request

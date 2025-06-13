@@ -83,7 +83,7 @@ public sealed class OneTimePassword
             () =>
             {
                 Totp totp = new(_otpSecretKey, mode: OtpHashMode.Sha256);
-                return totp.VerifyTotp(code, out _, new VerificationWindow(10, 0));
+                return totp.VerifyTotp(code, out _, new VerificationWindow(10));
             },
             _ => VerificationFlowFailure.InvalidOtp());
 

@@ -9,7 +9,6 @@ using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.Membership;
 using Google.Protobuf;
 using Grpc.Core;
-using Status = Grpc.Core.Status;
 
 namespace Ecliptix.Core.Services.Memberships;
 
@@ -22,12 +21,7 @@ public class MembershipServices(
     public override async Task<CipherPayload> SignInMembership(CipherPayload request, ServerCallContext context)
     {
         Result<byte[], EcliptixProtocolFailure> decryptionResult = await DecryptRequest(request, context);
-        if (decryptionResult.IsErr)
-        {
-            EcliptixProtocolFailure ecliptixProtocolFailure = decryptionResult.UnwrapErr();
-            HandleError(ecliptixProtocolFailure, context);
-            return new CipherPayload();
-        }
+        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
 
         byte[] decryptedBytes = decryptionResult.Unwrap();
         SignInMembershipRequest signInRequest = Helpers.ParseFromBytes<SignInMembershipRequest>(decryptedBytes);
@@ -49,8 +43,7 @@ public class MembershipServices(
                 return await EncryptAndReturnResponse(signInMembershipResponse, context);
             }
 
-            HandleVerificationError(verificationFlowFailure, context);
-            return new CipherPayload();
+            throw GrpcFailureException.FromDomainFailure(verificationFlowFailure);
         }
 
         PhoneNumberValidationResult phoneNumberResult = phoneNumberValidationResult.Unwrap();
@@ -76,30 +69,21 @@ public class MembershipServices(
         return signInResult.Match(
             signInResponse =>
                 EncryptAndReturnResponse(signInResponse.ToByteArray(), context).Result,
-            error =>
-            {
-                HandleVerificationError(error, context);
-                return new CipherPayload();
-            }
-        );
+            error => throw GrpcFailureException.FromDomainFailure(error));
     }
 
     public override async Task<CipherPayload> UpdateMembershipWithSecureKey(CipherPayload request,
         ServerCallContext context)
     {
-        Result<byte[], EcliptixProtocolFailure> decryptResult = await DecryptRequest(request, context);
-        if (decryptResult.IsErr)
-        {
-            HandleError(decryptResult.UnwrapErr(), context);
-            return new CipherPayload();
-        }
+        Result<byte[], EcliptixProtocolFailure> decryptionResult = await DecryptRequest(request, context);
+        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
 
         UpdateMembershipWithSecureKeyRequest updateMembershipWithSecureKeyRequest =
-            Helpers.ParseFromBytes<UpdateMembershipWithSecureKeyRequest>(decryptResult.Unwrap());
+            Helpers.ParseFromBytes<UpdateMembershipWithSecureKeyRequest>(decryptionResult.Unwrap());
 
         UpdateMembershipSecureKeyEvent @event = new(
             Helpers.FromByteStringToGuid(updateMembershipWithSecureKeyRequest.MembershipIdentifier),
-            Helpers.ReadMemoryToRetrieveBytes(updateMembershipWithSecureKeyRequest.SecureKey.Memory), CultureName);
+            Helpers.ReadMemoryToRetrieveBytes(updateMembershipWithSecureKeyRequest.SecureKey.Memory));
 
         Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure> updateOperationResult =
             await MembershipActor.Ask<Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>>(@event);
@@ -107,20 +91,6 @@ public class MembershipServices(
         if (updateOperationResult.IsOk)
             return await EncryptAndReturnResponse(updateOperationResult.Unwrap().ToByteArray(), context);
 
-        HandleVerificationError(updateOperationResult.UnwrapErr(), context);
-        return new CipherPayload();
-    }
-
-    private void HandleVerificationError(VerificationFlowFailure failure, ServerCallContext context)
-    {
-        if (failure.IsSecurityRelated)
-            Logger.LogWarning("Security-related verification error: {Error}", failure.ToStructuredLog());
-        else if (!failure.IsUserFacing)
-            Logger.LogError("System verification error: {Error}", failure.ToStructuredLog());
-        else
-            Logger.LogInformation("User verification error: {Error}", failure.ToStructuredLog());
-
-        Status status = failure.ToGrpcStatus();
-        throw new RpcException(status);
+        throw GrpcFailureException.FromDomainFailure(updateOperationResult.UnwrapErr());
     }
 }

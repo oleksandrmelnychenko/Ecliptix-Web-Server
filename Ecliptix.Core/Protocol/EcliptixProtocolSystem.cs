@@ -188,7 +188,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                 .AndThen(clonedKey =>
                 {
                     messageKeyClone = clonedKey;
-                    return _connectSession.GetPeerBundle();
+                    return _connectSession!.GetPeerBundle();
                 })
                 .AndThen(peerBundle =>
                 {

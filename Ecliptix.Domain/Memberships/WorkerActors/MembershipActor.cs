@@ -8,7 +8,7 @@ using Serilog;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors;
 
-public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey, string CultureName);
+public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey);
 
 public class MembershipActor : ReceiveActor
 {
@@ -31,8 +31,8 @@ public class MembershipActor : ReceiveActor
     private void Ready()
     {
         ReceiveAsync<UpdateMembershipSecureKeyEvent>(HandleUpdateMembershipSecureKeyCommand);
-        ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembershipActorCommand);
-        ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembershipActorCommand);
+        ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembership);
+        ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembership);
     }
 
     private async Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyEvent @event)
@@ -55,21 +55,22 @@ public class MembershipActor : ReceiveActor
         Sender.Tell(finalResult);
     }
 
-    private async Task HandleCreateMembershipActorCommand(CreateMembershipActorEvent @event)
+    private async Task HandleCreateMembership(CreateMembershipActorEvent @event)
     {
         Result<MembershipQueryRecord, VerificationFlowFailure> operationResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
         Sender.Tell(operationResult);
     }
 
-    private async Task HandleSignInMembershipActorCommand(SignInMembershipActorEvent @event)
+    private async Task HandleSignInMembership(SignInMembershipActorEvent @event)
     {
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
 
         Result<SignInMembershipResponse, VerificationFlowFailure> finalResult = persistorResult.Match(
-            record => Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
-                new SignInMembershipResponse
+            record =>
+            {
+                SignInMembershipResponse successResponse = new()
                 {
                     Membership = new Membership
                     {
@@ -77,72 +78,51 @@ public class MembershipActor : ReceiveActor
                         Status = record.ActivityStatus
                     },
                     Result = SignInMembershipResponse.Types.SignInResult.Succeeded
-                }
-            ),
-            failure =>
-            {
-                switch (failure.FailureType)
-                {
-                    case VerificationFlowFailureType.Validation:
-                    case VerificationFlowFailureType.NotFound:
-                    {
-                        string message = _localizationProvider.Localize(
-                            VerificationFlowMessageKeys.InvalidCredentials,
-                            @event.CultureName
-                        );
-
-                        Log.Information(
-                            "Sign-in validation failed for {PhoneNumber} with internal error: {InternalError}",
-                            @event.PhoneNumber, failure.Message);
-
-                        return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
-                            new SignInMembershipResponse
-                            {
-                                Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
-                                Message = message
-                            }
-                        );
-                    }
-
-                    case VerificationFlowFailureType.RateLimitExceeded:
-                    {
-                        string message = _localizationProvider.Localize(
-                            VerificationFlowMessageKeys.TooManySigninAttempts,
-                            @event.CultureName
-                        );
-
-                        Log.Warning(
-                            "Sign-in rate limit exceeded for {PhoneNumber}. Wait for {Minutes} minutes.",
-                            @event.PhoneNumber, failure.Message);
-
-                        return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
-                            new SignInMembershipResponse
-                            {
-                                Result = SignInMembershipResponse.Types.SignInResult.LoginAttemptExceeded,
-                                Message = message,
-                                MinutesUntilRetry = failure.Message
-                            }
-                        );
-                    }
-
-                    case VerificationFlowFailureType.Expired:
-                    case VerificationFlowFailureType.Conflict:
-                    case VerificationFlowFailureType.InvalidOtp:
-                    case VerificationFlowFailureType.OtpExpired:
-                    case VerificationFlowFailureType.OtpMaxAttemptsReached:
-                    case VerificationFlowFailureType.OtpGenerationFailed:
-                    case VerificationFlowFailureType.SmsSendFailed:
-                    case VerificationFlowFailureType.PhoneNumberInvalid:
-                    case VerificationFlowFailureType.PersistorAccess:
-                    case VerificationFlowFailureType.ConcurrencyConflict:
-                    case VerificationFlowFailureType.SuspiciousActivity:
-                    case VerificationFlowFailureType.Generic:
-                    default:
-                        return Result<SignInMembershipResponse, VerificationFlowFailure>.Err(failure);
-                }
-            }
-        );
+                };
+                return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(successResponse);
+            },
+            failure => TranslateSignInFailure(failure, @event.CultureName));
 
         Sender.Tell(finalResult);
+    }
+
+    private Result<SignInMembershipResponse, VerificationFlowFailure> TranslateSignInFailure(
+        VerificationFlowFailure failure,
+        string cultureName)
+    {
+        switch (failure.FailureType)
+        {
+            case VerificationFlowFailureType.Validation:
+            case VerificationFlowFailureType.NotFound:
+            {
+                string message = _localizationProvider.Localize(
+                    VerificationFlowMessageKeys.InvalidCredentials,
+                    cultureName
+                );
+                return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(new SignInMembershipResponse
+                {
+                    Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
+                    Message = message
+                });
+            }
+
+            case VerificationFlowFailureType.RateLimitExceeded:
+            {
+                string message = _localizationProvider.Localize(
+                    VerificationFlowMessageKeys.TooManySigninAttempts,
+                    cultureName
+                );
+                return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(new SignInMembershipResponse
+                {
+                    Result = SignInMembershipResponse.Types.SignInResult.LoginAttemptExceeded,
+                    Message = message,
+                    MinutesUntilRetry = "5"
+                });
+            }
+
+            default:
+                return Result<SignInMembershipResponse, VerificationFlowFailure>
+                    .Err(failure);
+        }
     }
 }

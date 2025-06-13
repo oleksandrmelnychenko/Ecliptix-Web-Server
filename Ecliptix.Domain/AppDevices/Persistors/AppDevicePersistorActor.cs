@@ -5,73 +5,83 @@ using Dapper;
 using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Failures;
 using Ecliptix.Domain.DbConnectionFactory;
+using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.AppDevice;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
 namespace Ecliptix.Domain.AppDevices.Persistors;
 
-public class AppDevicePersistorActor : AppDevicePersistorBase
+public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 {
+    private const string RegisterAppDeviceSp = "dbo.RegisterAppDeviceIfNotExists";
+
     public AppDevicePersistorActor(IDbConnectionFactory connectionFactory, ILogger<AppDevicePersistorActor> logger)
         : base(connectionFactory, logger)
     {
         Become(Ready);
     }
 
-    public static Props Build(IDbConnectionFactory connectionFactory, ILogger<AppDevicePersistorActor> logger)
-    {
-        return Props.Create(() => new AppDevicePersistorActor(connectionFactory, logger));
-    }
-
     private void Ready()
     {
         Receive<RegisterAppDeviceIfNotExistActorEvent>(args =>
-            ExecuteWithConnection(conn => RegisterAppDeviceAsync(conn, args.AppDevice), "RegisterAppDevice")
+            ExecuteWithConnection(conn => RegisterAppDeviceAsync(conn, args.AppDevice), "RegisterAppDevice",
+                    RegisterAppDeviceSp)
                 .PipeTo(Sender));
     }
 
-    private async Task<Result<(Guid UniqueId, int Status), AppDeviceFailure>> RegisterAppDeviceAsync(
+    private static async Task<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>> RegisterAppDeviceAsync(
         IDbConnection connection, AppDevice appDevice)
     {
-        using IDbCommand cmd = CreateCommand(connection, "dbo.RegisterAppDeviceIfNotExists",
-            CommandType.StoredProcedure,
-            CreateParameter("@AppInstanceId", Helpers.FromByteStringToGuid(appDevice.AppInstanceId)),
-            CreateParameter("@DeviceId", Helpers.FromByteStringToGuid(appDevice.DeviceId)),
-            CreateParameter("@DeviceType", (int)appDevice.DeviceType)
+        var parameters = new
+        {
+            AppInstanceId = Helpers.FromByteStringToGuid(appDevice.AppInstanceId),
+            DeviceId = Helpers.FromByteStringToGuid(appDevice.DeviceId),
+            DeviceType = (int)appDevice.DeviceType
+        };
+      
+        (Guid UniqueId, int Status) result = await connection.QuerySingleOrDefaultAsync<(Guid UniqueId, int Status)>(
+            RegisterAppDeviceSp,
+            parameters,
+            commandType: CommandType.StoredProcedure
         );
 
-        (Guid UniqueId, int Status) result = await (cmd as DbCommand)!.ExecuteReaderAsync()
-            .ContinueWith(task =>
-            {
-                using DbDataReader reader = task.Result;
-                return reader.Parse<(Guid UniqueId, int Status)>().SingleOrDefault();
-            }, TaskScheduler.Default);
+        if (result.Equals(default))
+            return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Err(
+                AppDeviceFailure.InfrastructureFailure());
+        
+        AppDeviceRegisteredStateReply.Types.Status currentStatus = result.Status switch
+        {
+            1 => AppDeviceRegisteredStateReply.Types.Status.SuccessAlreadyExists,
+            2 => AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration,
+            0 => AppDeviceRegisteredStateReply.Types.Status.FailureInvalidRequest,
+            _ => AppDeviceRegisteredStateReply.Types.Status.FailureInternalError
+        };
 
-        if (result.UniqueId == Guid.Empty)
-            return Result<(Guid, int), AppDeviceFailure>.Err(
-                AppDeviceFailure.PersistorAccess(AppDeviceMessageKeys.RegistrationNoResult));
-
-        return Result<(Guid, int), AppDeviceFailure>.Ok(result);
-    }
-
-    protected virtual IDbDataParameter CreateParameter(string name, object value)
-    {
-        return new SqlParameter(name, value);
+        return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
+        {
+            Status = currentStatus,
+            UniqueId = Helpers.GuidToByteString(result.UniqueId)
+        });
     }
 
     protected override AppDeviceFailure MapDbException(DbException ex)
     {
-        if (ex is SqlException sqlEx)
-            return AppDeviceFailure.PersistorAccess(
-                $"SQL Error {sqlEx.Number}: {sqlEx.Message}",
-                sqlEx
-            );
+        return AppDeviceFailure.InfrastructureFailure(ex: ex);
+    }
 
-        return AppDeviceFailure.PersistorAccess(
-            $"Database Error: {ex.Message}",
-            ex
-        );
+    protected override AppDeviceFailure CreateTimeoutFailure(TimeoutException ex)
+    {
+        return AppDeviceFailure.InfrastructureFailure(AppDeviceMessageKeys.DataAccess, ex);
+    }
+
+    protected override AppDeviceFailure CreateGenericFailure(Exception ex)
+    {
+        return AppDeviceFailure.InternalError(ex: ex);
+    }
+
+    public static Props Build(IDbConnectionFactory connectionFactory, ILogger<AppDevicePersistorActor> logger)
+    {
+        return Props.Create(() => new AppDevicePersistorActor(connectionFactory, logger));
     }
 }

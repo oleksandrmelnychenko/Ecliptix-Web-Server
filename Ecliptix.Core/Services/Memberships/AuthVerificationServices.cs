@@ -11,7 +11,6 @@ using Ecliptix.Protobuf.Membership;
 using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 using Grpc.Core;
-using Status = Grpc.Core.Status;
 
 namespace Ecliptix.Core.Services.Memberships;
 
@@ -25,16 +24,11 @@ public class AuthVerificationServices(
         IServerStreamWriter<CipherPayload> responseStream,
         ServerCallContext context)
     {
-        Result<byte[], EcliptixProtocolFailure> decryptResult = await DecryptRequest(request, context);
-
-        if (decryptResult.IsErr)
-        {
-            HandleProtocolError(decryptResult.UnwrapErr(), context);
-            return;
-        }
+        Result<byte[], EcliptixProtocolFailure> decryptionResult = await DecryptRequest(request, context);
+        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
 
         InitiateVerificationRequest initiateRequest =
-            Helpers.ParseFromBytes<InitiateVerificationRequest>(decryptResult.Unwrap());
+            Helpers.ParseFromBytes<InitiateVerificationRequest>(decryptionResult.Unwrap());
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
         Channel<Result<VerificationCountdownUpdate, VerificationFlowFailure>> channel =
@@ -54,88 +48,71 @@ public class AuthVerificationServices(
                 writer, CultureName
             ));
 
-        if (initiationResult.IsErr)
-        {
-            HandleVerificationError(initiationResult.UnwrapErr(), context);
-            channel.Writer.Complete();
-            return;
-        }
+        if (initiationResult.IsErr) throw GrpcFailureException.FromDomainFailure(initiationResult.UnwrapErr());
 
         await streamingTask;
     }
 
     public override async Task<CipherPayload> ValidatePhoneNumber(CipherPayload request, ServerCallContext context)
     {
-        Result<byte[], EcliptixProtocolFailure> decryptResult = await DecryptRequest(request, context);
-        if (decryptResult.IsErr)
-        {
-            HandleProtocolError(decryptResult.UnwrapErr(), context);
-            return new CipherPayload();
-        }
+        Result<byte[], EcliptixProtocolFailure> decryptionResult = await DecryptRequest(request, context);
+        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
 
         ValidatePhoneNumberRequest validateRequest =
-            Helpers.ParseFromBytes<ValidatePhoneNumberRequest>(decryptResult.Unwrap());
+            Helpers.ParseFromBytes<ValidatePhoneNumberRequest>(decryptionResult.Unwrap());
 
         Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
             phoneNumberValidator.ValidatePhoneNumber(validateRequest.PhoneNumber, CultureName);
 
-        if (validationResult.IsOk)
+        if (validationResult.IsErr) throw GrpcFailureException.FromDomainFailure(validationResult.UnwrapErr());
+
+        PhoneNumberValidationResult phoneValidationResult = validationResult.Unwrap();
+        if (phoneValidationResult.IsValid)
         {
-            PhoneNumberValidationResult phoneValidationResult = validationResult.Unwrap();
-            if (phoneValidationResult.IsValid)
+            EnsurePhoneNumberActorEvent ensurePhoneNumberActorEvent =
+                new(phoneValidationResult.ParsedPhoneNumberE164!, phoneValidationResult.DetectedRegion,
+                    Helpers.FromByteStringToGuid(validateRequest.AppDeviceIdentifier));
+
+            Result<Guid, VerificationFlowFailure> ensurePhoneNumberResult = await VerificationFlowManagerActor
+                .Ask<Result<Guid, VerificationFlowFailure>>(ensurePhoneNumberActorEvent);
+
+            if (ensurePhoneNumberResult.IsOk)
             {
-                EnsurePhoneNumberActorEvent ensurePhoneNumberActorEvent =
-                    new(phoneValidationResult.ParsedPhoneNumberE164!, phoneValidationResult.DetectedRegion,
-                        Helpers.FromByteStringToGuid(validateRequest.AppDeviceIdentifier));
-
-                Result<Guid, VerificationFlowFailure> ensurePhoneNumberResult = await VerificationFlowManagerActor
-                    .Ask<Result<Guid, VerificationFlowFailure>>(ensurePhoneNumberActorEvent);
-
-                if (ensurePhoneNumberResult.IsOk)
+                ValidatePhoneNumberResponse validatePhoneNumberResponse = new()
                 {
-                    ValidatePhoneNumberResponse validatePhoneNumberResponse = new()
-                    {
-                        PhoneNumberIdentifier = Helpers.GuidToByteString(ensurePhoneNumberResult.Unwrap()),
-                        Result = VerificationResult.Succeeded
-                    };
-
-                    return await EncryptAndReturnResponse(validatePhoneNumberResponse.ToByteArray(), context);
-                }
-
-                VerificationFlowFailure verificationFlowFailure = ensurePhoneNumberResult.UnwrapErr();
-                ValidatePhoneNumberResponse response1 = new()
-                {
-                    PhoneNumberIdentifier = ByteString.Empty,
-                    Result = VerificationResult.InvalidPhone,
-                    Message = verificationFlowFailure.Message
+                    PhoneNumberIdentifier = Helpers.GuidToByteString(ensurePhoneNumberResult.Unwrap()),
+                    Result = VerificationResult.Succeeded
                 };
 
-                return await EncryptAndReturnResponse(response1.ToByteArray(), context);
+                return await EncryptAndReturnResponse(validatePhoneNumberResponse.ToByteArray(), context);
             }
 
-            ValidatePhoneNumberResponse response = new()
+            VerificationFlowFailure verificationFlowFailure = ensurePhoneNumberResult.UnwrapErr();
+            ValidatePhoneNumberResponse response1 = new()
             {
+                PhoneNumberIdentifier = ByteString.Empty,
                 Result = VerificationResult.InvalidPhone,
-                Message = phoneValidationResult.MessageKey
+                Message = verificationFlowFailure.Message
             };
 
-            return await EncryptAndReturnResponse(response.ToByteArray(), context);
+            return await EncryptAndReturnResponse(response1.ToByteArray(), context);
         }
 
-        HandleVerificationError(validationResult.UnwrapErr(), context);
-        return new CipherPayload();
+        ValidatePhoneNumberResponse response = new()
+        {
+            Result = VerificationResult.InvalidPhone,
+            Message = phoneValidationResult.MessageKey
+        };
+
+        return await EncryptAndReturnResponse(response.ToByteArray(), context);
     }
 
     public override async Task<CipherPayload> VerifyOtp(CipherPayload request, ServerCallContext context)
     {
-        Result<byte[], EcliptixProtocolFailure> decryptResult = await DecryptRequest(request, context);
-        if (decryptResult.IsErr)
-        {
-            HandleProtocolError(decryptResult.UnwrapErr(), context);
-            return new CipherPayload();
-        }
+        Result<byte[], EcliptixProtocolFailure> decryptionResult = await DecryptRequest(request, context);
+        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
 
-        VerifyCodeRequest verifyRequest = Helpers.ParseFromBytes<VerifyCodeRequest>(decryptResult.Unwrap());
+        VerifyCodeRequest verifyRequest = Helpers.ParseFromBytes<VerifyCodeRequest>(decryptionResult.Unwrap());
 
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
@@ -144,11 +121,9 @@ public class AuthVerificationServices(
         Result<VerifyCodeResponse, VerificationFlowFailure> verificationResult = await VerificationFlowManagerActor
             .Ask<Result<VerifyCodeResponse, VerificationFlowFailure>>(actorEvent);
 
-        if (verificationResult.IsOk)
-            return await EncryptAndReturnResponse(verificationResult.Unwrap().ToByteArray(), context);
+        if (verificationResult.IsErr) throw GrpcFailureException.FromDomainFailure(verificationResult.UnwrapErr());
 
-        HandleVerificationError(verificationResult.UnwrapErr(), context);
-        return new CipherPayload();
+        return await EncryptAndReturnResponse(verificationResult.Unwrap().ToByteArray(), context);
     }
 
     private async Task StreamCountdownUpdatesAsync(
@@ -156,41 +131,19 @@ public class AuthVerificationServices(
         ChannelReader<Result<VerificationCountdownUpdate, VerificationFlowFailure>> reader,
         ServerCallContext context)
     {
-        try
+        await foreach (Result<VerificationCountdownUpdate, VerificationFlowFailure> updateResult in
+                       reader.ReadAllAsync(context.CancellationToken))
         {
-            await foreach (Result<VerificationCountdownUpdate, VerificationFlowFailure> updateResult in
-                           reader.ReadAllAsync(context.CancellationToken))
-                if (updateResult.IsOk)
-                {
-                    Result<CipherPayload, EcliptixProtocolFailure> encryptResult = await EncryptRequest(
-                        updateResult.Unwrap().ToByteArray(),
-                        PubKeyExchangeType.DataCenterEphemeralConnect,
-                        context);
+            if (updateResult.IsErr) throw GrpcFailureException.FromDomainFailure(updateResult.UnwrapErr());
 
-                    if (encryptResult.IsOk)
-                    {
-                        await responseStream.WriteAsync(encryptResult.Unwrap());
-                    }
-                    else
-                    {
-                        Logger.LogError("Failed to encrypt countdown update: {Error}", encryptResult.UnwrapErr());
-                        break;
-                    }
-                }
-                else
-                {
-                    ////TODO send with an error status
-                    HandleVerificationError(updateResult.UnwrapErr(), context);
-                    break;
-                }
-        }
-        catch (OperationCanceledException)
-        {
-            Logger.LogInformation("Streaming task was canceled because the client disconnected.");
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "An unexpected error occurred in the streaming task.");
+            Result<CipherPayload, EcliptixProtocolFailure> encryptResult = await EncryptRequest(
+                updateResult.Unwrap().ToByteArray(),
+                PubKeyExchangeType.DataCenterEphemeralConnect,
+                context);
+
+            if (encryptResult.IsErr) throw GrpcFailureException.FromDomainFailure(encryptResult.UnwrapErr());
+
+            await responseStream.WriteAsync(encryptResult.Unwrap());
         }
     }
 
@@ -198,29 +151,9 @@ public class AuthVerificationServices(
     {
         Result<CipherPayload, EcliptixProtocolFailure> encryptResult =
             await EncryptRequest(data, PubKeyExchangeType.DataCenterEphemeralConnect, context);
-        if (encryptResult.IsOk) return encryptResult.Unwrap();
 
-        HandleProtocolError(encryptResult.UnwrapErr(), context);
-        return new CipherPayload();
-    }
+        if (encryptResult.IsErr) throw GrpcFailureException.FromDomainFailure(encryptResult.UnwrapErr());
 
-    private void HandleProtocolError(EcliptixProtocolFailure failure, ServerCallContext context)
-    {
-        Logger.LogError("Protocol error: {Error}", failure);
-        Status status = failure.ToGrpcStatus();
-        throw new RpcException(status);
-    }
-
-    private void HandleVerificationError(VerificationFlowFailure failure, ServerCallContext context)
-    {
-        if (failure.IsSecurityRelated)
-            Logger.LogWarning("Security-related verification error: {Error}", failure.ToStructuredLog());
-        else if (!failure.IsUserFacing)
-            Logger.LogError("System verification error: {Error}", failure.ToStructuredLog());
-        else
-            Logger.LogInformation("User verification error: {Error}", failure.ToStructuredLog());
-
-        Status status = failure.ToGrpcStatus();
-        throw new RpcException(status);
+        return encryptResult.Unwrap();
     }
 }

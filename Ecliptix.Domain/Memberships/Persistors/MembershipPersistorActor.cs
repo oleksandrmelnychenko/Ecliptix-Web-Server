@@ -144,7 +144,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         parameters.Add("@ConnectionId", (long)cmd.ConnectId);
         parameters.Add("@OtpUniqueId", cmd.OtpIdentifier);
         parameters.Add("@CreationStatus", MembershipCreationStatusHelper.GetCreationStatusString(cmd.CreationStatus));
-
+        
         CreateMembershipResult? result = await connection.QuerySingleOrDefaultAsync<CreateMembershipResult>(
             "dbo.CreateMembership",
             parameters,

@@ -55,7 +55,7 @@ try
 
             using (LogContext.PushProperty("ActorSystemName", system.Name))
             {
-                logger.LogInformation("Actor system {ActorSystemName} is starting up.", system.Name);
+                logger.LogInformation("Actor system {ActorSystemName} is starting up", system.Name);
             }
 
             IDbConnectionFactory dbDataSource = serviceProvider.GetRequiredService<IDbConnectionFactory>();
@@ -69,15 +69,13 @@ try
             ILogger<MembershipPersistorActor> membershipPersistorLogger =
                 serviceProvider.GetRequiredService<ILogger<MembershipPersistorActor>>();
 
-            ILogger<AppDevicePersistorActor> appDevicePersistorLocalizer = serviceProvider
-                .GetRequiredService<ILogger<AppDevicePersistorActor>>();
-
             IActorRef protocolSystemActor = system.ActorOf(
                 EcliptixProtocolSystemActor.Build(protocolActorLogger),
                 "ProtocolSystem");
 
             IActorRef appDevicePersistor = system.ActorOf(
-                AppDevicePersistorActor.Build(dbDataSource, appDevicePersistorLocalizer),
+                AppDevicePersistorActor.Build(dbDataSource,
+                    serviceProvider.GetRequiredService<ILogger<AppDevicePersistorActor>>()),
                 "AppDevicePersistor");
 
             IActorRef verificationFlowPersistorActor = system.ActorOf(
@@ -174,6 +172,7 @@ static void RegisterGrpc(IServiceCollection services)
         options.ResponseCompressionLevel = CompressionLevel.Fastest;
         options.ResponseCompressionAlgorithm = "gzip";
         options.EnableDetailedErrors = true;
+        options.Interceptors.Add<FailureHandlingInterceptor>();
         options.Interceptors.Add<RequestMetaDataInterceptor>();
         options.Interceptors.Add<ThreadCultureInterceptor>();
     });

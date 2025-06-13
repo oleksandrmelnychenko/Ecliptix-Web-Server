@@ -485,7 +485,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
     private static Result<Unit, EcliptixProtocolFailure> ValidateHkdfInfo(byte[]? infoCopy)
     {
-        return (infoCopy == null || infoCopy.Length == 0)
+        return infoCopy == null || infoCopy.Length == 0
             ? Result<Unit, EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.DeriveKey("HKDF info cannot be empty."))
             : Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }

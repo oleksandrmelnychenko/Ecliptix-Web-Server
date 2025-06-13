@@ -16,6 +16,7 @@ public abstract class MembershipServicesBase(
     ILogger<MembershipServices> logger) : Protobuf.Membership.MembershipServices.MembershipServicesBase
 {
     private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
+
     protected readonly ILogger<MembershipServices> Logger = logger;
 
     protected readonly IActorRef MembershipActor = actorRegistry.Get<MembershipActor>();
@@ -29,7 +30,7 @@ public abstract class MembershipServicesBase(
 
         Result<byte[], EcliptixProtocolFailure> decryptResult = await _protocolActor
             .Ask<Result<byte[], EcliptixProtocolFailure>>(
-                new DecryptCipherPayloadActorCommand(
+                new DecryptCipherPayloadActorActorEvent(
                     connectId,
                     PubKeyExchangeType.DataCenterEphemeralConnect,
                     request
@@ -62,15 +63,9 @@ public abstract class MembershipServicesBase(
     {
         Result<CipherPayload, EcliptixProtocolFailure> encryptResult =
             await EncryptRequest(data, PubKeyExchangeType.DataCenterEphemeralConnect, context);
+
         if (encryptResult.IsOk) return encryptResult.Unwrap();
 
-        HandleError(encryptResult.UnwrapErr(), context);
-        return new CipherPayload();
-    }
-
-    protected void HandleError(EcliptixProtocolFailure failure, ServerCallContext context)
-    {
-        context.Status = EcliptixProtocolFailure.ToGrpcStatus(failure);
-        Logger.LogWarning("Error occurred: {Failure}", failure);
+        throw GrpcFailureException.FromDomainFailure(encryptResult.UnwrapErr());
     }
 }

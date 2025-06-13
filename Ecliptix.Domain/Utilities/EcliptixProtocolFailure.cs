@@ -2,37 +2,32 @@ using Grpc.Core;
 
 namespace Ecliptix.Domain.Utilities;
 
-public class EcliptixProtocolFailure
+public sealed record EcliptixProtocolFailure(
+    EcliptixProtocolFailureType FailureType,
+    string Message,
+    Exception? InnerException = null)
+    : FailureBase(Message, InnerException)
 {
-    private EcliptixProtocolFailure(EcliptixProtocolFailureType failureType, string message,
-        Exception? innerException = null)
+    public override Status ToGrpcStatus()
     {
-        FailureType = failureType;
-        Message = message;
-        InnerException = innerException;
-    }
-
-    public EcliptixProtocolFailureType FailureType { get; }
-    public string Message { get; }
-    public Exception? InnerException { get; }
-
-    public static Status ToGrpcStatus(EcliptixProtocolFailure failure)
-    {
-        StatusCode code = failure.FailureType switch
+        StatusCode code = FailureType switch
         {
             EcliptixProtocolFailureType.InvalidInput => StatusCode.InvalidArgument,
+            EcliptixProtocolFailureType.PeerPubKeyFailed => StatusCode.InvalidArgument,
+            EcliptixProtocolFailureType.BufferTooSmall => StatusCode.InvalidArgument,
+            EcliptixProtocolFailureType.DataTooLarge => StatusCode.InvalidArgument,
+
             EcliptixProtocolFailureType.ObjectDisposed => StatusCode.FailedPrecondition,
             EcliptixProtocolFailureType.EphemeralMissing => StatusCode.FailedPrecondition,
             EcliptixProtocolFailureType.StateMissing => StatusCode.FailedPrecondition,
+            EcliptixProtocolFailureType.ActorRefNotFound => StatusCode.FailedPrecondition,
+
             _ => StatusCode.Internal
         };
 
-        string message = code == StatusCode.Internal && failure.FailureType != EcliptixProtocolFailureType.Generic
-            ? "An internal error occurred."
-            : failure.Message;
-
-        return new Status(code, message);
+        return new Status(code, Message);
     }
+
 
     public static EcliptixProtocolFailure Generic(string details, Exception? inner = null)
     {
@@ -46,22 +41,17 @@ public class EcliptixProtocolFailure
 
     public static EcliptixProtocolFailure ActorRefNotFound(string details, Exception? inner = null)
     {
-        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.DecodeFailed, details, inner);
+        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.ActorRefNotFound, details, inner);
     }
 
     public static EcliptixProtocolFailure ActorNotCreated(string details, Exception? inner = null)
     {
-        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.DecodeFailed, details, inner);
+        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.ActorNotCreated, details, inner);
     }
 
     public static EcliptixProtocolFailure DeriveKey(string details, Exception? inner = null)
     {
         return new EcliptixProtocolFailure(EcliptixProtocolFailureType.DeriveKeyFailed, details, inner);
-    }
-
-    public static EcliptixProtocolFailure KeyRotation(string details, Exception? inner = null)
-    {
-        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.KeyRotationFailed, details, inner);
     }
 
     public static EcliptixProtocolFailure Handshake(string details, Exception? inner = null)
@@ -81,8 +71,8 @@ public class EcliptixProtocolFailure
 
     public static EcliptixProtocolFailure ObjectDisposed(string resourceName)
     {
-        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.ObjectDisposed,
-            $"Cannot access disposed resource '{resourceName}'.");
+        return new EcliptixProtocolFailure(
+            EcliptixProtocolFailureType.ObjectDisposed, $"Cannot access disposed resource '{resourceName}'.");
     }
 
     public static EcliptixProtocolFailure AllocationFailed(string details, Exception? inner = null)
@@ -120,22 +110,14 @@ public class EcliptixProtocolFailure
         return new EcliptixProtocolFailure(EcliptixProtocolFailureType.MemoryBufferError, details, inner);
     }
 
-    public override string ToString()
+    public override object ToStructuredLog()
     {
-        return
-            $"EcliptixProtocolFailure(Type={FailureType}, Message='{Message}'{(InnerException != null ? $", InnerException='{InnerException.GetType().Name}: {InnerException.Message}'" : "")})";
-    }
-
-    public override bool Equals(object? obj)
-    {
-        return obj is EcliptixProtocolFailure other &&
-               FailureType == other.FailureType &&
-               Message == other.Message &&
-               Equals(InnerException, other.InnerException);
-    }
-
-    public override int GetHashCode()
-    {
-        return HashCode.Combine(FailureType, Message, InnerException);
+        return new
+        {
+            ProtocolFailureType = FailureType.ToString(),
+            Message,
+            InnerException,
+            Timestamp
+        };
     }
 }

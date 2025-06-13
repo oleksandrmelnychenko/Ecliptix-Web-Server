@@ -6,9 +6,9 @@ using Ecliptix.Protobuf.PubKeyExchange;
 
 namespace Ecliptix.Core.Protocol.Actors;
 
-public record BeginAppDeviceEphemeralConnectCommand(PubKeyExchange PubKeyExchange, uint UniqueConnectId = 0);
+public record BeginAppDeviceEphemeralConnectActorEvent(PubKeyExchange PubKeyExchange, uint UniqueConnectId = 0);
 
-public record DecryptCipherPayloadActorCommand(
+public record DecryptCipherPayloadActorActorEvent(
     uint ConnectId,
     PubKeyExchangeType PubKeyExchangeType,
     CipherPayload CipherPayload);
@@ -18,7 +18,7 @@ public record EncryptPayloadActorCommand(
     PubKeyExchangeType PubKeyExchangeType,
     byte[] Payload);
 
-public record CreateConnectCommand(uint ConnectId, PubKeyExchange PubKeyExchange);
+public record CreateConnectActorEvent(uint ConnectId, PubKeyExchange PubKeyExchange);
 
 public class EcliptixProtocolSystemActor : ReceiveActor
 {
@@ -33,32 +33,32 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
     private void Ready()
     {
-        ReceiveAsync<BeginAppDeviceEphemeralConnectCommand>(HandleBeginAppDeviceEphemeralConnectCommand);
-        ReceiveAsync<DecryptCipherPayloadActorCommand>(HandleDecryptCipherPayloadCommand);
-        ReceiveAsync<EncryptPayloadActorCommand>(HandleEncryptCipherPayloadCommand);
-        ReceiveAsync<CreateConnectCommand>(HandleCreateConnectCommand);
+        ReceiveAsync<BeginAppDeviceEphemeralConnectActorEvent>(ProcessBeginAppDeviceEphemeralConnect);
+        ReceiveAsync<DecryptCipherPayloadActorActorEvent>(HandleDecryptCipherPayload);
+        ReceiveAsync<EncryptPayloadActorCommand>(HandleEncryptCipherPayload);
+        ReceiveAsync<CreateConnectActorEvent>(ProcessCreateConnect);
     }
 
-    private async Task HandleBeginAppDeviceEphemeralConnectCommand(BeginAppDeviceEphemeralConnectCommand command)
+    private async Task ProcessBeginAppDeviceEphemeralConnect(BeginAppDeviceEphemeralConnectActorEvent actorEvent)
     {
-        uint connectId = command.UniqueConnectId;
-        PubKeyExchange peerPubKeyExchange = command.PubKeyExchange;
-        PubKeyExchangeState exchangeType = command.PubKeyExchange.State;
+        uint connectId = actorEvent.UniqueConnectId;
+        PubKeyExchange peerPubKeyExchange = actorEvent.PubKeyExchange;
+        PubKeyExchangeState exchangeType = actorEvent.PubKeyExchange.State;
 
         _logger.LogInformation($"[ShieldPro] Beginning exchange {exchangeType}, generated Session ID: {connectId}");
 
-        CreateConnectCommand createConnectCommand = new(connectId, peerPubKeyExchange);
+        CreateConnectActorEvent createConnectActorEvent = new(connectId, peerPubKeyExchange);
         Result<DeriveSharedSecretReply, EcliptixProtocolFailure> result =
-            await CreateConnectActorAndDeriveSecret(createConnectCommand);
+            await CreateConnectActorAndDeriveSecret(createConnectActorEvent);
 
         Sender.Tell(result);
     }
 
     private async Task<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>> CreateConnectActorAndDeriveSecret(
-        CreateConnectCommand command)
+        CreateConnectActorEvent actorEvent)
     {
-        uint connectId = command.ConnectId;
-        PubKeyExchange exchangeType = command.PubKeyExchange;
+        uint connectId = actorEvent.ConnectId;
+        PubKeyExchange exchangeType = actorEvent.PubKeyExchange;
 
         Result<IActorRef, EcliptixProtocolFailure> actorCreationalResult =
             Result<IActorRef, EcliptixProtocolFailure>.Try(() =>
@@ -77,21 +77,21 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         IActorRef actorRef = actorCreationalResult.Unwrap();
         _connectActorRefs.TryAdd(connectId, actorRef);
 
-        DeriveSharedSecretCommand deriveSharedSecretCommand = new(connectId, exchangeType);
+        DeriveSharedSecretActorEvent deriveSharedSecretActorEvent = new(connectId, exchangeType);
         Result<DeriveSharedSecretReply, EcliptixProtocolFailure> deriveSharedSecretResult =
-            await actorRef.Ask<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>>(deriveSharedSecretCommand);
+            await actorRef.Ask<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>>(deriveSharedSecretActorEvent);
 
         return deriveSharedSecretResult;
     }
 
-    private async Task HandleCreateConnectCommand(CreateConnectCommand command)
+    private async Task ProcessCreateConnect(CreateConnectActorEvent actorEvent)
     {
         Result<DeriveSharedSecretReply, EcliptixProtocolFailure> result =
-            await CreateConnectActorAndDeriveSecret(command);
+            await CreateConnectActorAndDeriveSecret(actorEvent);
         Sender.Tell(result);
     }
 
-    private async Task HandleEncryptCipherPayloadCommand(EncryptPayloadActorCommand actorCommand)
+    private async Task HandleEncryptCipherPayload(EncryptPayloadActorCommand actorCommand)
     {
         uint connectId = actorCommand.ConnectId;
 
@@ -108,14 +108,14 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         }
     }
 
-    private async Task HandleDecryptCipherPayloadCommand(DecryptCipherPayloadActorCommand actorCommand)
+    private async Task HandleDecryptCipherPayload(DecryptCipherPayloadActorActorEvent actorActorEvent)
     {
-        uint connectId = actorCommand.ConnectId;
+        uint connectId = actorActorEvent.ConnectId;
 
         if (_connectActorRefs.TryGetValue(connectId, out IActorRef? actorRef))
         {
             Result<byte[], EcliptixProtocolFailure> result =
-                await actorRef.Ask<Result<byte[], EcliptixProtocolFailure>>(actorCommand);
+                await actorRef.Ask<Result<byte[], EcliptixProtocolFailure>>(actorActorEvent);
             Sender.Tell(result);
         }
         else

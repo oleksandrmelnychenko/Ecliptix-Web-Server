@@ -2,13 +2,11 @@ namespace Ecliptix.Domain.Memberships.Failures;
 
 public static class VerificationFlowMessageKeys
 {
-    public const string VerificationFlowConflict = "verification_flow_conflict";
     public const string VerificationFlowExpired = "flow_expired";
     public const string VerificationFlowNotFound = "verification_flow_not_found";
     public const string CreateMembershipVerificationFlowNotFound = "verification_session_not_found";
 
     public const string InvalidOtp = "otp_invalid";
-    public const string OtpExpired = "otp_expired";
     public const string OtpGenerationFailed = "otp_generation_failed";
     public const string OtpMaxAttemptsReached = "max_otp_attempts_reached";
     public const string ResendAllowed = "resend_allowed";
@@ -18,7 +16,6 @@ public static class VerificationFlowMessageKeys
     public const string AuthenticationCodeIs = "authentication_code_is";
 
     public const string PhoneNumberInvalid = "phone_invalid";
-    public const string SmsSendFailed = "sms_send_failed";
 
     public const string ConcurrencyConflict = "data_concurrency_conflict";
     public const string DataAccess = "data_access_failed";

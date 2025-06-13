@@ -12,149 +12,86 @@ public abstract class PersistorBase<TFailure>(
     IDbConnectionFactory connectionFactory,
     ILogger logger
 ) : ReceiveActor
-    where TFailure : struct
+    where TFailure : IFailureBase
 {
     private static readonly ActivitySource ActivitySource = new("Ecliptix.Persistor");
 
-    protected async Task<object> ExecuteWithConnection<TResult>(
+    protected async Task<Result<TResult, TFailure>> ExecuteWithConnection<TResult>(
         Func<IDbConnection, Task<Result<TResult, TFailure>>> operation,
-        string operationName)
+        string operationName,
+        string? commandText = null)
     {
-        using Activity? activity = StartActivity(operationName);
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        using Activity? activity = StartActivity(operationName, commandText);
 
         try
         {
             using IDbConnection conn = await connectionFactory.CreateOpenConnectionAsync();
-            SetConnectionTags(activity, conn);
+            activity?.SetTag("db.name", conn.Database);
 
             Result<TResult, TFailure> result = await operation(conn);
 
-            HandleOperationComplete(stopwatch, activity, result, operationName);
+            HandleOperationResult(activity, result, operationName);
             return result;
-        }
-        catch (TimeoutException timeoutEx)
-        {
-            return HandleTimeoutException<TResult>(stopwatch, activity, timeoutEx, operationName);
-        }
-        catch (DbException dbEx)
-        {
-            return HandleDatabaseException<TResult>(stopwatch, activity, dbEx, operationName);
         }
         catch (Exception ex)
         {
-            return HandleUnexpectedException<TResult>(stopwatch, activity, ex, operationName);
+            return HandleException<TResult>(ex, activity, operationName);
         }
-    }
-
-    protected static IDbCommand CreateCommand(IDbConnection connection, string sql, CommandType commandType,
-        params IDbDataParameter[] parameters)
-    {
-        IDbCommand command = connection.CreateCommand();
-        command.CommandText = sql;
-        command.CommandType = commandType;
-        foreach (IDbDataParameter parameter in parameters) command.Parameters.Add(parameter);
-
-        return command;
     }
 
     protected abstract TFailure MapDbException(DbException ex);
     protected abstract TFailure CreateTimeoutFailure(TimeoutException ex);
     protected abstract TFailure CreateGenericFailure(Exception ex);
 
-    private void HandleOperationComplete<TResult>(Stopwatch stopwatch, Activity? activity,
-        Result<TResult, TFailure> result, string operationName)
+    private void HandleOperationResult<TResult>(Activity? activity, Result<TResult, TFailure> result,
+        string operationName)
     {
-        stopwatch.Stop();
-        CompleteActivity(stopwatch, activity, result.IsOk);
-
         if (result.IsOk)
         {
-            logger.LogDebug("Operation {OperationName} completed successfully in {ElapsedMilliseconds}ms.",
-                operationName, stopwatch.ElapsedMilliseconds);
+            logger.LogDebug("Operation {OperationName} completed successfully", operationName);
+            activity?.SetStatus(ActivityStatusCode.Ok);
         }
         else
         {
-            TFailure error = result.UnwrapErr();
-            logger.LogWarning("Operation {OperationName} failed with error: {Error}", operationName, error);
-            activity?.SetTag("error.message", error.ToString());
+            TFailure failure = result.UnwrapErr();
+            logger.LogWarning("Operation {OperationName} completed with a domain failure: {@FailureDetails}",
+                operationName, failure.ToStructuredLog());
+
+            activity?.SetStatus(ActivityStatusCode.Ok);
+            activity?.AddEvent(new ActivityEvent("DomainFailure", tags: new ActivityTagsCollection
+            {
+                { "failure.type", failure.GetType().Name },
+                { "failure.details", failure.ToString() }
+            }));
         }
     }
 
-    private Result<T, TFailure> HandleDatabaseException<T>(Stopwatch stopwatch, Activity? activity, DbException dbEx,
-        string operationName)
+    private Result<T, TFailure> HandleException<T>(Exception ex, Activity? activity, string operationName)
     {
-        stopwatch.Stop();
-        TFailure failure = MapDbException(dbEx);
+        activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+        activity?.AddException(ex);
 
-        SetErrorActivity(activity, dbEx.Message, "db_error", dbEx.ErrorCode.ToString());
-        CompleteActivity(stopwatch, activity, false);
+        (TFailure failure, LogLevel level) = ex switch
+        {
+            TimeoutException timeoutEx => (CreateTimeoutFailure(timeoutEx), LogLevel.Error),
+            DbException dbEx => (MapDbException(dbEx), LogLevel.Error),
+            _ => (CreateGenericFailure(ex), LogLevel.Critical)
+        };
 
-        logger.LogError(dbEx,
-            "Database error during operation {OperationName} after {ElapsedMilliseconds}ms. ErrorCode: {ErrorCode}",
-            operationName, stopwatch.ElapsedMilliseconds, dbEx.ErrorCode);
+        logger.Log(level, ex, "Operation {OperationName} failed with an unhandled exception", operationName);
 
         return Result<T, TFailure>.Err(failure);
     }
 
-    private Result<T, TFailure> HandleTimeoutException<T>(Stopwatch stopwatch, Activity? activity,
-        TimeoutException timeoutEx, string operationName)
+    private static Activity? StartActivity(string operationName, string? commandText)
     {
-        stopwatch.Stop();
-        TFailure failure = CreateTimeoutFailure(timeoutEx);
+        Activity? activity = ActivitySource.StartActivity($"{operationName}", ActivityKind.Client);
+        if (activity is null) return null;
 
-        SetErrorActivity(activity, "Operation timeout", "timeout");
-        CompleteActivity(stopwatch, activity, false);
+        activity.SetTag("db.system", "mssql");
+        activity.SetTag("db.operation", operationName);
+        if (!string.IsNullOrWhiteSpace(commandText)) activity.SetTag("db.statement", commandText);
 
-        logger.LogError(timeoutEx, "Timeout error during operation {OperationName} after {ElapsedMilliseconds}ms.",
-            operationName, stopwatch.ElapsedMilliseconds);
-
-        return Result<T, TFailure>.Err(failure);
-    }
-
-    private Result<T, TFailure> HandleUnexpectedException<T>(Stopwatch stopwatch, Activity? activity, Exception ex,
-        string operationName)
-    {
-        stopwatch.Stop();
-        TFailure failure = CreateGenericFailure(ex);
-
-        SetErrorActivity(activity, ex.Message, "unexpected");
-        CompleteActivity(stopwatch, activity, false);
-
-        logger.LogError(ex, "Unexpected error during operation {OperationName} after {ElapsedMilliseconds}ms.",
-            operationName, stopwatch.ElapsedMilliseconds);
-
-        return Result<T, TFailure>.Err(failure);
-    }
-
-    private static Activity? StartActivity(string operationName)
-    {
-        Activity? activity = ActivitySource.StartActivity($"Persistor.{operationName}");
-        activity?.SetTag("db.system", "mssql");
-        activity?.SetTag("db.operation", operationName);
         return activity;
-    }
-
-    private static void SetConnectionTags(Activity? activity, IDbConnection conn)
-    {
-        activity?.SetTag("db.name", conn.Database);
-    }
-
-    private static void CompleteActivity(Stopwatch stopwatch, Activity? activity, bool isSuccess)
-    {
-        if (activity is null) return;
-
-        activity.SetTag("otel.duration_ms", stopwatch.ElapsedMilliseconds);
-        activity.SetStatus(isSuccess ? ActivityStatusCode.Ok : ActivityStatusCode.Error);
-    }
-
-    private static void SetErrorActivity(Activity? activity, string message, string errorType, string? errorCode = null)
-    {
-        if (activity is null) return;
-
-        activity.SetStatus(ActivityStatusCode.Error, message);
-        activity.SetTag("error.type", errorType);
-
-        if (!string.IsNullOrEmpty(errorCode)) activity.SetTag("error.code", errorCode);
     }
 }

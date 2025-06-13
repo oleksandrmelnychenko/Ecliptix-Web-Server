@@ -45,8 +45,4 @@
         <Protobuf Include="Protobuf\AuthenticationServices.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
     </ItemGroup>
 
-    <ItemGroup>
-        <Folder Include="AppDevices\Persistors\QueryRecords\"/>
-    </ItemGroup>
-
 </Project>

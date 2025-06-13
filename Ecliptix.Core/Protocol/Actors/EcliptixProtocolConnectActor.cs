@@ -5,7 +5,7 @@ using Ecliptix.Protobuf.PubKeyExchange;
 
 namespace Ecliptix.Core.Protocol.Actors;
 
-public record DeriveSharedSecretCommand(uint ConnectId, PubKeyExchange PubKeyExchange);
+public record DeriveSharedSecretActorEvent(uint ConnectId, PubKeyExchange PubKeyExchange);
 
 public record DeriveSharedSecretReply(PubKeyExchange PubKeyExchange);
 
@@ -31,8 +31,8 @@ public class EcliptixProtocolConnectActor : ReceiveActor
 
     private void Ready()
     {
-        Receive<DeriveSharedSecretCommand>(HandleProcessAndRespondToPubKeyExchangeCommand);
-        Receive<DecryptCipherPayloadActorCommand>(HandleDecryptCipherPayloadCommand);
+        Receive<DeriveSharedSecretActorEvent>(HandleProcessAndRespondToPubKeyExchangeCommand);
+        Receive<DecryptCipherPayloadActorActorEvent>(HandleDecryptCipherPayloadCommand);
         Receive<EncryptPayloadActorCommand>(HandleEncryptCipherPayloadCommand);
     }
 
@@ -43,14 +43,14 @@ public class EcliptixProtocolConnectActor : ReceiveActor
         Sender.Tell(cipherPayload);
     }
 
-    private void HandleDecryptCipherPayloadCommand(DecryptCipherPayloadActorCommand actorCommand)
+    private void HandleDecryptCipherPayloadCommand(DecryptCipherPayloadActorActorEvent actorActorEvent)
     {
         Result<byte[], EcliptixProtocolFailure> payload =
-            _ecliptixProtocolSystem!.ProcessInboundMessage(actorCommand.CipherPayload);
+            _ecliptixProtocolSystem!.ProcessInboundMessage(actorActorEvent.CipherPayload);
         Sender.Tell(payload);
     }
 
-    private void HandleProcessAndRespondToPubKeyExchangeCommand(DeriveSharedSecretCommand arg)
+    private void HandleProcessAndRespondToPubKeyExchangeCommand(DeriveSharedSecretActorEvent arg)
     {
         Result<PubKeyExchange, EcliptixProtocolFailure> pubKeyExchange =
             _ecliptixProtocolSystem!.ProcessAndRespondToPubKeyExchange(arg.ConnectId, arg.PubKeyExchange);

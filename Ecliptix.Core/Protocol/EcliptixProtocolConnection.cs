@@ -553,8 +553,11 @@ public sealed class EcliptixProtocolConnection : IDisposable
         if (receivedDhPublicKeyBytes == null) return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
 
         bool keysDiffer = _peerDhPublicKey == null || !receivedDhPublicKeyBytes.SequenceEqual(_peerDhPublicKey);
-        Debug.WriteLine(
-            $"[ShieldSession] Checking DH key difference. Peer DH Key: {Convert.ToHexString(_peerDhPublicKey)}, Received: {Convert.ToHexString(receivedDhPublicKeyBytes)}");
+
+        if (_peerDhPublicKey is not null)
+            Debug.WriteLine(
+                $"[ShieldSession] Checking DH key difference. Peer DH Key: {Convert.ToHexString(_peerDhPublicKey)}, Received: {Convert.ToHexString(receivedDhPublicKeyBytes)}");
+
         if (!keysDiffer) return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
 
         Result<uint, EcliptixProtocolFailure> currentIndexResult = receivingStep.GetCurrentIndex();

@@ -19,20 +19,16 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
     public override async Task<PubKeyExchange> EstablishAppDeviceEphemeralConnect(PubKeyExchange request,
         ServerCallContext context)
     {
-        Logger.LogInformation("Received EstablishAppDeviceEphemeralConnect request with type {RequestType}",
-            request.OfType);
-
         uint connectId = ServiceUtilities.ExtractConnectId(context);
-        BeginAppDeviceEphemeralConnectCommand command = new(request, connectId);
+        BeginAppDeviceEphemeralConnectActorEvent actorEvent = new(request, connectId);
         Result<DeriveSharedSecretReply, EcliptixProtocolFailure> deriveSharedSecretReply =
             await ProtocolActor.Ask<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>>(
-                command,
+                actorEvent,
                 context.CancellationToken);
 
         if (deriveSharedSecretReply.IsOk) return deriveSharedSecretReply.Unwrap().PubKeyExchange;
 
-        context.Status = EcliptixProtocolFailure.ToGrpcStatus(deriveSharedSecretReply.UnwrapErr());
-        return new PubKeyExchange();
+        throw GrpcFailureException.FromDomainFailure(deriveSharedSecretReply.UnwrapErr());
     }
 
     public override async Task<CipherPayload> RegisterDeviceAppIfNotExist(
@@ -40,10 +36,10 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
-
+       
         Result<byte[], EcliptixProtocolFailure> decryptResult = await ProtocolActor
             .Ask<Result<byte[], EcliptixProtocolFailure>>(
-                new DecryptCipherPayloadActorCommand(
+                new DecryptCipherPayloadActorActorEvent(
                     connectId,
                     PubKeyExchangeType.DataCenterEphemeralConnect,
                     request
@@ -51,39 +47,18 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
                 context.CancellationToken
             );
 
-        if (decryptResult.IsErr)
-        {
-            context.Status = EcliptixProtocolFailure.ToGrpcStatus(decryptResult.UnwrapErr());
-            return new CipherPayload();
-        }
-
+        if (decryptResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptResult.UnwrapErr());
+        
         AppDevice appDevice = Helpers.ParseFromBytes<AppDevice>(decryptResult.Unwrap());
-        Result<(Guid, int), AppDeviceFailure> persistorResult = await AppDevicePersistorActor
-            .Ask<Result<(Guid, int), AppDeviceFailure>>(
+        Result<AppDeviceRegisteredStateReply, AppDeviceFailure> persistorResult = await AppDevicePersistorActor
+            .Ask<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>>(
                 new RegisterAppDeviceIfNotExistActorEvent(appDevice)
             );
 
-        if (persistorResult.IsErr)
-        {
-            context.Status = AppDeviceFailure.ToGrpcStatus(persistorResult.UnwrapErr());
-            return new CipherPayload();
-        }
+        if (persistorResult.IsErr) throw GrpcFailureException.FromDomainFailure(persistorResult.UnwrapErr());
 
-        (Guid id, int status) = persistorResult.Unwrap();
-        AppDeviceRegisteredStateReply.Types.Status currentStatus = status switch
-        {
-            1 => AppDeviceRegisteredStateReply.Types.Status.SuccessAlreadyExists,
-            2 => AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration,
-            0 => AppDeviceRegisteredStateReply.Types.Status.FailureInvalidRequest,
-            _ => AppDeviceRegisteredStateReply.Types.Status.FailureInternalError
-        };
-
-        AppDeviceRegisteredStateReply reply = new()
-        {
-            Status = currentStatus,
-            UniqueId = Helpers.GuidToByteString(id)
-        };
-
+        AppDeviceRegisteredStateReply reply = persistorResult.Unwrap();
+       
         Result<CipherPayload, EcliptixProtocolFailure> encryptResult = await ProtocolActor
             .Ask<Result<CipherPayload, EcliptixProtocolFailure>>(
                 new EncryptPayloadActorCommand(
@@ -94,12 +69,8 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
                 context.CancellationToken
             );
 
-        if (encryptResult.IsErr)
-        {
-            context.Status = EcliptixProtocolFailure.ToGrpcStatus(encryptResult.UnwrapErr());
-            return new CipherPayload();
-        }
+        if (encryptResult.IsOk) return encryptResult.Unwrap();
 
-        return encryptResult.Unwrap();
+        throw GrpcFailureException.FromDomainFailure(encryptResult.UnwrapErr());
     }
 }
