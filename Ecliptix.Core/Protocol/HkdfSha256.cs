@@ -1,16 +1,16 @@
-using System;
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography; // For CryptographicException
+using System.Security.Cryptography;
 using Sodium;
+// For CryptographicException
 
 namespace Ecliptix.Core.Protocol;
 
 public sealed class HkdfSha256 : IDisposable
 {
     private const int HashOutputLength = 32;
+    private bool _disposed;
     private byte[] _ikm;
     private byte[] _salt;
-    private bool _disposed;
 
     public HkdfSha256(ReadOnlySpan<byte> ikm, ReadOnlySpan<byte> salt = default)
     {
@@ -24,15 +24,18 @@ public sealed class HkdfSha256 : IDisposable
         else
         {
             if (salt.Length != HashOutputLength)
-            {
                 throw new ArgumentException($"Salt must be {HashOutputLength} bytes for SignHmacSha256.",
                     nameof(salt));
-            }
 
             _salt = salt.ToArray();
         }
 
         _disposed = false;
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -89,9 +92,7 @@ public sealed class HkdfSha256 : IDisposable
                 }
 
                 if (tempInputArray == null || tempInputArray.Length != currentInputSlice.Length)
-                {
                     tempInputArray = new byte[currentInputSlice.Length];
-                }
 
                 currentInputSlice.CopyTo(tempInputArray);
 
@@ -101,10 +102,8 @@ public sealed class HkdfSha256 : IDisposable
                 );
 
                 if (tempHashResult.Length != HashOutputLength)
-                {
                     throw new CryptographicException(
                         $"HMAC-SHA256 output size mismatch during T({counter}) generation.");
-                }
 
                 tempHashResult.CopyTo(hash);
                 Wipe(tempHashResult);
@@ -124,16 +123,8 @@ public sealed class HkdfSha256 : IDisposable
 
             Wipe(inputBufferHeap);
             Wipe(prkAsKey);
-            if (tempInputArray != null)
-            {
-                Wipe(tempInputArray);
-            }
+            if (tempInputArray != null) Wipe(tempInputArray);
         }
-    }
-
-    public void Dispose()
-    {
-        Dispose(true);
     }
 
     private void Dispose(bool disposing)
@@ -152,6 +143,8 @@ public sealed class HkdfSha256 : IDisposable
         }
     }
 
-    private static void Wipe(byte[] buffer) =>
+    private static void Wipe(byte[] buffer)
+    {
         SodiumInterop.SecureWipe(buffer);
+    }
 }

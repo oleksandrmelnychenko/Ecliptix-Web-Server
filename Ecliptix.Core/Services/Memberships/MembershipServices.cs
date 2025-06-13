@@ -1,7 +1,5 @@
-using System.Globalization;
 using Akka.Actor;
 using Akka.Hosting;
-using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
@@ -107,9 +105,7 @@ public class MembershipServices(
             await MembershipActor.Ask<Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>>(@event);
 
         if (updateOperationResult.IsOk)
-        {
             return await EncryptAndReturnResponse(updateOperationResult.Unwrap().ToByteArray(), context);
-        }
 
         HandleVerificationError(updateOperationResult.UnwrapErr(), context);
         return new CipherPayload();
@@ -118,17 +114,11 @@ public class MembershipServices(
     private void HandleVerificationError(VerificationFlowFailure failure, ServerCallContext context)
     {
         if (failure.IsSecurityRelated)
-        {
             Logger.LogWarning("Security-related verification error: {Error}", failure.ToStructuredLog());
-        }
         else if (!failure.IsUserFacing)
-        {
             Logger.LogError("System verification error: {Error}", failure.ToStructuredLog());
-        }
         else
-        {
             Logger.LogInformation("User verification error: {Error}", failure.ToStructuredLog());
-        }
 
         Status status = failure.ToGrpcStatus();
         throw new RpcException(status);

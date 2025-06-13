@@ -5,7 +5,6 @@ using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
-using Sodium;
 
 namespace Ecliptix.Core.Protocol;
 
@@ -13,7 +12,16 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 {
     private EcliptixProtocolConnection? _connectSession;
 
-    private static Timestamp GetProtoTimestamp() => Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow);
+    public void Dispose()
+    {
+        _connectSession?.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    private static Timestamp GetProtoTimestamp()
+    {
+        return Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow);
+    }
 
     public Result<PubKeyExchange, EcliptixProtocolFailure> BeginDataCenterPubKeyExchange(
         uint connectId,
@@ -184,7 +192,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                 })
                 .AndThen(peerBundle =>
                 {
-                    var ad = CreateAssociatedData(peerBundle.IdentityX25519,
+                    byte[] ad = CreateAssociatedData(peerBundle.IdentityX25519,
                         ecliptixSystemIdentityKeys.IdentityX25519PublicKey);
                     return Decrypt(messageKeyClone!, cipherPayloadProto, ad);
                 });
@@ -214,18 +222,20 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             });
     }
 
-    private Result<byte[], EcliptixProtocolFailure> GetOptionalSenderDhKey(bool include) =>
-        include
+    private Result<byte[], EcliptixProtocolFailure> GetOptionalSenderDhKey(bool include)
+    {
+        return include
             ? _connectSession!.GetCurrentSenderDhPublicKey().Map(k => k!)
             : Result<byte[], EcliptixProtocolFailure>.Ok(Array.Empty<byte>());
+    }
 
     private static Result<byte[], EcliptixProtocolFailure> ReadAndWipeSecureHandle(SodiumSecureMemoryHandle handle,
         int size)
     {
-        var buffer = new byte[size];
-        var t = handle.Read(buffer).Map(_ =>
+        byte[] buffer = new byte[size];
+        Result<byte[], EcliptixProtocolFailure> t = handle.Read(buffer).Map(_ =>
         {
-            var copy = (byte[])buffer.Clone();
+            byte[] copy = (byte[])buffer.Clone();
             SodiumInterop.SecureWipe(buffer);
             return copy;
         }).MapSodiumFailure();
@@ -234,7 +244,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
     private static Result<EcliptixMessageKey, EcliptixProtocolFailure> CloneMessageKey(EcliptixMessageKey key)
     {
-        var keyMaterial = new byte[Constants.AesKeySize];
+        byte[] keyMaterial = new byte[Constants.AesKeySize];
         return key.ReadKeyMaterial(keyMaterial)
             .AndThen(_ => EcliptixMessageKey.New(key.Index, keyMaterial))
             .Map(clonedKey =>
@@ -261,8 +271,8 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             try
             {
                 key.ReadKeyMaterial(keyMaterial).Unwrap();
-                var (ciphertext, tag) = AesGcmService.EncryptAllocating(keyMaterial, nonce, plaintext, ad);
-                var ciphertextAndTag = new byte[ciphertext.Length + tag.Length];
+                (byte[] ciphertext, byte[] tag) = AesGcmService.EncryptAllocating(keyMaterial, nonce, plaintext, ad);
+                byte[] ciphertextAndTag = new byte[ciphertext.Length + tag.Length];
                 Buffer.BlockCopy(ciphertext, 0, ciphertextAndTag, 0, ciphertext.Length);
                 Buffer.BlockCopy(tag, 0, ciphertextAndTag, ciphertext.Length, tag.Length);
                 SodiumInterop.SecureWipe(ciphertext);
@@ -283,11 +293,9 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         int cipherLength = fullCipherSpan.Length - Constants.AesGcmTagSize;
 
         if (cipherLength < 0)
-        {
             return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.BufferTooSmall(
                     $"Received ciphertext length ({payload.Cipher.Length}) is smaller than the GCM tag size ({Constants.AesGcmTagSize})."));
-        }
 
         byte[] cipherOnlyBytes = fullCipherSpan[..cipherLength].ToArray();
         byte[] tagBytes = fullCipherSpan[cipherLength..].ToArray();
@@ -296,11 +304,8 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         byte[] keyMaterial = new byte[Constants.AesKeySize];
         try
         {
-            var readResult = key.ReadKeyMaterial(keyMaterial);
-            if (readResult.IsErr)
-            {
-                return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
-            }
+            Result<Unit, EcliptixProtocolFailure> readResult = key.ReadKeyMaterial(keyMaterial);
+            if (readResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
 
             return Result<byte[], EcliptixProtocolFailure>.Try(() =>
                     AesGcmService.DecryptAllocating(keyMaterial, nonceBytes, cipherOnlyBytes, tagBytes, ad),
@@ -315,10 +320,4 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
     }
 
     #endregion
-
-    public void Dispose()
-    {
-        _connectSession?.Dispose();
-        GC.SuppressFinalize(this);
-    }
 }

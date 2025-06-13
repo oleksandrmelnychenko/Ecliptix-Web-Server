@@ -22,8 +22,8 @@ public record CreateConnectCommand(uint ConnectId, PubKeyExchange PubKeyExchange
 
 public class EcliptixProtocolSystemActor : ReceiveActor
 {
-    private readonly ILogger<EcliptixProtocolSystemActor> _logger;
     private readonly ConcurrentDictionary<uint, IActorRef> _connectActorRefs = new();
+    private readonly ILogger<EcliptixProtocolSystemActor> _logger;
 
     public EcliptixProtocolSystemActor(ILogger<EcliptixProtocolSystemActor> logger)
     {
@@ -60,18 +60,19 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         uint connectId = command.ConnectId;
         PubKeyExchange exchangeType = command.PubKeyExchange;
 
-        Result<IActorRef, EcliptixProtocolFailure> actorCreationalResult = Result<IActorRef, EcliptixProtocolFailure>.Try(() =>
-        {
-            IActorRef actorRef = Context.ActorOf(
-                EcliptixProtocolConnectActor.Build(),
-                $"connect-{connectId}");
-            return actorRef;
-        }, err => EcliptixProtocolFailure.ActorNotCreated($"Failed to create actor for connectId: {connectId}", err));
+        Result<IActorRef, EcliptixProtocolFailure> actorCreationalResult =
+            Result<IActorRef, EcliptixProtocolFailure>.Try(() =>
+                {
+                    IActorRef actorRef = Context.ActorOf(
+                        EcliptixProtocolConnectActor.Build(),
+                        $"connect-{connectId}");
+                    return actorRef;
+                },
+                err => EcliptixProtocolFailure.ActorNotCreated($"Failed to create actor for connectId: {connectId}",
+                    err));
 
         if (actorCreationalResult.IsErr)
-        {
             return Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(actorCreationalResult.UnwrapErr());
-        }
 
         IActorRef actorRef = actorCreationalResult.Unwrap();
         _connectActorRefs.TryAdd(connectId, actorRef);
@@ -85,7 +86,8 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
     private async Task HandleCreateConnectCommand(CreateConnectCommand command)
     {
-        Result<DeriveSharedSecretReply, EcliptixProtocolFailure> result = await CreateConnectActorAndDeriveSecret(command);
+        Result<DeriveSharedSecretReply, EcliptixProtocolFailure> result =
+            await CreateConnectActorAndDeriveSecret(command);
         Sender.Tell(result);
     }
 
@@ -112,7 +114,8 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
         if (_connectActorRefs.TryGetValue(connectId, out IActorRef? actorRef))
         {
-            Result<byte[], EcliptixProtocolFailure> result = await actorRef.Ask<Result<byte[], EcliptixProtocolFailure>>(actorCommand);
+            Result<byte[], EcliptixProtocolFailure> result =
+                await actorRef.Ask<Result<byte[], EcliptixProtocolFailure>>(actorCommand);
             Sender.Tell(result);
         }
         else
@@ -129,5 +132,7 @@ public class EcliptixProtocolSystemActor : ReceiveActor
     }
 
     public static Props Build(ILogger<EcliptixProtocolSystemActor> logger)
-        => Props.Create(() => new EcliptixProtocolSystemActor(logger));
+    {
+        return Props.Create(() => new EcliptixProtocolSystemActor(logger));
+    }
 }

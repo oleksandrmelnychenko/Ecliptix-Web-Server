@@ -9,7 +9,7 @@ namespace Ecliptix.Core.Services;
 public abstract class AppDeviceServiceBase(IActorRegistry actorRegistry, ILogger<AppDeviceServices> logger)
     : AppDeviceServiceActions.AppDeviceServiceActionsBase
 {
+    protected readonly IActorRef AppDevicePersistorActor = actorRegistry.Get<AppDevicePersistorActor>();
     protected readonly ILogger<AppDeviceServices> Logger = logger;
     protected readonly IActorRef ProtocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
-    protected readonly IActorRef AppDevicePersistorActor = actorRegistry.Get<AppDevicePersistorActor>();
 }

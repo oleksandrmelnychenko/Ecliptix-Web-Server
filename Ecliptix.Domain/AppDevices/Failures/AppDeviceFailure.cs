@@ -17,19 +17,25 @@ public readonly struct AppDeviceFailure : IEquatable<AppDeviceFailure>
     }
 
     public static AppDeviceFailure PersistorAccess(string messageKey = AppDeviceMessageKeys.DataAccess,
-        Exception? exception = null) =>
-        new(AppDeviceFailureType.PersistorAccess, messageKey,
+        Exception? exception = null)
+    {
+        return new AppDeviceFailure(AppDeviceFailureType.PersistorAccess, messageKey,
             exception != null ? Option<Exception>.Some(exception) : Option<Exception>.None);
+    }
 
     public static AppDeviceFailure Validation(string messageKey = AppDeviceMessageKeys.Validation,
-        Exception? exception = null) =>
-        new(AppDeviceFailureType.Validation, messageKey,
+        Exception? exception = null)
+    {
+        return new AppDeviceFailure(AppDeviceFailureType.Validation, messageKey,
             exception != null ? Option<Exception>.Some(exception) : Option<Exception>.None);
+    }
 
     public static AppDeviceFailure Generic(string messageKey = AppDeviceMessageKeys.Generic,
-        Exception? exception = null) =>
-        new(AppDeviceFailureType.Generic, messageKey,
+        Exception? exception = null)
+    {
+        return new AppDeviceFailure(AppDeviceFailureType.Generic, messageKey,
             exception != null ? Option<Exception>.Some(exception) : Option<Exception>.None);
+    }
 
     public bool IsRecoverable => Type switch
     {
@@ -76,34 +82,49 @@ public readonly struct AppDeviceFailure : IEquatable<AppDeviceFailure>
         return new Status(code, message);
     }
 
-    public bool Equals(AppDeviceFailure other) =>
-        Type == other.Type && MessageKey == other.MessageKey;
+    public bool Equals(AppDeviceFailure other)
+    {
+        return Type == other.Type && MessageKey == other.MessageKey;
+    }
 
-    public override bool Equals(object? obj) =>
-        obj is AppDeviceFailure other && Equals(other);
+    public override bool Equals(object? obj)
+    {
+        return obj is AppDeviceFailure other && Equals(other);
+    }
 
-    public override int GetHashCode() =>
-        HashCode.Combine(Type, MessageKey);
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(Type, MessageKey);
+    }
 
-    public static bool operator ==(AppDeviceFailure left, AppDeviceFailure right) =>
-        left.Equals(right);
+    public static bool operator ==(AppDeviceFailure left, AppDeviceFailure right)
+    {
+        return left.Equals(right);
+    }
 
-    public static bool operator !=(AppDeviceFailure left, AppDeviceFailure right) =>
-        !(left == right);
+    public static bool operator !=(AppDeviceFailure left, AppDeviceFailure right)
+    {
+        return !(left == right);
+    }
 
-    public override string ToString() =>
-        Exception.HasValue
+    public override string ToString()
+    {
+        return Exception.HasValue
             ? $"AppDeviceFailure({Type}, {MessageKey}, {Exception.Value.Message})"
             : $"AppDeviceFailure({Type}, {MessageKey})";
+    }
 
-    public object ToStructuredLog() => new
+    public object ToStructuredLog()
     {
-        Type = Type.ToString(),
-        MessageKey,
-        HasException = Exception.HasValue,
-        ExceptionType = Exception.HasValue ? Exception.Value.GetType().Name : null,
-        IsUserFacing,
-        IsRecoverable,
-        IsSecurityRelated
-    };
+        return new
+        {
+            Type = Type.ToString(),
+            MessageKey,
+            HasException = Exception.HasValue,
+            ExceptionType = Exception.HasValue ? Exception.Value.GetType().Name : null,
+            IsUserFacing,
+            IsRecoverable,
+            IsSecurityRelated
+        };
+    }
 }

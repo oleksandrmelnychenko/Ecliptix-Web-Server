@@ -12,8 +12,8 @@ public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] S
 
 public class MembershipActor : ReceiveActor
 {
-    private readonly IActorRef _persistor;
     private readonly ILocalizationProvider _localizationProvider;
+    private readonly IActorRef _persistor;
 
     public MembershipActor(IActorRef persistor, ILocalizationProvider localizationProvider)
     {
@@ -23,8 +23,10 @@ public class MembershipActor : ReceiveActor
         Become(Ready);
     }
 
-    public static Props Build(IActorRef persistor, ILocalizationProvider localizationProvider) =>
-        Props.Create(() => new MembershipActor(persistor, localizationProvider));
+    public static Props Build(IActorRef persistor, ILocalizationProvider localizationProvider)
+    {
+        return Props.Create(() => new MembershipActor(persistor, localizationProvider));
+    }
 
     private void Ready()
     {
@@ -66,7 +68,7 @@ public class MembershipActor : ReceiveActor
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
 
         Result<SignInMembershipResponse, VerificationFlowFailure> finalResult = persistorResult.Match(
-            ok: record => Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
+            record => Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(
                 new SignInMembershipResponse
                 {
                     Membership = new Membership
@@ -77,7 +79,7 @@ public class MembershipActor : ReceiveActor
                     Result = SignInMembershipResponse.Types.SignInResult.Succeeded
                 }
             ),
-            err: failure =>
+            failure =>
             {
                 switch (failure.FailureType)
                 {

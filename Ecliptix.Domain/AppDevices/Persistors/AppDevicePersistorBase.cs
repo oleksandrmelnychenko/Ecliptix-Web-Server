@@ -10,10 +10,13 @@ public abstract class AppDevicePersistorBase(
     ILogger logger
 ) : PersistorBase<AppDeviceFailure>(npgsqlDataSource, logger)
 {
+    protected override AppDeviceFailure CreateTimeoutFailure(TimeoutException ex)
+    {
+        return AppDeviceFailure.PersistorAccess(AppDeviceMessageKeys.DataAccess, ex);
+    }
 
-    protected override AppDeviceFailure CreateTimeoutFailure(TimeoutException ex) =>
-        AppDeviceFailure.PersistorAccess(AppDeviceMessageKeys.DataAccess, ex);
-
-    protected override AppDeviceFailure CreateGenericFailure(Exception ex) =>
-        AppDeviceFailure.Generic(AppDeviceMessageKeys.Generic, ex);
+    protected override AppDeviceFailure CreateGenericFailure(Exception ex)
+    {
+        return AppDeviceFailure.Generic(AppDeviceMessageKeys.Generic, ex);
+    }
 }

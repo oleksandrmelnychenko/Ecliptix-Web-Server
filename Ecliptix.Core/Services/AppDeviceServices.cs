@@ -29,10 +29,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
                 command,
                 context.CancellationToken);
 
-        if (deriveSharedSecretReply.IsOk)
-        {
-            return deriveSharedSecretReply.Unwrap().PubKeyExchange;
-        }
+        if (deriveSharedSecretReply.IsOk) return deriveSharedSecretReply.Unwrap().PubKeyExchange;
 
         context.Status = EcliptixProtocolFailure.ToGrpcStatus(deriveSharedSecretReply.UnwrapErr());
         return new PubKeyExchange();
@@ -76,9 +73,9 @@ public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceSe
         AppDeviceRegisteredStateReply.Types.Status currentStatus = status switch
         {
             1 => AppDeviceRegisteredStateReply.Types.Status.SuccessAlreadyExists,
-            2 => AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration, 
+            2 => AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration,
             0 => AppDeviceRegisteredStateReply.Types.Status.FailureInvalidRequest,
-            _ => AppDeviceRegisteredStateReply.Types.Status.FailureInternalError 
+            _ => AppDeviceRegisteredStateReply.Types.Status.FailureInternalError
         };
 
         AppDeviceRegisteredStateReply reply = new()

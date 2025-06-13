@@ -21,87 +21,117 @@ public readonly struct VerificationFlowFailure : IEquatable<VerificationFlowFail
         Timestamp = DateTime.UtcNow;
     }
 
-    public static VerificationFlowFailure NotFound(string? details = null) =>
-        new(VerificationFlowFailureType.NotFound,
+    public static VerificationFlowFailure NotFound(string? details = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.NotFound,
             details ?? VerificationFlowMessageKeys.VerificationFlowNotFound,
             ErrorCodes.SessionNotFound);
+    }
 
-    public static VerificationFlowFailure Expired(string? details = null) =>
-        new(VerificationFlowFailureType.Expired,
+    public static VerificationFlowFailure Expired(string? details = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.Expired,
             details ?? VerificationFlowMessageKeys.VerificationFlowExpired,
             ErrorCodes.SessionExpired);
+    }
 
-    public static VerificationFlowFailure Conflict(string? details = null) =>
-        new(VerificationFlowFailureType.Conflict,
+    public static VerificationFlowFailure Conflict(string? details = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.Conflict,
             details ?? VerificationFlowMessageKeys.VerificationFlowConflict,
             ErrorCodes.SessionConflict);
+    }
 
-    public static VerificationFlowFailure InvalidOtp(string? details = null) =>
-        new(VerificationFlowFailureType.InvalidOtp,
+    public static VerificationFlowFailure InvalidOtp(string? details = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.InvalidOtp,
             details ?? VerificationFlowMessageKeys.InvalidOtp,
             ErrorCodes.InvalidOtp);
+    }
 
-    public static VerificationFlowFailure OtpExpired(string? details = null) =>
-        new(VerificationFlowFailureType.OtpExpired,
+    public static VerificationFlowFailure OtpExpired(string? details = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.OtpExpired,
             details ?? VerificationFlowMessageKeys.OtpExpired,
             ErrorCodes.OtpExpired);
+    }
 
-    public static VerificationFlowFailure OtpMaxAttemptsReached(string? details = null) =>
-        new(VerificationFlowFailureType.OtpMaxAttemptsReached,
+    public static VerificationFlowFailure OtpMaxAttemptsReached(string? details = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.OtpMaxAttemptsReached,
             details ?? VerificationFlowMessageKeys.OtpMaxAttemptsReached,
             ErrorCodes.OtpMaxAttemptsReached);
+    }
 
     public static VerificationFlowFailure
-        OtpGenerationFailed(string? details = null, Exception? innerException = null) =>
-        new(VerificationFlowFailureType.OtpGenerationFailed,
+        OtpGenerationFailed(string? details = null, Exception? innerException = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.OtpGenerationFailed,
             details ?? VerificationFlowMessageKeys.OtpGenerationFailed,
             ErrorCodes.OtpGenerationFailed,
             innerException);
+    }
 
-    public static VerificationFlowFailure SmsSendFailed(string? details = null, Exception? innerException = null) =>
-        new(VerificationFlowFailureType.SmsSendFailed,
+    public static VerificationFlowFailure SmsSendFailed(string? details = null, Exception? innerException = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.SmsSendFailed,
             details ?? VerificationFlowMessageKeys.SmsSendFailed,
             ErrorCodes.SmsSendFailed,
             innerException);
+    }
 
     public static VerificationFlowFailure
-        PhoneNumberInvalid(string? details = null, Exception? innerException = null) =>
-        new(VerificationFlowFailureType.PhoneNumberInvalid,
+        PhoneNumberInvalid(string? details = null, Exception? innerException = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.PhoneNumberInvalid,
             details ?? VerificationFlowMessageKeys.PhoneNumberInvalid,
             ErrorCodes.PhoneNumberInvalid, innerException);
+    }
 
-    public static VerificationFlowFailure PersistorAccess(string? details = null, Exception? innerException = null) =>
-        new(VerificationFlowFailureType.PersistorAccess,
+    public static VerificationFlowFailure PersistorAccess(string? details = null, Exception? innerException = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.PersistorAccess,
             details ?? VerificationFlowMessageKeys.DataAccess,
             ErrorCodes.PersistorAccess,
             innerException);
+    }
 
-    public static VerificationFlowFailure PersistorAccess(Exception innerException) =>
-        new(VerificationFlowFailureType.PersistorAccess,
+    public static VerificationFlowFailure PersistorAccess(Exception innerException)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.PersistorAccess,
             VerificationFlowMessageKeys.DataAccess,
             ErrorCodes.PersistorAccess,
             innerException);
+    }
 
-    public static VerificationFlowFailure ConcurrencyConflict(string? details = null) =>
-        new(VerificationFlowFailureType.ConcurrencyConflict,
+    public static VerificationFlowFailure ConcurrencyConflict(string? details = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.ConcurrencyConflict,
             details ?? VerificationFlowMessageKeys.ConcurrencyConflict,
             ErrorCodes.ConcurrencyConflict);
+    }
 
-    public static VerificationFlowFailure RateLimitExceeded(string? details = null) =>
-        new(VerificationFlowFailureType.RateLimitExceeded,
+    public static VerificationFlowFailure RateLimitExceeded(string? details = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.RateLimitExceeded,
             details ?? VerificationFlowMessageKeys.RateLimitExceeded,
             ErrorCodes.RateLimitExceeded);
+    }
 
-    public static VerificationFlowFailure Validation(string? details = null) =>
-        new(VerificationFlowFailureType.Validation,
+    public static VerificationFlowFailure Validation(string? details = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.Validation,
             details ?? VerificationFlowMessageKeys.Validation,
             ErrorCodes.Validation);
+    }
 
-    public static VerificationFlowFailure Generic(string? details = null, Exception? innerException = null) =>
-        new(VerificationFlowFailureType.Generic,
+    public static VerificationFlowFailure Generic(string? details = null, Exception? innerException = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.Generic,
             details ?? VerificationFlowMessageKeys.Generic,
             ErrorCodes.Generic,
             innerException);
+    }
 
     private static class ErrorCodes
     {
@@ -139,8 +169,8 @@ public readonly struct VerificationFlowFailure : IEquatable<VerificationFlowFail
     };
 
     /// <summary>
-    /// Determines if this failure should be shown to the user with a localized message.
-    /// Returns true for user-facing errors that can be safely displayed in the UI.
+    ///     Determines if this failure should be shown to the user with a localized message.
+    ///     Returns true for user-facing errors that can be safely displayed in the UI.
     /// </summary>
     public bool IsUserFacing => FailureType switch
     {
@@ -177,35 +207,51 @@ public readonly struct VerificationFlowFailure : IEquatable<VerificationFlowFail
     };
 
     // Proper IEquatable<VerificationFlowFailure> implementation
-    public bool Equals(VerificationFlowFailure other) =>
-        FailureType == other.FailureType &&
-        Message == other.Message &&
-        ErrorCode == other.ErrorCode;
-
-    public override bool Equals(object? obj) =>
-        obj is VerificationFlowFailure other && Equals(other);
-
-    public override int GetHashCode() =>
-        HashCode.Combine(FailureType, Message, ErrorCode);
-
-    public static bool operator ==(VerificationFlowFailure left, VerificationFlowFailure right) =>
-        left.Equals(right);
-
-    public static bool operator !=(VerificationFlowFailure left, VerificationFlowFailure right) =>
-        !left.Equals(right);
-
-    public override string ToString() => $"[{ErrorCode}] {FailureType}: {Message}";
-
-    public object ToStructuredLog() => new
+    public bool Equals(VerificationFlowFailure other)
     {
-        ErrorCode,
-        Type = FailureType.ToString(),
-        Message,
-        Timestamp,
-        HasInnerException = InnerException != null,
-        InnerExceptionType = InnerException?.GetType().Name,
-        IsUserFacing,
-        IsRecoverable,
-        IsSecurityRelated
-    };
+        return FailureType == other.FailureType &&
+               Message == other.Message &&
+               ErrorCode == other.ErrorCode;
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is VerificationFlowFailure other && Equals(other);
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(FailureType, Message, ErrorCode);
+    }
+
+    public static bool operator ==(VerificationFlowFailure left, VerificationFlowFailure right)
+    {
+        return left.Equals(right);
+    }
+
+    public static bool operator !=(VerificationFlowFailure left, VerificationFlowFailure right)
+    {
+        return !left.Equals(right);
+    }
+
+    public override string ToString()
+    {
+        return $"[{ErrorCode}] {FailureType}: {Message}";
+    }
+
+    public object ToStructuredLog()
+    {
+        return new
+        {
+            ErrorCode,
+            Type = FailureType.ToString(),
+            Message,
+            Timestamp,
+            HasInnerException = InnerException != null,
+            InnerExceptionType = InnerException?.GetType().Name,
+            IsUserFacing,
+            IsRecoverable,
+            IsSecurityRelated
+        };
+    }
 }

@@ -2,14 +2,6 @@ namespace Ecliptix.Domain.Memberships.PhoneNumberValidation;
 
 public record PhoneNumberValidationResult
 {
-    public bool IsValid { get; }
-    public string? ParsedPhoneNumberE164 { get; }
-    public string? DetectedRegion { get; }
-    public MobileCheckStatus MobileStatus { get; }
-    public string? MessageKey { get; }
-    public object[]? MessageArgs { get; }
-    public ValidationFailureReason? LibFailureReason { get; }
-
     public PhoneNumberValidationResult(
         string parsedPhoneNumberE164,
         string detectedRegion,
@@ -34,6 +26,14 @@ public record PhoneNumberValidationResult
         MobileStatus = MobileCheckStatus.IsNotMobile;
         MessageArgs = messageArgs;
     }
+
+    public bool IsValid { get; }
+    public string? ParsedPhoneNumberE164 { get; }
+    public string? DetectedRegion { get; }
+    public MobileCheckStatus MobileStatus { get; }
+    public string? MessageKey { get; }
+    public object[]? MessageArgs { get; }
+    public ValidationFailureReason? LibFailureReason { get; }
 
     public static PhoneNumberValidationResult CreateInvalid(
         string messageKey,

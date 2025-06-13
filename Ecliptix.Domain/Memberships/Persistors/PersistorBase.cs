@@ -53,10 +53,7 @@ public abstract class PersistorBase<TFailure>(
         IDbCommand command = connection.CreateCommand();
         command.CommandText = sql;
         command.CommandType = commandType;
-        foreach (IDbDataParameter parameter in parameters)
-        {
-            command.Parameters.Add(parameter);
-        }
+        foreach (IDbDataParameter parameter in parameters) command.Parameters.Add(parameter);
 
         return command;
     }
@@ -138,15 +135,14 @@ public abstract class PersistorBase<TFailure>(
         return activity;
     }
 
-    private static void SetConnectionTags(Activity? activity, IDbConnection conn) =>
+    private static void SetConnectionTags(Activity? activity, IDbConnection conn)
+    {
         activity?.SetTag("db.name", conn.Database);
+    }
 
     private static void CompleteActivity(Stopwatch stopwatch, Activity? activity, bool isSuccess)
     {
-        if (activity is null)
-        {
-            return;
-        }
+        if (activity is null) return;
 
         activity.SetTag("otel.duration_ms", stopwatch.ElapsedMilliseconds);
         activity.SetStatus(isSuccess ? ActivityStatusCode.Ok : ActivityStatusCode.Error);
@@ -154,17 +150,11 @@ public abstract class PersistorBase<TFailure>(
 
     private static void SetErrorActivity(Activity? activity, string message, string errorType, string? errorCode = null)
     {
-        if (activity is null)
-        {
-            return;
-        }
+        if (activity is null) return;
 
         activity.SetStatus(ActivityStatusCode.Error, message);
         activity.SetTag("error.type", errorType);
 
-        if (!string.IsNullOrEmpty(errorCode))
-        {
-            activity.SetTag("error.code", errorCode);
-        }
+        if (!string.IsNullOrEmpty(errorCode)) activity.SetTag("error.code", errorCode);
     }
 }

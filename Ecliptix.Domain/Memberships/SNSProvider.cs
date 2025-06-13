@@ -5,10 +5,6 @@ namespace Ecliptix.Domain.Memberships;
 
 public class SNSProvider
 {
-    public SNSProvider()
-    {
-    }
-
     public Task<Result<Unit, VerificationFlowFailure>> SendSmsAsync(string mobile, string message)
     {
         /*// Prepare SNS request

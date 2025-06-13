@@ -1,13 +1,7 @@
-using Grpc.Core;
-
 namespace Ecliptix.Core.Protocol.Failures;
 
 public class SodiumFailure
 {
-    public SodiumFailureType Type { get; }
-    public string Message { get; }
-    public Exception? InnerException { get; }
-
     private SodiumFailure(SodiumFailureType type, string message, Exception? innerException = null)
     {
         Type = type;
@@ -15,45 +9,76 @@ public class SodiumFailure
         InnerException = innerException;
     }
 
-    public static SodiumFailure InitializationFailed(string details, Exception? inner = null) =>
-        new(SodiumFailureType.InitializationFailed, details, inner);
+    public SodiumFailureType Type { get; }
+    public string Message { get; }
+    public Exception? InnerException { get; }
 
-    public static SodiumFailure LibraryNotFound(string details, Exception? inner = null) =>
-        new(SodiumFailureType.LibraryNotFound, details, inner);
+    public static SodiumFailure InitializationFailed(string details, Exception? inner = null)
+    {
+        return new SodiumFailure(SodiumFailureType.InitializationFailed, details, inner);
+    }
 
-    public static SodiumFailure AllocationFailed(string details, Exception? inner = null) =>
-        new(SodiumFailureType.AllocationFailed, details, inner);
+    public static SodiumFailure LibraryNotFound(string details, Exception? inner = null)
+    {
+        return new SodiumFailure(SodiumFailureType.LibraryNotFound, details, inner);
+    }
 
-    public static SodiumFailure MemoryPinningFailed(string details, Exception? inner = null) =>
-        new(SodiumFailureType.MemoryPinningFailed, details, inner);
+    public static SodiumFailure AllocationFailed(string details, Exception? inner = null)
+    {
+        return new SodiumFailure(SodiumFailureType.AllocationFailed, details, inner);
+    }
 
-    public static SodiumFailure SecureWipeFailed(string details, Exception? inner = null) =>
-        new(SodiumFailureType.SecureWipeFailed, details, inner);
+    public static SodiumFailure MemoryPinningFailed(string details, Exception? inner = null)
+    {
+        return new SodiumFailure(SodiumFailureType.MemoryPinningFailed, details, inner);
+    }
 
-    public static SodiumFailure MemoryProtectionFailed(string details, Exception? inner = null) =>
-        new(SodiumFailureType.MemoryProtectionFailed, details, inner);
+    public static SodiumFailure SecureWipeFailed(string details, Exception? inner = null)
+    {
+        return new SodiumFailure(SodiumFailureType.SecureWipeFailed, details, inner);
+    }
 
-    public static SodiumFailure NullPointer(string details) =>
-        new(SodiumFailureType.NullPointer, details);
+    public static SodiumFailure MemoryProtectionFailed(string details, Exception? inner = null)
+    {
+        return new SodiumFailure(SodiumFailureType.MemoryProtectionFailed, details, inner);
+    }
 
-    public static SodiumFailure InvalidBufferSize(string details) =>
-        new(SodiumFailureType.InvalidBufferSize, details);
+    public static SodiumFailure NullPointer(string details)
+    {
+        return new SodiumFailure(SodiumFailureType.NullPointer, details);
+    }
 
-    public static SodiumFailure BufferTooSmall(string details) =>
-        new(SodiumFailureType.BufferTooSmall, details);
+    public static SodiumFailure InvalidBufferSize(string details)
+    {
+        return new SodiumFailure(SodiumFailureType.InvalidBufferSize, details);
+    }
 
-    public static SodiumFailure BufferTooLarge(string details) =>
-        new(SodiumFailureType.BufferTooLarge, details);
+    public static SodiumFailure BufferTooSmall(string details)
+    {
+        return new SodiumFailure(SodiumFailureType.BufferTooSmall, details);
+    }
 
-    public override string ToString() =>
-        $"SodiumFailure(Type={Type}, Message='{Message}'{(InnerException != null ? $", InnerException='{InnerException.GetType().Name}: {InnerException.Message}'" : "")})";
+    public static SodiumFailure BufferTooLarge(string details)
+    {
+        return new SodiumFailure(SodiumFailureType.BufferTooLarge, details);
+    }
 
-    public override bool Equals(object? obj) =>
-        obj is SodiumFailure other &&
-        Type == other.Type &&
-        Message == other.Message &&
-        Equals(InnerException, other.InnerException);
+    public override string ToString()
+    {
+        return
+            $"SodiumFailure(Type={Type}, Message='{Message}'{(InnerException != null ? $", InnerException='{InnerException.GetType().Name}: {InnerException.Message}'" : "")})";
+    }
 
-    public override int GetHashCode() =>
-        HashCode.Combine(Type, Message, InnerException);
+    public override bool Equals(object? obj)
+    {
+        return obj is SodiumFailure other &&
+               Type == other.Type &&
+               Message == other.Message &&
+               Equals(InnerException, other.InnerException);
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(Type, Message, InnerException);
+    }
 }

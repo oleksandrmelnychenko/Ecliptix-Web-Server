@@ -12,10 +12,8 @@ public sealed class DbConnectionFactory : IDbConnectionFactory
     {
         string? connectionString = configuration.GetConnectionString("EcliptixMemberships");
         if (string.IsNullOrEmpty(connectionString))
-        {
             throw new InvalidOperationException(
                 "Connection string 'EcliptixDb' not found or is empty in configuration.");
-        }
 
         _connectionString = connectionString;
     }

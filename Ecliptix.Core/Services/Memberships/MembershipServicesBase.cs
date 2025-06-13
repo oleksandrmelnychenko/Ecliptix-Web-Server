@@ -3,7 +3,6 @@ using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Services.Utilities;
-using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
@@ -14,17 +13,17 @@ namespace Ecliptix.Core.Services.Memberships;
 
 public abstract class MembershipServicesBase(
     IActorRegistry actorRegistry,
-    ILogger<MembershipServices> logger) : Ecliptix.Protobuf.Membership.MembershipServices.MembershipServicesBase
+    ILogger<MembershipServices> logger) : Protobuf.Membership.MembershipServices.MembershipServicesBase
 {
+    private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
     protected readonly ILogger<MembershipServices> Logger = logger;
 
     protected readonly IActorRef MembershipActor = actorRegistry.Get<MembershipActor>();
 
-    private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
-
     protected string CultureName { get; private set; } = CultureInfo.CurrentCulture.Name;
-    
-    protected async Task<Result<byte[], EcliptixProtocolFailure>> DecryptRequest(CipherPayload request, ServerCallContext context)
+
+    protected async Task<Result<byte[], EcliptixProtocolFailure>> DecryptRequest(CipherPayload request,
+        ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
@@ -63,10 +62,7 @@ public abstract class MembershipServicesBase(
     {
         Result<CipherPayload, EcliptixProtocolFailure> encryptResult =
             await EncryptRequest(data, PubKeyExchangeType.DataCenterEphemeralConnect, context);
-        if (encryptResult.IsOk)
-        {
-            return encryptResult.Unwrap();
-        }
+        if (encryptResult.IsOk) return encryptResult.Unwrap();
 
         HandleError(encryptResult.UnwrapErr(), context);
         return new CipherPayload();

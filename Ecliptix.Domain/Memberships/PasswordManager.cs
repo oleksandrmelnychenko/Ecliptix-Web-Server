@@ -18,8 +18,9 @@ public sealed class PasswordManager
     private static readonly Regex AlphanumericOnlyRegex =
         new("^[a-zA-Z0-9]*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private readonly int _iterations;
     private readonly HashAlgorithmName _hashAlgorithmName;
+
+    private readonly int _iterations;
     private readonly int _saltSize;
 
     private PasswordManager(int iterations, HashAlgorithmName hashAlgorithmName, int saltSize)
@@ -35,16 +36,12 @@ public sealed class PasswordManager
         int saltSize = DefaultSaltSize)
     {
         if (iterations <= 0)
-        {
             return Result<PasswordManager, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Validation(VerificationFlowMessageKeys.PasswordManagerConfigIterations));
-        }
 
         if (saltSize <= 0)
-        {
             return Result<PasswordManager, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Validation(VerificationFlowMessageKeys.PasswordManagerConfigSaltSize));
-        }
 
         HashAlgorithmName effectiveHashAlgorithm = hashAlgorithmName ?? HashAlgorithmName.SHA256;
 
@@ -52,10 +49,8 @@ public sealed class PasswordManager
             effectiveHashAlgorithm != HashAlgorithmName.SHA256 &&
             effectiveHashAlgorithm != HashAlgorithmName.SHA384 &&
             effectiveHashAlgorithm != HashAlgorithmName.SHA512)
-        {
             return Result<PasswordManager, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Validation(VerificationFlowMessageKeys.PasswordManagerConfigHashAlgorithm));
-        }
 
         return Result<PasswordManager, VerificationFlowFailure>.Ok(new PasswordManager(iterations,
             effectiveHashAlgorithm,
@@ -91,45 +86,53 @@ public sealed class PasswordManager
             : Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
     }
 
-    private static Option<string> ValidatePasswordNotEmpty((string Password, PasswordPolicy Policy) input) =>
-        string.IsNullOrEmpty(input.Password)
+    private static Option<string> ValidatePasswordNotEmpty((string Password, PasswordPolicy Policy) input)
+    {
+        return string.IsNullOrEmpty(input.Password)
             ? Option<string>.Some(VerificationFlowMessageKeys.PasswordEmpty)
             : Option<string>.None;
+    }
 
-    private static Option<string> ValidatePasswordLength((string Password, PasswordPolicy Policy) input) =>
-        !string.IsNullOrEmpty(input.Password) && input.Password.Length < input.Policy.MinLength
+    private static Option<string> ValidatePasswordLength((string Password, PasswordPolicy Policy) input)
+    {
+        return !string.IsNullOrEmpty(input.Password) && input.Password.Length < input.Policy.MinLength
             ? Option<string>.Some(VerificationFlowMessageKeys.PasswordTooShort)
             : Option<string>.None;
+    }
 
-    private static Option<string> ValidateLowercaseRequirement((string Password, PasswordPolicy Policy) input) =>
-        !string.IsNullOrEmpty(input.Password) &&
-        input.Policy.RequireLowercase &&
-        !LowercaseRegex.IsMatch(input.Password)
+    private static Option<string> ValidateLowercaseRequirement((string Password, PasswordPolicy Policy) input)
+    {
+        return !string.IsNullOrEmpty(input.Password) &&
+               input.Policy.RequireLowercase &&
+               !LowercaseRegex.IsMatch(input.Password)
             ? Option<string>.Some(VerificationFlowMessageKeys.PasswordMissingLowercase)
             : Option<string>.None;
+    }
 
-    private static Option<string> ValidateUppercaseRequirement((string Password, PasswordPolicy Policy) input) =>
-        !string.IsNullOrEmpty(input.Password) &&
-        input.Policy.RequireUppercase &&
-        !UppercaseRegex.IsMatch(input.Password)
+    private static Option<string> ValidateUppercaseRequirement((string Password, PasswordPolicy Policy) input)
+    {
+        return !string.IsNullOrEmpty(input.Password) &&
+               input.Policy.RequireUppercase &&
+               !UppercaseRegex.IsMatch(input.Password)
             ? Option<string>.Some(VerificationFlowMessageKeys.PasswordMissingUppercase)
             : Option<string>.None;
+    }
 
-    private static Option<string> ValidateDigitRequirement((string Password, PasswordPolicy Policy) input) =>
-        !string.IsNullOrEmpty(input.Password) &&
-        input.Policy.RequireDigit &&
-        !DigitRegex.IsMatch(input.Password)
+    private static Option<string> ValidateDigitRequirement((string Password, PasswordPolicy Policy) input)
+    {
+        return !string.IsNullOrEmpty(input.Password) &&
+               input.Policy.RequireDigit &&
+               !DigitRegex.IsMatch(input.Password)
             ? Option<string>.Some(VerificationFlowMessageKeys.PasswordMissingDigit)
             : Option<string>.None;
+    }
 
     private static Option<string> ValidateSpecialCharRequirement((string Password, PasswordPolicy Policy) input)
     {
         if (string.IsNullOrEmpty(input.Password) ||
             !input.Policy.RequireSpecialChar ||
             string.IsNullOrEmpty(input.Policy.AllowedSpecialChars))
-        {
             return Option<string>.None;
-        }
 
         string specialCharPattern = $"[{Regex.Escape(input.Policy.AllowedSpecialChars)}]";
         return !Regex.IsMatch(input.Password, specialCharPattern)
@@ -139,10 +142,7 @@ public sealed class PasswordManager
 
     private static Option<string> ValidateAllowedCharsOnly((string Password, PasswordPolicy Policy) input)
     {
-        if (string.IsNullOrEmpty(input.Password) || !input.Policy.EnforceAllowedCharsOnly)
-        {
-            return Option<string>.None;
-        }
+        if (string.IsNullOrEmpty(input.Password) || !input.Policy.EnforceAllowedCharsOnly) return Option<string>.None;
 
         if (!string.IsNullOrEmpty(input.Policy.AllowedSpecialChars))
         {
@@ -168,10 +168,8 @@ public sealed class PasswordManager
     public Result<string, VerificationFlowFailure> HashPassword(string password)
     {
         if (string.IsNullOrEmpty(password))
-        {
             return Result<string, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Validation(VerificationFlowMessageKeys.PasswordHashInputEmpty));
-        }
 
         return GenerateSalt()
             .Bind(salt => CreatePbkdf2Hash(password, salt))
@@ -181,16 +179,12 @@ public sealed class PasswordManager
     public Result<Unit, VerificationFlowFailure> VerifyPassword(string password, string hashedPasswordWithSalt)
     {
         if (string.IsNullOrEmpty(password))
-        {
             return Result<Unit, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Validation(VerificationFlowMessageKeys.PasswordVerifyInputEmpty));
-        }
 
         if (string.IsNullOrEmpty(hashedPasswordWithSalt))
-        {
             return Result<Unit, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Validation(VerificationFlowMessageKeys.PasswordVerifyStoredHashEmpty));
-        }
 
         return ParseStoredHash(hashedPasswordWithSalt)
             .Bind(parsed => ValidateSaltSize(parsed.Salt).Map(_ => parsed))
@@ -198,14 +192,13 @@ public sealed class PasswordManager
             .Bind(parsed => VerifyPasswordHash(password, parsed.Salt, parsed.Hash));
     }
 
-    private static Result<(byte[] Salt, byte[] Hash), VerificationFlowFailure> ParseStoredHash(string hashedPasswordWithSalt)
+    private static Result<(byte[] Salt, byte[] Hash), VerificationFlowFailure> ParseStoredHash(
+        string hashedPasswordWithSalt)
     {
         string[] parts = hashedPasswordWithSalt.Split(HashSeparator);
         if (parts.Length != 2)
-        {
             return Result<(byte[], byte[]), VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Validation(VerificationFlowMessageKeys.PasswordVerifyInvalidFormat));
-        }
 
         return ParseBase64Component(parts[0])
             .Bind(salt => ParseBase64Component(parts[1]).Map(hash => (salt, hash)));

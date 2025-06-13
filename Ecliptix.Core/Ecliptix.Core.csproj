@@ -10,57 +10,57 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Akka" Version="1.5.40" />
-        <PackageReference Include="Akka.Hosting" Version="1.5.40" />
-        <PackageReference Include="Akka.Persistence" Version="1.5.40" />
-        <PackageReference Include="Grpc.AspNetCore.Server" Version="2.70.0" />
-        <PackageReference Include="Grpc.Core.Api" Version="2.70.0" />
-        <PackageReference Include="Grpc.Net.Common" Version="2.70.0" />
+        <PackageReference Include="Akka" Version="1.5.40"/>
+        <PackageReference Include="Akka.Hosting" Version="1.5.40"/>
+        <PackageReference Include="Akka.Persistence" Version="1.5.40"/>
+        <PackageReference Include="Grpc.AspNetCore.Server" Version="2.70.0"/>
+        <PackageReference Include="Grpc.Core.Api" Version="2.70.0"/>
+        <PackageReference Include="Grpc.Net.Common" Version="2.70.0"/>
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.0"/>
-        <PackageReference Include="Microsoft.Extensions.Localization" Version="9.0.5" />
-        <PackageReference Include="OpenTelemetry" Version="1.11.2" />
-        <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.11.2" />
-        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.11.2" />
-        <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.11.2" />
-        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.11.1" />
-        <PackageReference Include="protobuf-net" Version="3.2.46" />
-        <PackageReference Include="Sodium.Core" Version="1.4.0" />
+        <PackageReference Include="Microsoft.Extensions.Localization" Version="9.0.5"/>
+        <PackageReference Include="OpenTelemetry" Version="1.11.2"/>
+        <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.11.2"/>
+        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.11.2"/>
+        <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.11.2"/>
+        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.11.1"/>
+        <PackageReference Include="protobuf-net" Version="3.2.46"/>
+        <PackageReference Include="Sodium.Core" Version="1.4.0"/>
     </ItemGroup>
 
-   <!-- <ItemGroup>
-        <EmbeddedResource Include="Resources\VerificationFlowResource.en-US.resx">
+    <!-- <ItemGroup>
+         <EmbeddedResource Include="Resources\VerificationFlowResource.en-US.resx">
+             <Generator>PublicResXFileCodeGenerator</Generator>
+             <LastGenOutput>VerificationFlowResource.en-US.Designer.cs</LastGenOutput>
+         </EmbeddedResource>
+         <EmbeddedResource Include="Resources\VerificationFlowResource.uk-UA.resx">
+             <Generator>PublicResXFileCodeGenerator</Generator>
+             <LastGenOutput>VerificationFlowResource.uk-UA.Designer.cs</LastGenOutput>
+         </EmbeddedResource>
+     </ItemGroup>-->
+
+    <ItemGroup>
+        <Content Include="..\.dockerignore">
+            <Link>.dockerignore</Link>
+        </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Ecliptix.Domain\Ecliptix.Domain.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Update="Resources\VerificationFlowRes.resx">
             <Generator>PublicResXFileCodeGenerator</Generator>
-            <LastGenOutput>VerificationFlowResource.en-US.Designer.cs</LastGenOutput>
+            <LastGenOutput>VerificationFlowRes.Designer.cs</LastGenOutput>
         </EmbeddedResource>
-        <EmbeddedResource Include="Resources\VerificationFlowResource.uk-UA.resx">
-            <Generator>PublicResXFileCodeGenerator</Generator>
-            <LastGenOutput>VerificationFlowResource.uk-UA.Designer.cs</LastGenOutput>
-        </EmbeddedResource>
-    </ItemGroup>-->
-    
-    <ItemGroup>
-      <Content Include="..\.dockerignore">
-        <Link>.dockerignore</Link>
-      </Content>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Ecliptix.Domain\Ecliptix.Domain.csproj" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <EmbeddedResource Update="Resources\VerificationFlowRes.resx">
-        <Generator>PublicResXFileCodeGenerator</Generator>
-        <LastGenOutput>VerificationFlowRes.Designer.cs</LastGenOutput>
-      </EmbeddedResource>
-    </ItemGroup>
-
-    <ItemGroup>
-      <Compile Update="Resources\VerificationFlowRes.Designer.cs">
-        <DesignTime>True</DesignTime>
-        <AutoGen>True</AutoGen>
-        <DependentUpon>VerificationFlowRes.resx</DependentUpon>
-      </Compile>
+        <Compile Update="Resources\VerificationFlowRes.Designer.cs">
+            <DesignTime>True</DesignTime>
+            <AutoGen>True</AutoGen>
+            <DependentUpon>VerificationFlowRes.resx</DependentUpon>
+        </Compile>
     </ItemGroup>
 
 </Project>

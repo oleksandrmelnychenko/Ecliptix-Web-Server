@@ -20,8 +20,10 @@ public class AppDevicePersistorActor : AppDevicePersistorBase
         Become(Ready);
     }
 
-    public static Props Build(IDbConnectionFactory connectionFactory, ILogger<AppDevicePersistorActor> logger) =>
-        Props.Create(() => new AppDevicePersistorActor(connectionFactory, logger));
+    public static Props Build(IDbConnectionFactory connectionFactory, ILogger<AppDevicePersistorActor> logger)
+    {
+        return Props.Create(() => new AppDevicePersistorActor(connectionFactory, logger));
+    }
 
     private void Ready()
     {
@@ -48,10 +50,8 @@ public class AppDevicePersistorActor : AppDevicePersistorBase
             }, TaskScheduler.Default);
 
         if (result.UniqueId == Guid.Empty)
-        {
             return Result<(Guid, int), AppDeviceFailure>.Err(
                 AppDeviceFailure.PersistorAccess(AppDeviceMessageKeys.RegistrationNoResult));
-        }
 
         return Result<(Guid, int), AppDeviceFailure>.Ok(result);
     }
@@ -64,12 +64,10 @@ public class AppDevicePersistorActor : AppDevicePersistorBase
     protected override AppDeviceFailure MapDbException(DbException ex)
     {
         if (ex is SqlException sqlEx)
-        {
             return AppDeviceFailure.PersistorAccess(
                 $"SQL Error {sqlEx.Number}: {sqlEx.Message}",
                 sqlEx
             );
-        }
 
         return AppDeviceFailure.PersistorAccess(
             $"Database Error: {ex.Message}",

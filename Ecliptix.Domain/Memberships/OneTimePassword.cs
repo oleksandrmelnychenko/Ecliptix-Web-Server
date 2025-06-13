@@ -21,7 +21,7 @@ public sealed class OneTimePassword
         return Result<(OtpQueryRecord, string), VerificationFlowFailure>.Try(
             () =>
             {
-                Totp totp = new(secretKey: _otpSecretKey, mode: OtpHashMode.Sha256);
+                Totp totp = new(_otpSecretKey, mode: OtpHashMode.Sha256);
                 string otp = totp.ComputeTotp();
 
                 (string hash, string salt) = OneTimePasswordHashing.HashOtp(otp);
@@ -52,28 +52,22 @@ public sealed class OneTimePassword
 
     public bool Verify(string code)
     {
-        if (!IsValidForVerification())
-        {
-            return false;
-        }
+        if (!IsValidForVerification()) return false;
 
-        if (!HasExpired())
-        {
-            return PerformVerification(code);
-        }
+        if (!HasExpired()) return PerformVerification(code);
 
         ConsumeOtp();
         return false;
     }
 
-    private bool IsValidForVerification() => _otpQueryRecord.HasValue && IsActive;
+    private bool IsValidForVerification()
+    {
+        return _otpQueryRecord.HasValue && IsActive;
+    }
 
     private bool HasExpired()
     {
-        if (!_otpQueryRecord.HasValue)
-        {
-            return true;
-        }
+        if (!_otpQueryRecord.HasValue) return true;
 
         OtpQueryRecord record = _otpQueryRecord.Value!;
         return DateTime.UtcNow > record.ExpiresAt;
@@ -83,24 +77,18 @@ public sealed class OneTimePassword
     {
         OtpQueryRecord record = _otpQueryRecord.Value!;
 
-        if (!OneTimePasswordHashing.VerifyOtp(code, record.OtpHash, record.OtpSalt))
-        {
-            return false;
-        }
+        if (!OneTimePasswordHashing.VerifyOtp(code, record.OtpHash, record.OtpSalt)) return false;
 
         Result<bool, VerificationFlowFailure> totpVerificationResult = Result<bool, VerificationFlowFailure>.Try(
             () =>
             {
                 Totp totp = new(_otpSecretKey, mode: OtpHashMode.Sha256);
-                return totp.VerifyTotp(code, out _, new VerificationWindow(previous: 10, future: 0));
+                return totp.VerifyTotp(code, out _, new VerificationWindow(10, 0));
             },
             _ => VerificationFlowFailure.InvalidOtp());
 
         bool isValid = totpVerificationResult.UnwrapOr(false);
-        if (isValid)
-        {
-            ConsumeOtp();
-        }
+        if (isValid) ConsumeOtp();
 
         return isValid;
     }

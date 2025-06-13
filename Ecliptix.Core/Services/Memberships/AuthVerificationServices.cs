@@ -2,7 +2,6 @@ using System.Threading.Channels;
 using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Core.Services.Utilities;
-using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
@@ -146,9 +145,7 @@ public class AuthVerificationServices(
             .Ask<Result<VerifyCodeResponse, VerificationFlowFailure>>(actorEvent);
 
         if (verificationResult.IsOk)
-        {
             return await EncryptAndReturnResponse(verificationResult.Unwrap().ToByteArray(), context);
-        }
 
         HandleVerificationError(verificationResult.UnwrapErr(), context);
         return new CipherPayload();
@@ -163,7 +160,6 @@ public class AuthVerificationServices(
         {
             await foreach (Result<VerificationCountdownUpdate, VerificationFlowFailure> updateResult in
                            reader.ReadAllAsync(context.CancellationToken))
-            {
                 if (updateResult.IsOk)
                 {
                     Result<CipherPayload, EcliptixProtocolFailure> encryptResult = await EncryptRequest(
@@ -187,7 +183,6 @@ public class AuthVerificationServices(
                     HandleVerificationError(updateResult.UnwrapErr(), context);
                     break;
                 }
-            }
         }
         catch (OperationCanceledException)
         {
@@ -203,10 +198,7 @@ public class AuthVerificationServices(
     {
         Result<CipherPayload, EcliptixProtocolFailure> encryptResult =
             await EncryptRequest(data, PubKeyExchangeType.DataCenterEphemeralConnect, context);
-        if (encryptResult.IsOk)
-        {
-            return encryptResult.Unwrap();
-        }
+        if (encryptResult.IsOk) return encryptResult.Unwrap();
 
         HandleProtocolError(encryptResult.UnwrapErr(), context);
         return new CipherPayload();
@@ -222,17 +214,11 @@ public class AuthVerificationServices(
     private void HandleVerificationError(VerificationFlowFailure failure, ServerCallContext context)
     {
         if (failure.IsSecurityRelated)
-        {
             Logger.LogWarning("Security-related verification error: {Error}", failure.ToStructuredLog());
-        }
         else if (!failure.IsUserFacing)
-        {
             Logger.LogError("System verification error: {Error}", failure.ToStructuredLog());
-        }
         else
-        {
             Logger.LogInformation("User verification error: {Error}", failure.ToStructuredLog());
-        }
 
         Status status = failure.ToGrpcStatus();
         throw new RpcException(status);

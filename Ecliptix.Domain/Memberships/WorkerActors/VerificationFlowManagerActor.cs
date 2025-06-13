@@ -9,10 +9,10 @@ namespace Ecliptix.Domain.Memberships.WorkerActors;
 
 public class VerificationFlowManagerActor : ReceiveActor
 {
-    private readonly IActorRef _persistor;
-    private readonly IActorRef _membershipActor;
-    private readonly SNSProvider _snsProvider;
     private readonly ILocalizationProvider _localizationProvider;
+    private readonly IActorRef _membershipActor;
+    private readonly IActorRef _persistor;
+    private readonly SNSProvider _snsProvider;
 
     public VerificationFlowManagerActor(
         IActorRef persistor,
@@ -80,15 +80,11 @@ public class VerificationFlowManagerActor : ReceiveActor
         IActorRef? childActor = Context.Child(GetActorName(actorEvent.ConnectId));
 
         if (!childActor.IsNobody())
-        {
             childActor.Forward(actorEvent);
-        }
         else
-        {
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.NotFound(
                     "Verification flow not found. It may have expired or has been completed.")));
-        }
     }
 
     private void HandleTerminated(Terminated msg)
@@ -96,10 +92,15 @@ public class VerificationFlowManagerActor : ReceiveActor
         Log.Information("Verification flow actor {ActorPath} has terminated.", msg.ActorRef.Path);
     }
 
-    private static string GetActorName(uint connectId) => $"flow-{connectId}";
+    private static string GetActorName(uint connectId)
+    {
+        return $"flow-{connectId}";
+    }
 
     public static Props Build(IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
-        ILocalizationProvider localizationProvider) =>
-        Props.Create(() =>
+        ILocalizationProvider localizationProvider)
+    {
+        return Props.Create(() =>
             new VerificationFlowManagerActor(persistor, membershipActor, snsProvider, localizationProvider));
+    }
 }

@@ -15,7 +15,7 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
         {
             string message = localizationProvider.Localize(VerificationFlowMessageKeys.PhoneNumberEmpty, cultureName);
             return Result<PhoneNumberValidationResult, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PhoneNumberInvalid(message, null)
+                VerificationFlowFailure.PhoneNumberInvalid(message)
             );
         }
 
@@ -25,7 +25,7 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
             string message =
                 localizationProvider.Localize(VerificationFlowMessageKeys.InvalidDefaultRegion, cultureName);
             return Result<PhoneNumberValidationResult, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Generic(message, null)
+                VerificationFlowFailure.Generic(message)
             );
         }
 
@@ -35,8 +35,6 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
             .MapErr(failure => failure);
     }
 
-    private record ParsedNumberDetails(PhoneNumber PhoneNumber, string E164Format);
-
     private Result<ParsedNumberDetails, VerificationFlowFailure> ParsePhoneNumber(
         string phoneNumberStr, string cultureName, string? defaultRegion)
     {
@@ -45,7 +43,7 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
             PhoneNumber parsedPhoneNumber = _phoneNumberUtil.Parse(phoneNumberStr, defaultRegion);
             string e164Format = _phoneNumberUtil.Format(parsedPhoneNumber, PhoneNumberFormat.E164);
             return new ParsedNumberDetails(parsedPhoneNumber, e164Format);
-        }, errorMapper: ex =>
+        }, ex =>
         {
             if (ex is NumberParseException npe)
             {
@@ -90,7 +88,7 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
             MobileCheckStatus mobileStatus = DetermineMobileStatus(libType);
             string? detectedRegion = _phoneNumberUtil.GetRegionCodeForNumber(parsedPhoneNumber);
             return new PhoneNumberValidationResult(e164Format, detectedRegion ?? "Unknown", mobileStatus);
-        }, errorMapper: ex =>
+        }, ex =>
         {
             string message = localizationProvider.Localize(VerificationFlowMessageKeys.PhoneValidationUnexpectedError,
                 cultureName);
@@ -98,14 +96,17 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
         });
     }
 
-    private static MobileCheckStatus DetermineMobileStatus(PhoneNumberType libType) =>
-        libType is PhoneNumberType.MOBILE or PhoneNumberType.FIXED_LINE_OR_MOBILE
+    private static MobileCheckStatus DetermineMobileStatus(PhoneNumberType libType)
+    {
+        return libType is PhoneNumberType.MOBILE or PhoneNumberType.FIXED_LINE_OR_MOBILE
             ? MobileCheckStatus.IsMobile
             : MobileCheckStatus.IsNotMobile;
+    }
 
     private static ValidationFailureReason MapLibValidationReasonToInternalReason(
-        PhoneNumberUtil.ValidationResult libReason) =>
-        libReason switch
+        PhoneNumberUtil.ValidationResult libReason)
+    {
+        return libReason switch
         {
             PhoneNumberUtil.ValidationResult.INVALID_COUNTRY_CODE => ValidationFailureReason.InvalidCountryCode,
             PhoneNumberUtil.ValidationResult.TOO_SHORT => ValidationFailureReason.TooShort,
@@ -113,9 +114,11 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
             PhoneNumberUtil.ValidationResult.IS_POSSIBLE_LOCAL_ONLY => ValidationFailureReason.PossibleButNotCertain,
             _ => ValidationFailureReason.InvalidNumber
         };
+    }
 
-    private static string MapLibValidationReasonToMessageKey(PhoneNumberUtil.ValidationResult libReason) =>
-        libReason switch
+    private static string MapLibValidationReasonToMessageKey(PhoneNumberUtil.ValidationResult libReason)
+    {
+        return libReason switch
         {
             PhoneNumberUtil.ValidationResult.INVALID_COUNTRY_CODE => VerificationFlowMessageKeys
                 .PhoneParsingInvalidCountryCode,
@@ -125,4 +128,7 @@ public class PhoneNumberValidator(ILocalizationProvider localizationProvider) : 
                 .PhoneParsingPossibleButLocalOnly,
             _ => VerificationFlowMessageKeys.PhoneParsingInvalidNumber
         };
+    }
+
+    private record ParsedNumberDetails(PhoneNumber PhoneNumber, string E164Format);
 }

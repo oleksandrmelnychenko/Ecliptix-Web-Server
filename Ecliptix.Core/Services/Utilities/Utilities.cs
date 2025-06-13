@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Google.Protobuf;
 using Grpc.Core;
 
@@ -12,6 +11,8 @@ public static class ServiceUtilities
         return parser.ParseFrom(data);
     }
 
-    public static uint ExtractConnectId(ServerCallContext context) =>
-        (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
+    public static uint ExtractConnectId(ServerCallContext context)
+    {
+        return (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
+    }
 }

@@ -25,8 +25,10 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     }
 
     public static Props Build(IDbConnectionFactory connectionFactory,
-        ILogger<VerificationFlowPersistorActor> logger) =>
-        Props.Create(() => new VerificationFlowPersistorActor(connectionFactory, logger));
+        ILogger<VerificationFlowPersistorActor> logger)
+    {
+        return Props.Create(() => new VerificationFlowPersistorActor(connectionFactory, logger));
+    }
 
     private void Ready()
     {
@@ -65,9 +67,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             commandType: CommandType.StoredProcedure);
 
         if (result is null)
-        {
             return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(VerificationFlowFailure.NotFound());
-        }
 
         return result.Outcome switch
         {
@@ -174,10 +174,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             commandType: CommandType.StoredProcedure);
 
         if (result is null)
-        {
             return Result<Guid, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess("Unknown error: EnsurePhoneNumber returned no result."));
-        }
 
         return !result.Success
             ? Result<Guid, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(result.Outcome))
@@ -211,7 +209,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             Status = Enum.Parse<VerificationFlowStatus>(result.Status, true),
             Purpose = Enum.Parse<VerificationPurpose>(result.Purpose, true),
             OtpCount = result.OtpCount,
-            OtpActive = otpActive.HasValue ? otpActive.Value : null,
+            OtpActive = otpActive.HasValue ? otpActive.Value : null
         };
 
         return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Ok(flowRecord);
@@ -220,14 +218,12 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     protected override VerificationFlowFailure MapDbException(DbException ex)
     {
         if (ex is SqlException sqlEx)
-        {
             return sqlEx.Number switch
             {
                 2627 or 2601 => VerificationFlowFailure.ConcurrencyConflict(sqlEx.Message),
                 547 => VerificationFlowFailure.Validation($"Foreign key violation: {sqlEx.Message}"),
                 _ => VerificationFlowFailure.PersistorAccess(sqlEx)
             };
-        }
 
         return VerificationFlowFailure.PersistorAccess(ex);
     }

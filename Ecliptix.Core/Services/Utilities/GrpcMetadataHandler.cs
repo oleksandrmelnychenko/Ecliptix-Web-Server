@@ -36,17 +36,16 @@ public static class GrpcMetadataHandler
 
     private static readonly List<string> AllowedKeyExchangeContextTypes = [KeyExchangeContextTypeValue];
 
-    public static Result<Unit, MetaDataSystemFailure> ValidateRequiredMetaDataParams(Metadata requestHeaders) =>
-        requestHeaders.GetValueAsResult(LinkIdKey)
+    public static Result<Unit, MetaDataSystemFailure> ValidateRequiredMetaDataParams(Metadata requestHeaders)
+    {
+        return requestHeaders.GetValueAsResult(LinkIdKey)
             .AndThen(_ => requestHeaders.GetValueAsResult(ApplicationInstanceIdKey))
             .AndThen(_ => requestHeaders.GetValueAsResult(KeyExchangeContextTypeKey))
             .Bind(contextTypeValue =>
             {
                 if (!AllowedKeyExchangeContextTypes.Contains(contextTypeValue))
-                {
                     return Result<string, MetaDataSystemFailure>.Err(
                         MetaDataSystemFailure.ComponentNotFound(contextTypeValue));
-                }
 
                 return Result<string, MetaDataSystemFailure>.Ok(contextTypeValue);
             })
@@ -54,9 +53,11 @@ public static class GrpcMetadataHandler
             .AndThen(_ => requestHeaders.GetValueAsResult(AppDeviceId))
             .AndThen(_ => requestHeaders.GetValueAsResult(ConnectionContextId))
             .Map(_ => Unit.Value);
+    }
 
-    public static Result<uint, MetaDataSystemFailure> ComputeUniqueConnectId(Metadata requestHeaders) =>
-        requestHeaders.GetValueAsResult(ApplicationInstanceIdKey)
+    public static Result<uint, MetaDataSystemFailure> ComputeUniqueConnectId(Metadata requestHeaders)
+    {
+        return requestHeaders.GetValueAsResult(ApplicationInstanceIdKey)
             .Bind(appInstanceIdStr => Guid.TryParse(appInstanceIdStr, out Guid appInstanceId)
                 ? Result<Guid, MetaDataSystemFailure>.Ok(appInstanceId)
                 : Result<Guid, MetaDataSystemFailure>.Err(
@@ -90,16 +91,10 @@ public static class GrpcMetadataHandler
                 byte[] appDeviceIdBytes = data.appDeviceId.ToByteArray();
                 uint contextTypeUint = (uint)data.contextType;
                 byte[] contextTypeBytes = BitConverter.GetBytes(contextTypeUint);
-                if (BitConverter.IsLittleEndian)
-                {
-                    Array.Reverse(contextTypeBytes);
-                }
+                if (BitConverter.IsLittleEndian) Array.Reverse(contextTypeBytes);
 
                 int totalLength = appInstanceIdBytes.Length + appDeviceIdBytes.Length + contextTypeBytes.Length;
-                if (data.opContextId.HasValue)
-                {
-                    totalLength += 16;
-                }
+                if (data.opContextId.HasValue) totalLength += 16;
 
                 byte[] combined = new byte[totalLength];
                 int offset = 0;
@@ -118,18 +113,27 @@ public static class GrpcMetadataHandler
                 byte[] hash = SHA256.HashData(combined);
                 return BinaryPrimitives.ReadUInt32BigEndian(hash.AsSpan(0, 4));
             });
+    }
 
-    public static string GetRequestedLocale(Metadata requestHeaders) =>
-        requestHeaders.GetValueAsResult(LocaleKey).Unwrap();
+    public static string GetRequestedLocale(Metadata requestHeaders)
+    {
+        return requestHeaders.GetValueAsResult(LocaleKey).Unwrap();
+    }
 
-    public static string GetAppDeviceId(Metadata requestHeaders) =>
-        requestHeaders.GetValueAsResult(AppDeviceId).Unwrap();
+    public static string GetAppDeviceId(Metadata requestHeaders)
+    {
+        return requestHeaders.GetValueAsResult(AppDeviceId).Unwrap();
+    }
 
-    public static string GetConnectionContextId(Metadata requestHeaders) =>
-        requestHeaders.GetValueAsResult(ConnectionContextId).Unwrap();
+    public static string GetConnectionContextId(Metadata requestHeaders)
+    {
+        return requestHeaders.GetValueAsResult(ConnectionContextId).Unwrap();
+    }
 
-    public static Result<string, MetaDataSystemFailure> GetOperationContextId(Metadata requestHeaders) =>
-        requestHeaders.GetValueAsResult(OperationContextId);
+    public static Result<string, MetaDataSystemFailure> GetOperationContextId(Metadata requestHeaders)
+    {
+        return requestHeaders.GetValueAsResult(OperationContextId);
+    }
 
     public static Result<ExtractedMetadata, MetaDataSystemFailure> ExtractRequiredMetaData(ServerCallContext context)
     {

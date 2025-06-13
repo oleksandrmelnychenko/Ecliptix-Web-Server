@@ -18,7 +18,6 @@ using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Serilog;
 using Serilog.Context;
-using Microsoft.Extensions.Localization;
 
 const string systemActorName = "EcliptixProtocolSystemActor";
 
@@ -43,7 +42,7 @@ try
 
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
-    
+
     builder.Services.AddAkka(systemActorName, (akkaBuilder, serviceProvider) =>
     {
         akkaBuilder.WithActors((system, registry) =>
@@ -63,13 +62,13 @@ try
 
             ILogger<EcliptixProtocolSystemActor> protocolActorLogger =
                 serviceProvider.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>();
-            
+
             ILogger<VerificationFlowPersistorActor> verificationFlowLogger =
                 serviceProvider.GetRequiredService<ILogger<VerificationFlowPersistorActor>>();
-            
+
             ILogger<MembershipPersistorActor> membershipPersistorLogger =
                 serviceProvider.GetRequiredService<ILogger<MembershipPersistorActor>>();
-            
+
             ILogger<AppDevicePersistorActor> appDevicePersistorLocalizer = serviceProvider
                 .GetRequiredService<ILogger<AppDevicePersistorActor>>();
 

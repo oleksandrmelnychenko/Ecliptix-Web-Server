@@ -3,7 +3,6 @@ using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Utilities;
@@ -16,22 +15,20 @@ namespace Ecliptix.Domain.Memberships.WorkerActors;
 public class VerificationFlowActor : ReceiveActor, IWithStash
 {
     private readonly uint _connectId;
-    private readonly Guid _phoneNumberIdentifier;
-    private readonly IActorRef _persistor;
-    private readonly IActorRef _membershipActor;
-    private readonly SNSProvider _snsProvider;
-    private readonly ILocalizationProvider _localizationProvider;
     private readonly string _cultureName;
-
-    private ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> _writer;
-    private VerificationFlowQueryRecord _verificationFlow;
+    private readonly ILocalizationProvider _localizationProvider;
+    private readonly IActorRef _membershipActor;
+    private readonly IActorRef _persistor;
+    private readonly Guid _phoneNumberIdentifier;
+    private readonly SNSProvider _snsProvider;
     private OneTimePassword? _activeOtp;
+    private ulong _activeOtpRemainingSeconds;
 
     private ICancelable? _otpTimer = Cancelable.CreateCanceled();
     private ICancelable? _sessionTimer = Cancelable.CreateCanceled();
-    private ulong _activeOtpRemainingSeconds;
+    private VerificationFlowQueryRecord _verificationFlow;
 
-    public IStash Stash { get; set; } = null!;
+    private ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> _writer;
 
     public VerificationFlowActor(
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
@@ -55,13 +52,18 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         ).PipeTo(Self);
     }
 
+    public IStash Stash { get; set; } = null!;
+
     public static Props Build(
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> writer,
         IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
-        ILocalizationProvider localizationProvider, string cultureName) =>
-        Props.Create(() => new VerificationFlowActor(connectId, phoneNumberIdentifier, appDeviceIdentifier, purpose,
+        ILocalizationProvider localizationProvider, string cultureName)
+    {
+        return Props.Create(() => new VerificationFlowActor(connectId, phoneNumberIdentifier, appDeviceIdentifier,
+            purpose,
             writer, persistor, membershipActor, snsProvider, localizationProvider, cultureName));
+    }
 
     private void WaitingForFlow()
     {
@@ -146,13 +148,9 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         }
 
         if (_activeOtp.Verify(actorEvent.OneTimePassword))
-        {
             await HandleSuccessfulVerification();
-        }
         else
-        {
             await HandleFailedVerification(actorEvent.CultureName);
-        }
     }
 
     private async Task HandleSuccessfulVerification()
@@ -189,9 +187,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     {
         if (actorEvent.RequestType != InitiateVerificationRequest.Types.Type.ResendOtp ||
             actorEvent.ConnectId != _connectId)
-        {
             return;
-        }
 
         Result<string, VerificationFlowFailure> checkResult =
             await _persistor.Ask<Result<string, VerificationFlowFailure>>(
@@ -238,24 +234,17 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private void StartTimers()
     {
         CancelTimers();
-        if (_activeOtp?.IsActive != true)
-        {
-            return;
-        }
+        if (_activeOtp?.IsActive != true) return;
 
         TimeSpan sessionDelay = _verificationFlow.ExpiresAt - DateTime.UtcNow;
         if (sessionDelay > TimeSpan.Zero)
-        {
             _sessionTimer = Context.System.Scheduler.ScheduleTellOnceCancelable(sessionDelay, Self,
                 new VerificationFlowExpiredEvent(string.Empty), ActorRefs.NoSender);
-        }
 
         _activeOtpRemainingSeconds = CalculateRemainingSeconds(_activeOtp.ExpiresAt);
         if (_activeOtpRemainingSeconds > 0)
-        {
             _otpTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(TimeSpan.Zero,
                 TimeSpan.FromSeconds(1), Self, new VerificationCountdownUpdate(), ActorRefs.NoSender);
-        }
     }
 
     private async Task HandleTimerTick(VerificationCountdownUpdate _)
@@ -276,9 +265,11 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             }));
     }
 
-    private async Task HandleSessionExpired(VerificationFlowExpiredEvent actorEvent) =>
+    private async Task HandleSessionExpired(VerificationFlowExpiredEvent actorEvent)
+    {
         await TerminateVerificationFlow(VerificationFlowStatus.Expired,
             VerificationFlowMessageKeys.VerificationFlowExpired, actorEvent.CultureName);
+    }
 
     private async Task<Result<Unit, VerificationFlowFailure>> PrepareAndSendOtp(string cultureName)
     {
@@ -288,19 +279,14 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             await _persistor.Ask<Result<PhoneNumberQueryRecord, VerificationFlowFailure>>(getPhoneNumberActorEvent);
 
         if (phoneNumberQueryRecordResult.IsErr)
-        {
             return Result<Unit, VerificationFlowFailure>.Err(phoneNumberQueryRecordResult.UnwrapErr());
-        }
 
         PhoneNumberQueryRecord phoneNumberQueryRecord = phoneNumberQueryRecordResult.Unwrap();
 
         OneTimePassword otp = new();
         Result<(OtpQueryRecord Record, string PlainOtp), VerificationFlowFailure> generationResult =
             otp.Generate(phoneNumberQueryRecord, _verificationFlow.UniqueIdentifier);
-        if (generationResult.IsErr)
-        {
-            return Result<Unit, VerificationFlowFailure>.Err(generationResult.UnwrapErr());
-        }
+        if (generationResult.IsErr) return Result<Unit, VerificationFlowFailure>.Err(generationResult.UnwrapErr());
 
         (OtpQueryRecord otpRecord, string plainOtp) = generationResult.Unwrap();
 
@@ -311,10 +297,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         Result<Unit, VerificationFlowFailure> smsResult =
             await _snsProvider.SendSmsAsync(phoneNumberQueryRecord.PhoneNumber, messageBuilder.ToString());
 
-        if (smsResult.IsErr)
-        {
-            return Result<Unit, VerificationFlowFailure>.Err(smsResult.UnwrapErr());
-        }
+        if (smsResult.IsErr) return Result<Unit, VerificationFlowFailure>.Err(smsResult.UnwrapErr());
 
         _activeOtp = otp;
 
@@ -322,10 +305,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             await _persistor.Ask<Result<CreateOtpResult, VerificationFlowFailure>>(
                 new CreateOtpActorEvent(otpRecord));
 
-        if (createResult.IsErr)
-        {
-            return Result<Unit, VerificationFlowFailure>.Err(createResult.UnwrapErr());
-        }
+        if (createResult.IsErr) return Result<Unit, VerificationFlowFailure>.Err(createResult.UnwrapErr());
 
         _verificationFlow = _verificationFlow with { OtpCount = _verificationFlow.OtpCount + 1 };
 
@@ -360,10 +340,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private async Task UpdateOtpStatus(VerificationFlowStatus status)
     {
         if (_activeOtp != null)
-        {
             await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
                 new UpdateOtpStatusActorEvent(_activeOtp.UniqueIdentifier, status));
-        }
     }
 
     private async Task TerminateVerificationFlow(VerificationFlowStatus status, string messageKey, string cultureName)
@@ -384,17 +362,22 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         Context.Stop(Self);
     }
 
-    private static ulong CalculateRemainingSeconds(DateTime expiresAt) =>
-        (ulong)Math.Max(0, Math.Ceiling((expiresAt - DateTime.UtcNow).TotalSeconds));
+    private static ulong CalculateRemainingSeconds(DateTime expiresAt)
+    {
+        return (ulong)Math.Max(0, Math.Ceiling((expiresAt - DateTime.UtcNow).TotalSeconds));
+    }
 
     private static Result<VerifyCodeResponse, VerificationFlowFailure> CreateVerifyResponse(VerificationResult result,
-        string message) =>
-        Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
+        string message)
+    {
+        return Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
             { Result = result, Message = message });
+    }
 
     private Result<VerifyCodeResponse, VerificationFlowFailure>
-        CreateSuccessResponse(MembershipQueryRecord membership) =>
-        Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
+        CreateSuccessResponse(MembershipQueryRecord membership)
+    {
+        return Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
         {
             Result = VerificationResult.Succeeded,
             Membership = new Membership
@@ -404,33 +387,24 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 CreationStatus = membership.CreationStatus
             }
         });
+    }
 
     //TODO: Test and make properly handle errors
     private void CompleteWithError(VerificationFlowFailure failure)
     {
         if (failure.InnerException is not null)
-        {
             _writer.TryComplete(failure.InnerException);
-        }
         else
-        {
             _writer.Complete();
-        }
 
         Context.Stop(Self);
     }
 
     private void CancelTimers()
     {
-        if (_otpTimer?.IsCancellationRequested == false)
-        {
-            _otpTimer.Cancel();
-        }
+        if (_otpTimer?.IsCancellationRequested == false) _otpTimer.Cancel();
 
-        if (_sessionTimer?.IsCancellationRequested == false)
-        {
-            _sessionTimer.Cancel();
-        }
+        if (_sessionTimer?.IsCancellationRequested == false) _sessionTimer.Cancel();
     }
 
     protected override void PostStop()

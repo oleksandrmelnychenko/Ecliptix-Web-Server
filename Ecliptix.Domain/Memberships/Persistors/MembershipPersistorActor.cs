@@ -17,6 +17,12 @@ namespace Ecliptix.Domain.Memberships.Persistors;
 
 public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 {
+    private static readonly Dictionary<string, Membership.Types.ActivityStatus> MembershipStatusMap = new()
+    {
+        ["active"] = Membership.Types.ActivityStatus.Active,
+        ["inactive"] = Membership.Types.ActivityStatus.Inactive
+    };
+
     public MembershipPersistorActor(
         IDbConnectionFactory connectionFactory,
         ILogger<MembershipPersistorActor> logger)
@@ -26,8 +32,10 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     }
 
     public static Props Build(IDbConnectionFactory connectionFactory,
-        ILogger<MembershipPersistorActor> logger) =>
-        Props.Create(() => new MembershipPersistorActor(connectionFactory, logger));
+        ILogger<MembershipPersistorActor> logger)
+    {
+        return Props.Create(() => new MembershipPersistorActor(connectionFactory, logger));
+    }
 
     private void Ready()
     {
@@ -58,16 +66,12 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         );
 
         if (result is null)
-        {
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
-        }
 
         if (int.TryParse(result.Outcome, out int _))
-        {
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.RateLimitExceeded(VerificationFlowMessageKeys.TooManySigninAttempts));
-        }
 
         return result.Outcome switch
         {
@@ -107,23 +111,17 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         );
 
         if (result is null)
-        {
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
-        }
 
         if (!result.Success)
-        {
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Validation(result.Message));
-        }
 
         if (!result.MembershipUniqueId.HasValue || string.IsNullOrEmpty(result.Status) ||
             string.IsNullOrEmpty(result.CreationStatus))
-        {
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess("Procedure returned success but missing required data."));
-        }
 
         return MapActivityStatus(result.Status).Match(
             status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
@@ -153,16 +151,12 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             commandType: CommandType.StoredProcedure);
 
         if (result is null)
-        {
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.DataAccess));
-        }
 
         if (int.TryParse(result.Outcome, out int _))
-        {
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.RateLimitExceeded(VerificationFlowMessageKeys.TooManyMembershipAttempts));
-        }
 
         return result.Outcome switch
         {
@@ -192,52 +186,51 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         };
     }
 
-    private static bool IsKnownLoginError(string outcome) =>
-        outcome is VerificationFlowMessageKeys.InvalidSecureKey or
+    private static bool IsKnownLoginError(string outcome)
+    {
+        return outcome is VerificationFlowMessageKeys.InvalidSecureKey or
             VerificationFlowMessageKeys.InactiveMembership or
             VerificationFlowMessageKeys.PhoneNumberCannotBeEmpty or
             VerificationFlowMessageKeys.SecureKeyCannotBeEmpty or
             VerificationFlowMessageKeys.SecureKeyNotSet or
             VerificationFlowMessageKeys.PhoneNotFound or
             VerificationFlowMessageKeys.MembershipNotFound;
+    }
 
-    private static bool IsKnownCreationError(string outcome) =>
-        outcome is VerificationFlowMessageKeys.CreateMembershipVerificationFlowNotFound;
+    private static bool IsKnownCreationError(string outcome)
+    {
+        return outcome is VerificationFlowMessageKeys.CreateMembershipVerificationFlowNotFound;
+    }
 
     private static Option<Membership.Types.ActivityStatus> MapActivityStatus(string? statusStr)
     {
-        if (string.IsNullOrEmpty(statusStr) || !MembershipStatusMap.TryGetValue(statusStr, out var status))
-        {
+        if (string.IsNullOrEmpty(statusStr) ||
+            !MembershipStatusMap.TryGetValue(statusStr, out Membership.Types.ActivityStatus status))
             return Option<Membership.Types.ActivityStatus>.None;
-        }
 
         return Option<Membership.Types.ActivityStatus>.Some(status);
     }
 
-    private static readonly Dictionary<string, Membership.Types.ActivityStatus> MembershipStatusMap = new()
-    {
-        ["active"] = Membership.Types.ActivityStatus.Active,
-        ["inactive"] = Membership.Types.ActivityStatus.Inactive,
-    };
-
     protected override VerificationFlowFailure MapDbException(DbException ex)
     {
         if (ex is SqlException sqlEx)
-        {
             return sqlEx.Number switch
             {
                 2627 or 2601 => VerificationFlowFailure.ConcurrencyConflict(sqlEx.Message),
                 547 => VerificationFlowFailure.Validation($"Foreign key violation: {sqlEx.Message}"),
                 _ => VerificationFlowFailure.PersistorAccess(sqlEx)
             };
-        }
 
         return VerificationFlowFailure.PersistorAccess(ex);
     }
 
-    protected override VerificationFlowFailure CreateTimeoutFailure(TimeoutException ex) =>
-        VerificationFlowFailure.PersistorAccess("Database operation timed out.", ex);
+    protected override VerificationFlowFailure CreateTimeoutFailure(TimeoutException ex)
+    {
+        return VerificationFlowFailure.PersistorAccess("Database operation timed out.", ex);
+    }
 
-    protected override VerificationFlowFailure CreateGenericFailure(Exception ex) =>
-        VerificationFlowFailure.Generic(VerificationFlowMessageKeys.Generic, ex);
+    protected override VerificationFlowFailure CreateGenericFailure(Exception ex)
+    {
+        return VerificationFlowFailure.Generic(VerificationFlowMessageKeys.Generic, ex);
+    }
 }

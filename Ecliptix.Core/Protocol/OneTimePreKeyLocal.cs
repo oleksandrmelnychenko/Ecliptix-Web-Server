@@ -30,9 +30,7 @@ public readonly struct OneTimePreKeyLocal : IDisposable
                     .MapSodiumFailure();
 
             if (allocResult.IsErr)
-            {
                 return Result<OneTimePreKeyLocal, EcliptixProtocolFailure>.Err(allocResult.UnwrapErr());
-            }
 
             securePrivateKey = allocResult.Unwrap();
 
@@ -61,8 +59,8 @@ public readonly struct OneTimePreKeyLocal : IDisposable
             }
 
             Result<byte[], EcliptixProtocolFailure> deriveResult = Result<byte[], EcliptixProtocolFailure>.Try(
-                func: () => ScalarMult.Base(tempPrivKeyCopy),
-                errorMapper: ex =>
+                () => ScalarMult.Base(tempPrivKeyCopy),
+                ex =>
                     EcliptixProtocolFailure.DeriveKey(
                         $"Failed to derive public key for OPK ID {preKeyId} using ScalarMult.Base.",
                         ex)
@@ -104,9 +102,6 @@ public readonly struct OneTimePreKeyLocal : IDisposable
 
     public void Dispose()
     {
-        if (PrivateKeyHandle is { IsInvalid: false })
-        {
-            PrivateKeyHandle.Dispose();
-        }
+        if (PrivateKeyHandle is { IsInvalid: false }) PrivateKeyHandle.Dispose();
     }
 }

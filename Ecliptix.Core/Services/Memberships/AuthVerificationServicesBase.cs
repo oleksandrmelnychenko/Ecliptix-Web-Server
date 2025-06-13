@@ -3,7 +3,6 @@ using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Services.Utilities;
-using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
@@ -15,13 +14,12 @@ namespace Ecliptix.Core.Services.Memberships;
 public abstract class AuthVerificationServicesBase(
     IActorRegistry actorRegistry,
     ILogger<AuthVerificationServices> logger)
-    : Ecliptix.Protobuf.Membership.AuthVerificationServices.AuthVerificationServicesBase
+    : Protobuf.Membership.AuthVerificationServices.AuthVerificationServicesBase
 {
+    private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
     protected readonly ILogger<AuthVerificationServices> Logger = logger;
 
     protected readonly IActorRef VerificationFlowManagerActor = actorRegistry.Get<VerificationFlowManagerActor>();
-
-    private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
 
     protected string CultureName { get; private set; } = CultureInfo.CurrentCulture.Name;
 

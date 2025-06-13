@@ -1,15 +1,13 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using Ecliptix.Protobuf.CipherPayload;
 using Google.Protobuf;
-using Grpc.Core;
 
 namespace Ecliptix.Domain.Utilities;
 
 public static class Helpers
 {
-    private static readonly RandomNumberGenerator Rng = RandomNumberGenerator.Create();
     private const string InvalidPayloadDataLengthMessage = "Invalid payload data length.";
+    private static readonly RandomNumberGenerator Rng = RandomNumberGenerator.Create();
 
     public static uint GenerateRandomUInt32(bool excludeZero = false)
     {
@@ -42,9 +40,7 @@ public static class Helpers
     public static byte[] ReadMemoryToRetrieveBytes(ReadOnlyMemory<byte> readOnlyMemory)
     {
         if (!MemoryMarshal.TryGetArray(readOnlyMemory, out ArraySegment<byte> segment) || segment.Count == 0)
-        {
             throw new ArgumentException(InvalidPayloadDataLengthMessage);
-        }
 
         return segment.Array!;
     }

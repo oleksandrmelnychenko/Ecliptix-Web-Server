@@ -1,4 +1,3 @@
-using Ecliptix.Domain.AppDevices;
 using Ecliptix.Domain.AppDevices.Failures;
 using Ecliptix.Domain.Memberships.Failures;
 using Grpc.Core;
@@ -8,8 +7,8 @@ namespace Ecliptix.Domain.Utilities;
 public static class FailureExtensions
 {
     /// <summary>
-    /// Converts VerificationFlowFailure to gRPC Status.
-    /// User-facing errors use the actual message key, system errors use generic messages.
+    ///     Converts VerificationFlowFailure to gRPC Status.
+    ///     User-facing errors use the actual message key, system errors use generic messages.
     /// </summary>
     public static Status ToGrpcStatus(this VerificationFlowFailure failure)
     {
@@ -63,8 +62,8 @@ public static class FailureExtensions
     }
 
     /// <summary>
-    /// Converts AppDeviceFailure to gRPC Status.
-    /// User-facing errors use the actual message key, system errors use generic messages.
+    ///     Converts AppDeviceFailure to gRPC Status.
+    ///     User-facing errors use the actual message key, system errors use generic messages.
     /// </summary>
     public static Status ToGrpcStatus(this AppDeviceFailure failure)
     {
@@ -86,8 +85,8 @@ public static class FailureExtensions
     }
 
     /// <summary>
-    /// Converts EcliptixProtocolFailure to gRPC Status.
-    /// All protocol errors are considered system errors and use generic messages.
+    ///     Converts EcliptixProtocolFailure to gRPC Status.
+    ///     All protocol errors are considered system errors and use generic messages.
     /// </summary>
     public static Status ToGrpcStatus(this EcliptixProtocolFailure failure)
     {
@@ -134,8 +133,8 @@ public static class FailureExtensions
 }
 
 /// <summary>
-/// Static class containing generic error messages for system errors.
-/// These are not localization keys and are used directly for security reasons.
+///     Static class containing generic error messages for system errors.
+///     These are not localization keys and are used directly for security reasons.
 /// </summary>
 internal static class ErrorMessages
 {
