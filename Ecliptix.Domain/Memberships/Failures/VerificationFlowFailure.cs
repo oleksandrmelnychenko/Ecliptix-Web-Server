@@ -92,11 +92,6 @@ public readonly struct VerificationFlowFailure : IEquatable<VerificationFlowFail
             details ?? VerificationFlowMessageKeys.RateLimitExceeded,
             ErrorCodes.RateLimitExceeded);
 
-    public static VerificationFlowFailure SuspiciousActivity(string? details = null) =>
-        new(VerificationFlowFailureType.SuspiciousActivity,
-            details ?? VerificationFlowMessageKeys.SuspiciousActivity,
-            ErrorCodes.SuspiciousActivity);
-
     public static VerificationFlowFailure Validation(string? details = null) =>
         new(VerificationFlowFailureType.Validation,
             details ?? VerificationFlowMessageKeys.Validation,
@@ -122,7 +117,6 @@ public readonly struct VerificationFlowFailure : IEquatable<VerificationFlowFail
         public const string PersistorAccess = "VF301";
         public const string ConcurrencyConflict = "VF302";
         public const string RateLimitExceeded = "VF401";
-        public const string SuspiciousActivity = "VF402";
         public const string Validation = "VF501";
         public const string Generic = "VF999";
     }

@@ -1,11 +1,11 @@
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Utilities;
-using PhoneNumbers; 
+using PhoneNumbers;
 
 namespace Ecliptix.Domain.Memberships;
 
-public record ValidatePhoneNumberActorEvent(string PhoneNumber, string? DefaultRegion = null);
+public record ValidatePhoneNumberActorEvent(string PhoneNumber, string PeerCulture, string? DefaultRegion = null);
 
 public enum MobileCheckStatus
 {
@@ -19,7 +19,6 @@ public record PhoneNumberValidationResult
     public string? ParsedPhoneNumberE164 { get; }
     public string? DetectedRegion { get; }
     public MobileCheckStatus MobileStatus { get; }
-
     public string? MessageKey { get; }
     public object[]? MessageArgs { get; }
     public ValidationFailureReason? LibFailureReason { get; }
@@ -35,7 +34,6 @@ public record PhoneNumberValidationResult
         MobileStatus = mobileStatus;
     }
 
-    // Private constructor for FAILURE, use static factory methods
     private PhoneNumberValidationResult(
         string messageKey,
         ValidationFailureReason? libFailureReason,
@@ -69,15 +67,18 @@ public enum ValidationFailureReason
     TooLong,
     InvalidForRegion,
     PossibleButNotCertain,
-    InternalError 
+    InternalError
 }
 
 public class PhoneNumberValidatorActor : ReceiveActor
 {
+    private readonly ILocalizationProvider _localizationProvider;
+
     private readonly PhoneNumberUtil _phoneNumberUtil = PhoneNumberUtil.GetInstance();
 
-    public PhoneNumberValidatorActor()
+    public PhoneNumberValidatorActor(ILocalizationProvider localizationProvider)
     {
+        _localizationProvider = localizationProvider;
         Receive<ValidatePhoneNumberActorEvent>(actorEvent =>
         {
             Result<PhoneNumberValidationResult, VerificationFlowFailure> result =
@@ -89,15 +90,34 @@ public class PhoneNumberValidatorActor : ReceiveActor
     private Result<PhoneNumberValidationResult, VerificationFlowFailure> HandleValidatePhoneNumberFunctional(
         ValidatePhoneNumberActorEvent actorEvent)
     {
-        return ParsePhoneNumber(actorEvent.PhoneNumber, actorEvent.DefaultRegion)
+        if (string.IsNullOrWhiteSpace(actorEvent.PhoneNumber))
+        {
+            _localizationProvider.Localize(VerificationFlowMessageKeys.PhoneNumberEmpty, actorEvent.PeerCulture);
+
+            return Result<PhoneNumberValidationResult, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PhoneNumberInvalid(VerificationFlowMessageKeys.PhoneNumberEmpty, null)
+            );
+        }
+
+        if (!string.IsNullOrEmpty(actorEvent.DefaultRegion) &&
+            !_phoneNumberUtil.GetSupportedRegions().Contains(actorEvent.DefaultRegion))
+        {
+            return Result<PhoneNumberValidationResult, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.Generic("Invalid default region provided", null)
+            );
+        }
+
+        return ParsePhoneNumber(actorEvent.PhoneNumber, actorEvent.PeerCulture, actorEvent.DefaultRegion)
             .Bind(parsedNumberDetails =>
-                ValidateLibPhoneNumber(parsedNumberDetails.PhoneNumber, parsedNumberDetails.E164Format))
+                ValidateLibPhoneNumber(parsedNumberDetails.PhoneNumber, parsedNumberDetails.E164Format,
+                    actorEvent.PeerCulture))
             .MapErr(failure => failure);
     }
 
     private record ParsedNumberDetails(PhoneNumber PhoneNumber, string E164Format);
 
     private Result<ParsedNumberDetails, VerificationFlowFailure> ParsePhoneNumber(string phoneNumberStr,
+        string peerCulture,
         string? defaultRegion)
     {
         return Result<ParsedNumberDetails, VerificationFlowFailure>.Try(() =>
@@ -119,7 +139,9 @@ public class PhoneNumberValidatorActor : ReceiveActor
                         ErrorType.TOO_LONG => VerificationFlowMessageKeys.PhoneParsingTooLong,
                         _ => VerificationFlowMessageKeys.PhoneParsingGenericError
                     };
-                    return VerificationFlowFailure.PhoneNumberInvalid(errorKey, npe);
+
+                    string message = _localizationProvider.Localize(errorKey, peerCulture);
+                    return VerificationFlowFailure.PhoneNumberInvalid(message, npe);
                 }
 
                 return VerificationFlowFailure.Generic(VerificationFlowMessageKeys.PhoneParsingGenericError, ex);
@@ -128,8 +150,7 @@ public class PhoneNumberValidatorActor : ReceiveActor
 
     private Result<PhoneNumberValidationResult, VerificationFlowFailure> ValidateLibPhoneNumber(
         PhoneNumber parsedPhoneNumber,
-        string e164Format
-    )
+        string e164Format, string peerCulture)
     {
         return Result<PhoneNumberValidationResult, VerificationFlowFailure>.Try(() =>
             {
@@ -138,9 +159,11 @@ public class PhoneNumberValidatorActor : ReceiveActor
                     PhoneNumberUtil.ValidationResult possibility =
                         _phoneNumberUtil.IsPossibleNumberWithReason(parsedPhoneNumber);
                     ValidationFailureReason internalReason = MapLibValidationReasonToInternalReason(possibility);
-                    string messageKey = MapLibValidationReasonToMessageKey(possibility);
 
-                    return PhoneNumberValidationResult.CreateInvalid(messageKey, internalReason, e164Format);
+                    string messageKey = MapLibValidationReasonToMessageKey(possibility);
+                    string message = _localizationProvider.Localize(messageKey, peerCulture);
+
+                    return PhoneNumberValidationResult.CreateInvalid(message, internalReason, e164Format);
                 }
 
                 PhoneNumberType libType = _phoneNumberUtil.GetNumberType(parsedPhoneNumber);
@@ -153,13 +176,13 @@ public class PhoneNumberValidatorActor : ReceiveActor
         );
     }
 
-
     private static MobileCheckStatus DetermineMobileStatus(PhoneNumberType libType) =>
         libType is PhoneNumberType.MOBILE or PhoneNumberType.FIXED_LINE_OR_MOBILE
             ? MobileCheckStatus.IsMobile
             : MobileCheckStatus.IsNotMobile;
 
-    private static ValidationFailureReason MapLibValidationReasonToInternalReason(PhoneNumberUtil.ValidationResult libReason)
+    private static ValidationFailureReason MapLibValidationReasonToInternalReason(
+        PhoneNumberUtil.ValidationResult libReason)
     {
         return libReason switch
         {
@@ -185,6 +208,6 @@ public class PhoneNumberValidatorActor : ReceiveActor
         };
     }
 
-    public static Props Build() =>
-        Props.Create(() => new PhoneNumberValidatorActor());
+    public static Props Build(ILocalizationProvider localizationProvider) =>
+        Props.Create(() => new PhoneNumberValidatorActor(localizationProvider));
 }

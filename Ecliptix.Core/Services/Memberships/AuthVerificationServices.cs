@@ -52,7 +52,7 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
             ));
 
         //TimeSpan.FromSeconds(5)
-        
+
         if (initiationResult.IsErr)
         {
             HandleVerificationError(initiationResult.UnwrapErr(), context);
@@ -74,18 +74,18 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
 
         ValidatePhoneNumberRequest validateRequest =
             Helpers.ParseFromBytes<ValidatePhoneNumberRequest>(decryptResult.Unwrap());
-        ValidatePhoneNumberActorEvent actorActorEvent = new(validateRequest.PhoneNumber);
-
+        
+        ValidatePhoneNumberActorEvent actorEvent = new(validateRequest.PhoneNumber, PeerCulture);
         Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult = await PhoneNumberValidatorActor
-            .Ask<Result<PhoneNumberValidationResult, VerificationFlowFailure>>(actorActorEvent);
+            .Ask<Result<PhoneNumberValidationResult, VerificationFlowFailure>>(actorEvent);
 
         if (validationResult.IsOk)
         {
-            PhoneNumberValidationResult phoneValidation = validationResult.Unwrap();
-            if (phoneValidation.IsValid)
+            PhoneNumberValidationResult phoneValidationResult = validationResult.Unwrap();
+            if (phoneValidationResult.IsValid)
             {
                 EnsurePhoneNumberActorEvent ensurePhoneNumberActorEvent =
-                    new(phoneValidation.ParsedPhoneNumberE164!, phoneValidation.DetectedRegion,
+                    new(phoneValidationResult.ParsedPhoneNumberE164!, phoneValidationResult.DetectedRegion,
                         Helpers.FromByteStringToGuid(validateRequest.AppDeviceIdentifier));
 
                 Result<Guid, VerificationFlowFailure> ensurePhoneNumberResult = await VerificationFlowManagerActor
@@ -93,24 +93,33 @@ public class AuthVerificationServices(IActorRegistry actorRegistry, ILogger<Auth
 
                 if (ensurePhoneNumberResult.IsOk)
                 {
-                    ValidatePhoneNumberResponse response = new()
+                    ValidatePhoneNumberResponse validatePhoneNumberResponse = new()
                     {
                         PhoneNumberIdentifier = Helpers.GuidToByteString(ensurePhoneNumberResult.Unwrap()),
                         Result = VerificationResult.Succeeded
                     };
 
-                    return await EncryptAndReturnResponse(response.ToByteArray(), context);
+                    return await EncryptAndReturnResponse(validatePhoneNumberResponse.ToByteArray(), context);
                 }
-            }
-            else
-            {
-                ValidatePhoneNumberResponse response = new()
+
+                VerificationFlowFailure verificationFlowFailure = ensurePhoneNumberResult.UnwrapErr();
+                ValidatePhoneNumberResponse response1 = new()
                 {
-                    Result = VerificationResult.InvalidPhone
+                    PhoneNumberIdentifier = ByteString.Empty,
+                    Result = VerificationResult.InvalidPhone,
+                    Message = verificationFlowFailure.Message
                 };
 
-                return await EncryptAndReturnResponse(response.ToByteArray(), context);
+                return await EncryptAndReturnResponse(response1.ToByteArray(), context);
             }
+
+            ValidatePhoneNumberResponse response = new()
+            {
+                Result = VerificationResult.InvalidPhone,
+                Message = phoneValidationResult.MessageKey
+            };
+
+            return await EncryptAndReturnResponse(response.ToByteArray(), context);
         }
 
         HandleVerificationError(validationResult.UnwrapErr(), context);

@@ -11,21 +11,21 @@ namespace Ecliptix.Domain.Memberships;
 
 public class VerificationFlowManagerActor : ReceiveActor
 {
-    private readonly IStringLocalizer<VerificationFlowManagerActor> _localizer;
     private readonly IActorRef _persistor;
     private readonly IActorRef _membershipActor;
     private readonly SNSProvider _snsProvider;
+    private readonly ILocalizationProvider _localizationProvider;
 
     public VerificationFlowManagerActor(
         IActorRef persistor,
         IActorRef membershipActor,
         SNSProvider snsProvider,
-        IStringLocalizer<VerificationFlowManagerActor> localizer)
+        ILocalizationProvider localizationProvider)
     {
-        _localizer = localizer;
         _persistor = persistor;
         _membershipActor = membershipActor;
         _snsProvider = snsProvider;
+        _localizationProvider = localizationProvider;
 
         Become(Ready);
     }
@@ -38,29 +38,29 @@ public class VerificationFlowManagerActor : ReceiveActor
         Receive<EnsurePhoneNumberActorEvent>(cmd => _persistor.Forward(cmd));
     }
 
-    private void HandleInitiateFlow(InitiateVerificationFlowActorEvent @event)
+    private void HandleInitiateFlow(InitiateVerificationFlowActorEvent actorEvent)
     {
-        string actorName = GetActorName(@event.ConnectId);
+        string actorName = GetActorName(actorEvent.ConnectId);
         IActorRef? childActor = Context.Child(actorName);
 
         if (!childActor.IsNobody())
         {
-            childActor.Forward(@event);
+            childActor.Forward(actorEvent);
         }
         else
         {
-            if (@event.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
+            if (actorEvent.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
             {
                 IActorRef? newFlowActor = Context.ActorOf(VerificationFlowActor.Build(
-                    @event.ConnectId,
-                    @event.PhoneNumberIdentifier,
-                    @event.AppDeviceIdentifier,
-                    @event.Purpose,
-                    @event.ChannelWriter,
+                    actorEvent.ConnectId,
+                    actorEvent.PhoneNumberIdentifier,
+                    actorEvent.AppDeviceIdentifier,
+                    actorEvent.Purpose,
+                    actorEvent.ChannelWriter,
                     _persistor,
                     _membershipActor,
                     _snsProvider,
-                    _localizer
+                    _localizationProvider
                 ), actorName);
 
                 Context.Watch(newFlowActor);
@@ -68,9 +68,10 @@ public class VerificationFlowManagerActor : ReceiveActor
             }
             else
             {
-                LocalizedString message = _localizer[VerificationFlowMessageKeys.VerificationFlowNotFound];
+                string message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowNotFound,
+                    actorEvent.PeerCulture);
                 Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(VerificationFlowFailure.NotFound(message)));
-                @event.ChannelWriter.TryComplete();
+                actorEvent.ChannelWriter.TryComplete();
             }
         }
     }
@@ -99,6 +100,7 @@ public class VerificationFlowManagerActor : ReceiveActor
     private static string GetActorName(uint connectId) => $"flow-{connectId}";
 
     public static Props Build(IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
-        IStringLocalizer<VerificationFlowManagerActor> localizer) =>
-        Props.Create(() => new VerificationFlowManagerActor(persistor, membershipActor, snsProvider, localizer));
+        ILocalizationProvider localizationProvider) =>
+        Props.Create(() =>
+            new VerificationFlowManagerActor(persistor, membershipActor, snsProvider, localizationProvider));
 }

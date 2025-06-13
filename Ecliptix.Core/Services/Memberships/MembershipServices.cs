@@ -17,46 +17,67 @@ public class MembershipServices(IActorRegistry actorRegistry, ILogger<Membership
 {
     public override async Task<CipherPayload> SignInMembership(CipherPayload request, ServerCallContext context)
     {
-        Result<byte[], EcliptixProtocolFailure> decryptResult = await DecryptRequest(request, context);
+        Result<byte[], EcliptixProtocolFailure> decryptionResult = await DecryptRequest(request, context);
+        if (decryptionResult.IsErr)
+        {
+            EcliptixProtocolFailure ecliptixProtocolFailure = decryptionResult.UnwrapErr();
+            HandleError(ecliptixProtocolFailure, context);
+            return new CipherPayload();
+        }
 
-        return await decryptResult.Match<Task<CipherPayload>>(
-            ok: async decryptedBytes =>
-            {
-                SignInMembershipRequest signInRequest = Helpers.ParseFromBytes<SignInMembershipRequest>(decryptedBytes);
+        byte[] decryptedBytes = decryptionResult.Unwrap();
+        SignInMembershipRequest signInRequest = Helpers.ParseFromBytes<SignInMembershipRequest>(decryptedBytes);
 
-                Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
-                    await PhoneNumberValidatorActor.Ask<Result<PhoneNumberValidationResult, VerificationFlowFailure>>(
-                        new ValidatePhoneNumberActorEvent(signInRequest.PhoneNumber));
-                return await validationResult.Match<Task<CipherPayload>>(
-                    ok: async phoneNumberValidationResult =>
-                    {
-                        SignInMembershipActorEvent signInEvent = new(
-                            phoneNumberValidationResult.ParsedPhoneNumberE164!,
-                            Helpers.ReadMemoryToRetrieveBytes(signInRequest.SecureKey.Memory), PeerCulture);
-                        Result<SignInMembershipResponse, VerificationFlowFailure> signInResult =
-                            await MembershipActor.Ask<Result<SignInMembershipResponse, VerificationFlowFailure>>(
-                                signInEvent);
-                        return signInResult.Match(
-                            ok: signInResponse =>
-                                EncryptAndReturnResponse(signInResponse.ToByteArray(), context).Result,
-                            err: error =>
-                            {
-                                HandleVerificationError(error, context);
-                                return new CipherPayload();
-                            }
-                        );
-                    },
-                    err: error =>
-                    {
-                        HandleVerificationError(error, context);
-                        return Task.FromResult(new CipherPayload());
-                    }
-                );
-            },
-            err: error =>
+        ValidatePhoneNumberActorEvent actorEvent = new(signInRequest.PhoneNumber, PeerCulture);
+        Result<PhoneNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
+            await PhoneNumberValidatorActor.Ask<Result<PhoneNumberValidationResult, VerificationFlowFailure>>(
+                actorEvent);
+
+        if (phoneNumberValidationResult.IsErr)
+        {
+            VerificationFlowFailure verificationFlowFailure = phoneNumberValidationResult.UnwrapErr();
+            if (verificationFlowFailure.IsUserFacing)
             {
-                HandleError(error, context);
-                return Task.FromResult(new CipherPayload());
+                byte[]? signInMembershipResponse = new SignInMembershipResponse
+                {
+                    Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
+                    Message = verificationFlowFailure.Message
+                }.ToByteArray();
+
+                return await EncryptAndReturnResponse(signInMembershipResponse, context);
+            }
+            
+            HandleVerificationError(verificationFlowFailure, context);
+            return new CipherPayload();
+        }
+
+        PhoneNumberValidationResult phoneNumberResult = phoneNumberValidationResult.Unwrap();
+        if (!phoneNumberResult.IsValid)
+        {
+            byte[]? signInMembershipResponse = new SignInMembershipResponse
+            {
+                Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
+                Message = phoneNumberResult.MessageKey
+            }.ToByteArray();
+
+            return await EncryptAndReturnResponse(signInMembershipResponse, context);
+        }
+
+        SignInMembershipActorEvent signInEvent = new(
+            phoneNumberResult.ParsedPhoneNumberE164!,
+            Helpers.ReadMemoryToRetrieveBytes(signInRequest.SecureKey.Memory), PeerCulture);
+
+        Result<SignInMembershipResponse, VerificationFlowFailure> signInResult =
+            await MembershipActor.Ask<Result<SignInMembershipResponse, VerificationFlowFailure>>(
+                signInEvent);
+
+        return signInResult.Match(
+            signInResponse =>
+                EncryptAndReturnResponse(signInResponse.ToByteArray(), context).Result,
+            error =>
+            {
+                HandleVerificationError(error, context);
+                return new CipherPayload();
             }
         );
     }

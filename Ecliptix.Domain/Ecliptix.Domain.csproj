@@ -47,6 +47,7 @@
 
     <ItemGroup>
       <Folder Include="AppDevices\Persistors\QueryRecords\" />
+      <Folder Include="Memberships\PhoneNumberValidation\" />
     </ItemGroup>
 
 </Project>

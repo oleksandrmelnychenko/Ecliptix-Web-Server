@@ -20,7 +20,8 @@ public record InitiateVerificationFlowActorEvent(
     Guid AppDeviceIdentifier,
     VerificationPurpose Purpose,
     InitiateVerificationRequest.Types.Type RequestType,
-    ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> ChannelWriter
+    ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> ChannelWriter,
+    string PeerCulture = "en-US"
 );
 
 public record VerifyFlowActorEvent(
@@ -46,14 +47,14 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private readonly IActorRef _persistor;
     private readonly IActorRef _membershipActor;
     private readonly SNSProvider _snsProvider;
-    private readonly IStringLocalizer _localizer;
+    private readonly ILocalizationProvider _localizationProvider;
 
     private ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> _writer;
     private VerificationFlowQueryRecord _flow;
     private OneTimePassword? _activeOtp;
 
     private ICancelable? _otpTimer = Cancelable.CreateCanceled();
-    private ICancelable? _sessionTimer;
+    private ICancelable? _sessionTimer = Cancelable.CreateCanceled();
     private ulong _activeOtpRemainingSeconds;
 
     public IStash Stash { get; set; } = null!;
@@ -61,7 +62,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     public VerificationFlowActor(
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> writer,
-        IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider, IStringLocalizer localizer)
+        IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
+        ILocalizationProvider localizationProvider)
     {
         _connectId = connectId;
         _phoneNumberIdentifier = phoneNumberIdentifier;
@@ -69,7 +71,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         _persistor = persistor;
         _membershipActor = membershipActor;
         _snsProvider = snsProvider;
-        _localizer = localizer;
+        _localizationProvider = localizationProvider;
 
         Become(WaitingForFlow);
 
@@ -81,9 +83,10 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     public static Props Build(
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> writer,
-        IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider, IStringLocalizer localizer) =>
+        IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
+        ILocalizationProvider localizationProvider) =>
         Props.Create(() => new VerificationFlowActor(connectId, phoneNumberIdentifier, appDeviceIdentifier, purpose,
-            writer, persistor, membershipActor, snsProvider, localizer));
+            writer, persistor, membershipActor, snsProvider, localizationProvider));
 
     private void WaitingForFlow()
     {
@@ -94,7 +97,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 VerificationFlowFailure verificationFlowFailure = result.UnwrapErr();
                 if (verificationFlowFailure is { IsUserFacing: true, IsSecurityRelated: true })
                 {
-                    LocalizedString localizedString = _localizer[verificationFlowFailure.Message];
+                    string localizedString = _localizationProvider.Localize(verificationFlowFailure.Message);
 
                     await _writer.WriteAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
                         new VerificationCountdownUpdate
@@ -243,7 +246,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                         SecondsRemaining = 0,
                         SessionIdentifier = Helpers.GuidToByteString(_flow.UniqueIdentifier),
                         Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Failed,
-                        Message = _localizer[VerificationFlowMessageKeys.ResendCooldown]
+                        Message = _localizationProvider.Localize(VerificationFlowMessageKeys.ResendCooldown)
                     }));
                 break;
             default:
@@ -323,8 +326,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         (OtpQueryRecord otpRecord, string plainOtp) = generationResult.Unwrap();
 
-        LocalizedString localizedString = _localizer[VerificationFlowMessageKeys.AuthenticationCodeIs];
-        StringBuilder messageBuilder = new(localizedString.Value + ": " + plainOtp);
+        string localizedString = _localizationProvider.Localize(VerificationFlowMessageKeys.AuthenticationCodeIs);
+        StringBuilder messageBuilder = new(localizedString + ": " + plainOtp);
 
         Result<Unit, VerificationFlowFailure> smsResult =
             await _snsProvider.SendSmsAsync(phoneNumberQueryRecord.PhoneNumber, messageBuilder.ToString());
@@ -396,7 +399,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 Status = status == VerificationFlowStatus.Expired
                     ? VerificationCountdownUpdate.Types.CountdownUpdateStatus.Expired
                     : VerificationCountdownUpdate.Types.CountdownUpdateStatus.MaxAttemptsReached,
-                Message = _localizer[messageKey]
+                Message = _localizationProvider.Localize(messageKey)
             }));
 
         Context.Stop(Self);
@@ -408,7 +411,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private Result<VerifyCodeResponse, VerificationFlowFailure> CreateVerifyResponse(VerificationResult result,
         string messageKey) =>
         Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
-            { Result = result, Message = _localizer[messageKey] });
+            { Result = result, Message = _localizationProvider.Localize(messageKey) });
 
     private Result<VerifyCodeResponse, VerificationFlowFailure>
         CreateSuccessResponse(MembershipQueryRecord membership) =>

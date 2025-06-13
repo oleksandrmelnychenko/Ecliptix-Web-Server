@@ -16,7 +16,6 @@ using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Serilog;
 using Serilog.Context;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Localization;
 
 const string systemActorName = "EcliptixProtocolSystemActor";
@@ -49,7 +48,7 @@ try
             ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
             SNSProvider snsProvider = serviceProvider.GetRequiredService<SNSProvider>();
 
-            ILocalizationProvider verificationFlowLocalizer =
+            ILocalizationProvider localizationProvider =
                 serviceProvider.GetRequiredService<ILocalizationProvider>();
 
             using (LogContext.PushProperty("ActorSystemName", system.Name))
@@ -61,12 +60,13 @@ try
 
             ILogger<EcliptixProtocolSystemActor> protocolActorLogger =
                 serviceProvider.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>();
+            
             ILogger<VerificationFlowPersistorActor> verificationFlowLogger =
                 serviceProvider.GetRequiredService<ILogger<VerificationFlowPersistorActor>>();
+            
             ILogger<MembershipPersistorActor> membershipPersistorLogger =
                 serviceProvider.GetRequiredService<ILogger<MembershipPersistorActor>>();
-            IStringLocalizer<VerificationFlowManagerActor> localizer = serviceProvider
-                .GetRequiredService<IStringLocalizer<VerificationFlowManagerActor>>();
+            
             ILogger<AppDevicePersistorActor> appDevicePersistorLocalizer = serviceProvider
                 .GetRequiredService<ILogger<AppDevicePersistorActor>>();
 
@@ -87,16 +87,16 @@ try
                 "MembershipPersistorActor");
 
             IActorRef membershipActor = system.ActorOf(
-                MembershipActor.Build(membershipPersistorActor, verificationFlowLocalizer),
+                MembershipActor.Build(membershipPersistorActor, localizationProvider),
                 "MembershipActor");
 
             IActorRef verificationFlowManagerActor = system.ActorOf(
                 VerificationFlowManagerActor.Build(verificationFlowPersistorActor, membershipActor,
-                    snsProvider, localizer),
+                    snsProvider, localizationProvider),
                 "VerificationFlowManagerActor");
 
             IActorRef phoneNumberValidatorActor = system.ActorOf(
-                PhoneNumberValidatorActor.Build(),
+                PhoneNumberValidatorActor.Build(localizationProvider),
                 "PhoneNumberValidatorActor");
 
             registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
