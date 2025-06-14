@@ -26,7 +26,7 @@ public abstract class VerificationFlowServicesBase(
             ActorSystem actorSystem = context.GetHttpContext().RequestServices.GetRequiredService<ActorSystem>();
 
             string actorName = $"flow-{connectId}";
-            string actorPath = $"/user/{nameof(VerificationFlowManagerActor)}/{actorName}";
+            string actorPath = $"/membership/{nameof(VerificationFlowManagerActor)}/{actorName}";
 
             ActorSelection? actorSelection = actorSystem.ActorSelection(actorPath);
 

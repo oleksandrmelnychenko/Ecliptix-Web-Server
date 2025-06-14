@@ -12,8 +12,6 @@ using Ecliptix.Protobuf.Membership;
 using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 using Grpc.Core;
-// Required for ForwardToConnectActor
-// Required for PubKeyExchangeType
 
 namespace Ecliptix.Core.Services.Memberships;
 
@@ -26,7 +24,6 @@ public class VerificationFlowServices(
         IServerStreamWriter<CipherPayload> responseStream,
         ServerCallContext context)
     {
-        // Use the new refactored decryption helper
         Result<byte[], EcliptixProtocolFailure> decryptionResult = await DecryptPayloadAsync(request, context);
         if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
 
@@ -34,7 +31,6 @@ public class VerificationFlowServices(
             Helpers.ParseFromBytes<InitiateVerificationRequest>(decryptionResult.Unwrap());
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        // This business logic remains the same
         Channel<Result<VerificationCountdownUpdate, VerificationFlowFailure>> channel =
             Channel.CreateUnbounded<Result<VerificationCountdownUpdate, VerificationFlowFailure>>();
 
@@ -65,14 +61,12 @@ public class VerificationFlowServices(
         ValidatePhoneNumberRequest validateRequest =
             Helpers.ParseFromBytes<ValidatePhoneNumberRequest>(decryptionResult.Unwrap());
 
-        // --- Business Logic (Unchanged) ---
         Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
             phoneNumberValidator.ValidatePhoneNumber(validateRequest.PhoneNumber, CultureName);
         if (validationResult.IsErr) throw GrpcFailureException.FromDomainFailure(validationResult.UnwrapErr());
 
         PhoneNumberValidationResult phoneValidationResult = validationResult.Unwrap();
 
-        // --- Refactored Response Logic ---
         if (phoneValidationResult.IsValid)
         {
             EnsurePhoneNumberActorEvent ensurePhoneNumberEvent = new(
@@ -127,8 +121,6 @@ public class VerificationFlowServices(
         return await EncryptAndReturnResponse(verificationResult.Unwrap().ToByteArray(), context);
     }
 
-    // --- PRIVATE HELPERS ---
-
     private async Task StreamCountdownUpdatesAsync(
         IServerStreamWriter<CipherPayload> responseStream,
         ChannelReader<Result<VerificationCountdownUpdate, VerificationFlowFailure>> reader,
@@ -139,16 +131,12 @@ public class VerificationFlowServices(
         {
             if (updateResult.IsErr) throw GrpcFailureException.FromDomainFailure(updateResult.UnwrapErr());
 
-            // Use the new refactored encryption helper inside the stream loop
             CipherPayload encryptedPayload =
                 await EncryptAndReturnResponse(updateResult.Unwrap().ToByteArray(), context);
             await responseStream.WriteAsync(encryptedPayload);
         }
     }
 
-    /// <summary>
-    ///     New helper to encapsulate the refactored encryption logic.
-    /// </summary>
     private async Task<CipherPayload> EncryptAndReturnResponse(byte[] data, ServerCallContext context)
     {
         Result<CipherPayload, EcliptixProtocolFailure> encryptResult = await EncryptPayloadAsync(data, context);
@@ -156,9 +144,6 @@ public class VerificationFlowServices(
         return encryptResult.Unwrap();
     }
 
-    /// <summary>
-    ///     New helper containing the core "wrap and forward" encryption logic.
-    /// </summary>
     private async Task<Result<CipherPayload, EcliptixProtocolFailure>> EncryptPayloadAsync(byte[] payload,
         ServerCallContext context)
     {
@@ -170,9 +155,6 @@ public class VerificationFlowServices(
             encryptForwarder, context.CancellationToken);
     }
 
-    /// <summary>
-    ///     New helper containing the core "wrap and forward" decryption logic.
-    /// </summary>
     private async Task<Result<byte[], EcliptixProtocolFailure>> DecryptPayloadAsync(CipherPayload request,
         ServerCallContext context)
     {
