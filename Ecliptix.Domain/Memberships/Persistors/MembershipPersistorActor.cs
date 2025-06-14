@@ -11,7 +11,6 @@ using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Logging;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
@@ -24,17 +23,15 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     };
 
     public MembershipPersistorActor(
-        IDbConnectionFactory connectionFactory,
-        ILogger<MembershipPersistorActor> logger)
-        : base(connectionFactory, logger)
+        IDbConnectionFactory connectionFactory)
+        : base(connectionFactory)
     {
         Become(Ready);
     }
 
-    public static Props Build(IDbConnectionFactory connectionFactory,
-        ILogger<MembershipPersistorActor> logger)
+    public static Props Build(IDbConnectionFactory connectionFactory)
     {
-        return Props.Create(() => new MembershipPersistorActor(connectionFactory, logger));
+        return Props.Create(() => new MembershipPersistorActor(connectionFactory));
     }
 
     private void Ready()

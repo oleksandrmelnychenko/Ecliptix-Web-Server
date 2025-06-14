@@ -5,12 +5,12 @@ using Akka.Actor;
 using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Utilities;
 using Microsoft.Extensions.Logging;
+using Serilog;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
 public abstract class PersistorBase<TFailure>(
-    IDbConnectionFactory connectionFactory,
-    ILogger logger
+    IDbConnectionFactory connectionFactory
 ) : ReceiveActor
     where TFailure : IFailureBase
 {
@@ -48,13 +48,13 @@ public abstract class PersistorBase<TFailure>(
     {
         if (result.IsOk)
         {
-            logger.LogDebug("Operation {OperationName} completed successfully", operationName);
+            Log.Debug("Operation {OperationName} completed successfully", operationName);
             activity?.SetStatus(ActivityStatusCode.Ok);
         }
         else
         {
             TFailure failure = result.UnwrapErr();
-            logger.LogWarning("Operation {OperationName} completed with a domain failure: {@FailureDetails}",
+            Log.Warning("Operation {OperationName} completed with a domain failure: {@FailureDetails}",
                 operationName, failure.ToStructuredLog());
 
             activity?.SetStatus(ActivityStatusCode.Ok);
@@ -71,14 +71,14 @@ public abstract class PersistorBase<TFailure>(
         activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
         activity?.AddException(ex);
 
-        (TFailure failure, LogLevel level) = ex switch
+        (TFailure failure, LogLevel _) = ex switch
         {
             TimeoutException timeoutEx => (CreateTimeoutFailure(timeoutEx), LogLevel.Error),
             DbException dbEx => (MapDbException(dbEx), LogLevel.Error),
             _ => (CreateGenericFailure(ex), LogLevel.Critical)
         };
 
-        logger.Log(level, ex, "Operation {OperationName} failed with an unhandled exception", operationName);
+        Log.Error(ex, "Operation {OperationName} failed with an unhandled exception", operationName);
 
         return Result<T, TFailure>.Err(failure);
     }

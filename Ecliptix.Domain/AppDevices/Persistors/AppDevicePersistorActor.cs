@@ -16,8 +16,8 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 {
     private const string RegisterAppDeviceSp = "dbo.RegisterAppDeviceIfNotExists";
 
-    public AppDevicePersistorActor(IDbConnectionFactory connectionFactory, ILogger<AppDevicePersistorActor> logger)
-        : base(connectionFactory, logger)
+    public AppDevicePersistorActor(IDbConnectionFactory connectionFactory)
+        : base(connectionFactory)
     {
         Become(Ready);
     }
@@ -39,7 +39,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
             DeviceId = Helpers.FromByteStringToGuid(appDevice.DeviceId),
             DeviceType = (int)appDevice.DeviceType
         };
-      
+
         (Guid UniqueId, int Status) result = await connection.QuerySingleOrDefaultAsync<(Guid UniqueId, int Status)>(
             RegisterAppDeviceSp,
             parameters,
@@ -49,7 +49,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
         if (result.Equals(default))
             return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Err(
                 AppDeviceFailure.InfrastructureFailure());
-        
+
         AppDeviceRegisteredStateReply.Types.Status currentStatus = result.Status switch
         {
             1 => AppDeviceRegisteredStateReply.Types.Status.SuccessAlreadyExists,
@@ -80,8 +80,8 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
         return AppDeviceFailure.InternalError(ex: ex);
     }
 
-    public static Props Build(IDbConnectionFactory connectionFactory, ILogger<AppDevicePersistorActor> logger)
+    public static Props Build(IDbConnectionFactory connectionFactory)
     {
-        return Props.Create(() => new AppDevicePersistorActor(connectionFactory, logger));
+        return Props.Create(() => new AppDevicePersistorActor(connectionFactory));
     }
 }

@@ -3,6 +3,7 @@ using Akka.Actor;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
+using Serilog;
 
 namespace Ecliptix.Core.Protocol.Actors;
 
@@ -23,11 +24,9 @@ public record CreateConnectActorEvent(uint ConnectId, PubKeyExchange PubKeyExcha
 public class EcliptixProtocolSystemActor : ReceiveActor
 {
     private readonly ConcurrentDictionary<uint, IActorRef> _connectActorRefs = new();
-    private readonly ILogger<EcliptixProtocolSystemActor> _logger;
 
-    public EcliptixProtocolSystemActor(ILogger<EcliptixProtocolSystemActor> logger)
+    public EcliptixProtocolSystemActor()
     {
-        _logger = logger;
         Become(Ready);
     }
 
@@ -45,7 +44,8 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         PubKeyExchange peerPubKeyExchange = actorEvent.PubKeyExchange;
         PubKeyExchangeState exchangeType = actorEvent.PubKeyExchange.State;
 
-        _logger.LogInformation($"[ShieldPro] Beginning exchange {exchangeType}, generated Session ID: {connectId}");
+        Log.Information("[ShieldPro] Beginning exchange {ExchangeType}, generated Session ID: {ConnectId}",
+            exchangeType, connectId);
 
         CreateConnectActorEvent createConnectActorEvent = new(connectId, peerPubKeyExchange);
         Result<DeriveSharedSecretReply, EcliptixProtocolFailure> result =
@@ -127,12 +127,12 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
     protected override void PreStart()
     {
-        _logger.LogInformation("MainShieldPro actor '{ActorPath}' is up and running.", Context.Self.Path);
+        Log.Information("MainShieldPro actor '{ActorPath}' is up and running", Context.Self.Path);
         base.PreStart();
     }
 
-    public static Props Build(ILogger<EcliptixProtocolSystemActor> logger)
+    public static Props Build()
     {
-        return Props.Create(() => new EcliptixProtocolSystemActor(logger));
+        return Props.Create(() => new EcliptixProtocolSystemActor());
     }
 }

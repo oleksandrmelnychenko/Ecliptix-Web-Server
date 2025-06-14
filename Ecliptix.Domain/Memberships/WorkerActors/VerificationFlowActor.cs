@@ -30,6 +30,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
     private ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> _writer;
 
+    public IStash Stash { get; set; } = null!;
+
     public VerificationFlowActor(
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> writer,
@@ -51,8 +53,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             new InitiateFlowAndReturnStateActorEvent(appDeviceIdentifier, _phoneNumberIdentifier, purpose, _connectId)
         ).PipeTo(Self);
     }
-
-    public IStash Stash { get; set; } = null!;
 
     public static Props Build(
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
@@ -92,7 +92,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
                 return;
             }
-
 
             VerificationFlowQueryRecord currentFlow = result.Unwrap();
 
@@ -244,11 +243,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         if (sessionDelay > TimeSpan.Zero)
             _sessionTimer = Context.System.Scheduler.ScheduleTellOnceCancelable(sessionDelay, Self,
                 new VerificationFlowExpiredEvent(string.Empty), ActorRefs.NoSender);
-        
-        //TODO: Handle exception properly
-        
-        throw new ArgumentException("StartTimers exception handling");
-        
+
         _activeOtpRemainingSeconds = CalculateRemainingSeconds(_activeOtp.ExpiresAt);
         if (_activeOtpRemainingSeconds > 0)
             _otpTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(TimeSpan.Zero,
@@ -422,7 +417,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     protected override void PostStop()
     {
         CancelTimers();
-        _writer.TryComplete();
         Log.Information("VerificationFlowActor for ConnectId {ConnectId} stopped", _connectId);
         base.PostStop();
     }

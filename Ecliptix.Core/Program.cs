@@ -60,30 +60,20 @@ try
 
             IDbConnectionFactory dbDataSource = serviceProvider.GetRequiredService<IDbConnectionFactory>();
 
-            ILogger<EcliptixProtocolSystemActor> protocolActorLogger =
-                serviceProvider.GetRequiredService<ILogger<EcliptixProtocolSystemActor>>();
-
-            ILogger<VerificationFlowPersistorActor> verificationFlowLogger =
-                serviceProvider.GetRequiredService<ILogger<VerificationFlowPersistorActor>>();
-
-            ILogger<MembershipPersistorActor> membershipPersistorLogger =
-                serviceProvider.GetRequiredService<ILogger<MembershipPersistorActor>>();
-
             IActorRef protocolSystemActor = system.ActorOf(
-                EcliptixProtocolSystemActor.Build(protocolActorLogger),
+                EcliptixProtocolSystemActor.Build(),
                 "ProtocolSystem");
 
             IActorRef appDevicePersistor = system.ActorOf(
-                AppDevicePersistorActor.Build(dbDataSource,
-                    serviceProvider.GetRequiredService<ILogger<AppDevicePersistorActor>>()),
+                AppDevicePersistorActor.Build(dbDataSource),
                 "AppDevicePersistor");
 
             IActorRef verificationFlowPersistorActor = system.ActorOf(
-                VerificationFlowPersistorActor.Build(dbDataSource, verificationFlowLogger),
+                VerificationFlowPersistorActor.Build(dbDataSource),
                 "VerificationFlowPersistorActor");
 
             IActorRef membershipPersistorActor = system.ActorOf(
-                MembershipPersistorActor.Build(dbDataSource, membershipPersistorLogger),
+                MembershipPersistorActor.Build(dbDataSource),
                 "MembershipPersistorActor");
 
             IActorRef membershipActor = system.ActorOf(
@@ -178,19 +168,19 @@ static void RegisterGrpc(IServiceCollection services)
     });
 }
 
-internal class ActorSystemHostedService(ActorSystem actorSystem, ILogger<ActorSystemHostedService> logger)
+internal class ActorSystemHostedService(ActorSystem actorSystem)
     : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation("Actor system hosted service started ()");
+        Log.Information("Actor system hosted service started ()");
         return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation("Actor system hosted service initiating shutdown...");
+        Log.Information("Actor system hosted service initiating shutdown...");
         await CoordinatedShutdown.Get(actorSystem).Run(CoordinatedShutdown.ClrExitReason.Instance);
-        logger.LogInformation("Actor system hosted service shutdown complete.");
+        Log.Information("Actor system hosted service shutdown complete");
     }
 }

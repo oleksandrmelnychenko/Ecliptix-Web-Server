@@ -80,7 +80,7 @@ public class VerificationFlowManagerActor : ReceiveActor
                 string message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowNotFound,
                     actorEvent.CultureName);
                 Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(VerificationFlowFailure.NotFound(message)));
-               
+
                 actorEvent.ChannelWriter.TryComplete();
             }
         }
@@ -108,12 +108,25 @@ public class VerificationFlowManagerActor : ReceiveActor
                 Log.Warning(
                     "Child actor {ActorPath} was terminated unexpectedly (crashed). Notifying the client channel",
                     deadActor.Path);
+
                 VerificationFlowFailure failure = VerificationFlowFailure.Generic(
                     "The verification process was terminated due to an internal server error."
                 );
+                
+                bool writeSuccess =
+                    writer.TryWrite(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Err(failure));
+                if (!writeSuccess)
+                {
+                    Log.Error(
+                        "Failed to write error to channel for actor {ActorPath}. Channel may be completed or faulted",
+                        deadActor.Path);
+                }
 
-                writer.TryWrite(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Err(failure));
-                writer.TryComplete();
+                bool completeSuccess = writer.TryComplete();
+                if (!completeSuccess)
+                {
+                    Log.Warning("Failed to complete channel for actor {ActorPath}", deadActor.Path);
+                }
             }
 
             _flowWriters.Remove(deadActor);
@@ -150,8 +163,9 @@ public class VerificationFlowManagerActor : ReceiveActor
                 return Directive.Restart;
 
             default:
-                Log.Error(ex, "VerificationFlowActor encountered an unhandled exception. Escalating the failure");
-                return Directive.Escalate;
+                Log.Error(ex,
+                    "VerificationFlowActor encountered an unhandled exception. Stopping the actor to prevent further issues");
+                return Directive.Stop;
         }
     }
 

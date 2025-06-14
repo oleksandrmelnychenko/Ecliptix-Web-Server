@@ -17,17 +17,15 @@ namespace Ecliptix.Domain.Memberships.Persistors;
 public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFailure>
 {
     public VerificationFlowPersistorActor(
-        IDbConnectionFactory connectionFactory,
-        ILogger<VerificationFlowPersistorActor> logger)
-        : base(connectionFactory, logger)
+        IDbConnectionFactory connectionFactory)
+        : base(connectionFactory)
     {
         Become(Ready);
     }
 
-    public static Props Build(IDbConnectionFactory connectionFactory,
-        ILogger<VerificationFlowPersistorActor> logger)
+    public static Props Build(IDbConnectionFactory connectionFactory)
     {
-        return Props.Create(() => new VerificationFlowPersistorActor(connectionFactory, logger));
+        return Props.Create(() => new VerificationFlowPersistorActor(connectionFactory));
     }
 
     private void Ready()
