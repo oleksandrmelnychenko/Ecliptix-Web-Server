@@ -21,6 +21,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
         BeginAppDeviceEphemeralConnectActorEvent actorEvent = new(request, connectId);
+
         Result<DeriveSharedSecretReply, EcliptixProtocolFailure> deriveSharedSecretReply =
             await ProtocolActor.Ask<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>>(
                 actorEvent,
@@ -36,38 +37,36 @@ public class AppDeviceServices(IActorRegistry actorRegistry)
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
-       
+
+        DecryptCipherPayloadActorActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
+            request
+        );
+
+        ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
+
         Result<byte[], EcliptixProtocolFailure> decryptResult = await ProtocolActor
-            .Ask<Result<byte[], EcliptixProtocolFailure>>(
-                new DecryptCipherPayloadActorActorEvent(
-                    connectId,
-                    PubKeyExchangeType.DataCenterEphemeralConnect,
-                    request
-                ),
-                context.CancellationToken
-            );
+            .Ask<Result<byte[], EcliptixProtocolFailure>>(decryptForwarder, context.CancellationToken);
 
         if (decryptResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptResult.UnwrapErr());
-        
+
         AppDevice appDevice = Helpers.ParseFromBytes<AppDevice>(decryptResult.Unwrap());
         Result<AppDeviceRegisteredStateReply, AppDeviceFailure> persistorResult = await AppDevicePersistorActor
             .Ask<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>>(
-                new RegisterAppDeviceIfNotExistActorEvent(appDevice)
+                new RegisterAppDeviceIfNotExistActorEvent(appDevice),
+                context.CancellationToken
             );
 
         if (persistorResult.IsErr) throw GrpcFailureException.FromDomainFailure(persistorResult.UnwrapErr());
 
         AppDeviceRegisteredStateReply reply = persistorResult.Unwrap();
-       
+
+        EncryptPayloadActorEvent encryptCommand = new(PubKeyExchangeType.DataCenterEphemeralConnect,
+            reply.ToByteArray()
+        );
+
+        ForwardToConnectActorEvent encryptForwarder = new(connectId, encryptCommand);
         Result<CipherPayload, EcliptixProtocolFailure> encryptResult = await ProtocolActor
-            .Ask<Result<CipherPayload, EcliptixProtocolFailure>>(
-                new EncryptPayloadActorCommand(
-                    connectId,
-                    PubKeyExchangeType.DataCenterEphemeralConnect,
-                    reply.ToByteArray()
-                ),
-                context.CancellationToken
-            );
+            .Ask<Result<CipherPayload, EcliptixProtocolFailure>>(encryptForwarder, context.CancellationToken);
 
         if (encryptResult.IsOk) return encryptResult.Unwrap();
 

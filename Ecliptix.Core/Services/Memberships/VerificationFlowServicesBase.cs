@@ -2,22 +2,18 @@ using System.Globalization;
 using Akka.Actor;
 using Akka.Hosting;
 using Ecliptix.Core.Protocol.Actors;
-using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Memberships.WorkerActors;
-using Ecliptix.Domain.Utilities;
-using Ecliptix.Protobuf.CipherPayload;
-using Ecliptix.Protobuf.PubKeyExchange;
+using Ecliptix.Protobuf.Membership;
 using Grpc.Core;
+using Serilog;
 
 namespace Ecliptix.Core.Services.Memberships;
 
 public abstract class VerificationFlowServicesBase(
-    IActorRegistry actorRegistry,
-    ILogger<VerificationFlowServices> logger)
-    : Protobuf.Membership.AuthVerificationServices.AuthVerificationServicesBase
+    IActorRegistry actorRegistry)
+    : AuthVerificationServices.AuthVerificationServicesBase
 {
-    private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
-    protected readonly ILogger<VerificationFlowServices> Logger = logger;
+    protected readonly IActorRef ProtocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
 
     protected readonly IActorRef VerificationFlowManagerActor = actorRegistry.Get<VerificationFlowManagerActor>();
 
@@ -36,51 +32,15 @@ public abstract class VerificationFlowServicesBase(
 
             actorSelection.Tell(PoisonPill.Instance);
 
-            Logger.LogInformation(
+            Log.Information(
                 "Client for ConnectId {ConnectId} disconnected. Sent PoisonPill to actor selection [{ActorPath}]",
                 connectId, actorPath);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex,
+            Log.Warning(ex,
                 "Failed to send stop signal to verification flow actor for ConnectId {ConnectId}",
                 connectId);
         }
-    }
-
-    protected async Task<Result<byte[], EcliptixProtocolFailure>> DecryptRequest(CipherPayload request,
-        ServerCallContext context)
-    {
-        uint connectId = ServiceUtilities.ExtractConnectId(context);
-
-        Result<byte[], EcliptixProtocolFailure> decryptResult = await _protocolActor
-            .Ask<Result<byte[], EcliptixProtocolFailure>>(
-                new DecryptCipherPayloadActorActorEvent(
-                    connectId,
-                    PubKeyExchangeType.DataCenterEphemeralConnect,
-                    request
-                ),
-                context.CancellationToken
-            );
-
-        return decryptResult;
-    }
-
-    protected async Task<Result<CipherPayload, EcliptixProtocolFailure>> EncryptRequest(byte[] payload,
-        PubKeyExchangeType pubKeyExchangeType, ServerCallContext context)
-    {
-        uint connectId = ServiceUtilities.ExtractConnectId(context);
-
-        Result<CipherPayload, EcliptixProtocolFailure> encryptResult = await _protocolActor
-            .Ask<Result<CipherPayload, EcliptixProtocolFailure>>(
-                new EncryptPayloadActorCommand(
-                    connectId,
-                    pubKeyExchangeType,
-                    payload
-                ),
-                context.CancellationToken
-            );
-
-        return encryptResult;
     }
 }

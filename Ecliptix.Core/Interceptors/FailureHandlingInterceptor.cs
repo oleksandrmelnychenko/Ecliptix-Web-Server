@@ -1,6 +1,6 @@
+using Ecliptix.Domain.Utilities;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
-using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Core.Interceptors;
 
@@ -38,6 +38,34 @@ public class FailureHandlingInterceptor(ILogger<FailureHandlingInterceptor> logg
         }
     }
 
+    private RpcException HandleException(Exception exception, ServerCallContext context)
+    {
+        switch (exception)
+        {
+            case GrpcFailureException ex:
+                logger.LogWarning(
+                    ex,
+                    "gRPC call {Method} terminated by a handled domain failure. Status: {StatusCode}. Details: {@LogPayload}",
+                    context.Method,
+                    ex.GrpcStatus.StatusCode,
+                    ex.StructuredLogPayload
+                );
+                return new RpcException(ex.GrpcStatus);
+
+            case RpcException ex:
+                logger.LogWarning(ex,
+                    "gRPC call {Method} failed with a pre-existing RpcException. Status: {StatusCode}.",
+                    context.Method, ex.Status.StatusCode);
+                return ex;
+
+            default:
+                logger.LogError(exception, "An unhandled exception was thrown during gRPC call {Method}.",
+                    context.Method);
+                Status status = new(StatusCode.Internal, "An unexpected internal server error occurred.");
+                return new RpcException(status, exception.Message);
+        }
+    }
+
     private class SafeStreamWriter<TResponse>(
         IServerStreamWriter<TResponse> innerWriter,
         ServerCallContext context,
@@ -60,34 +88,6 @@ public class FailureHandlingInterceptor(ILogger<FailureHandlingInterceptor> logg
             {
                 throw interceptor.HandleException(ex, context);
             }
-        }
-    }
-
-    private RpcException HandleException(Exception exception, ServerCallContext context)
-    {
-        switch (exception)
-        {
-            case GrpcFailureException ex:
-                logger.LogWarning(
-                    ex,
-                    "gRPC call {Method} terminated by a handled domain failure. Status: {StatusCode}. Details: {@LogPayload}",
-                    context.Method,
-                    ex.GrpcStatus.StatusCode,
-                    ex.StructuredLogPayload
-                );
-                return new RpcException(ex.GrpcStatus);
-
-            case RpcException ex:
-                logger.LogWarning(ex,
-                    "gRPC call {Method} failed with a pre-existing RpcException. Status: {StatusCode}.",
-                    context.Method, ex.Status.StatusCode);
-                return ex; 
-
-            default:
-                logger.LogError(exception, "An unhandled exception was thrown during gRPC call {Method}.",
-                    context.Method);
-                Status status = new Status(StatusCode.Internal, "An unexpected internal server error occurred.");
-                return new RpcException(status, exception.Message);
         }
     }
 }
