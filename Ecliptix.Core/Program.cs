@@ -116,7 +116,7 @@ try
     app.UseStaticFiles();
 
     app.MapGrpcService<AppDeviceServices>();
-    app.MapGrpcService<AuthVerificationServices>();
+    app.MapGrpcService<VerificationFlowServices>();
     app.MapGrpcService<MembershipServices>();
 
     app.MapGet("/", () => Results.Ok(new { Status = "Success", Message = "Server is up and running" }));

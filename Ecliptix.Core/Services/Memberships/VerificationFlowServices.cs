@@ -14,11 +14,11 @@ using Grpc.Core;
 
 namespace Ecliptix.Core.Services.Memberships;
 
-public class AuthVerificationServices(
+public class VerificationFlowServices(
     IActorRegistry actorRegistry,
     IPhoneNumberValidator phoneNumberValidator,
-    ILogger<AuthVerificationServices> logger)
-    : AuthVerificationServicesBase(actorRegistry, logger)
+    ILogger<VerificationFlowServices> logger)
+    : VerificationFlowServicesBase(actorRegistry, logger)
 {
     public override async Task InitiateVerification(CipherPayload request,
         IServerStreamWriter<CipherPayload> responseStream,

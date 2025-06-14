@@ -11,13 +11,13 @@ using Grpc.Core;
 
 namespace Ecliptix.Core.Services.Memberships;
 
-public abstract class AuthVerificationServicesBase(
+public abstract class VerificationFlowServicesBase(
     IActorRegistry actorRegistry,
-    ILogger<AuthVerificationServices> logger)
+    ILogger<VerificationFlowServices> logger)
     : Protobuf.Membership.AuthVerificationServices.AuthVerificationServicesBase
 {
     private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
-    protected readonly ILogger<AuthVerificationServices> Logger = logger;
+    protected readonly ILogger<VerificationFlowServices> Logger = logger;
 
     protected readonly IActorRef VerificationFlowManagerActor = actorRegistry.Get<VerificationFlowManagerActor>();
 
