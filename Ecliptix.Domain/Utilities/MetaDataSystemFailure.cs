@@ -1,22 +1,36 @@
-using System.Runtime.CompilerServices;
+using Grpc.Core;
 
 namespace Ecliptix.Domain.Utilities;
 
-public class MetaDataSystemFailure
+public sealed record MetaDataSystemFailure(
+    MetaDataSystemFailureType FailureType,
+    string Message,
+    Exception? InnerException = null)
+    : FailureBase(Message, InnerException)
 {
-    private MetaDataSystemFailure(MetaDataSystemFailureType type, string? message, Exception? innerException = null)
+    public override object ToStructuredLog()
     {
-        Type = type;
-        Message = message;
-        InnerException = innerException;
+        return new
+        {
+            ProtocolFailureType = FailureType.ToString(),
+            Message,
+            InnerException,
+            Timestamp
+        };
     }
 
-    public MetaDataSystemFailureType Type { get; }
-    public string? Message { get; }
-    public Exception? InnerException { get; }
+    public override Status ToGrpcStatus()
+    {
+        StatusCode statusCode = FailureType switch
+        {
+            MetaDataSystemFailureType.RequiredComponentNotFound => StatusCode.NotFound,
+            _ => StatusCode.Internal
+        };
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static MetaDataSystemFailure ComponentNotFound(string? details = null)
+        return new Status(statusCode, Message);
+    }
+
+    public static MetaDataSystemFailure ComponentNotFound(string details)
     {
         return new MetaDataSystemFailure(MetaDataSystemFailureType.RequiredComponentNotFound, details);
     }

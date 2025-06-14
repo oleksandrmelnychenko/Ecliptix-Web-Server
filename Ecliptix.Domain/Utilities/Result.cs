@@ -2,52 +2,6 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Ecliptix.Domain.Utilities;
 
-public readonly record struct Option<T>
-{
-    private Option(bool hasValue, T? value)
-    {
-        HasValue = hasValue;
-        Value = value;
-    }
-
-    public bool HasValue { get; }
-    public T? Value { get; }
-
-    public static Option<T> None => new(false, default);
-
-    public static Option<T> Some(T value)
-    {
-        if (value is null) throw new ArgumentNullException(nameof(value));
-        return new Option<T>(true, value);
-    }
-
-    public TResult Match<TResult>(Func<T, TResult> onSome, Func<TResult> onNone)
-    {
-        return HasValue ? onSome(Value!) : onNone();
-    }
-
-    public void Match(Action<T> onSome, Action onNone)
-    {
-        if (HasValue) onSome(Value!);
-        else onNone();
-    }
-
-    public T ValueOr(T fallback)
-    {
-        return HasValue ? Value! : fallback;
-    }
-
-    public Option<TResult> Map<TResult>(Func<T, TResult> selector)
-    {
-        return HasValue ? Option<TResult>.Some(selector(Value!)) : Option<TResult>.None;
-    }
-
-    public static Option<T> From(T? value)
-    {
-        return value is not null ? Some(value) : None;
-    }
-}
-
 public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
 {
     private readonly T? _value;
@@ -278,22 +232,5 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
     public static bool operator !=(Result<T, TE> left, Result<T, TE> right)
     {
         return !left.Equals(right);
-    }
-}
-
-public static class ResultExtensions
-{
-    public static void IgnoreResult<T, TE>(this Result<T, TE> result) where TE : notnull
-    {
-    }
-
-    public static async Task<Result<TNextSuccess, TFailure>> BindAsync<TSuccess, TNextSuccess, TFailure>(
-        this Task<Result<TSuccess, TFailure>> task,
-        Func<TSuccess, Task<Result<TNextSuccess, TFailure>>> func)
-    {
-        Result<TSuccess, TFailure> result = await task;
-        if (result.IsErr) return Result<TNextSuccess, TFailure>.Err(result.UnwrapErr());
-
-        return await func(result.Unwrap());
     }
 }

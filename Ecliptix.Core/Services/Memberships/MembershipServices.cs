@@ -14,9 +14,8 @@ namespace Ecliptix.Core.Services.Memberships;
 
 public class MembershipServices(
     IActorRegistry actorRegistry,
-    IPhoneNumberValidator phoneNumberValidator,
-    ILogger<MembershipServices> logger)
-    : MembershipServicesBase(actorRegistry, logger)
+    IPhoneNumberValidator phoneNumberValidator
+) : MembershipServicesBase(actorRegistry)
 {
     public override async Task<CipherPayload> SignInMembership(CipherPayload request, ServerCallContext context)
     {

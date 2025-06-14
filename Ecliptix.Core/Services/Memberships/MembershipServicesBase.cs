@@ -12,12 +12,9 @@ using Grpc.Core;
 namespace Ecliptix.Core.Services.Memberships;
 
 public abstract class MembershipServicesBase(
-    IActorRegistry actorRegistry,
-    ILogger<MembershipServices> logger) : Protobuf.Membership.MembershipServices.MembershipServicesBase
+    IActorRegistry actorRegistry) : Protobuf.Membership.MembershipServices.MembershipServicesBase
 {
     private readonly IActorRef _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
-
-    protected readonly ILogger<MembershipServices> Logger = logger;
 
     protected readonly IActorRef MembershipActor = actorRegistry.Get<MembershipActor>();
 

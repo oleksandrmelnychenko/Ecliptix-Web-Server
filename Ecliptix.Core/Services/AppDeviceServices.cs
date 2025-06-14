@@ -13,7 +13,7 @@ using Grpc.Core;
 
 namespace Ecliptix.Core.Services;
 
-public class AppDeviceServices(IActorRegistry actorRegistry, ILogger<AppDeviceServices> logger)
+public class AppDeviceServices(IActorRegistry actorRegistry)
     : AppDeviceServiceBase(actorRegistry)
 {
     public override async Task<PubKeyExchange> EstablishAppDeviceEphemeralConnect(PubKeyExchange request,
