@@ -42,16 +42,14 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         _currentIndex = 0;
         _isNewChain = false;
         _disposed = false;
-        Debug.WriteLine($"[ShieldChainStep] Created chain step of type {_stepType}");
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        Debug.WriteLine($"[ShieldChainStep] Disposing chain step of type {_stepType}");
 
-        _chainKeyHandle?.Dispose();
+        _chainKeyHandle.Dispose();
         _dhPrivateKeyHandle?.Dispose();
         WipeIfNotNull(_dhPublicKey).IgnoreResult();
 
@@ -76,7 +74,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
         if (_currentIndex != value)
         {
-            Debug.WriteLine($"[ShieldChainStep] Setting current index from {_currentIndex} to {value}");
             _currentIndex = value;
         }
 
@@ -90,7 +87,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         byte[]? initialDhPublicKey,
         uint cacheWindowSize = DefaultCacheWindowSize)
     {
-        Debug.WriteLine($"[ShieldChainStep] Creating chain step of type {stepType}");
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value)
             .Bind(_ => ValidateInitialChainKey(initialChainKey))
             .Bind(_ => ValidateAndPrepareDhKeys(initialDhPrivateKey, initialDhPublicKey))
@@ -105,12 +101,10 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                             dhInfo.dhPrivateKeyHandle,
                             dhInfo.dhPublicKeyCloned,
                             actualCacheWindow);
-                        Debug.WriteLine("[ShieldChainStep] Chain step created successfully.");
                         return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(step);
                     })
                     .MapErr(err =>
                     {
-                        Debug.WriteLine($"[ShieldChainStep] Error creating chain step: {err.Message}");
                         dhInfo.dhPrivateKeyHandle?.Dispose();
                         WipeIfNotNull(dhInfo.dhPublicKeyCloned).IgnoreResult();
                         return err;
@@ -130,7 +124,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             EcliptixProtocolFailure>
         ValidateAndPrepareDhKeys(byte[]? initialDhPrivateKey, byte[]? initialDhPublicKey)
     {
-        Debug.WriteLine("[ShieldChainStep] Validating and preparing DH keys");
         if (initialDhPrivateKey == null && initialDhPublicKey == null)
             return Result<(SodiumSecureMemoryHandle?, byte[]?), EcliptixProtocolFailure>.Ok((null, null));
 
@@ -189,13 +182,11 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             .Bind(handle =>
             {
                 chainKeyHandle = handle;
-                Debug.WriteLine($"[ShieldChainStep] Writing initial chain key: {Convert.ToHexString(initialChainKey)}");
                 return handle.Write(initialChainKey).MapSodiumFailure();
             })
             .Map(_ => chainKeyHandle!)
             .MapErr(err =>
             {
-                Debug.WriteLine($"[ShieldChainStep] Error allocating chain key: {err.Message}");
                 chainKeyHandle?.Dispose();
                 return err;
             });
@@ -210,7 +201,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
         if (messageKeys.TryGetValue(targetIndex, out EcliptixMessageKey? cachedKey))
         {
-            Debug.WriteLine($"[ShieldChainStep] Returning cached key for index {targetIndex}");
             return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(cachedKey);
         }
 
@@ -224,9 +214,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput(
                     $"[{_stepType}] Requested index {targetIndex} is not future (current: {currentIndex}) and not cached."));
-
-        Debug.WriteLine(
-            $"[ShieldChainStep] Starting derivation for target index: {targetIndex}, current index: {currentIndex}");
 
         Result<byte[], EcliptixProtocolFailure> chainKeyResult = _chainKeyHandle.ReadBytes(Constants.X25519KeySize)
             .MapSodiumFailure();
@@ -245,8 +232,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
             for (uint idx = currentIndex + 1; idx <= targetIndex; idx++)
             {
-                Debug.WriteLine($"[ShieldChainStep] Deriving key for index: {idx}");
-
                 try
                 {
                     using HkdfSha256 hkdfMsg = new(currentChainKey, null);
@@ -257,15 +242,13 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[ShieldChainStep] Error deriving keys at index {idx}: {ex.Message}");
                     return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
                         EcliptixProtocolFailure.DeriveKey($"HKDF failed during derivation at index {idx}.", ex));
                 }
 
-                byte[] msgKeyClone = msgKey.ToArray();
-
                 Result<EcliptixMessageKey, EcliptixProtocolFailure>
-                    keyResult = EcliptixMessageKey.New(idx, msgKeyClone);
+                    keyResult = EcliptixMessageKey.New(idx, msgKey);
+
                 if (keyResult.IsErr)
                     return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(keyResult.UnwrapErr());
 
@@ -299,12 +282,10 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
             if (messageKeys.TryGetValue(targetIndex, out EcliptixMessageKey? finalKey))
             {
-                Debug.WriteLine($"[ShieldChainStep] Derived key for index {targetIndex} successfully.");
                 return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(finalKey);
             }
             else
             {
-                Debug.WriteLine($"[ShieldChainStep] Derived key for index {targetIndex} not found in cache.");
                 return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic(
                         $"Derived key for index {targetIndex} missing after derivation loop."));
@@ -320,40 +301,31 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         byte[]? newDhPrivateKey = null,
         byte[]? newDhPublicKey = null)
     {
-        Debug.WriteLine($"[ShieldChainStep] Updating keys after DH ratchet for {_stepType}");
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value)
             .Bind(_ => CheckDisposed())
             .Bind(_ => ValidateNewChainKey(newChainKey))
-            .Bind(_ =>
-            {
-                Debug.WriteLine($"[ShieldChainStep] Writing new chain key: {Convert.ToHexString(newChainKey)}");
-                return _chainKeyHandle.Write(newChainKey).MapSodiumFailure();
-            })
+            .Bind(_ => _chainKeyHandle.Write(newChainKey).MapSodiumFailure())
             .Bind(_ => SetCurrentIndex(0))
             .Bind(_ => HandleDhKeyUpdate(newDhPrivateKey, newDhPublicKey))
             .Map(_ =>
             {
                 _isNewChain = _stepType == ChainStepType.Sender;
-                Debug.WriteLine($"[ShieldChainStep] Keys updated successfully. IsNewChain: {_isNewChain}");
                 return Unit.Value;
             });
     }
 
-    private Result<Unit, EcliptixProtocolFailure> CheckDisposed()
-    {
-        return _disposed
+    private Result<Unit, EcliptixProtocolFailure> CheckDisposed() =>
+        _disposed
             ? Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixProtocolChainStep)))
             : Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
-    }
 
-    private static Result<Unit, EcliptixProtocolFailure> ValidateNewChainKey(byte[] newChainKey)
-    {
-        return newChainKey.Length == Constants.X25519KeySize
+    private static Result<Unit, EcliptixProtocolFailure> ValidateNewChainKey(byte[] newChainKey) =>
+        newChainKey.Length == Constants.X25519KeySize
             ? Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value)
             : Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput($"New chain key must be {Constants.X25519KeySize} bytes."));
-    }
+
 
     private Result<Unit, EcliptixProtocolFailure> HandleDhKeyUpdate(byte[]? newDhPrivateKey, byte[]? newDhPublicKey)
     {
@@ -365,8 +337,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             () => ValidateDhPublicKeySize(newDhPublicKey)
         ).Bind(_ =>
         {
-            Debug.WriteLine("[ShieldChainStep] Updating DH keys.");
-
             Result<Unit, EcliptixProtocolFailure> handleResult = EnsureDhPrivateKeyHandle();
             if (handleResult.IsErr) return handleResult.MapErr(e => e);
 
@@ -443,9 +413,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
     {
         return CheckDisposed().Map<byte[]?>(_ =>
         {
-            byte[]? result = (byte[])_dhPublicKey?.Clone()!;
-            Debug.WriteLine(
-                $"[ShieldChainStep] Read DH public key: {Convert.ToHexString(result ?? Array.Empty<byte>())}");
+            byte[] result = (byte[])_dhPublicKey?.Clone()!;
             return result;
         });
     }
@@ -459,23 +427,22 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         uint indexToPruneAgainst = currentIndexResult.Unwrap();
 
         uint minIndexToKeep = indexToPruneAgainst >= _cacheWindow ? indexToPruneAgainst - _cacheWindow + 1 : 0;
-        Debug.WriteLine(
-            $"[ShieldChainStep] Pruning old keys. Current Index: {indexToPruneAgainst}, Min Index to Keep: {minIndexToKeep}");
 
         List<uint> keysToRemove = messageKeys.Keys.Where(k => k < minIndexToKeep).ToList();
         if (keysToRemove.Count != 0)
+        {
             foreach (uint keyIndex in keysToRemove)
+            {
                 if (messageKeys.Remove(keyIndex, out EcliptixMessageKey? messageKeyToDispose))
                 {
                     messageKeyToDispose.Dispose();
-                    Debug.WriteLine($"[ShieldChainStep] Removed old key at index {keyIndex}");
                 }
+            }
+        }
     }
 
-    private static Result<Unit, EcliptixProtocolFailure> WipeIfNotNull(byte[]? data)
-    {
-        return data == null
+    private static Result<Unit, EcliptixProtocolFailure> WipeIfNotNull(byte[]? data) =>
+        data == null
             ? Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value)
             : SodiumInterop.SecureWipe(data).MapSodiumFailure();
-    }
 }

@@ -102,8 +102,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         }
     }
 
-    public Result<Unit, EcliptixProtocolFailure> CompleteDataCenterPubKeyExchange(
-        uint sessionId, PubKeyExchangeType exchangeType, PubKeyExchange peerMessage)
+    public Result<Unit, EcliptixProtocolFailure> CompleteDataCenterPubKeyExchange(PubKeyExchangeType exchangeType, PubKeyExchange peerMessage)
     {
         SodiumSecureMemoryHandle? rootKeyHandle = null;
         try

@@ -36,7 +36,7 @@ public class ShieldProDoubleRatchetTests
         if (bobResponseMsgResult.IsErr) Assert.Fail($"Bob failed to respond to exchange: {bobResponseMsgResult.UnwrapErr()}");
         var bobResponseMsg = bobResponseMsgResult.Unwrap();
 
-        var aliceCompleteResult = _aliceEcliptixProtocolSystem.CompleteDataCenterPubKeyExchange(SessionId, _exchangeType, bobResponseMsg);
+        var aliceCompleteResult = _aliceEcliptixProtocolSystem.CompleteDataCenterPubKeyExchange(_exchangeType, bobResponseMsg);
         if (aliceCompleteResult.IsErr) Assert.Fail($"Alice failed to complete exchange: {aliceCompleteResult.UnwrapErr()}");
         
         WriteLine($"[TestInitialize] Handshake Complete for Session ID: {SessionId}");
@@ -96,7 +96,7 @@ public class ShieldProDoubleRatchetTests
             var bobResponseMsgResult = bob.ProcessAndRespondToPubKeyExchange(testSessionId, aliceInitialMsgResult.Unwrap());
             if (bobResponseMsgResult.IsErr) Assert.Fail($"[Setup] Bob failed handshake for session {testSessionId}: {bobResponseMsgResult.UnwrapErr()}");
 
-            var aliceCompleteResult = alice.CompleteDataCenterPubKeyExchange(testSessionId, _exchangeType, bobResponseMsgResult.Unwrap());
+            var aliceCompleteResult = alice.CompleteDataCenterPubKeyExchange(_exchangeType, bobResponseMsgResult.Unwrap());
             if (aliceCompleteResult.IsErr) Assert.Fail($"[Setup] Alice failed to complete handshake for session {testSessionId}: {aliceCompleteResult.UnwrapErr()}");
             
             sessionPairs.Add((alice, bob, testSessionId));

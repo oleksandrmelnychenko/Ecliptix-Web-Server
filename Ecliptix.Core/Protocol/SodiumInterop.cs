@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
+using Sodium; // For ScalarMult
 
 namespace Ecliptix.Core.Protocol;
 
@@ -9,7 +10,6 @@ public static class SodiumInterop
     private const string LibSodium = "libsodium";
 
     private const int MaxBufferSize = 1_000_000_000;
-
     private const int SmallBufferThreshold = 64;
 
     private static readonly Result<Unit, SodiumFailure> InitializationResult;
@@ -32,6 +32,10 @@ public static class SodiumInterop
 
     [DllImport(LibSodium, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     private static extern void sodium_memzero(IntPtr ptr, UIntPtr length);
+
+    // REFACTORED: Added DllImport for constant-time memory comparison.
+    [DllImport(LibSodium, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    private static extern int sodium_memcmp(byte[] b1, byte[] b2, UIntPtr length);
 
     private static Result<Unit, SodiumFailure> InitializeSodium()
     {
@@ -75,6 +79,100 @@ public static class SodiumInterop
                         ? WipeSmallBuffer(validBuffer)
                         : WipeLargeBuffer(validBuffer))
             });
+    }
+
+    public static Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> GenerateX25519KeyPair(
+        string keyPurpose)
+    {
+        SodiumSecureMemoryHandle? skHandle = null;
+        byte[]? tempPrivCopy = null;
+
+        try
+        {
+            Result<SodiumSecureMemoryHandle, SodiumFailure> allocResult =
+                SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
+            if (allocResult.IsErr)
+                return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(allocResult.UnwrapErr()
+                    .ToEcliptixProtocolFailure());
+            skHandle = allocResult.Unwrap();
+
+            byte[] skBytes = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize);
+            Result<Unit, SodiumFailure> writeResult = skHandle.Write(skBytes);
+            SecureWipe(skBytes);
+            if (writeResult.IsErr)
+            {
+                skHandle.Dispose();
+                return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(writeResult.UnwrapErr()
+                    .ToEcliptixProtocolFailure());
+            }
+
+            tempPrivCopy = new byte[Constants.X25519PrivateKeySize];
+            Result<Unit, SodiumFailure> readResult = skHandle.Read(tempPrivCopy);
+            if (readResult.IsErr)
+            {
+                skHandle.Dispose();
+                SecureWipe(tempPrivCopy);
+                return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(readResult.UnwrapErr()
+                    .ToEcliptixProtocolFailure());
+            }
+
+            Result<byte[], EcliptixProtocolFailure> deriveResult = Result<byte[], EcliptixProtocolFailure>.Try(
+                () => ScalarMult.Base(tempPrivCopy),
+                ex => EcliptixProtocolFailure.DeriveKey($"Failed to derive {keyPurpose} public key.", ex));
+
+            SecureWipe(tempPrivCopy);
+            tempPrivCopy = null;
+
+            if (deriveResult.IsErr)
+            {
+                skHandle.Dispose();
+                return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>
+                    .Err(deriveResult.UnwrapErr());
+            }
+
+            byte[] pkBytes = deriveResult.Unwrap();
+
+            if (pkBytes.Length != Constants.X25519PublicKeySize)
+            {
+                skHandle.Dispose();
+                SecureWipe(pkBytes);
+                return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.DeriveKey($"Derived {keyPurpose} public key has incorrect size."));
+            }
+
+            return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Ok((skHandle, pkBytes));
+        }
+        catch (Exception ex)
+        {
+            skHandle?.Dispose();
+            if (tempPrivCopy != null) SecureWipe(tempPrivCopy).IgnoreResult();
+            return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.KeyGeneration($"Unexpected error generating {keyPurpose} key pair.", ex));
+        }
+    }
+
+    public static Result<bool, SodiumFailure> ConstantTimeEquals(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+    {
+        if (a.Length != b.Length)
+        {
+            return Result<bool, SodiumFailure>.Ok(false);
+        }
+
+        if (a.IsEmpty)
+        {
+            return Result<bool, SodiumFailure>.Ok(true);
+        }
+
+        try
+        {
+            int result = sodium_memcmp(a.ToArray(), b.ToArray(), (UIntPtr)a.Length);
+            return Result<bool, SodiumFailure>.Ok(result == 0);
+        }
+        catch (Exception ex)
+        {
+            return Result<bool, SodiumFailure>.Err(
+                SodiumFailure.ComparisonFailed("libsodium constant-time comparison failed.", ex));
+        }
     }
 
     private static Result<Unit, SodiumFailure> WipeSmallBuffer(byte[] buffer)

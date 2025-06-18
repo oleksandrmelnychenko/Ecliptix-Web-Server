@@ -17,6 +17,11 @@ public class SodiumFailure
     {
         return new SodiumFailure(SodiumFailureType.InitializationFailed, details, inner);
     }
+    
+    public static SodiumFailure ComparisonFailed(string details, Exception? inner = null)
+    {
+        return new SodiumFailure(SodiumFailureType.ComparisonFailed, details, inner);
+    }
 
     public static SodiumFailure LibraryNotFound(string details, Exception? inner = null)
     {
