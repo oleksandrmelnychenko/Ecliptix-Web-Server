@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.Diagnostics;
+using System.Security.Cryptography;
 using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
@@ -27,7 +29,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         uint connectId,
         PubKeyExchangeType exchangeType)
     {
-        Debug.WriteLine($"[ShieldPro] Beginning exchange {exchangeType}, generated ConnectId: {connectId}");
         ecliptixSystemIdentityKeys.GenerateEphemeralKeyPair();
         return ecliptixSystemIdentityKeys.CreatePublicBundle()
             .AndThen(bundle => EcliptixProtocolConnection.Create(connectId, true)
@@ -102,7 +103,8 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         }
     }
 
-    public Result<Unit, EcliptixProtocolFailure> CompleteDataCenterPubKeyExchange(PubKeyExchangeType exchangeType, PubKeyExchange peerMessage)
+    public Result<Unit, EcliptixProtocolFailure> CompleteDataCenterPubKeyExchange(PubKeyExchangeType exchangeType,
+        PubKeyExchange peerMessage)
     {
         SodiumSecureMemoryHandle? rootKeyHandle = null;
         try
@@ -202,8 +204,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         }
     }
 
-    #region Helper Methods for Functional Pipelines
-
     private Result<Unit, EcliptixProtocolFailure> PerformRatchetIfNeeded(byte[]? receivedDhKey)
     {
         if (receivedDhKey == null) return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
@@ -213,7 +213,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             {
                 if (currentPeerDhKey != null && !receivedDhKey.AsSpan().SequenceEqual(currentPeerDhKey))
                 {
-                    Debug.WriteLine("[ShieldPro] Performing DH ratchet due to new peer DH key.");
                     return _connectSession.PerformReceivingRatchet(receivedDhKey);
                 }
 
@@ -243,14 +242,18 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
     private static Result<EcliptixMessageKey, EcliptixProtocolFailure> CloneMessageKey(EcliptixMessageKey key)
     {
-        byte[] keyMaterial = new byte[Constants.AesKeySize];
-        return key.ReadKeyMaterial(keyMaterial)
-            .AndThen(_ => EcliptixMessageKey.New(key.Index, keyMaterial))
-            .Map(clonedKey =>
-            {
-                SodiumInterop.SecureWipe(keyMaterial);
-                return clonedKey;
-            });
+        byte[]? keyMaterial = null;
+        try
+        {
+            keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
+            Span<byte> keySpan = keyMaterial.AsSpan(0, Constants.AesKeySize);
+            key.ReadKeyMaterial(keySpan);
+            return EcliptixMessageKey.New(key.Index, keySpan);
+        }
+        finally
+        {
+            if (keyMaterial != null) ArrayPool<byte>.Shared.Return(keyMaterial, clearArray: true);
+        }
     }
 
     private static byte[] CreateAssociatedData(byte[] id1, byte[] id2)
@@ -264,59 +267,83 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
     private static Result<byte[], EcliptixProtocolFailure> Encrypt(EcliptixMessageKey key, byte[] nonce,
         byte[] plaintext, byte[] ad)
     {
-        return Result<byte[], EcliptixProtocolFailure>.Try(() =>
+        byte[]? keyMaterial = null;
+        try
         {
-            byte[] keyMaterial = new byte[Constants.AesKeySize];
-            try
-            {
-                key.ReadKeyMaterial(keyMaterial).Unwrap();
-                (byte[] ciphertext, byte[] tag) = AesGcmService.EncryptAllocating(keyMaterial, nonce, plaintext, ad);
-                byte[] ciphertextAndTag = new byte[ciphertext.Length + tag.Length];
-                Buffer.BlockCopy(ciphertext, 0, ciphertextAndTag, 0, ciphertext.Length);
-                Buffer.BlockCopy(tag, 0, ciphertextAndTag, ciphertext.Length, tag.Length);
-                SodiumInterop.SecureWipe(ciphertext);
-                SodiumInterop.SecureWipe(tag);
-                return ciphertextAndTag;
-            }
-            finally
-            {
-                SodiumInterop.SecureWipe(keyMaterial);
-            }
-        }, ex => EcliptixProtocolFailure.Generic("AES-GCM encryption failed.", ex));
+            keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
+            Span<byte> keySpan = keyMaterial.AsSpan(0, Constants.AesKeySize);
+            Result<Unit, EcliptixProtocolFailure> readResult = key.ReadKeyMaterial(keySpan);
+            if (readResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
+
+            (byte[] ciphertext, byte[] tag) = AesGcmService.EncryptAllocating(keySpan, nonce, plaintext, ad);
+            byte[] ciphertextAndTag = new byte[ciphertext.Length + tag.Length];
+            Buffer.BlockCopy(ciphertext, 0, ciphertextAndTag, 0, ciphertext.Length);
+            Buffer.BlockCopy(tag, 0, ciphertextAndTag, ciphertext.Length, tag.Length);
+
+            SodiumInterop.SecureWipe(ciphertext);
+            SodiumInterop.SecureWipe(tag);
+            return Result<byte[], EcliptixProtocolFailure>.Ok(ciphertextAndTag);
+        }
+        catch (Exception ex)
+        {
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("AES-GCM encryption failed.", ex));
+        }
+        finally
+        {
+            if (keyMaterial != null) ArrayPool<byte>.Shared.Return(keyMaterial, clearArray: true);
+        }
     }
 
     private static Result<byte[], EcliptixProtocolFailure> Decrypt(EcliptixMessageKey key, CipherPayload payload,
         byte[] ad)
     {
         ReadOnlySpan<byte> fullCipherSpan = payload.Cipher.Span;
-        int cipherLength = fullCipherSpan.Length - Constants.AesGcmTagSize;
+        int tagSize = Constants.AesGcmTagSize;
+        int cipherLength = fullCipherSpan.Length - tagSize;
 
         if (cipherLength < 0)
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.BufferTooSmall(
-                    $"Received ciphertext length ({payload.Cipher.Length}) is smaller than the GCM tag size ({Constants.AesGcmTagSize})."));
+            return Result<byte[], EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.BufferTooSmall(
+                $"Received ciphertext length ({fullCipherSpan.Length}) is smaller than the GCM tag size ({tagSize})."));
 
-        byte[] cipherOnlyBytes = fullCipherSpan[..cipherLength].ToArray();
-        byte[] tagBytes = fullCipherSpan[cipherLength..].ToArray();
-        byte[] nonceBytes = payload.Nonce.ToByteArray();
-
-        byte[] keyMaterial = new byte[Constants.AesKeySize];
+        byte[]? keyMaterial = null;
+        byte[]? cipherOnlyBytes = null;
+        byte[]? tagBytes = null;
         try
         {
-            Result<Unit, EcliptixProtocolFailure> readResult = key.ReadKeyMaterial(keyMaterial);
+            keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
+            Span<byte> keySpan = keyMaterial.AsSpan(0, Constants.AesKeySize);
+            Result<Unit, EcliptixProtocolFailure> readResult = key.ReadKeyMaterial(keySpan);
             if (readResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
 
-            return Result<byte[], EcliptixProtocolFailure>.Try(() =>
-                    AesGcmService.DecryptAllocating(keyMaterial, nonceBytes, cipherOnlyBytes, tagBytes, ad),
-                ex => EcliptixProtocolFailure.Generic(
-                    "AES-GCM decryption failed, possibly due to an invalid tag or ciphertext.", ex)
-            );
+            cipherOnlyBytes = ArrayPool<byte>.Shared.Rent(cipherLength);
+            Span<byte> cipherSpan = cipherOnlyBytes.AsSpan(0, cipherLength);
+            fullCipherSpan[..cipherLength].CopyTo(cipherSpan);
+
+            tagBytes = ArrayPool<byte>.Shared.Rent(tagSize);
+            Span<byte> tagSpan = tagBytes.AsSpan(0, tagSize);
+            fullCipherSpan[cipherLength..].CopyTo(tagSpan);
+
+            byte[] result = AesGcmService.DecryptAllocating(keySpan, payload.Nonce.ToArray(),
+                cipherSpan, tagSpan, ad);
+
+            return Result<byte[], EcliptixProtocolFailure>.Ok(result);
+        }
+        catch (CryptographicException cryptoEx)
+        {
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("AES-GCM decryption failed (authentication tag mismatch).", cryptoEx));
+        }
+        catch (Exception ex)
+        {
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Unexpected error during AES-GCM decryption.", ex));
         }
         finally
         {
-            SodiumInterop.SecureWipe(keyMaterial);
+            if (keyMaterial != null) ArrayPool<byte>.Shared.Return(keyMaterial, clearArray: true);
+            if (cipherOnlyBytes != null) ArrayPool<byte>.Shared.Return(cipherOnlyBytes, clearArray: true);
+            if (tagBytes != null) ArrayPool<byte>.Shared.Return(tagBytes, clearArray: true);
         }
     }
-
-    #endregion
 }

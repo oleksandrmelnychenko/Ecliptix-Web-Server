@@ -1,8 +1,7 @@
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using Sodium;
-
-// For CryptographicException
 
 namespace Ecliptix.Core.Protocol;
 
@@ -10,25 +9,25 @@ public sealed class HkdfSha256 : IDisposable
 {
     private const int HashOutputLength = 32;
     private bool _disposed;
-    private byte[] _ikm;
-    private byte[] _salt;
+    private readonly SodiumSecureMemoryHandle _ikmHandle;
+    private readonly SodiumSecureMemoryHandle _saltHandle;
 
     public HkdfSha256(ReadOnlySpan<byte> ikm, ReadOnlySpan<byte> salt = default)
     {
-        SodiumCore.Init();
-        _ikm = ikm.ToArray();
+        _ikmHandle = SodiumSecureMemoryHandle.Allocate(ikm.Length).Unwrap();
+        _ikmHandle.Write(ikm).Unwrap();
 
         if (salt.IsEmpty)
         {
-            _salt = new byte[HashOutputLength];
+            _saltHandle = SodiumSecureMemoryHandle.Allocate(HashOutputLength).Unwrap();
         }
         else
         {
             if (salt.Length != HashOutputLength)
-                throw new ArgumentException($"Salt must be {HashOutputLength} bytes for SignHmacSha256.",
-                    nameof(salt));
+                throw new ArgumentException($@"Salt must be {HashOutputLength} bytes for HMAC-SHA256.", nameof(salt));
 
-            _salt = salt.ToArray();
+            _saltHandle = SodiumSecureMemoryHandle.Allocate(salt.Length).Unwrap();
+            _saltHandle.Write(salt).Unwrap();
         }
 
         _disposed = false;
@@ -37,94 +36,92 @@ public sealed class HkdfSha256 : IDisposable
     public void Dispose()
     {
         Dispose(true);
+        GC.SuppressFinalize(this);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Expand(ReadOnlySpan<byte> info, Span<byte> output)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(HkdfSha256));
-        if (output.Length > 255 * HashOutputLength) throw new ArgumentException("Output length too large");
+        if (output.Length > 255 * HashOutputLength)
+            throw new ArgumentException(@"Output length is too large for HKDF-SHA256.", nameof(output));
+        if (output.IsEmpty) return;
 
         Span<byte> prk = stackalloc byte[HashOutputLength];
-
+        byte[]? ikmBytes = null;
+        byte[]? saltBytes = null;
         try
         {
-            byte[] prkBytes = SecretKeyAuth.SignHmacSha256(_ikm, _salt);
-            if (prkBytes.Length != HashOutputLength)
-                throw new CryptographicException("HMAC-SHA256 output size mismatch during PRK generation.");
-            prkBytes.CopyTo(prk);
-            Wipe(prkBytes);
+            ikmBytes = _ikmHandle.ReadBytes(_ikmHandle.Length).Unwrap();
+            saltBytes = _saltHandle.ReadBytes(_saltHandle.Length).Unwrap();
+            byte[] prkResult = SecretKeyAuth.SignHmacSha256(ikmBytes, saltBytes);
+            prkResult.CopyTo(prk);
+            SodiumInterop.SecureWipe(prkResult);
         }
         catch (Exception ex)
         {
-            throw new CryptographicException("HKDF-Extract (SignHmacSha256) failed during PRK generation.", ex);
+            throw new CryptographicException("HKDF-Extract (PRK generation) failed.", ex);
+        }
+        finally
+        {
+            SodiumInterop.SecureWipe(ikmBytes);
+            SodiumInterop.SecureWipe(saltBytes);
         }
 
-        byte counter = 1;
         int bytesWritten = 0;
-        int requiredInputSize = HashOutputLength + info.Length + 1;
+        byte counter = 1;
+        Span<byte> previousHash = stackalloc byte[HashOutputLength];
 
-        byte[] inputBufferHeap = new byte[requiredInputSize];
-        Span<byte> inputBufferSpan = inputBufferHeap;
-        Span<byte> hash = stackalloc byte[HashOutputLength];
-
-        byte[] prkAsKey = new byte[HashOutputLength];
-        byte[]? tempInputArray = null;
+        int hmacInputSize = HashOutputLength + info.Length + 1;
+        byte[]? hmacInputBuffer = null;
 
         try
         {
-            prk.CopyTo(prkAsKey);
+            hmacInputBuffer = ArrayPool<byte>.Shared.Rent(hmacInputSize);
 
             while (bytesWritten < output.Length)
             {
-                Span<byte> currentInputSlice;
+                Span<byte> currentInputSpan = hmacInputBuffer.AsSpan();
+                int currentInputLength;
+
                 if (bytesWritten == 0)
                 {
-                    info.CopyTo(inputBufferSpan);
-                    inputBufferSpan[info.Length] = counter;
-                    currentInputSlice = inputBufferSpan[..(info.Length + 1)];
+                    info.CopyTo(currentInputSpan);
+                    currentInputSpan[info.Length] = counter;
+                    currentInputLength = info.Length + 1;
                 }
                 else
                 {
-                    hash.CopyTo(inputBufferSpan);
-                    info.CopyTo(inputBufferSpan[HashOutputLength..]);
-                    inputBufferSpan[HashOutputLength + info.Length] = counter;
-                    currentInputSlice = inputBufferSpan[..(HashOutputLength + info.Length + 1)];
+                    previousHash.CopyTo(currentInputSpan);
+                    info.CopyTo(currentInputSpan[HashOutputLength..]);
+                    currentInputSpan[HashOutputLength + info.Length] = counter;
+                    currentInputLength = HashOutputLength + info.Length + 1;
                 }
 
-                if (tempInputArray == null || tempInputArray.Length != currentInputSlice.Length)
-                    tempInputArray = new byte[currentInputSlice.Length];
-
-                currentInputSlice.CopyTo(tempInputArray);
-
-                byte[] tempHashResult = SecretKeyAuth.SignHmacSha256(
-                    tempInputArray,
-                    prkAsKey
-                );
-
-                if (tempHashResult.Length != HashOutputLength)
-                    throw new CryptographicException(
-                        $"HMAC-SHA256 output size mismatch during T({counter}) generation.");
-
-                tempHashResult.CopyTo(hash);
-                Wipe(tempHashResult);
+                byte[] tempHashResult =
+                    SecretKeyAuth.SignHmacSha256(currentInputSpan[..currentInputLength].ToArray(), prk.ToArray());
 
                 int bytesToCopy = Math.Min(HashOutputLength, output.Length - bytesWritten);
-                hash[..bytesToCopy].CopyTo(output[bytesWritten..]);
-
+                tempHashResult.AsSpan(0, bytesToCopy).CopyTo(output[bytesWritten..]);
                 bytesWritten += bytesToCopy;
+
+                if (bytesWritten < output.Length)
+                {
+                    tempHashResult.CopyTo(previousHash);
+                }
+
+                SodiumInterop.SecureWipe(tempHashResult);
                 counter++;
-                Wipe(tempInputArray);
             }
         }
         finally
         {
             prk.Clear();
-            hash.Clear();
-
-            Wipe(inputBufferHeap);
-            Wipe(prkAsKey);
-            if (tempInputArray != null) Wipe(tempInputArray);
+            previousHash.Clear();
+            if (hmacInputBuffer != null)
+            {
+                ArrayPool<byte>.Shared.Return(hmacInputBuffer, clearArray: true);
+            }
         }
     }
 
@@ -134,18 +131,11 @@ public sealed class HkdfSha256 : IDisposable
         {
             if (disposing)
             {
-                Wipe(_ikm);
-                Wipe(_salt);
-                _ikm = null!;
-                _salt = null!;
+                _ikmHandle.Dispose();
+                _saltHandle.Dispose();
             }
 
             _disposed = true;
         }
-    }
-
-    private static void Wipe(byte[] buffer)
-    {
-        SodiumInterop.SecureWipe(buffer);
     }
 }
