@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Ecliptix.Core.OpaqueProtocol;
 using Ecliptix.Domain.Utilities;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
@@ -33,14 +34,12 @@ public record OpaqueLoginFinalizeRequest(
 
 public record OpaqueLoginFinalizeResponse(byte[] ServerMac);
 
-// New records for password reset
 public record OpaquePasswordResetInitRequest(string Username);
 
 public record OpaquePasswordResetInitResponse(bool Success, string Message);
 
 public record OpaquePasswordResetFinalizeRequest(string Username, string ResetToken, byte[] NewRegistrationRecord);
 
-// New record for password change
 public record OpaquePasswordChangeRequest(
     string Username,
     byte[] ServerStateToken,
@@ -49,36 +48,46 @@ public record OpaquePasswordChangeRequest(
 
 public class ServerPasswordAuthSystem
 {
-    public AsymmetricCipherKeyPair ServerStaticKeyPair { get; }
     private readonly BigInteger _serverOprfKey;
     private readonly byte[] _serverTokenEncryptionKey;
-    private readonly Dictionary<string, AkePasswordResetState> _passwordResetStates = new();
+    private readonly AsymmetricCipherKeyPair _serverStaticKeyPair;
+
+    public AsymmetricKeyParameter PublicKey
+    {
+        get { return _serverStaticKeyPair.Public; }
+    }
 
     public ServerPasswordAuthSystem(byte[] serverSecretSeed)
     {
         if (serverSecretSeed == null || serverSecretSeed.Length < 32)
             throw new ArgumentException("Server secret seed must be at least 32 bytes.");
         _serverOprfKey = new BigInteger(1,
-            OpaqueCrypto.DeriveKey(serverSecretSeed, null, Encoding.UTF8.GetBytes("oprf_key"), 32));
+            OpaqueCryptoUtilities.DeriveKey(serverSecretSeed, null, Encoding.UTF8.GetBytes("oprf_key"), 32));
         _serverTokenEncryptionKey =
-            OpaqueCrypto.DeriveKey(serverSecretSeed, null, Encoding.UTF8.GetBytes("token_key"), 32);
-        ServerStaticKeyPair = OpaqueCrypto.GenerateKeyPair();
+            OpaqueCryptoUtilities.DeriveKey(serverSecretSeed, null, Encoding.UTF8.GetBytes("token_key"), 32);
+        _serverStaticKeyPair = OpaqueCryptoUtilities.GenerateKeyPair();
     }
 
     public byte[] ProcessOprfRequest(byte[] oprfRequest)
     {
-        ECPoint requestPoint = OpaqueCrypto.DomainParams.Curve.DecodePoint(oprfRequest);
+        ECPoint requestPoint = OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(oprfRequest);
         ECPoint responsePoint = requestPoint.Multiply(_serverOprfKey);
         return responsePoint.GetEncoded(true);
     }
 
-    public Result<OpaqueLoginInitResponse, string> CreateLoginResponse(string username, byte[] oprfRequest,
-        UserOpaqueRecord userRecord)
+    public async Task<Result<OpaqueLoginInitResponse, string>> CreateLoginResponseAsync(
+        string username,
+        byte[] oprfRequest,
+        Func<string, Task<UserOpaqueRecord>> getUserRecord)
     {
         try
         {
+            var userRecord = await getUserRecord(username);
+            if (userRecord == null)
+                return Result<OpaqueLoginInitResponse, string>.Err("User not found.");
+
             byte[] oprfResponse = ProcessOprfRequest(oprfRequest);
-            AsymmetricCipherKeyPair serverEphemeralKeys = OpaqueCrypto.GenerateKeyPair();
+            AsymmetricCipherKeyPair serverEphemeralKeys = OpaqueCryptoUtilities.GenerateKeyPair();
             byte[] serverEphemeralPublicKeyBytes =
                 ((ECPublicKeyParameters)serverEphemeralKeys.Public).Q.GetEncoded(true);
 
@@ -94,68 +103,72 @@ public class ServerPasswordAuthSystem
                 Expiration = DateTimeOffset.UtcNow.AddMinutes(5)
             };
 
-            byte[] encryptedStateToken = OpaqueCrypto.AeadEncrypt(JsonSerializer.SerializeToUtf8Bytes(serverState),
+            Result<byte[], OpaqueFailure> encryptedStateToken = OpaqueCryptoUtilities.Encrypt(
+                JsonSerializer.SerializeToUtf8Bytes(serverState),
                 _serverTokenEncryptionKey, null);
+
             return Result<OpaqueLoginInitResponse, string>.Ok(new OpaqueLoginInitResponse(oprfResponse,
-                serverEphemeralPublicKeyBytes, userRecord.RegistrationRecord, encryptedStateToken));
+                serverEphemeralPublicKeyBytes, userRecord.RegistrationRecord, encryptedStateToken.Unwrap()));
         }
         catch (Exception ex)
         {
-            return Result<OpaqueLoginInitResponse, string>.Err(
-                $"An internal error occurred while creating the login response: {ex.Message}");
+            return Result<OpaqueLoginInitResponse, string>.Err($"Failed to create login response: {ex.Message}");
         }
     }
 
     public Result<OpaqueLoginFinalizeResponse, string> VerifyLoginFinalization(OpaqueLoginFinalizeRequest request)
     {
-        AkeServerState serverState;
         try
         {
-            serverState = DecryptStateToken(request.ServerStateToken);
+            var serverState = DecryptStateToken(request.ServerStateToken);
             if (serverState.Expiration < DateTimeOffset.UtcNow)
-                return Result<OpaqueLoginFinalizeResponse, string>.Err("Invalid or expired login state token.");
+                return Result<OpaqueLoginFinalizeResponse, string>.Err("Invalid or expired server state token.");
+
+            AsymmetricCipherKeyPair serverEphemeralKeys = new AsymmetricCipherKeyPair(
+                new ECPublicKeyParameters(
+                    OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(serverState.ServerEphemeralPublicKey),
+                    OpaqueCryptoUtilities.DomainParams),
+                new ECPrivateKeyParameters(new BigInteger(1, serverState.ServerEphemeralPrivateKeyBytes),
+                    OpaqueCryptoUtilities.DomainParams));
+
+            ECPoint clientStaticPublicKey =
+                OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(serverState.ClientStaticPublicKey);
+            ECPoint clientEphemeralPublicKey =
+                OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(request.ClientEphemeralPublicKey);
+
+            byte[] akeResult = PerformServerAke(serverEphemeralKeys,
+                (ECPrivateKeyParameters)_serverStaticKeyPair.Private, clientStaticPublicKey, clientEphemeralPublicKey);
+            byte[] serverStaticPublicKeyBytes = ((ECPublicKeyParameters)_serverStaticKeyPair.Public).Q.GetEncoded(true);
+
+            byte[] transcriptHash = HashTranscript(request.Username, serverState.OprfResponse,
+                serverState.ClientStaticPublicKey,
+                request.ClientEphemeralPublicKey, serverStaticPublicKeyBytes, serverState.ServerEphemeralPublicKey);
+
+            (byte[] _, byte[] clientMacKey, byte[] serverMacKey) = DeriveFinalKeys(akeResult, transcriptHash);
+            byte[] expectedClientMac = CreateMac(clientMacKey, transcriptHash);
+
+            if (!CryptographicOperations.FixedTimeEquals(expectedClientMac, request.ClientMac))
+                return Result<OpaqueLoginFinalizeResponse, string>.Err("Invalid client MAC. Authentication failed.");
+
+            byte[] serverMac = CreateMac(serverMacKey, transcriptHash);
+            return Result<OpaqueLoginFinalizeResponse, string>.Ok(new OpaqueLoginFinalizeResponse(serverMac));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return Result<OpaqueLoginFinalizeResponse, string>.Err(
-                "Failed to decrypt state token. Tampering detected.");
+            return Result<OpaqueLoginFinalizeResponse, string>.Err($"Failed to verify login: {ex.Message}");
         }
-
-        AsymmetricCipherKeyPair serverEphemeralKeys = new AsymmetricCipherKeyPair(
-            new ECPublicKeyParameters(OpaqueCrypto.DomainParams.Curve.DecodePoint(serverState.ServerEphemeralPublicKey),
-                OpaqueCrypto.DomainParams),
-            new ECPrivateKeyParameters(new BigInteger(1, serverState.ServerEphemeralPrivateKeyBytes),
-                OpaqueCrypto.DomainParams));
-
-        ECPoint clientStaticPublicKey = OpaqueCrypto.DomainParams.Curve.DecodePoint(serverState.ClientStaticPublicKey);
-        ECPoint clientEphemeralPublicKey =
-            OpaqueCrypto.DomainParams.Curve.DecodePoint(request.ClientEphemeralPublicKey);
-
-        byte[] akeResult = PerformServerAke(serverEphemeralKeys, (ECPrivateKeyParameters)ServerStaticKeyPair.Private,
-            clientStaticPublicKey, clientEphemeralPublicKey);
-        byte[] serverStaticPublicKeyBytes = ((ECPublicKeyParameters)ServerStaticKeyPair.Public).Q.GetEncoded(true);
-
-        byte[] transcriptHash = HashTranscript(request.Username, serverState.OprfResponse,
-            serverState.ClientStaticPublicKey,
-            request.ClientEphemeralPublicKey, serverStaticPublicKeyBytes, serverState.ServerEphemeralPublicKey);
-
-        (byte[] _, byte[] clientMacKey, byte[] serverMacKey) = DeriveFinalKeys(akeResult, transcriptHash);
-        byte[] expectedClientMac = CreateMac(clientMacKey, transcriptHash);
-
-        if (!CryptographicOperations.FixedTimeEquals(expectedClientMac, request.ClientMac))
-            return Result<OpaqueLoginFinalizeResponse, string>.Err("Invalid client MAC. Authentication failed.");
-
-        byte[] serverMac = CreateMac(serverMacKey, transcriptHash);
-        return Result<OpaqueLoginFinalizeResponse, string>.Ok(new OpaqueLoginFinalizeResponse(serverMac));
     }
 
-    // New method for initiating password reset
-    public Result<OpaquePasswordResetInitResponse, string> InitiatePasswordReset(OpaquePasswordResetInitRequest request)
+    public async Task<Result<OpaquePasswordResetInitResponse, string>> InitiatePasswordResetAsync(
+        OpaquePasswordResetInitRequest request,
+        Func<string, Task<bool>> userExists,
+        Func<string, string, Task> sendResetToken)
     {
         try
         {
-            // In a real system, verify user exists and get their email
-            // For simplicity, assume user exists and generate a token
+            if (!await userExists(request.Username))
+                return Result<OpaquePasswordResetInitResponse, string>.Err("User not found.");
+
             string resetToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
             var resetState = new AkePasswordResetState
             {
@@ -164,14 +177,14 @@ public class ServerPasswordAuthSystem
                 Expiration = DateTimeOffset.UtcNow.AddHours(1)
             };
 
-            // Store reset state (in-memory for this example; use a database in production)
-            _passwordResetStates[request.Username] = resetState;
+            // Store reset state (requires external storage callback)
+            await StoreResetStateAsync(resetState);
 
-            // In a real system, send resetToken via email
-            // For this example, just return success
+            // Send reset token (e.g., via email)
+            await sendResetToken(request.Username, resetToken);
+
             return Result<OpaquePasswordResetInitResponse, string>.Ok(
-                new OpaquePasswordResetInitResponse(true,
-                    $"Password reset initiated for {request.Username}. Token sent."));
+                new OpaquePasswordResetInitResponse(true, $"Password reset initiated for {request.Username}."));
         }
         catch (Exception ex)
         {
@@ -180,13 +193,16 @@ public class ServerPasswordAuthSystem
         }
     }
 
-    // New method for finalizing password reset
-    public Result<bool, string> FinalizePasswordReset(OpaquePasswordResetFinalizeRequest request,
+    public async Task<Result<bool, string>> FinalizePasswordResetAsync(
+        OpaquePasswordResetFinalizeRequest request,
+        Func<string, Task<AkePasswordResetState>> getResetState,
+        Func<string, Task> removeResetState,
         Func<string, UserOpaqueRecord, Task> updateUserRecord)
     {
         try
         {
-            if (!_passwordResetStates.TryGetValue(request.Username, out var resetState))
+            var resetState = await getResetState(request.Username);
+            if (resetState == null)
                 return Result<bool, string>.Err("No password reset request found for user.");
 
             if (resetState.Expiration < DateTimeOffset.UtcNow)
@@ -197,10 +213,10 @@ public class ServerPasswordAuthSystem
 
             // Update user record with new registration record
             var newUserRecord = new UserOpaqueRecord(request.Username, request.NewRegistrationRecord);
-            updateUserRecord(request.Username, newUserRecord).Wait();
+            await updateUserRecord(request.Username, newUserRecord);
 
             // Remove reset state
-            _passwordResetStates.Remove(request.Username);
+            await removeResetState(request.Username);
 
             return Result<bool, string>.Ok(true);
         }
@@ -210,7 +226,8 @@ public class ServerPasswordAuthSystem
         }
     }
 
-    public Result<bool, string> ChangePassword(OpaquePasswordChangeRequest request,
+    public async Task<Result<bool, string>> ChangePasswordAsync(
+        OpaquePasswordChangeRequest request,
         Func<string, UserOpaqueRecord, Task> updateUserRecord)
     {
         try
@@ -220,30 +237,9 @@ public class ServerPasswordAuthSystem
             if (serverState.Expiration < DateTimeOffset.UtcNow)
                 return Result<bool, string>.Err("Invalid or expired server state token.");
 
-            // Reconstruct AKE to ensure valid session
-            AsymmetricCipherKeyPair serverEphemeralKeys = new AsymmetricCipherKeyPair(
-                new ECPublicKeyParameters(
-                    OpaqueCrypto.DomainParams.Curve.DecodePoint(serverState.ServerEphemeralPublicKey),
-                    OpaqueCrypto.DomainParams),
-                new ECPrivateKeyParameters(new BigInteger(1, serverState.ServerEphemeralPrivateKeyBytes),
-                    OpaqueCrypto.DomainParams));
-
-            ECPoint clientStaticPublicKey =
-                OpaqueCrypto.DomainParams.Curve.DecodePoint(serverState.ClientStaticPublicKey);
-            ECPoint clientEphemeralPublicKey =
-                OpaqueCrypto.DomainParams.Curve.DecodePoint(request.ClientEphemeralPublicKey);
-
-            byte[] akeResult = PerformServerAke(serverEphemeralKeys,
-                (ECPrivateKeyParameters)ServerStaticKeyPair.Private, clientStaticPublicKey, clientEphemeralPublicKey);
-            byte[] serverStaticPublicKeyBytes = ((ECPublicKeyParameters)ServerStaticKeyPair.Public).Q.GetEncoded(true);
-
-            byte[] transcriptHash = HashTranscript(request.Username, serverState.OprfResponse,
-                serverState.ClientStaticPublicKey,
-                request.ClientEphemeralPublicKey, serverStaticPublicKeyBytes, serverState.ServerEphemeralPublicKey);
-
             // Update user record with new registration record
             var newUserRecord = new UserOpaqueRecord(request.Username, request.NewRegistrationRecord);
-            updateUserRecord(request.Username, newUserRecord).Wait();
+            await updateUserRecord(request.Username, newUserRecord);
 
             return Result<bool, string>.Ok(true);
         }
@@ -253,10 +249,20 @@ public class ServerPasswordAuthSystem
         }
     }
 
+    private async Task StoreResetStateAsync(AkePasswordResetState resetState)
+    {
+        // In-memory storage for simplicity; replace with database in production
+        _passwordResetStates[resetState.Username] = resetState;
+        // In a real app, use a database or cache
+        await Task.CompletedTask;
+    }
+
+    private Dictionary<string, AkePasswordResetState> _passwordResetStates = new();
+
     private AkeServerState DecryptStateToken(byte[] serverStateToken)
     {
-        byte[] decryptedState = OpaqueCrypto.AeadDecrypt(serverStateToken, _serverTokenEncryptionKey, null);
-        return JsonSerializer.Deserialize<AkeServerState>(decryptedState);
+        Result<byte[], OpaqueFailure> decryptedState = OpaqueCryptoUtilities.Decrypt(serverStateToken, _serverTokenEncryptionKey, null);
+        return JsonSerializer.Deserialize<AkeServerState>(decryptedState.Unwrap());
     }
 
     private byte[] PerformServerAke(AsymmetricCipherKeyPair eph_s, ECPrivateKeyParameters stat_s, ECPoint stat_c_pub,
@@ -294,12 +300,13 @@ public class ServerPasswordAuthSystem
         byte[] transcriptHash)
     {
         byte[] salt = Encoding.UTF8.GetBytes("OPAQUE-AKE-Salt");
-        byte[] prk = OpaqueCrypto.HkdfExtract(akeResult, salt);
-        byte[] sessionKey = OpaqueCrypto.HkdfExpand(prk,
+        var prkResult = OpaqueCryptoUtilities.HkdfExtract(akeResult, salt);
+        var prk = prkResult.Unwrap();
+        byte[] sessionKey = OpaqueCryptoUtilities.HkdfExpand(prk,
             Encoding.UTF8.GetBytes("session_key").Concat(transcriptHash).ToArray(), 32);
-        byte[] clientMacKey = OpaqueCrypto.HkdfExpand(prk,
+        byte[] clientMacKey = OpaqueCryptoUtilities.HkdfExpand(prk,
             Encoding.UTF8.GetBytes("client_mac_key").Concat(transcriptHash).ToArray(), 32);
-        byte[] serverMacKey = OpaqueCrypto.HkdfExpand(prk,
+        byte[] serverMacKey = OpaqueCryptoUtilities.HkdfExpand(prk,
             Encoding.UTF8.GetBytes("server_mac_key").Concat(transcriptHash).ToArray(), 32);
         return (sessionKey, clientMacKey, serverMacKey);
     }
@@ -313,27 +320,4 @@ public class ServerPasswordAuthSystem
         hmac.DoFinal(mac, 0);
         return mac;
     }
-
-#if DEBUG
-    public byte[] GetServerSessionKeyForTest(OpaqueLoginFinalizeRequest request)
-    {
-        AkeServerState serverState = DecryptStateToken(request.ServerStateToken);
-        AsymmetricCipherKeyPair serverEphemeralKeys = new AsymmetricCipherKeyPair(
-            new ECPublicKeyParameters(OpaqueCrypto.DomainParams.Curve.DecodePoint(serverState.ServerEphemeralPublicKey),
-                OpaqueCrypto.DomainParams),
-            new ECPrivateKeyParameters(new BigInteger(1, serverState.ServerEphemeralPrivateKeyBytes),
-                OpaqueCrypto.DomainParams));
-        ECPoint clientStaticPublicKey = OpaqueCrypto.DomainParams.Curve.DecodePoint(serverState.ClientStaticPublicKey);
-        ECPoint clientEphemeralPublicKey =
-            OpaqueCrypto.DomainParams.Curve.DecodePoint(request.ClientEphemeralPublicKey);
-        byte[] akeResult = PerformServerAke(serverEphemeralKeys, (ECPrivateKeyParameters)ServerStaticKeyPair.Private,
-            clientStaticPublicKey, clientEphemeralPublicKey);
-        byte[] serverStaticPublicKeyBytes = ((ECPublicKeyParameters)ServerStaticKeyPair.Public).Q.GetEncoded(true);
-        byte[] transcriptHash = HashTranscript(request.Username, serverState.OprfResponse,
-            serverState.ClientStaticPublicKey,
-            request.ClientEphemeralPublicKey, serverStaticPublicKeyBytes, serverState.ServerEphemeralPublicKey);
-        (byte[] sessionKey, _, _) = DeriveFinalKeys(akeResult, transcriptHash);
-        return sessionKey;
-    }
-#endif
 }
