@@ -4,30 +4,12 @@ using Org.BouncyCastle.Crypto;
 
 namespace ProtocolTests;
 
-public class MockUserRepository
-{
-    private readonly ConcurrentDictionary<string, UserOpaqueRecord> _users = new();
-
-    public Task<UserOpaqueRecord?> GetUserByUsernameAsync(string username)
-    {
-        _users.TryGetValue(username, out var user);
-        return Task.FromResult(user);
-    }
-
-    public Task StoreUserAsync(UserOpaqueRecord userProfile)
-    {
-        _users[userProfile.Username] = userProfile;
-        return Task.CompletedTask;
-    }
-}
-
 [TestClass]
 public class EcliptixPasswordAuthSystemTests
 {
     [TestMethod]
     public void Full_Registration_And_Login_Flow_Should_Succeed_And_Derive_Matching_Session_Keys()
     {
-
         // 1. Define test user credentials
         string username = "testuser";
         string password = "a_Very!Complex-password123";
@@ -102,5 +84,46 @@ public class EcliptixPasswordAuthSystemTests
             "CRITICAL FAILURE: DERIVED SESSION KEYS DO NOT MATCH!");
 
         Console.WriteLine("✅ Test Passed: Client and Server successfully derived the same session key.");
+    }
+
+    [TestMethod]
+    public async Task PasswordChange_Flow_Should_Succeed()
+    {
+        // Arrange
+        string username = "testuser";
+        string oldPassword = "oldPassword123";
+        string newPassword = "newPassword456";
+        byte[] serverSecretSeed = new byte[32];
+        new Random().NextBytes(serverSecretSeed);
+        var serverAuthSystem = new ServerPasswordAuthSystem(serverSecretSeed);
+        var mockRepo = new MockUserRepository();
+        var clientAuthSystem = new ClientPasswordAuthSystem(serverAuthSystem.ServerStaticKeyPair.Public);
+
+        // Register user
+        var (oprfRequest, blind) = clientAuthSystem.CreateOprfRequest(oldPassword);
+        var oprfResponse = serverAuthSystem.ProcessOprfRequest(oprfRequest);
+        var registrationRecord = clientAuthSystem.CreateRegistrationRecord(oldPassword, oprfResponse, blind);
+        var userRecord = new UserOpaqueRecord(username, registrationRecord);
+        await mockRepo.StoreUserAsync(userRecord);
+
+        // Mock server API calls
+        clientAuthSystem.SetServerMock(serverAuthSystem, mockRepo);
+
+        // Act: Change password
+        var (newOprfRequest, newBlind) = clientAuthSystem.CreateOprfRequest(newPassword);
+        var newOprfResponse = serverAuthSystem.ProcessOprfRequest(newOprfRequest);
+        var changeRequest =
+            await clientAuthSystem.ChangePasswordAsync(username, oldPassword, newPassword, newOprfResponse, newBlind);
+        var changeResult = serverAuthSystem.ChangePassword(changeRequest, (u, r) => mockRepo.StoreUserAsync(r));
+        Assert.IsTrue(changeResult.IsOk, "Password change failed.");
+
+        // Assert: Verify login with new password
+        var storedUser = await mockRepo.GetUserByUsernameAsync(username);
+        var (loginOprfRequest, loginBlind) = clientAuthSystem.CreateOprfRequest(newPassword);
+        var loginInitResponse = serverAuthSystem.CreateLoginResponse(username, loginOprfRequest, storedUser).Unwrap();
+        var (loginFinalizeRequest, _) =
+            clientAuthSystem.FinalizeLogin(username, newPassword, loginInitResponse, loginBlind);
+        var loginResult = serverAuthSystem.VerifyLoginFinalization(loginFinalizeRequest);
+        Assert.IsTrue(loginResult.IsOk, "Login with new password failed.");
     }
 }
