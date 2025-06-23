@@ -15,7 +15,7 @@ namespace Ecliptix.Domain.Memberships.OPAQUE;
 
 public record MembershipOpaqueQueryRecord(string PhoneNumber, byte[] RegistrationRecord);
 
-public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtocolService
+public sealed class BackEndOpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtocolService
 {
     private readonly BigInteger _serverOprfKey = new(1,
         OpaqueCryptoUtilities.DeriveKey(secretKeySeed, null, OprfKeyInfo, DefaultOprfKeyLength));
@@ -26,12 +26,11 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
     private readonly AsymmetricCipherKeyPair _serverStaticKeyPair = OpaqueCryptoUtilities.GenerateKeyPair();
 
     private static readonly byte[] OprfKeyInfo = "oprf_key"u8.ToArray();
-    private static readonly byte[] TokenKeyInfo = "token_key"u8.ToArray();
+    private static readonly byte[] TokenKeyInfo = "oprf_key"u8.ToArray();
     private static readonly byte[] AkeSalt = "OPAQUE-AKE-Salt"u8.ToArray();
 
     private const int DefaultOprfKeyLength = 32;
     private const int MacKeyLength = 32;
-
 
     public byte[] ProcessOprfRequest(byte[] oprfRequest)
     {
@@ -61,7 +60,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             if (!decodedPoint.IsValid())
                 return Result<Unit, OpaqueFailure>.Err(
                     OpaqueFailure.InvalidInput("Invalid client static public key."));
-            
+
             return Result<Unit, OpaqueFailure>.Ok(Unit.Value);
         }
         catch (Exception ex)
@@ -109,7 +108,8 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             ServerOprfResponse = ByteString.CopyFrom(oprfResponse),
             ServerEphemeralPublicKey = ByteString.CopyFrom(serverEphemeralPublicKeyBytes),
             RegistrationRecord = ByteString.CopyFrom(queryRecord.RegistrationRecord),
-            ServerStateToken = ByteString.CopyFrom(serverStateToken)
+            ServerStateToken = ByteString.CopyFrom(serverStateToken),
+            Result = OpaqueSignInInitResponse.Types.SignInResult.Succeeded
         });
     }
 
@@ -144,7 +144,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         byte[] serverStaticPublicKeyBytes = ((ECPublicKeyParameters)_serverStaticKeyPair.Public).Q.GetEncoded(true);
 
         byte[] transcriptHash = HashTranscript(
-            request.PhoneNumber.ToString()!,
+            request.PhoneNumber!,
             serverState.OprfResponse.ToByteArray(),
             serverState.ClientStaticPublicKey.ToByteArray(),
             request.ClientEphemeralPublicKey.ToByteArray(),
@@ -160,11 +160,13 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         byte[] expectedClientMac = CreateMac(clientMacKey, transcriptHash);
 
         if (!CryptographicOperations.FixedTimeEquals(expectedClientMac, request.ClientMac.ToByteArray()))
+        {
             return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(new OpaqueSignInFinalizeResponse
             {
                 Result = OpaqueSignInFinalizeResponse.Types.SignInResult.InvalidCredentials,
-                ErrorMessage = "Invalid client MAC. Authentication failed."
+                Message = "Invalid client MAC. Authentication failed."
             });
+        }
 
         byte[] serverMac = CreateMac(serverMacKey, transcriptHash);
 
@@ -184,13 +186,13 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         return dh1.GetEncoded(true).Concat(dh2.GetEncoded(true)).Concat(dh3.GetEncoded(true)).ToArray();
     }
 
-    private static byte[] HashTranscript(string username, byte[] oprfResponse, byte[] clientStaticPublicKey,
+    private static byte[] HashTranscript(string phoneNumber, byte[] oprfResponse, byte[] clientStaticPublicKey,
         byte[] clientEphemeralPublicKey, byte[] serverStaticPublicKey, byte[] serverEphemeralPublicKey)
     {
         Sha256Digest digest = new();
 
         Update("Ecliptix-OPAQUE-v1"u8.ToArray());
-        Update(Encoding.UTF8.GetBytes(username));
+        Update(Encoding.UTF8.GetBytes(phoneNumber));
         Update(oprfResponse);
         Update(clientStaticPublicKey);
         Update(clientEphemeralPublicKey);

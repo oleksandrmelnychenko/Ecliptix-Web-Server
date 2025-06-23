@@ -54,7 +54,6 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", cmd.PhoneNumber);
-        parameters.Add("@SecureKey", cmd.SecureKey);
 
         LoginMembershipResult? result = await connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
@@ -79,7 +78,8 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         {
                             UniqueIdentifier = result.MembershipUniqueId.Value,
                             ActivityStatus = status,
-                            CreationStatus = Membership.Types.CreationStatus.OtpVerified
+                            CreationStatus = Membership.Types.CreationStatus.OtpVerified,
+                            SecureKey = result.SecureKey
                         }),
                     () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                         VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
@@ -141,7 +141,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         parameters.Add("@ConnectionId", (long)cmd.ConnectId);
         parameters.Add("@OtpUniqueId", cmd.OtpIdentifier);
         parameters.Add("@CreationStatus", MembershipCreationStatusHelper.GetCreationStatusString(cmd.CreationStatus));
-        
+
         CreateMembershipResult? result = await connection.QuerySingleOrDefaultAsync<CreateMembershipResult>(
             "dbo.CreateMembership",
             parameters,

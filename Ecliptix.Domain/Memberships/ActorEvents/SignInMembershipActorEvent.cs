@@ -1,3 +1,5 @@
+using Ecliptix.Protobuf.Membership;
+
 namespace Ecliptix.Domain.Memberships.ActorEvents;
 
-public record SignInMembershipActorEvent(string PhoneNumber, byte[] SecureKey, string CultureName);
+public record SignInMembershipActorEvent(string PhoneNumber, OpaqueSignInInitRequest OpaqueSignInInitRequest, string CultureName);

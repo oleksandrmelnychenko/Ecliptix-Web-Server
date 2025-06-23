@@ -59,10 +59,20 @@ message OpaqueSignInInitResponse {
   bytes server_ephemeral_public_key = 2;
   bytes registration_record = 3;
   bytes server_state_token = 4;
+  
+  optional string message = 5;
+  optional int32 minutes_until_retry = 6;
+  SignInResult result = 7;
+  
+  enum SignInResult {
+    SUCCEEDED = 0;
+    INVALID_CREDENTIALS = 1;
+    LOGIN_ATTEMPT_EXCEEDED = 2;
+  }
 }
 
 message OpaqueSignInFinalizeRequest {
-  bytes phone_number = 1;
+  string phone_number = 1;
   bytes client_ephemeral_public_key = 2;
   bytes client_mac = 3;
   bytes server_state_token = 4;
@@ -72,7 +82,7 @@ message OpaqueSignInFinalizeResponse {
   bytes server_mac = 1;
   optional Membership membership = 2;
   SignInResult result = 3;
-  optional string error_message = 4;
+  optional string message = 4;
   optional int32 minutes_until_retry = 5;
 
   enum SignInResult {
@@ -98,21 +108,3 @@ message AkePasswordResetState {
   google.protobuf.Timestamp expiration = 3;
 }
 
-/* DEPRECATED from 20.06.2025 */
-
-message SignInMembershipRequest {
-  string phone_number = 2;
-  bytes secure_key = 3;
-}
-message SignInMembershipResponse {
-  enum SignInResult {
-    SUCCEEDED = 0;
-    INVALID_CREDENTIALS = 1;
-    LOGIN_ATTEMPT_EXCEEDED = 2;
-  }
-
-  SignInResult result = 1;
-  optional string message = 2;
-  optional Membership membership = 3;
-  optional string minutes_until_retry = 4;
-}

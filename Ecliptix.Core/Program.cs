@@ -65,7 +65,7 @@ try
         if (secretKeySeed.Length < 32)
             throw new InvalidOperationException("OpaqueProtocol:SecretKeySeed must be at least 32 bytes.");
 
-        return new OpaqueProtocolService(secretKeySeed);
+        return new BackEndOpaqueProtocolService(secretKeySeed);
     });
 
     builder.Services.AddAkka(systemActorName, (akkaBuilder, serviceProvider) =>

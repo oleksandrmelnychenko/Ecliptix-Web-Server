@@ -21,7 +21,7 @@ public class MembershipServices(
     IPhoneNumberValidator phoneNumberValidator
 ) : MembershipServicesBase(actorRegistry)
 {
-    public override async Task<CipherPayload> SignInMembership(CipherPayload request, ServerCallContext context)
+    public override async Task<CipherPayload> OpaqueSignInInitRequest(CipherPayload request, ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
@@ -37,7 +37,7 @@ public class MembershipServices(
         if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
 
         byte[] decryptedBytes = decryptionResult.Unwrap();
-        SignInMembershipRequest signInRequest = Helpers.ParseFromBytes<SignInMembershipRequest>(decryptedBytes);
+        OpaqueSignInInitRequest signInRequest = Helpers.ParseFromBytes<OpaqueSignInInitRequest>(decryptedBytes);
 
         Result<PhoneNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
             phoneNumberValidator.ValidatePhoneNumber(signInRequest.PhoneNumber, CultureName);
@@ -47,9 +47,9 @@ public class MembershipServices(
             VerificationFlowFailure verificationFlowFailure = phoneNumberValidationResult.UnwrapErr();
             if (verificationFlowFailure.IsUserFacing)
             {
-                byte[] signInMembershipResponse = new SignInMembershipResponse
+                byte[] signInMembershipResponse = new OpaqueSignInInitResponse
                 {
-                    Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
+                    Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
                     Message = verificationFlowFailure.Message
                 }.ToByteArray();
                 return await EncryptResponse(signInMembershipResponse, connectId, context);
@@ -61,25 +61,54 @@ public class MembershipServices(
         PhoneNumberValidationResult phoneNumberResult = phoneNumberValidationResult.Unwrap();
         if (!phoneNumberResult.IsValid)
         {
-            byte[] signInMembershipResponse = new SignInMembershipResponse
+            byte[] signInMembershipResponse = new OpaqueSignInInitResponse
             {
-                Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
+                Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
                 Message = phoneNumberResult.MessageKey
             }.ToByteArray();
             return await EncryptResponse(signInMembershipResponse, connectId, context);
         }
 
         SignInMembershipActorEvent signInEvent = new(
-            phoneNumberResult.ParsedPhoneNumberE164!,
-            Helpers.ReadMemoryToRetrieveBytes(signInRequest.SecureKey.Memory), CultureName);
+            phoneNumberResult.ParsedPhoneNumberE164!, signInRequest, CultureName);
 
-        Result<SignInMembershipResponse, VerificationFlowFailure> signInResult =
-            await MembershipActor.Ask<Result<SignInMembershipResponse, VerificationFlowFailure>>(signInEvent,
+        Result<OpaqueSignInInitResponse, VerificationFlowFailure> signInResult =
+            await MembershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent,
                 context.CancellationToken);
 
         return await signInResult.Match(
             async signInResponse => await EncryptResponse(signInResponse.ToByteArray(), connectId, context),
             error => throw GrpcFailureException.FromDomainFailure(error));
+    }
+
+
+    public override async Task<CipherPayload> OpaqueSignInCompleteRequest(CipherPayload request,
+        ServerCallContext context)
+    {
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
+
+        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
+            request);
+
+        ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
+
+        Result<byte[], EcliptixProtocolFailure> decryptionResult =
+            await ProtocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(decryptForwarder,
+                context.CancellationToken);
+
+        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
+
+        byte[] decryptedBytes = decryptionResult.Unwrap();
+        OpaqueSignInFinalizeRequest signInRequest = Helpers.ParseFromBytes<OpaqueSignInFinalizeRequest>(decryptedBytes);
+
+        Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure> result =
+            await MembershipActor.Ask<Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>>(
+                new SignInComplete(signInRequest));
+        
+        if (result.IsOk)
+            return await EncryptResponse(result.Unwrap().ToByteArray(), connectId, context);
+
+        throw GrpcFailureException.FromDomainFailure(result.UnwrapErr());
     }
 
     public override async Task<CipherPayload> OpaqueRegistrationCompleteRequest(CipherPayload request,

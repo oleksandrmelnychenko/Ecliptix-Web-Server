@@ -5,7 +5,8 @@ package ecliptix.proto.membership;
 option csharp_namespace = "Ecliptix.Protobuf.Membership";
 
 service MembershipServices {
-  rpc SignInMembership(CipherPayload) returns (CipherPayload);
   rpc OpaqueRegistrationInitRequest(CipherPayload) returns (CipherPayload);
   rpc OpaqueRegistrationCompleteRequest(CipherPayload) returns (CipherPayload);
+  rpc OpaqueSignInInitRequest(CipherPayload) returns (CipherPayload);
+  rpc OpaqueSignInCompleteRequest(CipherPayload) returns (CipherPayload);
 }

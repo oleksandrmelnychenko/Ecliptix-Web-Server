@@ -17,6 +17,8 @@ public record GenerateMembershipOprfRegistrationRequestEvent(Guid MembershipIden
 
 public record CompleteRegistrationRecordActorEvent(Guid MembershipIdentifier, byte[] PeerRegistrationRecord);
 
+public record SignInComplete(OpaqueSignInFinalizeRequest Request);
+
 public class MembershipActor : ReceiveActor
 {
     private readonly ILocalizationProvider _localizationProvider;
@@ -41,6 +43,24 @@ public class MembershipActor : ReceiveActor
 
     private void Ready()
     {
+        Receive<SignInComplete>(updateEvent =>
+        {
+            Result<OpaqueSignInFinalizeResponse, OpaqueFailure> result =
+                _opaqueProtocolService.FinalizeSignIn(updateEvent.Request);
+            if (result.IsErr)
+            {
+                Sender.Tell(
+                    Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.InvalidOpaque(result.UnwrapErr().Message)));
+            }
+            else
+            {
+                Sender.Tell(
+                    Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Ok(result.Unwrap()));
+            }
+        });
+
+
         ReceiveAsync<GenerateMembershipOprfRegistrationRequestEvent>(HandleGenerateMembershipOprfRegistrationRecord);
         ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembership);
         ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembership);
@@ -113,10 +133,21 @@ public class MembershipActor : ReceiveActor
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
 
-        Result<SignInMembershipResponse, VerificationFlowFailure> finalResult = persistorResult.Match(
+        Result<OpaqueSignInInitResponse, VerificationFlowFailure> finalResult = persistorResult.Match(
             record =>
             {
-                SignInMembershipResponse successResponse = new()
+                Result<OpaqueSignInInitResponse, OpaqueFailure> initiateSignInResult =
+                    _opaqueProtocolService.InitiateSignIn(
+                        @event.OpaqueSignInInitRequest,
+                        new MembershipOpaqueQueryRecord(@event.PhoneNumber, record.SecureKey));
+
+                if (initiateSignInResult.IsErr)
+                {
+                    return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Err(VerificationFlowFailure
+                        .InvalidOpaque());
+                }
+
+                /*SignInMembershipResponse successResponse = new()
                 {
                     Membership = new Membership
                     {
@@ -124,15 +155,15 @@ public class MembershipActor : ReceiveActor
                         Status = record.ActivityStatus
                     },
                     Result = SignInMembershipResponse.Types.SignInResult.Succeeded
-                };
-                return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(successResponse);
+                };*/
+                return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(initiateSignInResult.Unwrap());
             },
             failure => TranslateSignInFailure(failure, @event.CultureName));
 
         Sender.Tell(finalResult);
     }
 
-    private Result<SignInMembershipResponse, VerificationFlowFailure> TranslateSignInFailure(
+    private Result<OpaqueSignInInitResponse, VerificationFlowFailure> TranslateSignInFailure(
         VerificationFlowFailure failure,
         string cultureName)
     {
@@ -145,9 +176,9 @@ public class MembershipActor : ReceiveActor
                     VerificationFlowMessageKeys.InvalidCredentials,
                     cultureName
                 );
-                return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(new SignInMembershipResponse
+                return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
                 {
-                    Result = SignInMembershipResponse.Types.SignInResult.InvalidCredentials,
+                    Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
                     Message = message
                 });
             }
@@ -158,16 +189,16 @@ public class MembershipActor : ReceiveActor
                     VerificationFlowMessageKeys.TooManySigninAttempts,
                     cultureName
                 );
-                return Result<SignInMembershipResponse, VerificationFlowFailure>.Ok(new SignInMembershipResponse
+                return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
                 {
-                    Result = SignInMembershipResponse.Types.SignInResult.LoginAttemptExceeded,
+                    Result = OpaqueSignInInitResponse.Types.SignInResult.LoginAttemptExceeded,
                     Message = message,
-                    MinutesUntilRetry = "5"
+                    MinutesUntilRetry = 5
                 });
             }
 
             default:
-                return Result<SignInMembershipResponse, VerificationFlowFailure>
+                return Result<OpaqueSignInInitResponse, VerificationFlowFailure>
                     .Err(failure);
         }
     }
