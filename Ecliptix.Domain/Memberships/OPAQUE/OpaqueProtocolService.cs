@@ -46,6 +46,31 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         return InitiateSignIn(request.PeerOprf.ToByteArray(), queryRecord);
     }
 
+    public Result<Unit, OpaqueFailure> CompleteRegistration(
+        byte[] peerRegistrationRecord)
+    {
+        const int expectedPublicKeyLength = 33;
+        if (peerRegistrationRecord.Length < expectedPublicKeyLength)
+            return Result<Unit, OpaqueFailure>.Err(
+                OpaqueFailure.InvalidInput("Invalid registration record: too short."));
+
+        try
+        {
+            byte[] clientStaticPublicKey = peerRegistrationRecord.Take(expectedPublicKeyLength).ToArray();
+            ECPoint decodedPoint = OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(clientStaticPublicKey);
+            if (!decodedPoint.IsValid())
+                return Result<Unit, OpaqueFailure>.Err(
+                    OpaqueFailure.InvalidInput("Invalid client static public key."));
+            
+            return Result<Unit, OpaqueFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, OpaqueFailure>.Err(
+                OpaqueFailure.CalculateRegistrationRecord(ex.Message));
+        }
+    }
+
     public byte[] GetPublicKey()
     {
         return ((ECPublicKeyParameters)_serverStaticKeyPair.Public).Q.GetEncoded(true);

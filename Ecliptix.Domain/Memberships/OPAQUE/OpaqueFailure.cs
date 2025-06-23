@@ -13,6 +13,11 @@ public sealed record OpaqueFailure
         InnerException = innerException;
     }
     
+    public static OpaqueFailure CalculateRegistrationRecord(string details, Exception? inner = null)
+    {
+        return new OpaqueFailure(OpaqueCryptoFailureType.CalculateRegistrationRecord, details, inner);
+    }
+    
     public static OpaqueFailure TokenExpired(string? details = null, Exception? inner = null)
     {
         return new OpaqueFailure(OpaqueCryptoFailureType.TokenExpired,

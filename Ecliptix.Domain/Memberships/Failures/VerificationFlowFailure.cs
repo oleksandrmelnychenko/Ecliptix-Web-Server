@@ -23,6 +23,7 @@ public sealed record VerificationFlowFailure(
         VerificationFlowFailureType.SuspiciousActivity => true,
         VerificationFlowFailureType.RateLimitExceeded => true,
         VerificationFlowFailureType.OtpMaxAttemptsReached => true,
+        VerificationFlowFailureType.InvalidOpaque => true,
         _ => false
     };
 
@@ -47,9 +48,15 @@ public sealed record VerificationFlowFailure(
         VerificationFlowFailureType.SuspiciousActivity => false,
 
         VerificationFlowFailureType.Validation => true,
-
+        VerificationFlowFailureType.InvalidOpaque => false,
         _ => false
     };
+    
+    public static VerificationFlowFailure InvalidOpaque(string? details = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.InvalidOpaque,
+            details ?? VerificationFlowMessageKeys.InvalidOpaque);
+    }
 
     public static VerificationFlowFailure NotFound(string? details = null)
     {

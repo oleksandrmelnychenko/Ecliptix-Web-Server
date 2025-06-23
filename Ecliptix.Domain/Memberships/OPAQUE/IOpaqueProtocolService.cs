@@ -12,4 +12,7 @@ public interface IOpaqueProtocolService
     Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(OpaqueSignInInitRequest request,MembershipOpaqueQueryRecord queryRecord);
 
     Result<OpaqueSignInFinalizeResponse, OpaqueFailure> FinalizeSignIn(OpaqueSignInFinalizeRequest request);
+
+    Result<Unit, OpaqueFailure> CompleteRegistration(
+        byte[] peerRegistrationRecord);
 }

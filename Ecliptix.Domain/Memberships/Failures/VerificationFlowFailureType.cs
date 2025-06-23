@@ -21,6 +21,8 @@ public enum VerificationFlowFailureType : short
     SuspiciousActivity,
 
     Validation,
+    
+    InvalidOpaque,
 
     Generic
 }

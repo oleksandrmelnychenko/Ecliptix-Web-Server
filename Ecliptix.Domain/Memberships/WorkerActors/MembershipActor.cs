@@ -15,6 +15,8 @@ public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] S
 
 public record GenerateMembershipOprfRegistrationRequestEvent(Guid MembershipIdentifier, byte[] OprfRequest);
 
+public record CompleteRegistrationRecordActorEvent(Guid MembershipIdentifier, byte[] PeerRegistrationRecord);
+
 public class MembershipActor : ReceiveActor
 {
     private readonly ILocalizationProvider _localizationProvider;
@@ -42,6 +44,36 @@ public class MembershipActor : ReceiveActor
         ReceiveAsync<GenerateMembershipOprfRegistrationRequestEvent>(HandleGenerateMembershipOprfRegistrationRecord);
         ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembership);
         ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembership);
+        ReceiveAsync<CompleteRegistrationRecordActorEvent>(HandleCompleteRegistrationRecord);
+    }
+
+    private async Task HandleCompleteRegistrationRecord(CompleteRegistrationRecordActorEvent @event)
+    {
+        Result<Unit, OpaqueFailure> completionResult =
+            _opaqueProtocolService.CompleteRegistration(@event.PeerRegistrationRecord);
+
+        if (completionResult.IsErr)
+        {
+            Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.InvalidOpaque(completionResult.UnwrapErr().Message)));
+            return;
+        }
+
+        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRegistrationRecord);
+        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
+            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
+
+        if (persistorResult.IsErr)
+        {
+            Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(persistorResult.UnwrapErr()));
+            return;
+        }
+
+        Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Ok(
+            new OprfRegistrationCompleteResponse()
+            {
+                Message = "Registration completed successfully."
+            }));
     }
 
     private async Task HandleGenerateMembershipOprfRegistrationRecord(
@@ -53,8 +85,8 @@ public class MembershipActor : ReceiveActor
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
 
-        Result<OprfRegistrationRecordResponse, VerificationFlowFailure> finalResult =
-            persistorResult.Map(record => new OprfRegistrationRecordResponse
+        Result<OprfRegistrationInitResponse, VerificationFlowFailure> finalResult =
+            persistorResult.Map(record => new OprfRegistrationInitResponse
             {
                 Membership = new Membership
                 {
@@ -63,7 +95,7 @@ public class MembershipActor : ReceiveActor
                     CreationStatus = record.CreationStatus
                 },
                 PeerOprf = ByteString.CopyFrom(oprfResponse),
-                Result = OprfRegistrationRecordResponse.Types.UpdateResult.Succeeded
+                Result = OprfRegistrationInitResponse.Types.UpdateResult.Succeeded
             });
 
         Sender.Tell(finalResult);

@@ -82,7 +82,38 @@ public class MembershipServices(
             error => throw GrpcFailureException.FromDomainFailure(error));
     }
 
-    public override async Task<CipherPayload> OpaqueRegistrationRecordRequest(CipherPayload request,
+    public override async Task<CipherPayload> OpaqueRegistrationCompleteRequest(CipherPayload request,
+        ServerCallContext context)
+    {
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
+
+        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
+            request);
+
+        ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
+
+        Result<byte[], EcliptixProtocolFailure> decryptionResult =
+            await ProtocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(decryptForwarder,
+                context.CancellationToken);
+        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
+
+        OprfRegistrationCompleteRequest opaqueSignInCompleteRequest =
+            Helpers.ParseFromBytes<OprfRegistrationCompleteRequest>(decryptionResult.Unwrap());
+
+        CompleteRegistrationRecordActorEvent @event = new(
+            Helpers.FromByteStringToGuid(opaqueSignInCompleteRequest.MembershipIdentifier),
+            Helpers.ReadMemoryToRetrieveBytes(opaqueSignInCompleteRequest.PeerRegistrationRecord.Memory));
+
+        Result<OprfRegistrationCompleteResponse, VerificationFlowFailure> completeRegistrationRecordResult =
+            await MembershipActor.Ask<Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>>(@event);
+
+        if (completeRegistrationRecordResult.IsOk)
+            return await EncryptResponse(completeRegistrationRecordResult.Unwrap().ToByteArray(), connectId, context);
+
+        throw GrpcFailureException.FromDomainFailure(completeRegistrationRecordResult.UnwrapErr());
+    }
+
+    public override async Task<CipherPayload> OpaqueRegistrationInitRequest(CipherPayload request,
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
@@ -98,15 +129,15 @@ public class MembershipServices(
 
         if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
 
-        OprfRegistrationRecordRequest opaqueSignInInitRequest =
-            Helpers.ParseFromBytes<OprfRegistrationRecordRequest>(decryptionResult.Unwrap());
+        OprfRegistrationInitRequest opaqueSignInInitRequest =
+            Helpers.ParseFromBytes<OprfRegistrationInitRequest>(decryptionResult.Unwrap());
 
         GenerateMembershipOprfRegistrationRequestEvent @event = new(
             Helpers.FromByteStringToGuid(opaqueSignInInitRequest.MembershipIdentifier),
             Helpers.ReadMemoryToRetrieveBytes(opaqueSignInInitRequest.PeerOprf.Memory));
 
-        Result<OprfRegistrationRecordResponse, VerificationFlowFailure> updateOperationResult =
-            await MembershipActor.Ask<Result<OprfRegistrationRecordResponse, VerificationFlowFailure>>(@event,
+        Result<OprfRegistrationInitResponse, VerificationFlowFailure> updateOperationResult =
+            await MembershipActor.Ask<Result<OprfRegistrationInitResponse, VerificationFlowFailure>>(@event,
                 context.CancellationToken);
 
         if (updateOperationResult.IsOk)

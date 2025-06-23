@@ -22,14 +22,14 @@ message Membership {
   optional CreationStatus creation_status = 4;
 }
 
-message OprfRegistrationRecordRequest {
+message OprfRegistrationInitRequest {
   bytes peer_oprf = 1;
   bytes membership_identifier = 2;
 }
 
-message OprfRegistrationRecordResponse   {
+message OprfRegistrationInitResponse   {
   bytes peer_oprf = 1;
-  
+
   enum UpdateResult {
     SUCCEEDED = 0;
     INVALID_CREDENTIALS = 1;
@@ -40,8 +40,17 @@ message OprfRegistrationRecordResponse   {
   optional Membership membership = 4;
 }
 
+message OprfRegistrationCompleteRequest {
+  bytes peer_registration_record = 1;
+  bytes membership_identifier = 2;
+}
+
+message OprfRegistrationCompleteResponse   {
+  optional string message = 1;
+}
+
 message OpaqueSignInInitRequest {
-  bytes membership_identifier = 1;
+  string phone_number = 1;
   bytes peer_oprf = 2;
 }
 
