@@ -159,7 +159,7 @@ public class VerificationFlowServices(
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
-        DecryptCipherPayloadActorActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect, request);
+        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect, request);
         ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
 
         return await ProtocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(

@@ -4,6 +4,7 @@ using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
+using Ecliptix.Domain.Memberships.OPAQUE;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Utilities;
@@ -24,7 +25,7 @@ public class MembershipServices(
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        DecryptCipherPayloadActorActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
+        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
             request);
 
         ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
@@ -81,12 +82,12 @@ public class MembershipServices(
             error => throw GrpcFailureException.FromDomainFailure(error));
     }
 
-    public override async Task<CipherPayload> UpdateMembershipWithSecureKey(CipherPayload request,
+    public override async Task<CipherPayload> OpaqueRegistrationRecordRequest(CipherPayload request,
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        DecryptCipherPayloadActorActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
+        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
             request);
 
         ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
@@ -97,15 +98,15 @@ public class MembershipServices(
 
         if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
 
-        UpdateMembershipWithSecureKeyRequest updateMembershipWithSecureKeyRequest =
-            Helpers.ParseFromBytes<UpdateMembershipWithSecureKeyRequest>(decryptionResult.Unwrap());
+        OprfRegistrationRecordRequest opaqueSignInInitRequest =
+            Helpers.ParseFromBytes<OprfRegistrationRecordRequest>(decryptionResult.Unwrap());
 
-        UpdateMembershipSecureKeyEvent @event = new(
-            Helpers.FromByteStringToGuid(updateMembershipWithSecureKeyRequest.MembershipIdentifier),
-            Helpers.ReadMemoryToRetrieveBytes(updateMembershipWithSecureKeyRequest.SecureKey.Memory));
+        GenerateMembershipOprfRegistrationRequestEvent @event = new(
+            Helpers.FromByteStringToGuid(opaqueSignInInitRequest.MembershipIdentifier),
+            Helpers.ReadMemoryToRetrieveBytes(opaqueSignInInitRequest.PeerOprf.Memory));
 
-        Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure> updateOperationResult =
-            await MembershipActor.Ask<Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure>>(@event,
+        Result<OprfRegistrationRecordResponse, VerificationFlowFailure> updateOperationResult =
+            await MembershipActor.Ask<Result<OprfRegistrationRecordResponse, VerificationFlowFailure>>(@event,
                 context.CancellationToken);
 
         if (updateOperationResult.IsOk)

@@ -47,7 +47,7 @@ public class EcliptixProtocolConnectActor : ReceiveActor
     private void Ready()
     {
         Receive<DeriveSharedSecretActorEvent>(HandleProcessAndRespondToPubKeyExchangeCommand);
-        Receive<DecryptCipherPayloadActorActorEvent>(HandleDecryptCipherPayloadCommand);
+        Receive<DecryptCipherPayloadActorEvent>(HandleDecryptCipherPayloadCommand);
         Receive<EncryptPayloadActorEvent>(HandleEncryptCipherPayloadCommand);
 
         Receive<ReceiveTimeout>(_ => HandleIdleTimeout());
@@ -69,10 +69,10 @@ public class EcliptixProtocolConnectActor : ReceiveActor
         Sender.Tell(cipherPayload);
     }
 
-    private void HandleDecryptCipherPayloadCommand(DecryptCipherPayloadActorActorEvent actorActorEvent)
+    private void HandleDecryptCipherPayloadCommand(DecryptCipherPayloadActorEvent actorEvent)
     {
         Result<byte[], EcliptixProtocolFailure> payload =
-            _ecliptixProtocolSystem.ProcessInboundMessage(actorActorEvent.CipherPayload);
+            _ecliptixProtocolSystem.ProcessInboundMessage(actorEvent.CipherPayload);
         Sender.Tell(payload);
     }
 

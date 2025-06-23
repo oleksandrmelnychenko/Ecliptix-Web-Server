@@ -25,6 +25,7 @@ message AppDeviceRegisteredStateReply {
 
   Status status = 1;
   bytes unique_id = 2;
+  bytes server_public_key = 3;
 }
 
 message AppDeviceSettings {

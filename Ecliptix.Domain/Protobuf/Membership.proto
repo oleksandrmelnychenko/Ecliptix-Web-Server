@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package ecliptix.proto.membership;
 option csharp_namespace = "Ecliptix.Protobuf.Membership";
+import "google/protobuf/timestamp.proto";
 
 message Membership {
   bytes unique_identifier = 1;
@@ -10,7 +11,7 @@ message Membership {
     ACTIVE = 0;
     INACTIVE = 1;
   }
-  
+
   enum CreationStatus {
     OTP_VERIFIED = 0;
     SECURE_KEY_SET = 1;
@@ -21,21 +22,74 @@ message Membership {
   optional CreationStatus creation_status = 4;
 }
 
-message UpdateMembershipWithSecureKeyRequest {
-  bytes secure_key = 1;
+message OprfRegistrationRecordRequest {
+  bytes peer_oprf = 1;
   bytes membership_identifier = 2;
 }
 
-message UpdateMembershipWithSecureKeyResponse {
+message OprfRegistrationRecordResponse   {
+  bytes peer_oprf = 1;
+  
   enum UpdateResult {
     SUCCEEDED = 0;
     INVALID_CREDENTIALS = 1;
   }
 
-  UpdateResult result = 1;
-  optional string message = 2;
-  optional Membership membership = 3;
+  UpdateResult result = 2;
+  optional string message = 3;
+  optional Membership membership = 4;
 }
+
+message OpaqueSignInInitRequest {
+  bytes membership_identifier = 1;
+  bytes peer_oprf = 2;
+}
+
+message OpaqueSignInInitResponse {
+  bytes server_oprf_response = 1;
+  bytes server_ephemeral_public_key = 2;
+  bytes registration_record = 3;
+  bytes server_state_token = 4;
+}
+
+message OpaqueSignInFinalizeRequest {
+  bytes phone_number = 1;
+  bytes client_ephemeral_public_key = 2;
+  bytes client_mac = 3;
+  bytes server_state_token = 4;
+}
+
+message OpaqueSignInFinalizeResponse {
+  bytes server_mac = 1;
+  optional Membership membership = 2;
+  SignInResult result = 3;
+  optional string error_message = 4;
+  optional int32 minutes_until_retry = 5;
+
+  enum SignInResult {
+    SUCCEEDED = 0;
+    INVALID_CREDENTIALS = 1;
+    LOGIN_ATTEMPT_EXCEEDED = 2;
+  }
+}
+
+message AkeServerState {
+  bytes server_ephemeral_private_key_bytes = 1;
+  bytes server_ephemeral_public_key = 2;
+  bytes client_static_public_key = 3;
+  bytes oprf_response = 4;
+  string username = 5;
+  bytes registration_record = 6;
+  google.protobuf.Timestamp expiration = 7;
+}
+
+message AkePasswordResetState {
+  string username = 1;
+  string reset_token = 2;
+  google.protobuf.Timestamp expiration = 3;
+}
+
+/* DEPRECATED from 20.06.2025 */
 
 message SignInMembershipRequest {
   string phone_number = 2;

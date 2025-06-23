@@ -64,8 +64,4 @@
         </Compile>
     </ItemGroup>
 
-    <ItemGroup>
-      <Folder Include="Protocol\SignIn\" />
-    </ItemGroup>
-
 </Project>

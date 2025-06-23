@@ -9,7 +9,7 @@ using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Security;
 using ECPoint = Org.BouncyCastle.Math.EC.ECPoint;
 
-namespace Ecliptix.Core.OpaqueProtocol;
+namespace Ecliptix.Domain.Memberships.OPAQUE;
 
 public static class OpaqueCryptoUtilities
 {
@@ -27,9 +27,7 @@ public static class OpaqueCryptoUtilities
 
     public static Result<byte[], OpaqueFailure> HkdfExtract(byte[] ikm, byte[]? salt)
     {
-        if (ikm.Length == 0)
-            return Result<byte[], OpaqueFailure>.Err(
-                OpaqueFailure.InvalidInput("Input keying material (ikm) cannot be null or empty."));
+        if (ikm.Length == 0) return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.InvalidInput());
 
         HMac hmac = new(new Sha256Digest());
         byte[] effectiveSalt = salt ?? new byte[hmac.GetMacSize()];
@@ -84,15 +82,14 @@ public static class OpaqueCryptoUtilities
             if (scalar.SignValue > 0 && scalar.CompareTo(DomainParams.N) < 0)
             {
                 ECPoint point = DomainParams.G.Multiply(scalar).Normalize();
-                if (point.IsValid())
-                    return Result<ECPoint, OpaqueFailure>.Ok(point);
+                if (point.IsValid()) return Result<ECPoint, OpaqueFailure>.Ok(point);
             }
 
             counter++;
         }
 
         return Result<ECPoint, OpaqueFailure>.Err(
-            OpaqueFailure.HashingValidPointFailed("Failed to hash input to a valid curve point after 255 attempts."));
+            OpaqueFailure.HashingValidPointFailed());
     }
 
     public static BigInteger GenerateRandomScalar()
@@ -131,7 +128,7 @@ public static class OpaqueCryptoUtilities
         }
         catch (Exception ex) when (ex is InvalidKeyException or InvalidCipherTextException)
         {
-            return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.AeadEncryptFailed(ex.Message, ex));
+            return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.EncryptFailed(ex.Message, ex));
         }
     }
 
@@ -139,7 +136,7 @@ public static class OpaqueCryptoUtilities
         byte[] associatedData)
     {
         if (ciphertextWithNonce.Length < AesGcmNonceLengthBytes)
-            return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.AeadDecryptFailed(""));
+            return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.DecryptFailed());
 
         ReadOnlySpan<byte> nonce = ciphertextWithNonce.AsSpan(0, AesGcmNonceLengthBytes);
         ReadOnlySpan<byte> ciphertext = ciphertextWithNonce.AsSpan(AesGcmNonceLengthBytes);
@@ -154,7 +151,7 @@ public static class OpaqueCryptoUtilities
         }
         catch (InvalidCipherTextException exc)
         {
-            return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.AeadDecryptFailed(exc.Message, exc));
+            return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.DecryptFailed(exc.Message, exc));
         }
     }
 }

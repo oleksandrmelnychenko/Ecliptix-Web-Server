@@ -8,7 +8,7 @@ namespace Ecliptix.Core.Protocol.Actors;
 
 public record BeginAppDeviceEphemeralConnectActorEvent(PubKeyExchange PubKeyExchange, uint UniqueConnectId);
 
-public record DecryptCipherPayloadActorActorEvent(
+public record DecryptCipherPayloadActorEvent(
     PubKeyExchangeType PubKeyExchangeType,
     CipherPayload CipherPayload);
 
@@ -88,7 +88,7 @@ public class EcliptixProtocolSystemActor : ReceiveActor
             {
                 EncryptPayloadActorEvent => Result<CipherPayload, EcliptixProtocolFailure>.Err(
                     CreateNotFoundError(connectId)),
-                DecryptCipherPayloadActorActorEvent => Result<byte[], EcliptixProtocolFailure>.Err(
+                DecryptCipherPayloadActorEvent => Result<byte[], EcliptixProtocolFailure>.Err(
                     CreateNotFoundError(connectId)),
                 _ => Result<object, EcliptixProtocolFailure>.Err(CreateNotFoundError(connectId))
             };

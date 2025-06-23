@@ -1,37 +1,45 @@
 using System.Data;
 using System.Data.Common;
+using System.Text;
 using Akka.Actor;
 using Dapper;
 using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Failures;
 using Ecliptix.Domain.DbConnectionFactory;
+using Ecliptix.Domain.Memberships.OPAQUE;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.AppDevice;
+using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 
 namespace Ecliptix.Domain.AppDevices.Persistors;
 
 public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 {
+    private readonly IOpaqueProtocolService _opaqueProtocolService;
+
     private const string RegisterAppDeviceSp = "dbo.RegisterAppDeviceIfNotExists";
 
-    public AppDevicePersistorActor(IDbConnectionFactory connectionFactory)
+    public AppDevicePersistorActor(IDbConnectionFactory connectionFactory, IOpaqueProtocolService opaqueProtocolService)
         : base(connectionFactory)
     {
+        _opaqueProtocolService = opaqueProtocolService;
         Become(Ready);
     }
 
     private void Ready()
     {
         Receive<RegisterAppDeviceIfNotExistActorEvent>(args =>
-            ExecuteWithConnection(conn => RegisterAppDeviceAsync(conn, args.AppDevice), "RegisterAppDevice",
+            ExecuteWithConnection(
+                    conn => RegisterAppDeviceAsync(conn, args.AppDevice, _opaqueProtocolService.GetPublicKey()),
+                    "RegisterAppDevice",
                     RegisterAppDeviceSp)
                 .PipeTo(Sender));
     }
 
     private static async Task<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>> RegisterAppDeviceAsync(
-        IDbConnection connection, AppDevice appDevice)
+        IDbConnection connection, AppDevice appDevice, string serverPublicKey)
     {
         var parameters = new
         {
@@ -61,7 +69,8 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
         return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
         {
             Status = currentStatus,
-            UniqueId = Helpers.GuidToByteString(result.UniqueId)
+            UniqueId = Helpers.GuidToByteString(result.UniqueId),
+            ServerPublicKey = ByteString.CopyFrom(Encoding.ASCII.GetBytes(serverPublicKey))
         });
     }
 
@@ -80,8 +89,8 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
         return AppDeviceFailure.InternalError(ex: ex);
     }
 
-    public static Props Build(IDbConnectionFactory connectionFactory)
+    public static Props Build(IDbConnectionFactory connectionFactory, IOpaqueProtocolService opaqueProtocolService)
     {
-        return Props.Create(() => new AppDevicePersistorActor(connectionFactory));
+        return Props.Create(() => new AppDevicePersistorActor(connectionFactory, opaqueProtocolService));
     }
 }

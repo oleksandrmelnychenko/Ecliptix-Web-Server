@@ -38,7 +38,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        DecryptCipherPayloadActorActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
+        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
             request
         );
 

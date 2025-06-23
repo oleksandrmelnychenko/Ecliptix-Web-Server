@@ -1,47 +1,60 @@
 using Akka.Actor;
+using Akka.IO;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
+using Ecliptix.Domain.Memberships.OPAQUE;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Serilog;
+using ByteString = Google.Protobuf.ByteString;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors;
 
 public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey);
 
+public record GenerateMembershipOprfRegistrationRequestEvent(Guid MembershipIdentifier, byte[] OprfRequest);
+
 public class MembershipActor : ReceiveActor
 {
     private readonly ILocalizationProvider _localizationProvider;
     private readonly IActorRef _persistor;
+    private readonly IOpaqueProtocolService _opaqueProtocolService;
 
-    public MembershipActor(IActorRef persistor, ILocalizationProvider localizationProvider)
+    public MembershipActor(IActorRef persistor, IOpaqueProtocolService opaqueProtocolService,
+        ILocalizationProvider localizationProvider)
     {
         _persistor = persistor;
+        _opaqueProtocolService = opaqueProtocolService;
         _localizationProvider = localizationProvider;
 
         Become(Ready);
     }
 
-    public static Props Build(IActorRef persistor, ILocalizationProvider localizationProvider)
+    public static Props Build(IActorRef persistor, IOpaqueProtocolService opaqueProtocolService,
+        ILocalizationProvider localizationProvider)
     {
-        return Props.Create(() => new MembershipActor(persistor, localizationProvider));
+        return Props.Create(() => new MembershipActor(persistor, opaqueProtocolService, localizationProvider));
     }
 
     private void Ready()
     {
-        ReceiveAsync<UpdateMembershipSecureKeyEvent>(HandleUpdateMembershipSecureKeyCommand);
+        ReceiveAsync<GenerateMembershipOprfRegistrationRequestEvent>(HandleGenerateMembershipOprfRegistrationRecord);
         ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembership);
         ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembership);
     }
 
-    private async Task HandleUpdateMembershipSecureKeyCommand(UpdateMembershipSecureKeyEvent @event)
+    private async Task HandleGenerateMembershipOprfRegistrationRecord(
+        GenerateMembershipOprfRegistrationRequestEvent @event)
     {
-        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
+        byte[] oprfResponse = _opaqueProtocolService.ProcessOprfRequest(@event.OprfRequest);
 
-        Result<UpdateMembershipWithSecureKeyResponse, VerificationFlowFailure> finalResult =
-            persistorResult.Map(record => new UpdateMembershipWithSecureKeyResponse
+        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, oprfResponse);
+        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
+            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
+
+        Result<OprfRegistrationRecordResponse, VerificationFlowFailure> finalResult =
+            persistorResult.Map(record => new OprfRegistrationRecordResponse
             {
                 Membership = new Membership
                 {
@@ -49,7 +62,8 @@ public class MembershipActor : ReceiveActor
                     Status = record.ActivityStatus,
                     CreationStatus = record.CreationStatus
                 },
-                Result = UpdateMembershipWithSecureKeyResponse.Types.UpdateResult.Succeeded
+                PeerOprf = ByteString.CopyFrom(oprfResponse),
+                Result = OprfRegistrationRecordResponse.Types.UpdateResult.Succeeded
             });
 
         Sender.Tell(finalResult);

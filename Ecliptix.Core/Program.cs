@@ -11,6 +11,7 @@ using Ecliptix.Domain;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Memberships;
+using Ecliptix.Domain.Memberships.OPAQUE;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Ecliptix.Domain.Memberships.WorkerActors;
@@ -42,6 +43,30 @@ try
 
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
+    builder.Services.AddSingleton<IOpaqueProtocolService>(sp =>
+    {
+        IConfiguration config = sp.GetRequiredService<IConfiguration>();
+        string? secretKeySeedBase64 = config["OpaqueProtocol:SecretKeySeed"];
+
+        if (string.IsNullOrEmpty(secretKeySeedBase64))
+            throw new InvalidOperationException("OpaqueProtocol:SecretKeySeed configuration is missing.");
+
+        byte[] secretKeySeed;
+        try
+        {
+            secretKeySeed = Convert.FromBase64String(secretKeySeedBase64);
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException(
+                "Invalid OpaqueProtocol:SecretKeySeed format. Must be a valid base64 string.", ex);
+        }
+
+        if (secretKeySeed.Length < 32)
+            throw new InvalidOperationException("OpaqueProtocol:SecretKeySeed must be at least 32 bytes.");
+
+        return new OpaqueProtocolService(secretKeySeed);
+    });
 
     builder.Services.AddAkka(systemActorName, (akkaBuilder, serviceProvider) =>
     {
@@ -52,6 +77,9 @@ try
 
             ILocalizationProvider localizationProvider =
                 serviceProvider.GetRequiredService<ILocalizationProvider>();
+
+            IOpaqueProtocolService opaqueProtocolService =
+                serviceProvider.GetRequiredService<IOpaqueProtocolService>();
 
             using (LogContext.PushProperty("ActorSystemName", system.Name))
             {
@@ -65,7 +93,7 @@ try
                 "ProtocolSystem");
 
             IActorRef appDevicePersistor = system.ActorOf(
-                AppDevicePersistorActor.Build(dbDataSource),
+                AppDevicePersistorActor.Build(dbDataSource, opaqueProtocolService),
                 "AppDevicePersistor");
 
             IActorRef verificationFlowPersistorActor = system.ActorOf(
@@ -77,7 +105,7 @@ try
                 "MembershipPersistorActor");
 
             IActorRef membershipActor = system.ActorOf(
-                MembershipActor.Build(membershipPersistorActor, localizationProvider),
+                MembershipActor.Build(membershipPersistorActor, opaqueProtocolService, localizationProvider),
                 "MembershipActor");
 
             IActorRef verificationFlowManagerActor = system.ActorOf(
