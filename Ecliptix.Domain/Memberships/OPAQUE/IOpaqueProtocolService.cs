@@ -7,7 +7,7 @@ public interface IOpaqueProtocolService
 {
     byte[] ProcessOprfRequest(byte[] oprfRequest);
 
-    string GetPublicKey();
+    byte[] GetPublicKey();
 
     Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(OpaqueSignInInitRequest request,MembershipOpaqueQueryRecord queryRecord);
 

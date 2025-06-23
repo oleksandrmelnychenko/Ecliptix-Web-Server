@@ -45,12 +45,10 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
     {
         return InitiateSignIn(request.PeerOprf.ToByteArray(), queryRecord);
     }
-    
-    public AsymmetricKeyParameter PublicKey => _serverStaticKeyPair.Public;
 
-    public string GetPublicKey()
+    public byte[] GetPublicKey()
     {
-        return Convert.ToBase64String(((ECPublicKeyParameters)_serverStaticKeyPair.Public).Q.GetEncoded(true));
+        return ((ECPublicKeyParameters)_serverStaticKeyPair.Public).Q.GetEncoded(true);
     }
 
     public Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(byte[] oprfRequest,

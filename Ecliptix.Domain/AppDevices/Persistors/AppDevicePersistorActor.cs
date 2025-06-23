@@ -39,7 +39,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
     }
 
     private static async Task<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>> RegisterAppDeviceAsync(
-        IDbConnection connection, AppDevice appDevice, string serverPublicKey)
+        IDbConnection connection, AppDevice appDevice, byte[] opaqueProtocolPublicKey)
     {
         var parameters = new
         {
@@ -70,7 +70,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
         {
             Status = currentStatus,
             UniqueId = Helpers.GuidToByteString(result.UniqueId),
-            ServerPublicKey = ByteString.CopyFrom(Encoding.ASCII.GetBytes(serverPublicKey))
+            ServerPublicKey = ByteString.CopyFrom(opaqueProtocolPublicKey)
         });
     }
 
