@@ -66,26 +66,7 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
             return Err(error);
         }
     }
-
-    public static Result<T, TE> Try(Func<T> func, Func<Exception, bool> exceptionFilter,
-        Func<Exception, TE> errorMapper)
-    {
-        ArgumentNullException.ThrowIfNull(func, nameof(func));
-        ArgumentNullException.ThrowIfNull(exceptionFilter, nameof(exceptionFilter));
-        ArgumentNullException.ThrowIfNull(errorMapper, nameof(errorMapper));
-        try
-        {
-            return Ok(func());
-        }
-        catch (Exception ex) when (ex is not ThreadAbortException and not StackOverflowException && exceptionFilter(ex))
-        {
-            TE error = errorMapper(ex);
-            if (error == null)
-                throw new InvalidOperationException("Error mapper returned null, violating TE : notnull");
-            return Err(error);
-        }
-    }
-
+  
     public static Result<Unit, TE> Try(Action action, Func<Exception, TE> errorMapper, Action? cleanup = null)
     {
         ArgumentNullException.ThrowIfNull(action, nameof(action));
