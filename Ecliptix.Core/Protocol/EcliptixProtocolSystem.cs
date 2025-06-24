@@ -194,7 +194,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                 : null;
 
             return _connectSession.PerformReceivingRatchet(receivedDhKey)
-                .AndThen(_ => _connectSession.ProcessReceivedMessage(cipherPayloadProto.RatchetIndex, receivedDhKey))
+                .AndThen(_ => _connectSession.ProcessReceivedMessage(cipherPayloadProto.RatchetIndex))
                 .AndThen(CloneMessageKey)
                 .AndThen(clonedKey =>
                 {
