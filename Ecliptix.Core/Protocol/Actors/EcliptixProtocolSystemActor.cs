@@ -31,7 +31,7 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         ReceiveAsync<ForwardToConnectActorEvent>(ProcessForwarding);
         Receive<Terminated>(t =>
         {
-            Log.Warning("Supervised session actor {ActorPath} has terminated. Its resources are released.",
+            Log.Warning("Supervised session actor {ActorPath} has terminated. Its resources are released",
                 t.ActorRef.Path);
         });
     }

@@ -1,8 +1,10 @@
 using Akka.Actor;
+using Akka.Event;
+using Akka.Persistence;
 using Ecliptix.Domain.Utilities;
+using Ecliptix.Protobuf.ProtocolState;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
-using Serilog;
 
 namespace Ecliptix.Core.Protocol.Actors;
 
@@ -10,87 +12,199 @@ public record DeriveSharedSecretActorEvent(uint ConnectId, PubKeyExchange PubKey
 
 public record DeriveSharedSecretReply(PubKeyExchange PubKeyExchange);
 
-public class EcliptixProtocolConnectActor : ReceiveActor
+public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 {
-    private const int LocalKeyCount = 10;
+    public override string PersistenceId { get; } = $"connect-{connectId}";
+    private const int SnapshotInterval = 50;
+    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(15);
 
-    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(5);
+    private EcliptixSessionState? _state;
+    private readonly ILoggingAdapter _log = Context.GetLogger();
 
-    private readonly uint _connectId;
-    private readonly EcliptixProtocolSystem _ecliptixProtocolSystem;
+    private EcliptixProtocolSystem? _liveSystem;
 
-    public EcliptixProtocolConnectActor(uint connectId)
+    protected override bool ReceiveRecover(object message)
     {
-        _connectId = connectId;
+        switch (message)
+        {
+            case SnapshotOffer { Snapshot: EcliptixSessionState state } offer:
+                _state = state;
+                return true;
 
-        Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure> identityKeysResult =
-            EcliptixSystemIdentityKeys.Create(LocalKeyCount);
+            case EcliptixSessionState state:
+                _state = state;
+                return true;
 
-        if (identityKeysResult.IsErr)
-            throw new ActorInitializationException(
-                $"Failed to create EcliptixSystemIdentityKeys for ConnectId {_connectId}"
-            );
+            case RecoveryCompleted:
+                if (_state != null)
+                {
+                    Result<EcliptixProtocolSystem, EcliptixProtocolFailure> systemResult =
+                        EcliptixProtocol.RecreateSystemFromState(_state);
+                    if (systemResult.IsOk)
+                    {
+                        _liveSystem = systemResult.Unwrap();
+                    }
+                    else
+                    {
+                        Context.Stop(Self);
+                    }
+                }
 
-        _ecliptixProtocolSystem = new EcliptixProtocolSystem(identityKeysResult.Unwrap());
+                return true;
 
-        Become(Ready);
+            default:
+                return false;
+        }
+    }
+
+    protected override bool ReceiveCommand(object message)
+    {
+        switch (message)
+        {
+            case DeriveSharedSecretActorEvent cmd:
+                HandleInitialKeyExchange(cmd);
+                return true;
+            case EncryptPayloadActorEvent cmd:
+                HandleEncrypt(cmd);
+                return true;
+            case DecryptCipherPayloadActorEvent cmd:
+                HandleDecrypt(cmd);
+                return true;
+            case SaveSnapshotSuccess success:
+                DeleteMessages(success.Metadata.SequenceNr);
+                DeleteSnapshots(new SnapshotSelectionCriteria(success.Metadata.SequenceNr - 1));
+                return true;
+            case SaveSnapshotFailure failure:
+                return true;
+            case ReceiveTimeout _:
+                Context.Stop(Self);
+                return true;
+            default:
+                return false;
+        }
     }
 
     protected override void PreStart()
     {
         Context.SetReceiveTimeout(IdleTimeout);
-        Log.Information("Session actor for ConnectId {ConnectId} started. Inactivity timeout is {Timeout}", _connectId,
-            IdleTimeout);
         base.PreStart();
     }
 
-    private void Ready()
+    private void HandleInitialKeyExchange(DeriveSharedSecretActorEvent cmd)
     {
-        Receive<DeriveSharedSecretActorEvent>(HandleProcessAndRespondToPubKeyExchangeCommand);
-        Receive<DecryptCipherPayloadActorEvent>(HandleDecryptCipherPayloadCommand);
-        Receive<EncryptPayloadActorEvent>(HandleEncryptCipherPayloadCommand);
+        if (_liveSystem != null)
+        {
+            _log.Warning("Duplicate handshake request for existing session {0}. Ignoring.", PersistenceId);
+            return;
+        }
 
-        Receive<ReceiveTimeout>(_ => HandleIdleTimeout());
+        EcliptixSystemIdentityKeys identityKeys = EcliptixSystemIdentityKeys.Create(10).Unwrap();
+        EcliptixProtocolSystem system = new(identityKeys);
+        Result<PubKeyExchange, EcliptixProtocolFailure> replyResult =
+            system.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.PubKeyExchange);
+
+        if (replyResult.IsErr)
+        {
+            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(replyResult.UnwrapErr()));
+            system.Dispose();
+            return;
+        }
+
+        Result<EcliptixSessionState, EcliptixProtocolFailure> stateToPersistResult =
+            EcliptixProtocol.CreateInitialState(cmd.ConnectId, cmd.PubKeyExchange, system);
+        if (stateToPersistResult.IsErr)
+        {
+            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(stateToPersistResult.UnwrapErr()));
+            system.Dispose();
+            return;
+        }
+
+        EcliptixSessionState newState = stateToPersistResult.Unwrap();
+        PubKeyExchange reply = replyResult.Unwrap();
+        IActorRef? originalSender = Sender;
+
+        Persist(newState, state =>
+        {
+            _state = state;
+            _liveSystem = system;
+            originalSender.Tell(
+                Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(new DeriveSharedSecretReply(reply)));
+            MaybeSaveSnapshot();
+        });
     }
 
-    private void HandleIdleTimeout()
+    private void HandleEncrypt(EncryptPayloadActorEvent cmd)
     {
-        Log.Warning(
-            "Session actor for ConnectId {ConnectId} is stopping due to inactivity. Session keys will be discarded",
-            _connectId);
+        if (_liveSystem == null || _state == null)
+        {
+            Sender.Tell(
+                Result<CipherPayload, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic("Session not ready.")));
+            return;
+        }
 
-        Context.Stop(Self);
+        Result<CipherPayload, EcliptixProtocolFailure> result = _liveSystem.ProduceOutboundMessage(cmd.Payload);
+        if (result.IsErr)
+        {
+            Sender.Tell(Result<CipherPayload, EcliptixProtocolFailure>.Err(result.UnwrapErr()));
+            return;
+        }
+
+        Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
+            EcliptixProtocol.CreateStateFromSystem(_state, _liveSystem);
+        (EcliptixSessionState newState, CipherPayload ciphertext) = (newStateResult.Unwrap(), result.Unwrap());
+        IActorRef? originalSender = Sender;
+
+        Persist(newState, state =>
+        {
+            _state = state;
+            originalSender.Tell(Result<CipherPayload, EcliptixProtocolFailure>.Ok(ciphertext));
+            MaybeSaveSnapshot();
+        });
     }
 
-    private void HandleEncryptCipherPayloadCommand(EncryptPayloadActorEvent actorEvent)
+    private void HandleDecrypt(DecryptCipherPayloadActorEvent cmd)
     {
-        Result<CipherPayload, EcliptixProtocolFailure> cipherPayload =
-            _ecliptixProtocolSystem.ProduceOutboundMessage(actorEvent.Payload);
-        Sender.Tell(cipherPayload);
+        if (_liveSystem == null || _state == null)
+        {
+            Sender.Tell(
+                Result<byte[], EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.Generic("Session not ready.")));
+            return;
+        }
+
+        Result<byte[], EcliptixProtocolFailure> result = _liveSystem.ProcessInboundMessage(cmd.CipherPayload);
+        if (result.IsErr)
+        {
+            Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(result.UnwrapErr()));
+            return;
+        }
+
+        Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
+            EcliptixProtocol.CreateStateFromSystem(_state, _liveSystem);
+        (EcliptixSessionState newState, byte[] plaintext) = (newStateResult.Unwrap(), result.Unwrap());
+        IActorRef? originalSender = Sender;
+
+        Persist(newState, state =>
+        {
+            _state = state;
+            originalSender.Tell(Result<byte[], EcliptixProtocolFailure>.Ok(plaintext));
+            MaybeSaveSnapshot();
+        });
     }
 
-    private void HandleDecryptCipherPayloadCommand(DecryptCipherPayloadActorEvent actorEvent)
+    private bool IsSessionReady(out EcliptixSessionState currentState)
     {
-        Result<byte[], EcliptixProtocolFailure> payload =
-            _ecliptixProtocolSystem.ProcessInboundMessage(actorEvent.CipherPayload);
-        Sender.Tell(payload);
+        currentState = _state!;
+        return _state != null;
     }
 
-    private void HandleProcessAndRespondToPubKeyExchangeCommand(DeriveSharedSecretActorEvent arg)
+    private void MaybeSaveSnapshot()
     {
-        Result<PubKeyExchange, EcliptixProtocolFailure> pubKeyExchange =
-            _ecliptixProtocolSystem.ProcessAndRespondToPubKeyExchange(arg.ConnectId, arg.PubKeyExchange);
-
-        if (pubKeyExchange.IsOk)
-            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(
-                new DeriveSharedSecretReply(pubKeyExchange.Unwrap())));
-        else
-            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(
-                pubKeyExchange.UnwrapErr()));
+        if (LastSequenceNr % SnapshotInterval == 0)
+        {
+            SaveSnapshot(_state);
+        }
     }
 
-    public static Props Build(uint connectId)
-    {
-        return Props.Create(() => new EcliptixProtocolConnectActor(connectId));
-    }
+    public static Props Build(uint connectId) => Props.Create(() => new EcliptixProtocolConnectActor(connectId));
 }

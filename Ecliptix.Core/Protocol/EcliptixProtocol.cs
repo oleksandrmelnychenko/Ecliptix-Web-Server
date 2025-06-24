@@ -79,7 +79,7 @@ public static class EcliptixProtocol
         return CreateStateFromSystem(currentState, system).Map(newState => (newState, result.Unwrap()));
     }
 
-    private static Result<EcliptixProtocolSystem, EcliptixProtocolFailure> RecreateSystemFromState(
+    public static Result<EcliptixProtocolSystem, EcliptixProtocolFailure> RecreateSystemFromState(
         EcliptixSessionState state)
     {
         Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure> idKeysResult =
@@ -98,7 +98,7 @@ public static class EcliptixProtocol
         return EcliptixProtocolSystem.CreateFrom(idKeysResult.Unwrap(), connResult.Unwrap());
     }
 
-    private static Result<EcliptixSessionState, EcliptixProtocolFailure> CreateStateFromSystem(
+    public static Result<EcliptixSessionState, EcliptixProtocolFailure> CreateStateFromSystem(
         EcliptixSessionState oldState, EcliptixProtocolSystem system)
     {
         return system.GetConnection().ToProtoState().Map(newRatchetState =>
@@ -109,7 +109,7 @@ public static class EcliptixProtocol
         });
     }
 
-    private static Result<EcliptixSessionState, EcliptixProtocolFailure> CreateInitialState(uint connectId,
+    public static Result<EcliptixSessionState, EcliptixProtocolFailure> CreateInitialState(uint connectId,
         PubKeyExchange peerMsg, EcliptixProtocolSystem system)
     {
         EcliptixSystemIdentityKeys idKeys = system.GetIdentityKeys();
