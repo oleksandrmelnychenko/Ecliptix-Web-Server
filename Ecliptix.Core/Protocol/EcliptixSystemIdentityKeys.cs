@@ -1,6 +1,8 @@
 using System.Buffers;
 using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
+using Ecliptix.Protobuf.ProtocolState;
+using Google.Protobuf;
 using Sodium;
 
 namespace Ecliptix.Core.Protocol;
@@ -44,6 +46,114 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
         Dispose(true);
         GC.SuppressFinalize(this);
     }
+
+    public Result<IdentityKeysState, EcliptixProtocolFailure> ToProtoState()
+    {
+        if (_disposed)
+            return Result<IdentityKeysState, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixSystemIdentityKeys)));
+
+        try
+        {
+            byte[] edSk = _ed25519SecretKeyHandle.ReadBytes(Constants.Ed25519SecretKeySize).Unwrap();
+            byte[] idSk = _identityX25519SecretKeyHandle.ReadBytes(Constants.X25519PrivateKeySize).Unwrap();
+            byte[] spkSk = _signedPreKeySecretKeyHandle.ReadBytes(Constants.X25519PrivateKeySize).Unwrap();
+
+            List<OneTimePreKeySecret> opkProtos = [];
+            foreach (OneTimePreKeyLocal opk in _oneTimePreKeysInternal)
+            {
+                byte[] opkSkBytes = opk.PrivateKeyHandle.ReadBytes(Constants.X25519PrivateKeySize).Unwrap();
+                opkProtos.Add(new OneTimePreKeySecret
+                {
+                    PreKeyId = opk.PreKeyId,
+                    PrivateKey = ByteString.CopyFrom(opkSkBytes),
+                    PublicKey = ByteString.CopyFrom(opk.PublicKey) 
+                });
+            }
+
+            IdentityKeysState proto = new()
+            {
+                Ed25519SecretKey = ByteString.CopyFrom(edSk),
+                IdentityX25519SecretKey = ByteString.CopyFrom(idSk),
+                SignedPreKeySecret = ByteString.CopyFrom(spkSk),
+
+                Ed25519PublicKey = ByteString.CopyFrom(_ed25519PublicKey),
+                IdentityX25519PublicKey = ByteString.CopyFrom(IdentityX25519PublicKey),
+                SignedPreKeyId = _signedPreKeyId,
+                SignedPreKeyPublic = ByteString.CopyFrom(_signedPreKeyPublic),
+                SignedPreKeySignature = ByteString.CopyFrom(_signedPreKeySignature)
+            };
+            proto.OneTimePreKeys.AddRange(opkProtos);
+
+            return Result<IdentityKeysState, EcliptixProtocolFailure>.Ok(proto);
+        }
+        catch (Exception ex)
+        {
+            return Result<IdentityKeysState, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Failed to export identity keys to proto state.", ex));
+        }
+    }
+
+    public static Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure> FromProtoState(IdentityKeysState proto)
+    {
+        SodiumSecureMemoryHandle? edSkHandle = null;
+        SodiumSecureMemoryHandle? idXSkHandle = null;
+        SodiumSecureMemoryHandle? spkSkHandle = null;
+        List<OneTimePreKeyLocal>? opks = [];
+
+        try
+        {
+            byte[]? edSkBytes = proto.Ed25519SecretKey.ToByteArray();
+            edSkHandle = SodiumSecureMemoryHandle.Allocate(edSkBytes.Length).Unwrap();
+            edSkHandle.Write(edSkBytes).Unwrap();
+
+            byte[]? idSkBytes = proto.IdentityX25519SecretKey.ToByteArray();
+            idXSkHandle = SodiumSecureMemoryHandle.Allocate(idSkBytes.Length).Unwrap();
+            idXSkHandle.Write(idSkBytes).Unwrap();
+
+            byte[]? spkSkBytes = proto.SignedPreKeySecret.ToByteArray();
+            spkSkHandle = SodiumSecureMemoryHandle.Allocate(spkSkBytes.Length).Unwrap();
+            spkSkHandle.Write(spkSkBytes).Unwrap();
+
+            byte[]? edPk = proto.Ed25519PublicKey.ToByteArray();
+            byte[]? idXPk = proto.IdentityX25519PublicKey.ToByteArray();
+            byte[]? spkPk = proto.SignedPreKeyPublic.ToByteArray();
+            byte[]? spkSig = proto.SignedPreKeySignature.ToByteArray();
+
+            foreach (OneTimePreKeySecret? opkProto in proto.OneTimePreKeys)
+            {
+                SodiumSecureMemoryHandle skHandle = SodiumSecureMemoryHandle.Allocate(opkProto.PrivateKey.Length).Unwrap();
+                skHandle.Write(opkProto.PrivateKey.ToByteArray()).Unwrap();
+
+                OneTimePreKeyLocal opk = OneTimePreKeyLocal.CreateFromParts(opkProto.PreKeyId, skHandle,
+                    opkProto.PublicKey.ToByteArray());
+                opks.Add(opk);
+            }
+
+            EcliptixSystemIdentityKeys keys = new(
+                edSkHandle, edPk,
+                idXSkHandle, idXPk,
+                proto.SignedPreKeyId, spkSkHandle, spkPk, spkSig,
+                opks);
+
+            edSkHandle = null;
+            idXSkHandle = null;
+            spkSkHandle = null;
+            opks = null;
+
+            return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Ok(keys);
+        }
+        catch (Exception ex)
+        {
+            edSkHandle?.Dispose();
+            idXSkHandle?.Dispose();
+            spkSkHandle?.Dispose();
+            opks?.ForEach(k => k.Dispose());
+            return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Failed to rehydrate EcliptixSystemIdentityKeys from proto.", ex));
+        }
+    }
+
 
     public static Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure> Create(uint oneTimeKeyCount)
     {
@@ -129,7 +239,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
     private static Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> GenerateEd25519Keys()
     {
-        SodiumSecureMemoryHandle? skHandle = null;
+        SodiumSecureMemoryHandle? skHandle;
         byte[]? skBytes = null;
         try
         {
@@ -169,7 +279,8 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
         byte[]? tempEdSignKeyCopy = null;
         try
         {
-            Result<byte[], EcliptixProtocolFailure> readResult = edSkHandle.ReadBytes(Constants.Ed25519SecretKeySize).MapSodiumFailure();
+            Result<byte[], EcliptixProtocolFailure> readResult =
+                edSkHandle.ReadBytes(Constants.Ed25519SecretKeySize).MapSodiumFailure();
             if (readResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
             tempEdSignKeyCopy = readResult.Unwrap();
 

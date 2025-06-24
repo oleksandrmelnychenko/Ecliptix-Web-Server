@@ -41,7 +41,7 @@ public class ShieldProDoubleRatchetTests
         var bobResponseMsg = bobResponseMsgResult.Unwrap();
 
         var aliceCompleteResult =
-            _aliceEcliptixProtocolSystem.CompleteDataCenterPubKeyExchange(_exchangeType, bobResponseMsg);
+            _aliceEcliptixProtocolSystem.CompleteDataCenterPubKeyExchange(bobResponseMsg);
         if (aliceCompleteResult.IsErr)
             Assert.Fail($"Alice failed to complete exchange: {aliceCompleteResult.UnwrapErr()}");
 
@@ -112,7 +112,7 @@ public class ShieldProDoubleRatchetTests
                     $"[Setup] Bob failed handshake for session {testSessionId}: {bobResponseMsgResult.UnwrapErr()}");
 
             var aliceCompleteResult =
-                alice.CompleteDataCenterPubKeyExchange(_exchangeType, bobResponseMsgResult.Unwrap());
+                alice.CompleteDataCenterPubKeyExchange(bobResponseMsgResult.Unwrap());
             if (aliceCompleteResult.IsErr)
                 Assert.Fail(
                     $"[Setup] Alice failed to complete handshake for session {testSessionId}: {aliceCompleteResult.UnwrapErr()}");

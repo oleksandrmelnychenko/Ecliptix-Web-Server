@@ -59,7 +59,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry)
         if (persistorResult.IsErr) throw GrpcFailureException.FromDomainFailure(persistorResult.UnwrapErr());
 
         AppDeviceRegisteredStateReply reply = persistorResult.Unwrap();
-       
+
         EncryptPayloadActorEvent encryptCommand = new(PubKeyExchangeType.DataCenterEphemeralConnect,
             reply.ToByteArray()
         );
