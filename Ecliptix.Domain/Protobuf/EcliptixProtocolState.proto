@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package ecliptix.proto.key_materials;
+option csharp_namespace = "Ecliptix.Protobuf.ProtocolState";
+
+import "google/protobuf/timestamp.proto";
+import "PubKeyExchange.proto";
+
+message EcliptixSessionState {
+  uint32 connect_id = 1;
+  IdentityKeysState identity_keys = 2;
+  PubKeyExchange peer_handshake_message = 3;
+
+  RatchetState ratchet_state = 4;
+}
+
+message IdentityKeysState {
+  bytes ed25519_secret_key = 1;
+  bytes identity_x25519_secret_key = 2;
+  uint32 signed_pre_key_id = 3;
+  bytes signed_pre_key_secret = 4;
+  repeated OneTimePreKeySecret one_time_pre_keys = 5;
+}
+
+message OneTimePreKeySecret {
+  uint32 pre_key_id = 1;
+  bytes private_key = 2;
+}
+
+message RatchetState {
+  bool is_initiator = 1;
+  google.protobuf.Timestamp created_at = 2;
+  uint64 nonce_counter = 3;
+  PublicKeyBundle peer_bundle = 4;
+  bytes peer_dh_public_key = 5;
+  bool is_first_receiving_ratchet = 6;
+
+  bytes root_key = 10;
+  ChainStepState sending_step = 11;
+  ChainStepState receiving_step = 12;
+}
+
+message ChainStepState {
+  uint32 current_index = 1;
+  bytes chain_key = 2;
+  bytes dh_private_key = 3;
+  bytes dh_public_key = 4;
+}
