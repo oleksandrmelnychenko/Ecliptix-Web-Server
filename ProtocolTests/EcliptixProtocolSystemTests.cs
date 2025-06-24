@@ -10,7 +10,6 @@ namespace ProtocolTests;
 [TestClass]
 public class EcliptixProtocolSystemTests : IDisposable
 {
-    private readonly TestContext _testContext;
     private readonly EcliptixSystemIdentityKeys _aliceKeys;
     private readonly EcliptixSystemIdentityKeys _bobKeys;
     private readonly EcliptixProtocolSystem _aliceEcliptixProtocolSystem;
@@ -32,14 +31,13 @@ public class EcliptixProtocolSystemTests : IDisposable
     public EcliptixProtocolSystemTests(TestContext testContext)
     {
         TestContext = testContext;
-        _testContext = TestContext; // MSTest provides TestContext automatically
         _aliceKeys =  EcliptixSystemIdentityKeys.Create(5).Unwrap();
         _bobKeys =EcliptixSystemIdentityKeys.Create(5).Unwrap();
         _aliceEcliptixProtocolSystem = new EcliptixProtocolSystem(_aliceKeys);
         _bobEcliptixProtocolSystem = new EcliptixProtocolSystem(_bobKeys);
     }
 
-    public TestContext TestContext { get; set; } // Required property for MSTest to inject TestContext
+    public TestContext TestContext { get; set; } 
 
     private static byte[] CorruptBytes(ReadOnlySpan<byte> input)
     {

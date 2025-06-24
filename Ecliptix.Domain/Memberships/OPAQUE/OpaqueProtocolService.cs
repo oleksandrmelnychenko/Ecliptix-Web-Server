@@ -20,7 +20,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
 {
     private readonly BigInteger _serverOprfKey = new(1,
         OpaqueCryptoUtilities.DeriveKey(secretKeySeed, null, OprfKeyInfo,
-            OpaqueConstants.DefaultKeyLength));
+            DefaultKeyLength));
 
     private readonly byte[] _serverTokenEncryptionKey =
         OpaqueCryptoUtilities.DeriveKey(secretKeySeed, null, TokenKeyInfo, DefaultKeyLength);
@@ -56,23 +56,21 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
     public Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(OpaqueSignInInitRequest request,
         MembershipOpaqueQueryRecord queryRecord)
     {
-        // This overload just delegates, it's fine.
         return InitiateSignIn(request.PeerOprf.ToByteArray(), queryRecord);
     }
 
-    public Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(byte[] oprfRequest,
+    private Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(byte[] oprfRequest,
         MembershipOpaqueQueryRecord queryRecord)
     {
         byte[] oprfResponse = ProcessOprfRequest(oprfRequest);
         AsymmetricCipherKeyPair serverEphemeralKeys = OpaqueCryptoUtilities.GenerateKeyPair();
 
-        // [PERF] Using ReadOnlySpan with CopyFrom is more efficient.
         ReadOnlySpan<byte> serverEphemeralPublicKeyBytes =
             ((ECPublicKeyParameters)serverEphemeralKeys.Public).Q.GetEncoded(true);
         ReadOnlySpan<byte> clientStaticPublicKeyBytes =
             queryRecord.RegistrationRecord.AsSpan(0, CompressedPublicKeyLength);
 
-        var serverState = new AkeServerState
+        AkeServerState serverState = new()
         {
             ServerEphemeralPrivateKeyBytes =
                 ByteString.CopyFrom(((ECPrivateKeyParameters)serverEphemeralKeys.Private).D.ToByteArrayUnsigned()),
@@ -84,7 +82,6 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             Expiration = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow.AddMinutes(5))
         };
 
-        // For higher security, could use 'oprfRequest' as associatedData here.
         Result<byte[], OpaqueFailure> encryptResult =
             OpaqueCryptoUtilities.Encrypt(serverState.ToByteArray(), _serverTokenEncryptionKey, null);
         if (encryptResult.IsErr)
@@ -107,11 +104,11 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         if (decryptResult.IsErr)
             return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Err(decryptResult.UnwrapErr());
 
-        var serverState = AkeServerState.Parser.ParseFrom(decryptResult.Unwrap());
+        AkeServerState? serverState = AkeServerState.Parser.ParseFrom(decryptResult.Unwrap());
         if (serverState.Expiration.ToDateTimeOffset() < DateTimeOffset.UtcNow)
             return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Err(OpaqueFailure.TokenExpired());
 
-        var serverEphemeralKeys = new AsymmetricCipherKeyPair(
+        AsymmetricCipherKeyPair serverEphemeralKeys = new(
             new ECPublicKeyParameters(
                 OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(serverState.ServerEphemeralPublicKey
                     .ToByteArray()), OpaqueCryptoUtilities.DomainParams),
@@ -135,7 +132,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             serverStaticPublicKeyBytes,
             serverState.ServerEphemeralPublicKey.ToByteArray());
 
-        var keysResult = DeriveFinalKeys(akeResult, transcriptHash);
+        Result<(byte[] SessionKey, byte[] ClientMacKey, byte[] ServerMacKey), OpaqueFailure> keysResult = DeriveFinalKeys(akeResult, transcriptHash);
         if (keysResult.IsErr) return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Err(keysResult.UnwrapErr());
 
         (byte[] _, byte[] clientMacKey, byte[] serverMacKey) = keysResult.Unwrap();
@@ -165,7 +162,6 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         ECPoint dh2 = ephCPub.Multiply(statS.D).Normalize();
         ECPoint dh3 = statCPub.Multiply(((ECPrivateKeyParameters)ephS.Private).D).Normalize();
 
-        // [PERF] Slightly more efficient concatenation
         byte[] result = new byte[CompressedPublicKeyLength * 3];
         dh1.GetEncoded(true).CopyTo(result, 0);
         dh2.GetEncoded(true).CopyTo(result, CompressedPublicKeyLength);
@@ -173,16 +169,15 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         return result;
     }
 
-    // [PERF] This method now uses spans to avoid intermediate array allocations.
     private static byte[] HashTranscript(string phoneNumber, ReadOnlySpan<byte> oprfResponse,
         ReadOnlySpan<byte> clientStaticPublicKey,
         ReadOnlySpan<byte> clientEphemeralPublicKey, ReadOnlySpan<byte> serverStaticPublicKey,
         ReadOnlySpan<byte> serverEphemeralPublicKey)
     {
-        var digest = new Sha256Digest(); // Using a local is fine here, ThreadLocal is for utilities.
+        Sha256Digest digest = new();
 
         Update(digest, ProtocolVersion);
-        Update(digest, Encoding.UTF8.GetBytes(phoneNumber)); // This allocation is necessary
+        Update(digest, Encoding.UTF8.GetBytes(phoneNumber)); 
         Update(digest, oprfResponse);
         Update(digest, clientStaticPublicKey);
         Update(digest, clientEphemeralPublicKey);
@@ -199,16 +194,14 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         digest.BlockUpdate(data.ToArray(), 0, data.Length);
     }
 
-    // [PERF] This method now uses stackalloc to create the HKDF info parameter without heap allocation.
     private static Result<(byte[] SessionKey, byte[] ClientMacKey, byte[] ServerMacKey), OpaqueFailure> DeriveFinalKeys(
         byte[] akeResult, byte[] transcriptHash)
     {
-        var prkResult = OpaqueCryptoUtilities.HkdfExtract(akeResult, AkeSalt);
+        Result<byte[], OpaqueFailure> prkResult = OpaqueCryptoUtilities.HkdfExtract(akeResult, AkeSalt);
         if (prkResult.IsErr) return Result<(byte[], byte[], byte[]), OpaqueFailure>.Err(prkResult.UnwrapErr());
 
         byte[] prk = prkResult.Unwrap();
 
-        // Create info parameter on the stack
         Span<byte> infoBuffer = stackalloc byte[SessionKeyInfo.Length + transcriptHash.Length];
 
         SessionKeyInfo.CopyTo(infoBuffer);
@@ -216,7 +209,6 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         byte[] sessionKey = OpaqueCryptoUtilities.HkdfExpand(prk, infoBuffer, MacKeyLength);
 
         ClientMacKeyInfo.CopyTo(infoBuffer);
-        // transcriptHash is already in the second part of the buffer, so no need to copy again.
         byte[] clientMacKey = OpaqueCryptoUtilities.HkdfExpand(prk, infoBuffer, MacKeyLength);
 
         ServerMacKeyInfo.CopyTo(infoBuffer);

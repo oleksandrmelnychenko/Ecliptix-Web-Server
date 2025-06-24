@@ -8,24 +8,24 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Akka" Version="1.5.40"/>
+        <PackageReference Include="Akka" Version="1.5.44" />
         <PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
         <PackageReference Include="Dapper" Version="2.1.66"/>
-        <PackageReference Include="Grpc.AspNetCore.Server" Version="2.70.0"/>
-        <PackageReference Include="libphonenumber-csharp" Version="9.0.5"/>
+        <PackageReference Include="Grpc.AspNetCore.Server" Version="2.71.0" />
+        <PackageReference Include="libphonenumber-csharp" Version="9.0.7" />
         <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2"/>
         <PackageReference Include="Otp.NET" Version="1.4.0"/>
-        <PackageReference Include="Polly" Version="8.5.2"/>
-        <PackageReference Include="protobuf-net" Version="3.2.46"/>
+        <PackageReference Include="Polly" Version="8.6.1" />
+        <PackageReference Include="protobuf-net" Version="3.2.52" />
         <PackageReference Include="protobuf-net.Grpc" Version="1.2.2"/>
         <PackageReference Include="Protobuf.Grpc" Version="1.0.170"/>
-        <PackageReference Include="Google.Protobuf" Version="3.23.4"/>
-        <PackageReference Include="Grpc.Tools" Version="2.56.2">
+        <PackageReference Include="Google.Protobuf" Version="3.31.1" />
+        <PackageReference Include="Grpc.Tools" Version="2.72.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Pixelbin" Version="1.0.1"/>
-        <PackageReference Include="protobuf-net.Grpc.AspNetCore" Version="1.1.1"/>
+        <PackageReference Include="Pixelbin" Version="2.0.0" />
+        <PackageReference Include="protobuf-net.Grpc.AspNetCore" Version="1.2.2" />
         <PackageReference Include="Serilog.AspNetCore" Version="9.0.0"/>
         <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1"/>
         <PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0"/>
