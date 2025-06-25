@@ -20,6 +20,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry)
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
+
         BeginAppDeviceEphemeralConnectActorEvent actorEvent = new(request, connectId);
 
         Result<DeriveSharedSecretReply, EcliptixProtocolFailure> deriveSharedSecretReply =
@@ -28,7 +29,6 @@ public class AppDeviceServices(IActorRegistry actorRegistry)
                 context.CancellationToken);
 
         if (deriveSharedSecretReply.IsOk) return deriveSharedSecretReply.Unwrap().PubKeyExchange;
-
         throw GrpcFailureException.FromDomainFailure(deriveSharedSecretReply.UnwrapErr());
     }
 
@@ -37,7 +37,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry)
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
-
+        
         DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
             request
         );

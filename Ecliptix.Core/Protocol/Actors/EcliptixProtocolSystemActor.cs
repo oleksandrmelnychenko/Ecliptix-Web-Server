@@ -16,6 +16,8 @@ public record EncryptPayloadActorEvent(
     PubKeyExchangeType PubKeyExchangeType,
     byte[] Payload);
 
+public record ClientDisconnectedActorEvent(uint ConnectId);
+
 public record ForwardToConnectActorEvent(uint ConnectId, object Payload);
 
 public class EcliptixProtocolSystemActor : ReceiveActor
@@ -34,6 +36,16 @@ public class EcliptixProtocolSystemActor : ReceiveActor
             Log.Warning("Supervised session actor {ActorPath} has terminated. Its resources are released",
                 t.ActorRef.Path);
         });
+
+        Receive<ClientDisconnectedActorEvent>(cmd =>
+        {
+            string actorName = $"connect-{cmd.ConnectId}";
+            IActorRef connectActor = Context.Child(actorName);
+            if (!connectActor.IsNobody())
+            {
+                connectActor.Forward(cmd);
+            }
+        });
     }
 
     private async Task ProcessNewSessionRequest(BeginAppDeviceEphemeralConnectActorEvent actorEvent)
@@ -41,14 +53,10 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         uint connectId = actorEvent.UniqueConnectId;
         string actorName = $"connect-{connectId}";
 
-        Log.Information("[ShieldPro] Beginning 3DH exchange for Session ID: {ConnectId}", connectId);
-
         IActorRef connectActor = Context.Child(actorName);
 
         if (connectActor.IsNobody())
         {
-            Log.Information("Creating new session actor for ConnectId {ConnectId} with name {ActorName}", connectId,
-                actorName);
             try
             {
                 connectActor = Context.ActorOf(EcliptixProtocolConnectActor.Build(connectId), actorName);
@@ -61,11 +69,6 @@ public class EcliptixProtocolSystemActor : ReceiveActor
                 Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(failure));
                 return;
             }
-        }
-        else
-        {
-            Log.Information("Found existing session actor for ConnectId {ConnectId}. Re-initializing handshake",
-                connectId);
         }
 
         DeriveSharedSecretActorEvent deriveSharedSecretEvent = new(connectId, actorEvent.PubKeyExchange);
@@ -83,21 +86,32 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
         if (connectActor.IsNobody())
         {
-            Log.Warning("Message received for a non-existent or timed-out session: {ConnectId}", connectId);
             object errorResult = message.Payload switch
             {
                 EncryptPayloadActorEvent => Result<CipherPayload, EcliptixProtocolFailure>.Err(
                     CreateNotFoundError(connectId)),
                 DecryptCipherPayloadActorEvent => Result<byte[], EcliptixProtocolFailure>.Err(
                     CreateNotFoundError(connectId)),
+                KeepAlive => Akka.Done.Instance,
                 _ => Result<object, EcliptixProtocolFailure>.Err(CreateNotFoundError(connectId))
             };
-            Sender.Tell(errorResult);
+
+            if (message.Payload is not KeepAlive)
+                Sender.Tell(errorResult);
         }
         else
         {
-            object? result = await connectActor.Ask<object>(message.Payload);
-            Sender.Tell(result);
+            if (message.Payload is KeepAlive)
+            {
+                connectActor.Tell(message.Payload, ActorRefs.NoSender);
+            }
+            else
+            {
+                object? result =
+                    await connectActor.Ask(message.Payload,
+                        timeout: TimeSpan.FromSeconds(30));
+                Sender.Tell(result);
+            }
         }
     }
 
@@ -105,12 +119,6 @@ public class EcliptixProtocolSystemActor : ReceiveActor
     {
         return EcliptixProtocolFailure.ActorRefNotFound(
             $"Secure session with Id:{connectId} not found or has timed out. Please re-establish the connection.");
-    }
-
-    protected override void PreStart()
-    {
-        Log.Information("Main EcliptixProtocolSystemActor '{ActorPath}' is up and running", Context.Self.Path);
-        base.PreStart();
     }
 
     public static Props Build()

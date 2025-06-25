@@ -12,11 +12,20 @@ public record DeriveSharedSecretActorEvent(uint ConnectId, PubKeyExchange PubKey
 
 public record DeriveSharedSecretReply(PubKeyExchange PubKeyExchange);
 
+public sealed record KeepAlive
+{
+    public static readonly KeepAlive Instance = new();
+
+    private KeepAlive()
+    {
+    }
+}
+
 public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 {
     public override string PersistenceId { get; } = $"connect-{connectId}";
     private const int SnapshotInterval = 50;
-    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(5);
 
     private EcliptixSessionState? _state;
     private readonly ILoggingAdapter _log = Context.GetLogger();
@@ -27,14 +36,12 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
     {
         switch (message)
         {
-            case SnapshotOffer { Snapshot: EcliptixSessionState state } offer:
+            case SnapshotOffer { Snapshot: EcliptixSessionState state }:
                 _state = state;
                 return true;
-
             case EcliptixSessionState state:
                 _state = state;
                 return true;
-
             case RecoveryCompleted:
                 if (_state != null)
                 {
@@ -51,7 +58,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
                 }
 
                 return true;
-
             default:
                 return false;
         }
@@ -59,6 +65,8 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 
     protected override bool ReceiveCommand(object message)
     {
+        Context.SetReceiveTimeout(IdleTimeout);
+
         switch (message)
         {
             case DeriveSharedSecretActorEvent cmd:
@@ -70,15 +78,27 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
             case DecryptCipherPayloadActorEvent cmd:
                 HandleDecrypt(cmd);
                 return true;
+
+            case KeepAlive:
+                return true;
+
+            // This is now the ONLY automatic shutdown trigger.
+            case ReceiveTimeout _:
+                Context.Stop(Self);
+                return true;
+
+            // Streams only.
+            case ClientDisconnectedActorEvent _:
+                Context.Stop(Self);
+                return true;
+
             case SaveSnapshotSuccess success:
                 DeleteMessages(success.Metadata.SequenceNr);
                 DeleteSnapshots(new SnapshotSelectionCriteria(success.Metadata.SequenceNr - 1));
                 return true;
             case SaveSnapshotFailure failure:
                 return true;
-            case ReceiveTimeout _:
-                Context.Stop(Self);
-                return true;
+
             default:
                 return false;
         }
@@ -94,7 +114,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
     {
         if (_liveSystem != null)
         {
-            _log.Warning("Duplicate handshake request for existing session {0}. Ignoring.", PersistenceId);
             return;
         }
 
@@ -204,6 +223,19 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
         {
             SaveSnapshot(_state);
         }
+    }
+
+    protected override void PostStop()
+    {
+        if (_state != null)
+        {
+            //
+            // <<<< YOUR SQL DATABASE SAVE LOGIC GOES HERE >>>>
+            //
+        }
+
+        _liveSystem?.Dispose();
+        base.PostStop();
     }
 
     public static Props Build(uint connectId) => Props.Create(() => new EcliptixProtocolConnectActor(connectId));

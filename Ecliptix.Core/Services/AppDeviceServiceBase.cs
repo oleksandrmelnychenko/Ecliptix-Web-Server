@@ -3,6 +3,7 @@ using Akka.Hosting;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Protobuf.AppDeviceServices;
+using Grpc.Core;
 
 namespace Ecliptix.Core.Services;
 

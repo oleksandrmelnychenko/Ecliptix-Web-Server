@@ -36,7 +36,8 @@ try
 
     builder.Services.AddSingleton<SNSProvider>();
     builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
-
+    builder.Services.AddSingleton<SessionKeepAliveInterceptor>();
+    
     RegisterLocalization(builder.Services);
     RegisterValidators(builder.Services);
     RegisterGrpc(builder.Services);
@@ -193,6 +194,7 @@ static void RegisterGrpc(IServiceCollection services)
         options.Interceptors.Add<FailureHandlingInterceptor>();
         options.Interceptors.Add<RequestMetaDataInterceptor>();
         options.Interceptors.Add<ThreadCultureInterceptor>();
+        options.Interceptors.Add<SessionKeepAliveInterceptor>();
     });
 }
 

@@ -17,8 +17,8 @@ public sealed class RequestMetaDataInterceptor : Interceptor
         if (validationResult.IsErr)
         {
             MetaDataSystemFailure metaDataSystemFailure = validationResult.UnwrapErr();
-            string? errorMessage = metaDataSystemFailure.Message;
-            if (errorMessage is not null) context.Status = new Status(StatusCode.Internal, errorMessage);
+            string errorMessage = metaDataSystemFailure.Message;
+            context.Status = new Status(StatusCode.Internal, errorMessage);
 
             throw new RpcException(context.Status);
         }
@@ -48,8 +48,8 @@ public sealed class RequestMetaDataInterceptor : Interceptor
         if (validationResult.IsErr)
         {
             MetaDataSystemFailure metaDataSystemFailure = validationResult.UnwrapErr();
-            string? errorMessage = metaDataSystemFailure.Message;
-            if (errorMessage is not null) context.Status = new Status(StatusCode.Internal, errorMessage);
+            string errorMessage = metaDataSystemFailure.Message;
+            context.Status = new Status(StatusCode.Internal, errorMessage);
 
             throw new RpcException(context.Status);
         }
