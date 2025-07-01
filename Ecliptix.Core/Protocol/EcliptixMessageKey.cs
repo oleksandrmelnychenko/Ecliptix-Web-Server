@@ -1,3 +1,4 @@
+using System;
 using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
 
@@ -55,6 +56,17 @@ public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessage
         }
 
         EcliptixMessageKey messageKey = new(index, keyHandle);
+       
+        byte[] tempKey = new byte[Constants.X25519KeySize];
+        if (messageKey.ReadKeyMaterial(tempKey).IsOk)
+        {
+            Console.WriteLine($"[EcliptixMessageKey] Created Key [Index: {index}, Disposed: {messageKey._disposed}]: {Convert.ToHexString(tempKey)}");
+        }
+        else
+        {
+            Console.WriteLine($"[EcliptixMessageKey] Error reading key material for index {index}");
+        }
+
         return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(messageKey);
     }
 
