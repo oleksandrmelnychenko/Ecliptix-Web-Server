@@ -20,6 +20,8 @@ public record ClientDisconnectedActorEvent(uint ConnectId);
 
 public record ForwardToConnectActorEvent(uint ConnectId, object Payload);
 
+public record RestoreAppDeviceSecrecyChannelState;
+
 public class EcliptixProtocolSystemActor : ReceiveActor
 {
     public EcliptixProtocolSystemActor()
@@ -91,6 +93,8 @@ public class EcliptixProtocolSystemActor : ReceiveActor
                 EncryptPayloadActorEvent => Result<CipherPayload, EcliptixProtocolFailure>.Err(
                     CreateNotFoundError(connectId)),
                 DecryptCipherPayloadActorEvent => Result<byte[], EcliptixProtocolFailure>.Err(
+                    CreateNotFoundError(connectId)),
+                RestoreAppDeviceSecrecyChannelState => Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Err(
                     CreateNotFoundError(connectId)),
                 KeepAlive => Akka.Done.Instance,
                 _ => Result<object, EcliptixProtocolFailure>.Err(CreateNotFoundError(connectId))

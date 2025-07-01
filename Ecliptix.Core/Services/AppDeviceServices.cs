@@ -16,7 +16,52 @@ namespace Ecliptix.Core.Services;
 public class AppDeviceServices(IActorRegistry actorRegistry)
     : AppDeviceServiceBase(actorRegistry)
 {
-    public override async Task<PubKeyExchange> EstablishAppDeviceEphemeralConnect(PubKeyExchange request,
+    public override async Task<RestoreSecrecyChannelResponse> RestoreAppDeviceSecrecyChannel(
+        RestoreSecrecyChannelRequest request, ServerCallContext context)
+    {
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
+
+        ForwardToConnectActorEvent forwarderEvent = new(connectId, new RestoreAppDeviceSecrecyChannelState());
+        Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure> syncStateResult =
+            await ProtocolActor.Ask<Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>>(
+                forwarderEvent,
+                context.CancellationToken);
+
+        if (syncStateResult.IsErr)
+        {
+            EcliptixProtocolFailure ecliptixProtocolFailure = syncStateResult.UnwrapErr();
+
+            if (ecliptixProtocolFailure.FailureType == EcliptixProtocolFailureType.ActorRefNotFound)
+            {
+                return new RestoreSecrecyChannelResponse
+                {
+                    Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound
+                };
+            }
+
+            throw GrpcFailureException.FromDomainFailure(syncStateResult.UnwrapErr());
+        }
+
+        if (ProtocolActor.IsNobody())
+        {
+            return new RestoreSecrecyChannelResponse
+            {
+                Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound
+            };
+        }
+
+        RestoreAppDeviceSecrecyChannelState restoreAppDeviceSecrecyChannelState = new();
+        ForwardToConnectActorEvent forwarder = new(connectId, restoreAppDeviceSecrecyChannelState);
+
+        syncStateResult =
+            await ProtocolActor.Ask<Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>>(forwarder,
+                context.CancellationToken);
+
+        if (syncStateResult.IsOk) return syncStateResult.Unwrap();
+        throw GrpcFailureException.FromDomainFailure(syncStateResult.UnwrapErr());
+    }
+
+    public override async Task<PubKeyExchange> EstablishAppDeviceSecrecyChannel(PubKeyExchange request,
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
@@ -37,7 +82,7 @@ public class AppDeviceServices(IActorRegistry actorRegistry)
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
-        
+
         DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
             request
         );

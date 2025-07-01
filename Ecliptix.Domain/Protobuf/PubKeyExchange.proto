@@ -38,3 +38,18 @@ message PublicKeyBundle {
 
   bytes ephemeral_x25519_public_key = 7;
 }
+
+message RestoreSecrecyChannelRequest {}
+
+message RestoreSecrecyChannelResponse {
+  enum RestoreStatus {
+    SESSION_UNKNOWN = 0;
+    SESSION_RESUMED = 1;
+    SESSION_NOT_FOUND = 2;
+  }
+
+  RestoreStatus status = 1;
+
+  uint32 sending_chain_length = 2;
+  uint32 receiving_chain_length = 3;
+}

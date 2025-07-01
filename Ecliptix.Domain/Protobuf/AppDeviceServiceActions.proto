@@ -6,6 +6,9 @@ package ecliptix.proto.app_device;
 option csharp_namespace = "Ecliptix.Protobuf.AppDeviceServices";
 
 service AppDeviceServiceActions {
-  rpc EstablishAppDeviceEphemeralConnect(PubKeyExchange) returns (PubKeyExchange);
   rpc RegisterDeviceAppIfNotExist(CipherPayload) returns (CipherPayload);
+
+  rpc EstablishAppDeviceSecrecyChannel(PubKeyExchange) returns (PubKeyExchange);
+  rpc RestoreAppDeviceSecrecyChannel(RestoreSecrecyChannelRequest) returns (RestoreSecrecyChannelResponse);
 }
+  

@@ -766,9 +766,9 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
     private void SecureCleanupLogic()
     {
-        _ed25519SecretKeyHandle?.Dispose();
-        _identityX25519SecretKeyHandle?.Dispose();
-        _signedPreKeySecretKeyHandle?.Dispose();
+        _ed25519SecretKeyHandle.Dispose();
+        _identityX25519SecretKeyHandle.Dispose();
+        _signedPreKeySecretKeyHandle.Dispose();
         _ephemeralSecretKeyHandle?.Dispose();
         foreach (OneTimePreKeyLocal opk in _oneTimePreKeysInternal) opk.Dispose();
         _oneTimePreKeysInternal.Clear();

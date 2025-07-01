@@ -1,5 +1,4 @@
 using Akka.Actor;
-using Akka.Event;
 using Akka.Persistence;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
@@ -28,8 +27,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(5);
 
     private EcliptixSessionState? _state;
-    private readonly ILoggingAdapter _log = Context.GetLogger();
-
     private EcliptixProtocolSystem? _liveSystem;
 
     protected override bool ReceiveRecover(object message)
@@ -78,10 +75,12 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
             case DecryptCipherPayloadActorEvent cmd:
                 HandleDecrypt(cmd);
                 return true;
-
+            case RestoreAppDeviceSecrecyChannelState:
+                HandleRestoreSecrecyChannelState();
+                return true;
             case KeepAlive:
                 return true;
-
+           
             // This is now the ONLY automatic shutdown trigger.
             case ReceiveTimeout _:
                 Context.Stop(Self);
@@ -102,6 +101,25 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
             default:
                 return false;
         }
+    }
+
+    private void HandleRestoreSecrecyChannelState()
+    {
+        if (_liveSystem == null || _state == null)
+        {
+            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Session not ready or in an invalid state.")));
+            return;
+        }
+
+        RestoreSecrecyChannelResponse reply = new()
+        {
+            ReceivingChainLength = _state.RatchetState.ReceivingStep.CurrentIndex,
+            SendingChainLength = _state.RatchetState.SendingStep.CurrentIndex,
+            Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionResumed
+        };
+
+        Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(reply));
     }
 
     protected override void PreStart()
@@ -182,7 +200,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
         });
     }
 
-    private void HandleDecrypt(DecryptCipherPayloadActorEvent cmd)
+    private void HandleDecrypt(DecryptCipherPayloadActorEvent actorEvent)
     {
         if (_liveSystem == null || _state == null)
         {
@@ -191,7 +209,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
             return;
         }
 
-        Result<byte[], EcliptixProtocolFailure> result = _liveSystem.ProcessInboundMessage(cmd.CipherPayload);
+        Result<byte[], EcliptixProtocolFailure> result = _liveSystem.ProcessInboundMessage(actorEvent.CipherPayload);
         if (result.IsErr)
         {
             Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(result.UnwrapErr()));
