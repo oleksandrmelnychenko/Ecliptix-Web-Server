@@ -8,10 +8,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Akka.Persistence" Version="1.5.44" />
-        <PackageReference Include="Akka.Persistence.TestKit" Version="1.5.44" />
-        <PackageReference Include="Akka.Persistence.TestKit.Xunit2" Version="1.5.44" />
-        <PackageReference Include="Akka.TestKit" Version="1.5.44" />
+        <PackageReference Include="Akka.Persistence" Version="1.5.37" />
+        <PackageReference Include="Akka.Persistence.TestKit" Version="1.5.37" />
+        <PackageReference Include="Akka.Persistence.TestKit.Xunit2" Version="1.5.37" />
+        <PackageReference Include="Akka.TestKit" Version="1.5.37" />
         <PackageReference Include="BenchmarkDotNet" Version="0.15.2" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
         <PackageReference Include="Moq" Version="4.20.72" />

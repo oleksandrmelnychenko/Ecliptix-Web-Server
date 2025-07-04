@@ -71,6 +71,7 @@ try
 
     builder.Services.AddAkka(systemActorName, (akkaBuilder, serviceProvider) =>
     {
+        akkaBuilder.AddHoconFile("akka.conf", HoconAddMode.Append);
         akkaBuilder.WithActors((system, registry) =>
         {
             ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
