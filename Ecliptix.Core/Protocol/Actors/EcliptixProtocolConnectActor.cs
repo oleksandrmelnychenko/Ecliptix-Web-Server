@@ -84,13 +84,11 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
             // This is now the ONLY automatic shutdown trigger.
             case ReceiveTimeout _:
                 Context.Stop(Self);
-                _liveSystem?.Dispose();
                 return true;
 
             // Streams only.
             case ClientDisconnectedActorEvent _:
                 Context.Stop(Self);
-                _liveSystem?.Dispose();
                 return true;
 
             case SaveSnapshotSuccess success:
