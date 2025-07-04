@@ -24,7 +24,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 {
     public override string PersistenceId { get; } = $"connect-{connectId}";
     private const int SnapshotInterval = 50;
-    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(1);
 
     private EcliptixSessionState? _state;
     private EcliptixProtocolSystem? _liveSystem;
@@ -130,11 +130,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 
     private void HandleInitialKeyExchange(DeriveSharedSecretActorEvent cmd)
     {
-        if (_liveSystem != null)
-        {
-            return;
-        }
-
         EcliptixSystemIdentityKeys identityKeys = EcliptixSystemIdentityKeys.Create(10).Unwrap();
         EcliptixProtocolSystem system = new(identityKeys);
         Result<PubKeyExchange, EcliptixProtocolFailure> replyResult =
