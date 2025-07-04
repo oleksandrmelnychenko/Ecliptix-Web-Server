@@ -1,4 +1,5 @@
 using Akka.Actor;
+using Akka.Event;
 using Akka.Persistence;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
@@ -242,9 +243,8 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
     {
         if (_state != null)
         {
-            //
-            // <<<< YOUR SQL DATABASE SAVE LOGIC GOES HERE >>>>
-            //
+            SaveSnapshot(_state);
+            Context.GetLogger().Info("EcliptixProtocolConnectActor stopped. Final state snapshot saved.");
         }
 
         _liveSystem?.Dispose();
