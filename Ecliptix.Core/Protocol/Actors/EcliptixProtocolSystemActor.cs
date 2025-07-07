@@ -80,6 +80,46 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         Sender.Tell(result);
     }
 
+    // private async Task ProcessForwarding(ForwardToConnectActorEvent message)
+    // {
+    //     uint connectId = message.ConnectId;
+    //     string actorName = $"connect-{connectId}";
+    //     IActorRef connectActor = Context.Child(actorName);
+    //
+    //     if (connectActor.IsNobody())
+    //     {
+    //         object errorResult = message.Payload switch
+    //         {
+    //             EncryptPayloadActorEvent => Result<CipherPayload, EcliptixProtocolFailure>.Err(
+    //                 CreateNotFoundError(connectId)),
+    //             DecryptCipherPayloadActorEvent => Result<byte[], EcliptixProtocolFailure>.Err(
+    //                 CreateNotFoundError(connectId)),
+    //             RestoreAppDeviceSecrecyChannelState => Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Err(
+    //                 CreateNotFoundError(connectId)),
+    //             KeepAlive => Akka.Done.Instance,
+    //             _ => Result<object, EcliptixProtocolFailure>.Err(CreateNotFoundError(connectId))
+    //         };
+    //
+    //         if (message.Payload is not KeepAlive)
+    //             Sender.Tell(errorResult);
+    //     }
+    //     else
+    //     {
+    //         if (message.Payload is KeepAlive)
+    //         {
+    //             connectActor.Tell(message.Payload, ActorRefs.NoSender);
+    //         }
+    //         else
+    //         {
+    //             object? result =
+    //                 await connectActor.Ask(message.Payload,
+    //                     timeout: TimeSpan.FromSeconds(30));
+    //             Sender.Tell(result);
+    //         }
+    //     }
+    // }
+    
+    // NEW ADDED 2025-07-07 16:12 by Vitalik Koliesnikov
     private async Task ProcessForwarding(ForwardToConnectActorEvent message)
     {
         uint connectId = message.ConnectId;
@@ -88,34 +128,54 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
         if (connectActor.IsNobody())
         {
+            try
+            {
+                connectActor = Context.ActorOf(EcliptixProtocolConnectActor.Build(connectId), actorName);
+                Context.Watch(connectActor);
+                Log.Information("Session actor [{ActorName}] created for connectId {ConnectId}", actorName, connectId);
+            }
+            catch (Exception ex)
+            {
+                EcliptixProtocolFailure failure = EcliptixProtocolFailure.ActorNotCreated(
+                    $"Failed to create session actor for connectId: {connectId}", ex);
+                object errorResult = message.Payload switch
+                {
+                    EncryptPayloadActorEvent => Result<CipherPayload, EcliptixProtocolFailure>.Err(failure),
+                    DecryptCipherPayloadActorEvent => Result<byte[], EcliptixProtocolFailure>.Err(failure),
+                    RestoreAppDeviceSecrecyChannelState => Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Err(failure),
+                    KeepAlive => Akka.Done.Instance,
+                    _ => Result<object, EcliptixProtocolFailure>.Err(failure)
+                };
+
+                Sender.Tell(errorResult);
+                return;
+            }
+        }
+        if (message.Payload is KeepAlive)
+        {
+            connectActor.Tell(message.Payload, ActorRefs.NoSender);
+            return;
+        }
+
+        try
+        {
+            object? result = await connectActor.Ask(message.Payload, timeout: TimeSpan.FromSeconds(30));
+            Sender.Tell(result);
+        }
+        catch (AskTimeoutException)
+        {
+            EcliptixProtocolFailure timeoutFailure = EcliptixProtocolFailure.Generic(
+                $"Timeout while forwarding message to connect actor {actorName}");
+
             object errorResult = message.Payload switch
             {
-                EncryptPayloadActorEvent => Result<CipherPayload, EcliptixProtocolFailure>.Err(
-                    CreateNotFoundError(connectId)),
-                DecryptCipherPayloadActorEvent => Result<byte[], EcliptixProtocolFailure>.Err(
-                    CreateNotFoundError(connectId)),
-                RestoreAppDeviceSecrecyChannelState => Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Err(
-                    CreateNotFoundError(connectId)),
-                KeepAlive => Akka.Done.Instance,
-                _ => Result<object, EcliptixProtocolFailure>.Err(CreateNotFoundError(connectId))
+                EncryptPayloadActorEvent => Result<CipherPayload, EcliptixProtocolFailure>.Err(timeoutFailure),
+                DecryptCipherPayloadActorEvent => Result<byte[], EcliptixProtocolFailure>.Err(timeoutFailure),
+                RestoreAppDeviceSecrecyChannelState => Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Err(timeoutFailure),
+                _ => Result<object, EcliptixProtocolFailure>.Err(timeoutFailure)
             };
 
-            if (message.Payload is not KeepAlive)
-                Sender.Tell(errorResult);
-        }
-        else
-        {
-            if (message.Payload is KeepAlive)
-            {
-                connectActor.Tell(message.Payload, ActorRefs.NoSender);
-            }
-            else
-            {
-                object? result =
-                    await connectActor.Ask(message.Payload,
-                        timeout: TimeSpan.FromSeconds(30));
-                Sender.Tell(result);
-            }
+            Sender.Tell(errorResult);
         }
     }
 

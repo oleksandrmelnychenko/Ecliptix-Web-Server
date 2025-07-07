@@ -41,6 +41,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
                 _state = state;
                 return true;
             case RecoveryCompleted:
+                Context.GetLogger().Info($"[RecoveryCompleted] Recovery finished for actor {Self.Path.Name}");
                 if (_state != null)
                 {
                     Result<EcliptixProtocolSystem, EcliptixProtocolFailure> systemResult =
@@ -48,11 +49,17 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
                     if (systemResult.IsOk)
                     {
                         _liveSystem = systemResult.Unwrap();
+                        Context.GetLogger().Info($"[RecoveryCompleted] Protocol system successfully recreated for connectId {connectId}");
                     }
                     else
                     {
+                        Context.GetLogger().Warning($"[RecoveryCompleted] Failed to recreate protocol system for connectId {connectId}");
                         Context.Stop(Self);
                     }
+                }
+                else
+                {
+                    Context.GetLogger().Info($"[RecoveryCompleted] No previous session state found for connectId {connectId}");
                 }
 
                 return true;
