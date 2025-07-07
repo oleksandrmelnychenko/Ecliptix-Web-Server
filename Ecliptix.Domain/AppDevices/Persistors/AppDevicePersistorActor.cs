@@ -13,7 +13,14 @@ using Ecliptix.Protobuf.AppDevice;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 
+[module: DapperAot]
 namespace Ecliptix.Domain.AppDevices.Persistors;
+
+public class AppDeviceRegisterResult
+{
+    public Guid UniqueId { get; set; }
+    public int Status { get; set; }
+}
 
 public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 {
@@ -48,15 +55,16 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
             DeviceType = (int)appDevice.DeviceType
         };
 
-        (Guid UniqueId, int Status) result = await connection.QuerySingleOrDefaultAsync<(Guid UniqueId, int Status)>(
+        AppDeviceRegisterResult? result = await connection.QuerySingleOrDefaultAsync<AppDeviceRegisterResult>(
             RegisterAppDeviceSp,
             parameters,
-            commandType: CommandType.StoredProcedure
-        );
+            commandType: CommandType.StoredProcedure);
 
-        if (result.Equals(default))
+        if (result == null)
+        {
             return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Err(
                 AppDeviceFailure.InfrastructureFailure());
+        }
 
         AppDeviceRegisteredStateReply.Types.Status currentStatus = result.Status switch
         {

@@ -1,6 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO.Compression;
 using Akka.Actor;
+using Akka.Configuration;
 using Akka.Hosting;
 using Ecliptix.Core.Interceptors;
 using Ecliptix.Core.Protocol.Actors;
@@ -71,7 +73,12 @@ try
 
     builder.Services.AddAkka(systemActorName, (akkaBuilder, serviceProvider) =>
     {
-        akkaBuilder.AddHoconFile("akka.conf", HoconAddMode.Append);
+        AotHelpers.PreserveAkkaHostedService();
+        
+        string hocon = File.ReadAllText("akka.conf");
+        Config akkaConfig = ConfigurationFactory.ParseString(hocon);
+        akkaBuilder.AddHocon(akkaConfig, HoconAddMode.Replace);
+        
         akkaBuilder.WithActors((system, registry) =>
         {
             ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
@@ -214,4 +221,10 @@ internal class ActorSystemHostedService(ActorSystem actorSystem)
         await CoordinatedShutdown.Get(actorSystem).Run(CoordinatedShutdown.ClrExitReason.Instance);
         Log.Information("Actor system hosted service shutdown complete");
     }
+}
+
+public static class AotHelpers
+{
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AkkaHostedService))]
+    public static void PreserveAkkaHostedService() { }
 }
