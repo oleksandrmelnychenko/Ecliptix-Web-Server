@@ -1,0 +1,46 @@
+<linker>
+    <assembly fullname="BouncyCastle.Crypto">
+        <type fullname="Org.BouncyCastle.Security.DigestUtilities" preserve="all"/>
+        <type fullname="Org.BouncyCastle.Security.DigestUtilities/DigestAlgorithm" preserve="all"/>
+    </assembly>
+    
+    <assembly fullname="Akka">
+        <type fullname="Akka.Actor.LocalActorRefProvider" preserve="all" />
+        <type fullname="Akka.Actor.HashedWheelTimerScheduler" preserve="all" />
+        <type fullname="Akka.Actor.CoordinatedShutdownExtension" preserve="all" />
+        <type fullname="Akka.Dispatch.UnboundedMailbox" preserve="all" />
+        <type fullname="Akka.Dispatch.IBoundedMessageQueueSemantics" preserve="all" />
+        <type fullname="Akka.Dispatch.IMultipleConsumerSemantics" preserve="all" />
+        <type fullname="Akka.Event.EventStreamUnsubscriber" preserve="all" />
+        <type fullname="Akka.Event.DefaultLogger" preserve="all" />
+        <type fullname="Akka.Event.LoggerMailboxType" preserve="all" />
+        <type fullname="Akka.Serialization.NewtonSoftJsonSerializer" preserve="all" />
+        <type fullname="Akka.Serialization.ByteArraySerializer" preserve="all" />
+        <type fullname="Akka.Tools.MatchHandler.PartialHandlerArgumentsCapture`2" dynamic="Required All">
+            <genericArgument type="System.Object" />
+            <genericArgument type="*" />
+        </type>
+        <type fullname="Akka.Tools.MatchHandler.MatchBuilder`*" dynamic="Required All" />
+        <type fullname="Akka.Tools.MatchHandler.CachedMatchCompiler`*" dynamic="Required All" />
+    </assembly>
+
+    <assembly fullname="Akka.Tools.MatchHandler">
+        <type fullname="Akka.Tools.MatchHandler.PartialHandlerArgumentsCapture`2" dynamic="Required All" />
+        <type fullname="Akka.Tools.MatchHandler.PartialActionBuilder" preserve="all" />
+        <type fullname="Akka.Tools.MatchHandler.MatchBuilder`1" preserve="all" />
+        <type fullname="Akka.Tools.MatchHandler.CachedMatchCompiler`1" preserve="all" />
+        <type fullname="Akka.Tools.MatchHandler.MatchExpressionBuilder`1" preserve="all" />
+    </assembly>
+
+    <assembly fullname="System.Private.CoreLib">
+        <type fullname="System.Func`*" dynamic="Required All" />
+        <type fullname="System.Func`5" dynamic="Required All" />
+        <type fullname="System.Func`6" dynamic="Required All" />
+        <type fullname="System.Func`7" dynamic="Required All" />
+        <type fullname="System.Func`9" dynamic="Required All" />
+    </assembly>
+    
+    <assembly fullname="Ecliptix.Domain">
+        <type fullname="Ecliptix.Domain.Utilities.ByteArraySessionStateSerializer" preserve="all" />
+    </assembly>
+</linker>

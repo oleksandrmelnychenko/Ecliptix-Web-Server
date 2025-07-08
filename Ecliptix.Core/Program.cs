@@ -2,9 +2,9 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO.Compression;
+using System.Reflection;
 using Akka.Actor;
 using Akka.Configuration;
-using Akka.Hosting;
 using Ecliptix.Core.Interceptors;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Resources;
@@ -25,6 +25,8 @@ using Serilog.Context;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+NativeAotWorkaround.KeepEnums();
+
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .CreateLogger();
@@ -38,16 +40,16 @@ try
     builder.Services.AddSingleton<SNSProvider>();
     builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
     builder.Services.AddSingleton<SessionKeepAliveInterceptor>();
-    
+
     RegisterLocalization(builder.Services);
     RegisterValidators(builder.Services);
     RegisterGrpc(builder.Services);
-    
+  
     builder.Services.AddSingleton<IEcliptixActorRegistry, ActorRegistry>();
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IOpaqueProtocolService>(sp =>
-    {
+    { 
         IConfiguration config = sp.GetRequiredService<IConfiguration>();
         string? secretKeySeedBase64 = config["OpaqueProtocol:SecretKeySeed"];
 
@@ -74,7 +76,7 @@ try
     Config akkaConfig = ConfigurationFactory.Empty
         .WithFallback(ConfigurationFactory.ParseString(File.ReadAllText("akka.conf")));
     ActorSystem actorSystem = ActorSystem.Create("EcliptixProtocolSystemActor", akkaConfig);
-    
+
     builder.Services.AddSingleton(actorSystem);
     builder.Services.AddHostedService<ActorSystemHostedService>();
 
@@ -99,9 +101,9 @@ try
     app.MapGrpcService<MembershipServices>();
 
     RegisterActors(app.Services.GetRequiredService<ActorSystem>(), app.Services.GetRequiredService<IEcliptixActorRegistry>(), app.Services);
-    
+
     app.MapGet("/", () => Results.Ok(new { Status = "Success", Message = "Server is up and running" }));
-    
+
     Log.Information("Starting Ecliptix application host");
     app.Run();
 }
@@ -152,8 +154,6 @@ static void RegisterGrpc(IServiceCollection services)
 
 static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, IServiceProvider serviceProvider)
 {
-    AotHelpers.PreserveAkkaTypes();
-    
     ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
     SNSProvider snsProvider = serviceProvider.GetRequiredService<SNSProvider>();
 
@@ -247,19 +247,18 @@ public class ActorRegistry : IEcliptixActorRegistry
     }
 }
 
-public static class AotHelpers
+public static class NativeAotWorkaround
 {
-    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AkkaHostedService))]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Akka.Actor.LocalActorRefProvider", "Akka")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Akka.Actor.HashedWheelTimerScheduler", "Akka")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Akka.Dispatch.UnboundedMailbox", "Akka")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Akka.Event.DefaultLogger", "Akka")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Akka.Event.LoggerMailboxType", "Akka")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Akka.Serialization.NewtonSoftJsonSerializer", "Akka")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Akka.Serialization.ByteArraySerializer", "Akka")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Akka.Event.EventStreamUnsubscriber", "Akka")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Akka.Dispatch.IBoundedMessageQueueSemantics", "Akka")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Akka.Dispatch.IMultipleConsumerSemantics", "Akka")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Ecliptix.Domain.Utilities.ByteArraySessionStateSerializer", "Ecliptix.Domain")]
-    public static void PreserveAkkaTypes() { }
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Org.BouncyCastle.Security.DigestUtilities))]
+    public static void KeepEnums()
+    {
+        var enumType = typeof(Org.BouncyCastle.Security.DigestUtilities)
+            .GetNestedType("DigestAlgorithm", BindingFlags.NonPublic);
+        if (enumType == null)
+        {
+            throw new InvalidOperationException("DigestAlgorithm enum not found");
+        }
+
+        _ = Enum.GetValues(enumType);
+    }
 }

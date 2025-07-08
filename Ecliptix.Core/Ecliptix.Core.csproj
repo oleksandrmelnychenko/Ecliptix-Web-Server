@@ -83,5 +83,8 @@
         <TrimmerRootAssembly Include="Serilog.Sinks.File" />
         <TrimmerRootAssembly Include="Serilog.Settings.Configuration" />
     </ItemGroup>
-
+    
+    <ItemGroup>
+        <TrimmerRootDescriptor Include="rd.xml" />
+    </ItemGroup>
 </Project>
