@@ -23,8 +23,6 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Serilog;
 using Serilog.Context;
 
-AotHelpers.PreserveBouncyCastleEnums();
-
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 Log.Logger = new LoggerConfiguration()
@@ -100,11 +98,10 @@ try
     app.MapGrpcService<VerificationFlowServices>();
     app.MapGrpcService<MembershipServices>();
 
-    // Реєструємо актори
     RegisterActors(app.Services.GetRequiredService<ActorSystem>(), app.Services.GetRequiredService<IEcliptixActorRegistry>(), app.Services);
     
     app.MapGet("/", () => Results.Ok(new { Status = "Success", Message = "Server is up and running" }));
-
+    
     Log.Information("Starting Ecliptix application host");
     app.Run();
 }
@@ -265,13 +262,4 @@ public static class AotHelpers
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Akka.Dispatch.IMultipleConsumerSemantics", "Akka")]
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Ecliptix.Domain.Utilities.ByteArraySessionStateSerializer", "Ecliptix.Domain")]
     public static void PreserveAkkaTypes() { }
-    
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Org.BouncyCastle.Security.DigestUtilities+DigestAlgorithm", "BouncyCastle")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Org.BouncyCastle.Security.DigestUtilities", "BouncyCastle")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Org.BouncyCastle.Crypto.Digests.Sha256Digest", "BouncyCastle")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Org.BouncyCastle.Crypto.Digests.Sha512Digest", "BouncyCastle")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Org.BouncyCastle.Security.DigestUtilities+DigestAlgorithm", "BouncyCastle.Crypto")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Org.BouncyCastle.Utilities.Enums", "BouncyCastle.Crypto")]
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, "Org.BouncyCastle.Security.SecureRandom", "BouncyCastle.Crypto")]
-    public static void PreserveBouncyCastleEnums() { }
 }
