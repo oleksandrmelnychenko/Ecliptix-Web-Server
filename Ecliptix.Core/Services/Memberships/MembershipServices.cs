@@ -17,7 +17,7 @@ using Grpc.Core;
 namespace Ecliptix.Core.Services.Memberships;
 
 public class MembershipServices(
-    IActorRegistry actorRegistry,
+    IEcliptixActorRegistry actorRegistry,
     IPhoneNumberValidator phoneNumberValidator
 ) : MembershipServicesBase(actorRegistry)
 {

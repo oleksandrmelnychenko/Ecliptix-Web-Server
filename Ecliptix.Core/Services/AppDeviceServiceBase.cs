@@ -7,7 +7,7 @@ using Grpc.Core;
 
 namespace Ecliptix.Core.Services;
 
-public abstract class AppDeviceServiceBase(IActorRegistry actorRegistry)
+public abstract class AppDeviceServiceBase(IEcliptixActorRegistry actorRegistry)
     : AppDeviceServiceActions.AppDeviceServiceActionsBase
 {
     protected readonly IActorRef AppDevicePersistorActor = actorRegistry.Get<AppDevicePersistorActor>();

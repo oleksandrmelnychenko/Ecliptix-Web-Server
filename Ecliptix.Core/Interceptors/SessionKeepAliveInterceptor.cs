@@ -14,10 +14,9 @@ public class SessionKeepAliveInterceptor : Interceptor
     private readonly Lazy<IActorRef> _protocolSystemActor;
 
     // Inject the registry, which IS available in the DI container.
-    public SessionKeepAliveInterceptor(IActorRegistry actorRegistry)
+    public SessionKeepAliveInterceptor(IEcliptixActorRegistry actorRegistry)
     {
-        _protocolSystemActor = new Lazy<IActorRef>(() => 
-            actorRegistry.Get<EcliptixProtocolSystemActor>());
+        _protocolSystemActor = new Lazy<IActorRef>(actorRegistry.Get<EcliptixProtocolSystemActor>);
     }
     
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(

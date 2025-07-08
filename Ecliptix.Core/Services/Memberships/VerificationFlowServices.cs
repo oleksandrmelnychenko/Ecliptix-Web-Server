@@ -16,7 +16,7 @@ using Grpc.Core;
 namespace Ecliptix.Core.Services.Memberships;
 
 public class VerificationFlowServices(
-    IActorRegistry actorRegistry,
+    IEcliptixActorRegistry actorRegistry,
     IPhoneNumberValidator phoneNumberValidator)
     : VerificationFlowServicesBase(actorRegistry)
 {
