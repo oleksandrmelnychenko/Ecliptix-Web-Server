@@ -1,31 +1,19 @@
 <linker>
     <assembly fullname="BouncyCastle.Crypto">
-        <type fullname="Org.BouncyCastle.Security.DigestUtilities" preserve="all"/>
-        <type fullname="Org.BouncyCastle.Security.DigestUtilities/DigestAlgorithm" preserve="all"/>
-    </assembly>
-    
-    <assembly fullname="Akka">
-        <type fullname="Akka.Actor.LocalActorRefProvider" preserve="all" />
-        <type fullname="Akka.Actor.HashedWheelTimerScheduler" preserve="all" />
-        <type fullname="Akka.Actor.CoordinatedShutdownExtension" preserve="all" />
-        <type fullname="Akka.Dispatch.UnboundedMailbox" preserve="all" />
-        <type fullname="Akka.Dispatch.IBoundedMessageQueueSemantics" preserve="all" />
-        <type fullname="Akka.Dispatch.IMultipleConsumerSemantics" preserve="all" />
-        <type fullname="Akka.Event.EventStreamUnsubscriber" preserve="all" />
-        <type fullname="Akka.Event.DefaultLogger" preserve="all" />
-        <type fullname="Akka.Event.LoggerMailboxType" preserve="all" />
-        <type fullname="Akka.Serialization.NewtonSoftJsonSerializer" preserve="all" />
-        <type fullname="Akka.Serialization.ByteArraySerializer" preserve="all" />
-        <type fullname="Akka.Tools.MatchHandler.PartialHandlerArgumentsCapture`2" dynamic="Required All">
-            <genericArgument type="System.Object" />
-            <genericArgument type="*" />
-        </type>
-        <type fullname="Akka.Tools.MatchHandler.MatchBuilder`*" dynamic="Required All" />
-        <type fullname="Akka.Tools.MatchHandler.CachedMatchCompiler`*" dynamic="Required All" />
+        <type fullname="Org.BouncyCastle.Security.DigestUtilities" preserve="all" />
+        <type fullname="Org.BouncyCastle.Security.DigestUtilities/DigestAlgorithm" preserve="all" />
     </assembly>
 
+    <assembly fullname="Akka" preserve="all" dynamic="Required All"/>
+    <assembly fullname="Akka.Persistence" preserve="all" dynamic="Required All" />
+    <assembly fullname="Akka.Persistence.Sql" preserve="all" dynamic="Required All" />
+    <assembly fullname="Akka.Streams" preserve="all" dynamic="Required All" >
+        <type fullname="Akka.Streams.DefaultMaterializerExt" preserve="all" />
+    </assembly>
+    <assembly fullname="System.Data.SqlClient" preserve="all" dynamic="Required All" />
+    
     <assembly fullname="Akka.Tools.MatchHandler">
-        <type fullname="Akka.Tools.MatchHandler.PartialHandlerArgumentsCapture`2" dynamic="Required All" />
+        <type fullname="Akka.Tools.MatchHandler.PartialHandlerArgumentsCapture`2" preserve="all" />
         <type fullname="Akka.Tools.MatchHandler.PartialActionBuilder" preserve="all" />
         <type fullname="Akka.Tools.MatchHandler.MatchBuilder`1" preserve="all" />
         <type fullname="Akka.Tools.MatchHandler.CachedMatchCompiler`1" preserve="all" />
@@ -33,14 +21,26 @@
     </assembly>
 
     <assembly fullname="System.Private.CoreLib">
-        <type fullname="System.Func`*" dynamic="Required All" />
-        <type fullname="System.Func`5" dynamic="Required All" />
-        <type fullname="System.Func`6" dynamic="Required All" />
-        <type fullname="System.Func`7" dynamic="Required All" />
-        <type fullname="System.Func`9" dynamic="Required All" />
+        <type fullname="System.Func`5" preserve="all" />
+        <type fullname="System.Func`6" preserve="all" />
+        <type fullname="System.Func`7" preserve="all" />
+        <type fullname="System.Func`9" preserve="all" />
     </assembly>
-    
+
     <assembly fullname="Ecliptix.Domain">
+        <type fullname="Ecliptix.Domain.AppDevices.Events.RegisterAppDeviceIfNotExistActorEvent" preserve="all" />
+        <type fullname="Ecliptix.Domain.Memberships.Persistors.VerificationFlowPersistorActor" preserve="all" />
+        <type fullname="Ecliptix.Domain.AppDevices.Persistors.AppDevicePersistorActor" preserve="all" />
+        <type fullname="Ecliptix.Domain.Memberships.Persistors.MembershipPersistorActor" preserve="all" />
+        <type fullname="Ecliptix.Domain.Memberships.WorkerActors.MembershipActor" preserve="all" />
+        <type fullname="Ecliptix.Domain.Memberships.WorkerActors.VerificationFlowManagerActor" preserve="all" />
+    </assembly>
+
+    <assembly fullname="Ecliptix.Core">
         <type fullname="Ecliptix.Domain.Utilities.ByteArraySessionStateSerializer" preserve="all" />
+        <type fullname="Ecliptix.Core.Protocol.Actors.EcliptixProtocolSystemActor" preserve="all" />
+        <type fullname="Ecliptix.Core.Protocol.Actors.BeginAppDeviceEphemeralConnectActorEvent" preserve="all" />
+        <type fullname="Ecliptix.Core.Protocol.Actors.ForwardToConnectActorEvent" preserve="all" />
+        <type fullname="Ecliptix.Core.Protocol.Actors.ClientDisconnectedActorEvent" preserve="all" />
     </assembly>
 </linker>

@@ -2,15 +2,19 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO.Compression;
+using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.Serialization;
 using Akka.Actor;
 using Akka.Configuration;
+using Akka.Streams;
 using Ecliptix.Core.Interceptors;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
 using Ecliptix.Core.Services.Memberships;
 using Ecliptix.Domain;
+using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Memberships;
@@ -26,6 +30,8 @@ using Serilog.Context;
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 NativeAotWorkaround.KeepEnums();
+NativeAotWorkaround.PrepareActors();
+
 
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
@@ -260,5 +266,18 @@ public static class NativeAotWorkaround
         }
 
         _ = Enum.GetValues(enumType);
+    }
+    
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Akka.Persistence.Serialization.PersistenceMessageSerializer))]
+    public static void PrepareActors()
+    {
+        Config akkaConfig = ConfigurationFactory.Empty
+            .WithFallback(ConfigurationFactory.ParseString(File.ReadAllText("akka.conf")));
+        ActorSystem prepareSystem = ActorSystem.Create("PrepareActorsSystem", akkaConfig);
+
+        var materializer = ActorMaterializer.Create(prepareSystem);
+
+        prepareSystem.ActorOf(Props.Create(() => new AppDevicePersistorActor(null!, null!)));
+        prepareSystem.ActorOf(Props.Create(() => new EcliptixProtocolConnectActor(0)));
     }
 }
