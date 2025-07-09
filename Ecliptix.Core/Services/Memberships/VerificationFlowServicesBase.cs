@@ -10,7 +10,7 @@ using Serilog;
 namespace Ecliptix.Core.Services.Memberships;
 
 public abstract class VerificationFlowServicesBase(
-    IActorRegistry actorRegistry)
+    IEcliptixActorRegistry actorRegistry)
     : AuthVerificationServices.AuthVerificationServicesBase
 {
     protected readonly IActorRef ProtocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();

@@ -1,7 +1,10 @@
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO.Compression;
+using System.Reflection;
 using Akka.Actor;
-using Akka.Hosting;
+using Akka.Configuration;
 using Ecliptix.Core.Interceptors;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Resources;
@@ -20,9 +23,9 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Serilog;
 using Serilog.Context;
 
-const string systemActorName = "EcliptixProtocolSystemActor";
-
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+NativeAotWorkaround.KeepEnums();
 
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
@@ -37,15 +40,16 @@ try
     builder.Services.AddSingleton<SNSProvider>();
     builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
     builder.Services.AddSingleton<SessionKeepAliveInterceptor>();
-    
+
     RegisterLocalization(builder.Services);
     RegisterValidators(builder.Services);
     RegisterGrpc(builder.Services);
-
+  
+    builder.Services.AddSingleton<IEcliptixActorRegistry, ActorRegistry>();
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IOpaqueProtocolService>(sp =>
-    {
+    { 
         IConfiguration config = sp.GetRequiredService<IConfiguration>();
         string? secretKeySeedBase64 = config["OpaqueProtocol:SecretKeySeed"];
 
@@ -69,64 +73,11 @@ try
         return new OpaqueProtocolService(secretKeySeed);
     });
 
-    builder.Services.AddAkka(systemActorName, (akkaBuilder, serviceProvider) =>
-    {
-        akkaBuilder.AddHoconFile("akka.conf", HoconAddMode.Append);
-        akkaBuilder.WithActors((system, registry) =>
-        {
-            ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
-            SNSProvider snsProvider = serviceProvider.GetRequiredService<SNSProvider>();
+    Config akkaConfig = ConfigurationFactory.Empty
+        .WithFallback(ConfigurationFactory.ParseString(File.ReadAllText("akka.conf")));
+    ActorSystem actorSystem = ActorSystem.Create("EcliptixProtocolSystemActor", akkaConfig);
 
-            ILocalizationProvider localizationProvider =
-                serviceProvider.GetRequiredService<ILocalizationProvider>();
-
-            IOpaqueProtocolService opaqueProtocolService =
-                serviceProvider.GetRequiredService<IOpaqueProtocolService>();
-
-            using (LogContext.PushProperty("ActorSystemName", system.Name))
-            {
-                logger.LogInformation("Actor system {ActorSystemName} is starting up", system.Name);
-            }
-
-            IDbConnectionFactory dbDataSource = serviceProvider.GetRequiredService<IDbConnectionFactory>();
-
-            IActorRef protocolSystemActor = system.ActorOf(
-                EcliptixProtocolSystemActor.Build(),
-                "ProtocolSystem");
-
-            IActorRef appDevicePersistor = system.ActorOf(
-                AppDevicePersistorActor.Build(dbDataSource, opaqueProtocolService),
-                "AppDevicePersistor");
-
-            IActorRef verificationFlowPersistorActor = system.ActorOf(
-                VerificationFlowPersistorActor.Build(dbDataSource),
-                "VerificationFlowPersistorActor");
-
-            IActorRef membershipPersistorActor = system.ActorOf(
-                MembershipPersistorActor.Build(dbDataSource),
-                "MembershipPersistorActor");
-
-            IActorRef membershipActor = system.ActorOf(
-                MembershipActor.Build(membershipPersistorActor, opaqueProtocolService, localizationProvider),
-                "MembershipActor");
-
-            IActorRef verificationFlowManagerActor = system.ActorOf(
-                VerificationFlowManagerActor.Build(verificationFlowPersistorActor, membershipActor,
-                    snsProvider, localizationProvider),
-                "VerificationFlowManagerActor");
-
-            registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
-            registry.Register<AppDevicePersistorActor>(appDevicePersistor);
-            registry.Register<VerificationFlowPersistorActor>(verificationFlowPersistorActor);
-            registry.Register<VerificationFlowManagerActor>(verificationFlowManagerActor);
-            registry.Register<MembershipPersistorActor>(membershipPersistorActor);
-            registry.Register<MembershipActor>(membershipActor);
-
-            logger.LogInformation("Registered top-level actors: {ProtocolActorPath}, {PersistorActorPath}",
-                protocolSystemActor.Path, appDevicePersistor.Path);
-        });
-    });
-
+    builder.Services.AddSingleton(actorSystem);
     builder.Services.AddHostedService<ActorSystemHostedService>();
 
     builder.WebHost.ConfigureKestrel(options =>
@@ -148,6 +99,8 @@ try
     app.MapGrpcService<AppDeviceServices>();
     app.MapGrpcService<VerificationFlowServices>();
     app.MapGrpcService<MembershipServices>();
+
+    RegisterActors(app.Services.GetRequiredService<ActorSystem>(), app.Services.GetRequiredService<IEcliptixActorRegistry>(), app.Services);
 
     app.MapGet("/", () => Results.Ok(new { Status = "Success", Message = "Server is up and running" }));
 
@@ -199,12 +152,66 @@ static void RegisterGrpc(IServiceCollection services)
     });
 }
 
-internal class ActorSystemHostedService(ActorSystem actorSystem)
-    : IHostedService
+static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, IServiceProvider serviceProvider)
+{
+    ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+    SNSProvider snsProvider = serviceProvider.GetRequiredService<SNSProvider>();
+
+    ILocalizationProvider localizationProvider =
+        serviceProvider.GetRequiredService<ILocalizationProvider>();
+
+    IOpaqueProtocolService opaqueProtocolService =
+        serviceProvider.GetRequiredService<IOpaqueProtocolService>();
+
+    using (LogContext.PushProperty("ActorSystemName", system.Name))
+    {
+        logger.LogInformation("Actor system {ActorSystemName} is starting up", system.Name);
+    }
+
+    IDbConnectionFactory dbDataSource = serviceProvider.GetRequiredService<IDbConnectionFactory>();
+
+    IActorRef protocolSystemActor = system.ActorOf(
+        EcliptixProtocolSystemActor.Build(),
+        "ProtocolSystem");
+
+    IActorRef appDevicePersistor = system.ActorOf(
+        AppDevicePersistorActor.Build(dbDataSource, opaqueProtocolService),
+        "AppDevicePersistor");
+
+    IActorRef verificationFlowPersistorActor = system.ActorOf(
+        VerificationFlowPersistorActor.Build(dbDataSource),
+        "VerificationFlowPersistorActor");
+
+    IActorRef membershipPersistorActor = system.ActorOf(
+        MembershipPersistorActor.Build(dbDataSource),
+        "MembershipPersistorActor");
+
+    IActorRef membershipActor = system.ActorOf(
+        MembershipActor.Build(membershipPersistorActor, opaqueProtocolService, localizationProvider),
+        "MembershipActor");
+
+    IActorRef verificationFlowManagerActor = system.ActorOf(
+        VerificationFlowManagerActor.Build(verificationFlowPersistorActor, membershipActor,
+            snsProvider, localizationProvider),
+        "VerificationFlowManagerActor");
+
+    registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
+    registry.Register<AppDevicePersistorActor>(appDevicePersistor);
+    registry.Register<VerificationFlowPersistorActor>(verificationFlowPersistorActor);
+    registry.Register<VerificationFlowManagerActor>(verificationFlowManagerActor);
+    registry.Register<MembershipPersistorActor>(membershipPersistorActor);
+    registry.Register<MembershipActor>(membershipActor);
+
+    logger.LogInformation("Registered top-level actors: {ProtocolActorPath}, {PersistorActorPath}",
+        protocolSystemActor.Path, appDevicePersistor.Path);
+
+}
+
+internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        Log.Information("Actor system hosted service started ()");
+        Log.Information("Actor system hosted service started.");
         return Task.CompletedTask;
     }
 
@@ -212,6 +219,46 @@ internal class ActorSystemHostedService(ActorSystem actorSystem)
     {
         Log.Information("Actor system hosted service initiating shutdown...");
         await CoordinatedShutdown.Get(actorSystem).Run(CoordinatedShutdown.ClrExitReason.Instance);
-        Log.Information("Actor system hosted service shutdown complete");
+        Log.Information("Actor system hosted service shutdown complete.");
+    }
+}
+
+public interface IEcliptixActorRegistry
+{
+    void Register<TActor>(IActorRef actorRef) where TActor : ActorBase;
+    IActorRef Get<TActor>() where TActor : ActorBase;
+}
+
+public class ActorRegistry : IEcliptixActorRegistry
+{
+    private readonly ConcurrentDictionary<Type, IActorRef> _actors = new();
+
+    public void Register<TActor>(IActorRef actorRef) where TActor : ActorBase
+    {
+        _actors[typeof(TActor)] = actorRef;
+    }
+
+    public IActorRef Get<TActor>() where TActor : ActorBase
+    {
+        if (_actors.TryGetValue(typeof(TActor), out var actorRef))
+            return actorRef;
+
+        throw new InvalidOperationException($"Actor of type {typeof(TActor).Name} not registered.");
+    }
+}
+
+public static class NativeAotWorkaround
+{
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Org.BouncyCastle.Security.DigestUtilities))]
+    public static void KeepEnums()
+    {
+        var enumType = typeof(Org.BouncyCastle.Security.DigestUtilities)
+            .GetNestedType("DigestAlgorithm", BindingFlags.NonPublic);
+        if (enumType == null)
+        {
+            throw new InvalidOperationException("DigestAlgorithm enum not found");
+        }
+
+        _ = Enum.GetValues(enumType);
     }
 }

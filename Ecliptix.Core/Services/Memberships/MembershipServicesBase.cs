@@ -7,7 +7,7 @@ using Ecliptix.Domain.Memberships.WorkerActors;
 namespace Ecliptix.Core.Services.Memberships;
 
 public abstract class MembershipServicesBase(
-    IActorRegistry actorRegistry) : Protobuf.Membership.MembershipServices.MembershipServicesBase
+    IEcliptixActorRegistry actorRegistry) : Protobuf.Membership.MembershipServices.MembershipServicesBase
 {
     protected readonly IActorRef MembershipActor = actorRegistry.Get<MembershipActor>();
     protected readonly IActorRef ProtocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();

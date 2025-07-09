@@ -13,7 +13,7 @@ using Grpc.Core;
 
 namespace Ecliptix.Core.Services;
 
-public class AppDeviceServices(IActorRegistry actorRegistry)
+public class AppDeviceServices(IEcliptixActorRegistry actorRegistry)
     : AppDeviceServiceBase(actorRegistry)
 {
     public override async Task<RestoreSecrecyChannelResponse> RestoreAppDeviceSecrecyChannel(
