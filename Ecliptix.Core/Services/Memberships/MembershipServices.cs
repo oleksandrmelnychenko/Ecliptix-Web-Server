@@ -175,6 +175,38 @@ public class MembershipServices(
         throw GrpcFailureException.FromDomainFailure(updateOperationResult.UnwrapErr());
     }
 
+    public override async Task<CipherPayload> OpaqueRecoveryInitRequest(CipherPayload request, ServerCallContext context)
+    {
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
+
+        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect, 
+            request);
+        
+        ForwardToConnectActorEvent decryptForwarder = new (connectId, decryptEvent);
+        
+        Result<byte[], EcliptixProtocolFailure> decryptionResult = 
+            await ProtocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(decryptForwarder,
+                context.CancellationToken);
+        
+        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
+        
+        OprfRecoveryInitRequest opaqueRecoveryInitRequest =
+            Helpers.ParseFromBytes<OprfRecoveryInitRequest>(decryptionResult.Unwrap());
+
+        OprfRecoveryRequestEvent @event = new(
+            Helpers.FromByteStringToGuid(opaqueRecoveryInitRequest.MembershipIdentifier),
+            Helpers.ReadMemoryToRetrieveBytes(opaqueRecoveryInitRequest.PeerOprf.Memory));
+        
+        Result<OprfRecoveryInitResponse, VerificationFlowFailure> updateOperationResult = 
+            await MembershipActor.Ask<Result<OprfRecoveryInitResponse, VerificationFlowFailure>>(@event, 
+                context.CancellationToken);
+
+        if (updateOperationResult.IsOk)
+            return await EncryptResponse(updateOperationResult.Unwrap().ToByteArray(), connectId, context);
+
+        throw GrpcFailureException.FromDomainFailure(updateOperationResult.UnwrapErr());
+    }
+
     private async Task<CipherPayload> EncryptResponse(byte[] payload, uint connectId, ServerCallContext context)
     {
         EncryptPayloadActorEvent encryptCommand = new(PubKeyExchangeType.DataCenterEphemeralConnect,

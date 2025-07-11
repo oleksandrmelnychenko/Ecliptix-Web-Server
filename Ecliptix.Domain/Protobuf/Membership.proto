@@ -49,6 +49,25 @@ message OprfRegistrationCompleteResponse   {
   optional string message = 1;
 }
 
+
+message OprfRecoveryInitRequest {
+  bytes peer_oprf = 1;
+  bytes membership_identifier = 2;
+}
+
+message OprfRecoveryInitResponse   {
+  bytes peer_oprf = 1;
+
+  enum UpdateResult {
+    SUCCEEDED = 0;
+    INVALID_CREDENTIALS = 1;
+  }
+
+  UpdateResult result = 2;
+  optional string message = 3;
+  optional Membership membership = 4;
+}
+
 message OpaqueSignInInitRequest {
   string phone_number = 1;
   bytes peer_oprf = 2;

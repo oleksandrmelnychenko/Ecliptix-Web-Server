@@ -14,6 +14,7 @@ namespace Ecliptix.Domain.Memberships.WorkerActors;
 public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey);
 
 public record GenerateMembershipOprfRegistrationRequestEvent(Guid MembershipIdentifier, byte[] OprfRequest);
+public record OprfRecoveryRequestEvent(Guid MembershipIdentifier, byte[] OprfRequest);
 
 public record CompleteRegistrationRecordActorEvent(Guid MembershipIdentifier, byte[] PeerRegistrationRecord);
 
@@ -65,6 +66,7 @@ public class MembershipActor : ReceiveActor
         ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembership);
         ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembership);
         ReceiveAsync<CompleteRegistrationRecordActorEvent>(HandleCompleteRegistrationRecord);
+        ReceiveAsync<OprfRecoveryRequestEvent>(HandleOprfRecoveryRequestEvent);
     }
 
     private async Task HandleCompleteRegistrationRecord(CompleteRegistrationRecordActorEvent @event)
@@ -96,6 +98,30 @@ public class MembershipActor : ReceiveActor
             }));
     }
 
+    private async Task HandleOprfRecoveryRequestEvent(OprfRecoveryRequestEvent @event)
+    {
+        byte[] oprfResponse = _opaqueProtocolService.ProcessOprfRequest(@event.OprfRequest);
+
+        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, oprfResponse);
+        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
+            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
+
+        Result<OprfRecoveryInitResponse, VerificationFlowFailure> finalResult =
+            persistorResult.Map(record => new OprfRecoveryInitResponse
+            {
+                Membership = new Membership
+                {
+                    UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
+                    Status = record.ActivityStatus,
+                    CreationStatus = record.CreationStatus
+                },
+                PeerOprf = ByteString.CopyFrom(oprfResponse),
+                Result = OprfRecoveryInitResponse.Types.UpdateResult.Succeeded
+            });
+
+        Sender.Tell(finalResult);
+    }
+    
     private async Task HandleGenerateMembershipOprfRegistrationRecord(
         GenerateMembershipOprfRegistrationRequestEvent @event)
     {
