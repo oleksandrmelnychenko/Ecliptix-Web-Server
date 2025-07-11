@@ -7,9 +7,8 @@
         <RunAOTCompilation>true</RunAOTCompilation>
         <PublishAot>true</PublishAot>
         <PublishTrimmed>true</PublishTrimmed>
-        <TrimMode>full</TrimMode>
+        <TrimMode>link</TrimMode>
         <InvariantGlobalization>false</InvariantGlobalization>
-        <PublishReadyToRun>true</PublishReadyToRun>
         <PublishSingleFile>true</PublishSingleFile>
         <SelfContained>true</SelfContained>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
@@ -30,6 +29,7 @@
         <PackageReference Include="Grpc.Net.Common" Version="2.71.0" />
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.6" />
         <PackageReference Include="Microsoft.Extensions.Localization" Version="9.0.6" />
+        <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.0-preview2.25178.5" />
         <PackageReference Include="OpenTelemetry" Version="1.12.0" />
         <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.12.0" />
         <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.12.0" />
@@ -37,6 +37,7 @@
         <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
         <PackageReference Include="protobuf-net" Version="3.2.52" />
         <PackageReference Include="Sodium.Core" Version="1.4.0"/>
+        <PackageReference Include="System.Data.SqlClient" Version="4.9.0" />
     </ItemGroup>
 
     <!-- <ItemGroup>
@@ -82,6 +83,8 @@
         <TrimmerRootAssembly Include="Serilog.Sinks.Console" />
         <TrimmerRootAssembly Include="Serilog.Sinks.File" />
         <TrimmerRootAssembly Include="Serilog.Settings.Configuration" />
+        <TrimmerRootAssembly Include="Akka" />
+        <TrimmerRootAssembly Include="System.Data.SqlClient" />
     </ItemGroup>
     
     <ItemGroup>
