@@ -11,13 +11,13 @@ public class ByteArraySessionStateSerializer : SerializerWithStringManifest
     {
     }
 
-    public override int Identifier => 1;
+    public override int Identifier => 100;
 
     public override string Manifest(object o) => "EcliptixSessionState";
 
     public override byte[] ToBinary(object obj)
     {
-        return ((EcliptixSessionState)obj).ToByteArray(); // Protobuf → bytes
+        return ((EcliptixSessionState)obj).ToByteArray();
     }
 
     public override object FromBinary(byte[] bytes, string manifest)
