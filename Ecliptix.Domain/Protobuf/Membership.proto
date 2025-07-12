@@ -49,6 +49,34 @@ message OprfRegistrationCompleteResponse   {
   optional string message = 1;
 }
 
+message OprfRecoverySecureKeyInitRequest {
+  bytes peer_oprf = 1;
+  bytes membership_identifier = 2;
+}
+
+message OprfRecoverySecureKeyInitResponse  {
+  bytes peer_oprf = 1;
+
+  enum RecoveryResult {
+    SUCCEEDED = 0;
+    INVALID_CREDENTIALS = 1;
+  }
+
+  RecoveryResult result = 2;
+  optional string message = 3;
+  optional Membership membership = 4;
+}
+
+message OprfRecoverySecretKeyCompleteRequest {
+  bytes peer_recovery_record = 1;
+  bytes membership_identifier = 2;
+}
+
+message OprfRecoverySecretKeyCompleteResponse {
+  optional string message = 1;
+}
+
+
 message OpaqueSignInInitRequest {
   string phone_number = 1;
   bytes peer_oprf = 2;
