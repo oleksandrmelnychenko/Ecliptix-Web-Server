@@ -11,9 +11,7 @@ using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.AppDevice;
 using Google.Protobuf;
-using Microsoft.Extensions.Logging;
 
-[module: DapperAot]
 namespace Ecliptix.Domain.AppDevices.Persistors;
 
 public class AppDeviceRegisterResult
@@ -56,7 +54,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
         };
 
         AppDeviceRegisterResult? result = await connection.QuerySingleOrDefaultAsync<AppDeviceRegisterResult>(
-            RegisterAppDeviceSp,
+            "dbo.RegisterAppDeviceIfNotExists",
             parameters,
             commandType: CommandType.StoredProcedure);
 

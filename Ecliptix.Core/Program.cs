@@ -1,20 +1,14 @@
 using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO.Compression;
-using System.Linq.Expressions;
-using System.Reflection;
-using System.Runtime.Serialization;
 using Akka.Actor;
 using Akka.Configuration;
-using Akka.Streams;
 using Ecliptix.Core.Interceptors;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
 using Ecliptix.Core.Services.Memberships;
 using Ecliptix.Domain;
-using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Memberships;
@@ -27,10 +21,8 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Serilog;
 using Serilog.Context;
 
+const string systemActorName = "EcliptixProtocolSystemActor";
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
-
-NativeAotWorkaround.KeepEnums();
-NativeAotWorkaround.PrepareActors();
 
 
 Log.Logger = new LoggerConfiguration()
@@ -81,7 +73,7 @@ try
 
     Config akkaConfig = ConfigurationFactory.Empty
         .WithFallback(ConfigurationFactory.ParseString(File.ReadAllText("akka.conf")));
-    ActorSystem actorSystem = ActorSystem.Create("EcliptixProtocolSystemActor", akkaConfig);
+    ActorSystem actorSystem = ActorSystem.Create(systemActorName, akkaConfig);
 
     builder.Services.AddSingleton(actorSystem);
     builder.Services.AddHostedService<ActorSystemHostedService>();
@@ -250,34 +242,5 @@ public class ActorRegistry : IEcliptixActorRegistry
             return actorRef;
 
         throw new InvalidOperationException($"Actor of type {typeof(TActor).Name} not registered.");
-    }
-}
-
-public static class NativeAotWorkaround
-{
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Org.BouncyCastle.Security.DigestUtilities))]
-    public static void KeepEnums()
-    {
-        var enumType = typeof(Org.BouncyCastle.Security.DigestUtilities)
-            .GetNestedType("DigestAlgorithm", BindingFlags.NonPublic);
-        if (enumType == null)
-        {
-            throw new InvalidOperationException("DigestAlgorithm enum not found");
-        }
-
-        _ = Enum.GetValues(enumType);
-    }
-    
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Akka.Persistence.Serialization.PersistenceMessageSerializer))]
-    public static void PrepareActors()
-    {
-        Config akkaConfig = ConfigurationFactory.Empty
-            .WithFallback(ConfigurationFactory.ParseString(File.ReadAllText("akka.conf")));
-        ActorSystem prepareSystem = ActorSystem.Create("PrepareActorsSystem", akkaConfig);
-
-        var materializer = ActorMaterializer.Create(prepareSystem);
-
-        prepareSystem.ActorOf(Props.Create(() => new AppDevicePersistorActor(null!, null!)));
-        prepareSystem.ActorOf(Props.Create(() => new EcliptixProtocolConnectActor(0)));
     }
 }

@@ -5,8 +5,6 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <RunAOTCompilation>true</RunAOTCompilation>
-        <InterceptorsNamespaces>$(InterceptorsNamespaces);Dapper.AOT</InterceptorsNamespaces>
-        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     </PropertyGroup>
 
     <ItemGroup>
@@ -14,7 +12,6 @@
         <PackageReference Include="Akka.Persistence.Sql" Version="1.5.44" />
         <PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
         <PackageReference Include="Dapper" Version="2.1.66"/>
-        <PackageReference Include="Dapper.AOT" Version="1.0.48" />
         <PackageReference Include="Grpc.AspNetCore.Server" Version="2.71.0" />
         <PackageReference Include="libphonenumber-csharp" Version="9.0.7" />
         <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.0-preview2.25178.5" />
@@ -51,10 +48,4 @@
         <Protobuf Include="Protobuf\AuthVerification.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
         <Protobuf Include="Protobuf\AuthenticationServices.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
     </ItemGroup>
-
-    <ItemGroup>
-      <Content Include="obj\Debug\net9.0\ref\Ecliptix.Domain.dll" />
-      <Content Include="obj\Debug\ref\Ecliptix.Domain.dll" />
-    </ItemGroup>
-
 </Project>

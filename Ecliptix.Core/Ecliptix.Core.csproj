@@ -5,16 +5,8 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <RunAOTCompilation>true</RunAOTCompilation>
-        <PublishAot>true</PublishAot>
-        <PublishTrimmed>true</PublishTrimmed>
-        <TrimMode>link</TrimMode>
-        <InvariantGlobalization>false</InvariantGlobalization>
-        <PublishSingleFile>true</PublishSingleFile>
-        <SelfContained>true</SelfContained>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
-        <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Akka" Version="1.5.44" />
@@ -23,7 +15,6 @@
         <PackageReference Include="Akka.Persistence.Sql" Version="1.5.44" />
         <PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
         <PackageReference Include="Dapper" Version="2.1.66" />
-        <PackageReference Include="Dapper.AOT" Version="1.0.48" />
         <PackageReference Include="Grpc.AspNetCore.Server" Version="2.71.0" />
         <PackageReference Include="Grpc.Core.Api" Version="2.71.0" />
         <PackageReference Include="Grpc.Net.Common" Version="2.71.0" />
@@ -37,7 +28,6 @@
         <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
         <PackageReference Include="protobuf-net" Version="3.2.52" />
         <PackageReference Include="Sodium.Core" Version="1.4.0"/>
-        <PackageReference Include="System.Data.SqlClient" Version="4.9.0" />
     </ItemGroup>
 
     <!-- <ItemGroup>
@@ -77,17 +67,5 @@
             <AutoGen>True</AutoGen>
             <DependentUpon>VerificationFlowRes.resx</DependentUpon>
         </Compile>
-    </ItemGroup>
-
-    <ItemGroup>
-        <TrimmerRootAssembly Include="Serilog.Sinks.Console" />
-        <TrimmerRootAssembly Include="Serilog.Sinks.File" />
-        <TrimmerRootAssembly Include="Serilog.Settings.Configuration" />
-        <TrimmerRootAssembly Include="Akka" />
-        <TrimmerRootAssembly Include="System.Data.SqlClient" />
-    </ItemGroup>
-    
-    <ItemGroup>
-        <TrimmerRootDescriptor Include="rd.xml" />
     </ItemGroup>
 </Project>
