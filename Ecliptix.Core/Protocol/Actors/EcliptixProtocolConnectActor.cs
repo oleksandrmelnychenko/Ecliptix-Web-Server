@@ -29,6 +29,10 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 
     private EcliptixSessionState? _state;
     private EcliptixProtocolSystem? _liveSystem;
+    
+    private bool _savingFinalSnapshot;
+    private bool _pendingMessageDeletion = false;
+    private bool _pendingSnapshotDeletion = false;
 
     protected override bool ReceiveRecover(object message)
     {
@@ -91,21 +95,45 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
            
             // This is now the ONLY automatic shutdown trigger.
             case ReceiveTimeout _:
-                Context.Stop(Self);
+                SaveFinalSnapshot();
                 return true;
 
             // Streams only.
             case ClientDisconnectedActorEvent _:
-                Context.Stop(Self);
+                SaveFinalSnapshot();
                 return true;
 
             case SaveSnapshotSuccess success:
+                if (_savingFinalSnapshot)
+                {
+                    Context.GetLogger().Info("Final snapshot saved successfully. Initiating cleanup operation.");
+                    _pendingMessageDeletion = true;
+                    _pendingSnapshotDeletion = true;
+                }
+                
                 DeleteMessages(success.Metadata.SequenceNr);
                 DeleteSnapshots(new SnapshotSelectionCriteria(success.Metadata.SequenceNr - 1));
+                
                 return true;
             case SaveSnapshotFailure failure:
                 return true;
 
+            case DeleteMessagesSuccess success:
+                if(_savingFinalSnapshot && _pendingMessageDeletion)
+                {
+                    _pendingMessageDeletion = false;
+                    TryCompleteShutdown();
+                }
+                
+                return true;
+            case DeleteSnapshotsSuccess success:
+                if(_savingFinalSnapshot && _pendingSnapshotDeletion)
+                {
+                    _pendingSnapshotDeletion = false;
+                    TryCompleteShutdown();
+                }
+                
+                return true;
             default:
                 return false;
         }
@@ -246,14 +274,31 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
         }
     }
 
+    private void SaveFinalSnapshot()
+    {
+        if (_state != null && !_savingFinalSnapshot)
+        {
+            _savingFinalSnapshot = true;
+            Context.GetLogger().Info("Saving final snapshot before stopping");
+            SaveSnapshot(_state);
+        }
+        else
+        {
+            Context.Stop(Self);
+        }
+    }
+
+    private void TryCompleteShutdown()
+    {
+        if(!_pendingMessageDeletion && !_pendingSnapshotDeletion)
+        {
+            Context.GetLogger().Info("All cleanup operations completed. Stopping actor.");
+            Context.Stop(Self);
+        }
+    }
+
     protected override void PostStop()
     {
-        if (_state != null)
-        {
-            SaveSnapshot(_state);
-            Context.GetLogger().Info("EcliptixProtocolConnectActor stopped. Final state snapshot saved.");
-        }
-
         _liveSystem?.Dispose();
         base.PostStop();
     }
