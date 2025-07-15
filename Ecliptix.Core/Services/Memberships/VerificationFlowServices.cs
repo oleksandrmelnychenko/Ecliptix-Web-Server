@@ -103,6 +103,56 @@ public class VerificationFlowServices(
         }
     }
 
+    public override async Task<CipherPayload> RecoverySecretKeyPhoneVerification(CipherPayload request, ServerCallContext context)
+    {
+        Result<byte[], EcliptixProtocolFailure> decryptionResult = await DecryptPayloadAsync(request, context);
+        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
+
+        ValidatePhoneNumberRequest validateRequest =
+            Helpers.ParseFromBytes<ValidatePhoneNumberRequest>(decryptionResult.Unwrap());
+
+        Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
+            phoneNumberValidator.ValidatePhoneNumber(validateRequest.PhoneNumber, CultureName);
+        if (validationResult.IsErr) throw GrpcFailureException.FromDomainFailure(validationResult.UnwrapErr());
+
+        PhoneNumberValidationResult phoneValidationResult = validationResult.Unwrap();
+
+        if (phoneValidationResult.IsValid)
+        {
+            VerifyPhoneForSecretKeyRecoveryActorEvent verifyPhoneEvent = new(
+                phoneValidationResult.ParsedPhoneNumberE164!,
+                phoneValidationResult.DetectedRegion);
+            
+            Result<Guid, VerificationFlowFailure> verifyPhoneResult = await VerificationFlowManagerActor
+                .Ask<Result<Guid, VerificationFlowFailure>>(verifyPhoneEvent, context.CancellationToken);
+
+            ValidatePhoneNumberResponse response = verifyPhoneResult.Match(
+                guid => new ValidatePhoneNumberResponse
+                {
+                    PhoneNumberIdentifier = Helpers.GuidToByteString(guid),
+                    Result = VerificationResult.Succeeded
+                },
+                failure => new ValidatePhoneNumberResponse
+                {
+                    PhoneNumberIdentifier = ByteString.Empty,
+                    Result = VerificationResult.InvalidPhone,
+                    Message = failure.Message
+                }
+            );
+            
+            return await EncryptAndReturnResponse(response.ToByteArray(), context);
+        }
+        else
+        {
+            ValidatePhoneNumberResponse response = new()
+            {
+                Result = VerificationResult.InvalidPhone,
+                Message = phoneValidationResult.MessageKey
+            };
+            return await EncryptAndReturnResponse(response.ToByteArray(), context);
+        }
+    }
+
     public override async Task<CipherPayload> VerifyOtp(CipherPayload request, ServerCallContext context)
     {
         Result<byte[], EcliptixProtocolFailure> decryptionResult = await DecryptPayloadAsync(request, context);

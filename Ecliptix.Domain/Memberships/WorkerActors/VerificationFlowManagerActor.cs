@@ -40,6 +40,7 @@ public class VerificationFlowManagerActor : ReceiveActor
         Receive<VerifyFlowActorEvent>(HandleVerifyFlow);
         Receive<Terminated>(HandleTerminated);
         Receive<EnsurePhoneNumberActorEvent>(actorEvent => _persistor.Forward(actorEvent));
+        Receive<VerifyPhoneForSecretKeyRecoveryActorEvent>(actorEvent => _persistor.Forward(actorEvent));
         Receive<FlowCompletedGracefullyActorEvent>(actorEvent => _flowWriters.Remove(actorEvent.ActorRef));
     }
 
