@@ -44,8 +44,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 .PipeTo(Sender));
         Receive<VerifyPhoneForSecretKeyRecoveryActorEvent>(actorEvent =>
             ExecuteWithConnection(conn => VerifyPhoneForSecretKeyRecoveryAsync(conn, actorEvent),
-                "VerifyPhoneForSecretKeyRecovery")
-            .PipeTo(Sender));
+                    "VerifyPhoneForSecretKeyRecovery")
+                .PipeTo(Sender));
         Receive<GetPhoneNumberActorEvent>(actorEvent =>
             ExecuteWithConnection(conn => GetPhoneNumberAsync(conn, actorEvent), "GetPhoneNumber").PipeTo(Sender));
         Receive<CreateOtpActorEvent>(actorEvent =>
