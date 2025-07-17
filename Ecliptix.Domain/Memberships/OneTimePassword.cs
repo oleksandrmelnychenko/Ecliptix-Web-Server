@@ -12,7 +12,7 @@ public sealed class OneTimePassword
     private Option<OtpQueryRecord> _otpQueryRecord = Option<OtpQueryRecord>.None;
 
     public bool IsActive { get; private set; }
-    public DateTime ExpiresAt { get; } = DateTime.UtcNow.AddSeconds(20);
+    public DateTime ExpiresAt { get; } = DateTime.UtcNow.AddSeconds(60);
     public Guid UniqueIdentifier { get; set; }
 
     public Result<(OtpQueryRecord Record, string PlainOtp), VerificationFlowFailure> Generate(
@@ -23,6 +23,8 @@ public sealed class OneTimePassword
             {
                 Totp totp = new(_otpSecretKey, mode: OtpHashMode.Sha256);
                 string otp = totp.ComputeTotp();
+                
+                Console.WriteLine($"\n\nOTP: {otp}\n\n");
 
                 (string hash, string salt) = OneTimePasswordHashing.HashOtp(otp);
                 OtpQueryRecord otpQueryRecord = new()

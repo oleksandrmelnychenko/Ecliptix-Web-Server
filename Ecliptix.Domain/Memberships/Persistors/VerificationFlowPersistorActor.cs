@@ -202,7 +202,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 VerificationFlowFailure.PersistorAccess("Unknown error: VerifyPhoneForSecretKeyRecovery returned no result."));
 
         return result.Success
-            ? Result<Guid, VerificationFlowFailure>.Ok(result.UniqueId)
+            ? Result<Guid, VerificationFlowFailure>.Ok(result.PhoneNumberUniqueId)
             : Result<Guid, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(result.Outcome));
     }
 
