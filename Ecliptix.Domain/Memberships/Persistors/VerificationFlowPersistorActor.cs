@@ -42,6 +42,10 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         Receive<EnsurePhoneNumberActorEvent>(actorEvent =>
             ExecuteWithConnection(conn => EnsurePhoneNumberAsync(conn, actorEvent), "EnsurePhoneNumber")
                 .PipeTo(Sender));
+        Receive<VerifyPhoneForSecretKeyRecoveryActorEvent>(actorEvent =>
+            ExecuteWithConnection(conn => VerifyPhoneForSecretKeyRecoveryAsync(conn, actorEvent),
+                    "VerifyPhoneForSecretKeyRecovery")
+                .PipeTo(Sender));
         Receive<GetPhoneNumberActorEvent>(actorEvent =>
             ExecuteWithConnection(conn => GetPhoneNumberAsync(conn, actorEvent), "GetPhoneNumber").PipeTo(Sender));
         Receive<CreateOtpActorEvent>(actorEvent =>
@@ -178,6 +182,28 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         return !result.Success
             ? Result<Guid, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(result.Outcome))
             : Result<Guid, VerificationFlowFailure>.Ok(result.UniqueId);
+    }
+
+    private async Task<Result<Guid, VerificationFlowFailure>> VerifyPhoneForSecretKeyRecoveryAsync(IDbConnection conn,
+        VerifyPhoneForSecretKeyRecoveryActorEvent cmd)
+    {
+        VerifyPhoneForSecretKeyRecoveryResult? result =
+            await conn.QuerySingleOrDefaultAsync<VerifyPhoneForSecretKeyRecoveryResult>(
+                "dbo.VerifyPhoneForSecretKeyRecovery",
+                new
+                {
+                    PhoneNumberString = cmd.PhoneNumber,
+                    Region = cmd.RegionCode,
+                },
+                commandType: CommandType.StoredProcedure);
+        
+        if(result is null)
+            return Result<Guid, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess("Unknown error: VerifyPhoneForSecretKeyRecovery returned no result."));
+
+        return result.Success
+            ? Result<Guid, VerificationFlowFailure>.Ok(result.PhoneNumberUniqueId)
+            : Result<Guid, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(result.Outcome));
     }
 
     private static Result<VerificationFlowQueryRecord, VerificationFlowFailure> MapToVerificationFlowRecord(

@@ -8,4 +8,5 @@ service AuthVerificationServices {
   rpc InitiateVerification(CipherPayload) returns (stream CipherPayload);
   rpc VerifyOtp(CipherPayload) returns (CipherPayload);
   rpc ValidatePhoneNumber(CipherPayload) returns (CipherPayload);
+  rpc RecoverySecretKeyPhoneVerification(CipherPayload) returns (CipherPayload);
 }

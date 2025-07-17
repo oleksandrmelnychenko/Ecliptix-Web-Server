@@ -93,7 +93,7 @@ public class MembershipActor : ReceiveActor
         }
 
         Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Ok(
-            new OprfRegistrationCompleteResponse()
+            new OprfRegistrationCompleteResponse
             {
                 Message = "Registration completed successfully."
             }));
@@ -122,8 +122,8 @@ public class MembershipActor : ReceiveActor
             return;
         }
 
-        Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Ok(
-            new OprfRegistrationCompleteResponse()
+        Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Ok(
+            new OprfRecoverySecretKeyCompleteResponse()
             {
                 Message = "Recovery secret key completed successfully."
             }));
