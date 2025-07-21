@@ -1,16 +1,13 @@
 using Akka.Actor;
-using Akka.Hosting;
-using Ecliptix.Core.Protocol.Actors;
+using Ecliptix.Core.Protocol;
 using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Domain.Memberships.OPAQUE;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.Membership;
-using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 using Grpc.Core;
 
@@ -18,23 +15,22 @@ namespace Ecliptix.Core.Services.Memberships;
 
 public class MembershipServices(
     IEcliptixActorRegistry actorRegistry,
-    IPhoneNumberValidator phoneNumberValidator
-) : MembershipServicesBase(actorRegistry)
+    IPhoneNumberValidator phoneNumberValidator,
+    ICipherPayloadHandler cipherPayloadHandler
+) : MembershipServicesBase(actorRegistry, cipherPayloadHandler)
 {
     public override async Task<CipherPayload> OpaqueSignInInitRequest(CipherPayload request, ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
-            request);
+        Result<byte[], FailureBase> decryptionResult =
+            await CipherPayloadHandler.DecryptRequest(request, connectId, context);
 
-        ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
-
-        Result<byte[], EcliptixProtocolFailure> decryptionResult =
-            await ProtocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(decryptForwarder,
-                context.CancellationToken);
-
-        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
+        if (decryptionResult.IsErr)
+        {
+            return await CipherPayloadHandler.RespondFailure<OprfRecoverySecureKeyInitResponse>(
+                decryptionResult.UnwrapErr(), connectId, context);
+        }
 
         byte[] decryptedBytes = decryptionResult.Unwrap();
         OpaqueSignInInitRequest signInRequest = Helpers.ParseFromBytes<OpaqueSignInInitRequest>(decryptedBytes);
@@ -52,7 +48,8 @@ public class MembershipServices(
                     Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
                     Message = verificationFlowFailure.Message
                 }.ToByteArray();
-                return await EncryptResponse(signInMembershipResponse, connectId, context);
+                return await CipherPayloadHandler.RespondSuccess<OpaqueSignInInitResponse>(signInMembershipResponse,
+                    connectId, context);
             }
 
             throw GrpcFailureException.FromDomainFailure(verificationFlowFailure);
@@ -66,19 +63,18 @@ public class MembershipServices(
                 Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
                 Message = phoneNumberResult.MessageKey
             }.ToByteArray();
-            return await EncryptResponse(signInMembershipResponse, connectId, context);
+            return await CipherPayloadHandler.RespondSuccess<OpaqueSignInInitResponse>(signInMembershipResponse,
+                connectId, context);
         }
 
         SignInMembershipActorEvent signInEvent = new(
             phoneNumberResult.ParsedPhoneNumberE164!, signInRequest, CultureName);
 
-        Result<OpaqueSignInInitResponse, VerificationFlowFailure> signInResult =
+        Result<OpaqueSignInInitResponse, VerificationFlowFailure> initSignInResult =
             await MembershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent,
                 context.CancellationToken);
 
-        return await signInResult.Match(
-            async signInResponse => await EncryptResponse(signInResponse.ToByteArray(), connectId, context),
-            error => throw GrpcFailureException.FromDomainFailure(error));
+        return await CipherPayloadHandler.HandleResult(initSignInResult, connectId, context);
     }
 
 
@@ -87,28 +83,23 @@ public class MembershipServices(
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
-            request);
+        Result<byte[], FailureBase> decryptionResult =
+            await CipherPayloadHandler.DecryptRequest(request, connectId, context);
 
-        ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
-
-        Result<byte[], EcliptixProtocolFailure> decryptionResult =
-            await ProtocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(decryptForwarder,
-                context.CancellationToken);
-
-        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
+        if (decryptionResult.IsErr)
+        {
+            return await CipherPayloadHandler.RespondFailure<OprfRecoverySecureKeyInitResponse>(
+                decryptionResult.UnwrapErr(), connectId, context);
+        }
 
         byte[] decryptedBytes = decryptionResult.Unwrap();
         OpaqueSignInFinalizeRequest signInRequest = Helpers.ParseFromBytes<OpaqueSignInFinalizeRequest>(decryptedBytes);
 
-        Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure> result =
+        Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure> finalizeSignInResult =
             await MembershipActor.Ask<Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>>(
                 new SignInComplete(signInRequest));
         
-        if (result.IsOk)
-            return await EncryptResponse(result.Unwrap().ToByteArray(), connectId, context);
-
-        throw GrpcFailureException.FromDomainFailure(result.UnwrapErr());
+        return await CipherPayloadHandler.HandleResult(finalizeSignInResult, connectId, context);
     }
 
     public override async Task<CipherPayload> OpaqueRegistrationCompleteRequest(CipherPayload request,
@@ -116,15 +107,14 @@ public class MembershipServices(
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
-            request);
+        Result<byte[], FailureBase> decryptionResult =
+            await CipherPayloadHandler.DecryptRequest(request, connectId, context);
 
-        ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
-
-        Result<byte[], EcliptixProtocolFailure> decryptionResult =
-            await ProtocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(decryptForwarder,
-                context.CancellationToken);
-        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
+        if (decryptionResult.IsErr)
+        {
+            return await CipherPayloadHandler.RespondFailure<OprfRecoverySecureKeyInitResponse>(
+                decryptionResult.UnwrapErr(), connectId, context);
+        }
 
         OprfRegistrationCompleteRequest opaqueSignInCompleteRequest =
             Helpers.ParseFromBytes<OprfRegistrationCompleteRequest>(decryptionResult.Unwrap());
@@ -136,10 +126,7 @@ public class MembershipServices(
         Result<OprfRegistrationCompleteResponse, VerificationFlowFailure> completeRegistrationRecordResult =
             await MembershipActor.Ask<Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>>(@event);
 
-        if (completeRegistrationRecordResult.IsOk)
-            return await EncryptResponse(completeRegistrationRecordResult.Unwrap().ToByteArray(), connectId, context);
-
-        throw GrpcFailureException.FromDomainFailure(completeRegistrationRecordResult.UnwrapErr());
+        return await CipherPayloadHandler.HandleResult(completeRegistrationRecordResult, connectId, context);
     }
 
     public override async Task<CipherPayload> OpaqueRecoverySecretKeyCompleteRequest(CipherPayload request,
@@ -147,16 +134,14 @@ public class MembershipServices(
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
-            request);
-        
-        ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
-        
-        Result<byte[], EcliptixProtocolFailure> decryptionResult =
-            await ProtocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(decryptForwarder,
-                context.CancellationToken);
-        
-        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
+        Result<byte[], FailureBase> decryptionResult =
+            await CipherPayloadHandler.DecryptRequest(request, connectId, context);
+
+        if (decryptionResult.IsErr)
+        {
+            return await CipherPayloadHandler.RespondFailure<OprfRecoverySecureKeyInitResponse>(
+                decryptionResult.UnwrapErr(), connectId, context);
+        }
         
         OprfRecoverySecretKeyCompleteRequest opaqueRecoveryCompleteRequest = 
             Helpers.ParseFromBytes<OprfRecoverySecretKeyCompleteRequest>(decryptionResult.Unwrap());
@@ -168,11 +153,7 @@ public class MembershipServices(
         Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure> completeRecoverySecretKeyResult =
             await MembershipActor.Ask<Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>>(@event);
         
-        if(completeRecoverySecretKeyResult.IsOk)
-            return await EncryptResponse(completeRecoverySecretKeyResult.Unwrap().ToByteArray(), connectId, context);
-        
-        throw GrpcFailureException.FromDomainFailure(completeRecoverySecretKeyResult.UnwrapErr());
-        
+        return await CipherPayloadHandler.HandleResult(completeRecoverySecretKeyResult, connectId, context);
     }
 
     public override async Task<CipherPayload> OpaqueRegistrationInitRequest(CipherPayload request,
@@ -180,16 +161,14 @@ public class MembershipServices(
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
-            request);
+        Result<byte[], FailureBase> decryptionResult =
+            await CipherPayloadHandler.DecryptRequest(request, connectId, context);
 
-        ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
-
-        Result<byte[], EcliptixProtocolFailure> decryptionResult =
-            await ProtocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(decryptForwarder,
-                context.CancellationToken);
-
-        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
+        if (decryptionResult.IsErr)
+        {
+            return await CipherPayloadHandler.RespondFailure<OprfRecoverySecureKeyInitResponse>(
+                decryptionResult.UnwrapErr(), connectId, context);
+        }
 
         OprfRegistrationInitRequest opaqueSignInInitRequest =
             Helpers.ParseFromBytes<OprfRegistrationInitRequest>(decryptionResult.Unwrap());
@@ -202,26 +181,21 @@ public class MembershipServices(
             await MembershipActor.Ask<Result<OprfRegistrationInitResponse, VerificationFlowFailure>>(@event,
                 context.CancellationToken);
 
-        if (updateOperationResult.IsOk)
-            return await EncryptResponse(updateOperationResult.Unwrap().ToByteArray(), connectId, context);
-
-        throw GrpcFailureException.FromDomainFailure(updateOperationResult.UnwrapErr());
+        return await CipherPayloadHandler.HandleResult(updateOperationResult, connectId, context);
     }
 
     public override async Task<CipherPayload> OpaqueRecoverySecretKeyInitRequest(CipherPayload request, ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect, 
-            request);
-        
-        ForwardToConnectActorEvent decryptForwarder = new (connectId, decryptEvent);
-        
-        Result<byte[], EcliptixProtocolFailure> decryptionResult = 
-            await ProtocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(decryptForwarder,
-                context.CancellationToken);
-        
-        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
+        Result<byte[], FailureBase> decryptionResult =
+            await CipherPayloadHandler.DecryptRequest(request, connectId, context);
+
+        if (decryptionResult.IsErr)
+        {
+            return await CipherPayloadHandler.RespondFailure<OprfRecoverySecureKeyInitResponse>(
+                decryptionResult.UnwrapErr(), connectId, context);
+        }
         
         OprfRecoverySecureKeyInitRequest opaqueRecoveryInitRequest =
             Helpers.ParseFromBytes<OprfRecoverySecureKeyInitRequest>(decryptionResult.Unwrap());
@@ -234,25 +208,6 @@ public class MembershipServices(
             await MembershipActor.Ask<Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>>(@event, 
                 context.CancellationToken);
 
-        if (updateOperationResult.IsOk)
-            return await EncryptResponse(updateOperationResult.Unwrap().ToByteArray(), connectId, context);
-
-        throw GrpcFailureException.FromDomainFailure(updateOperationResult.UnwrapErr());
-    }
-
-    private async Task<CipherPayload> EncryptResponse(byte[] payload, uint connectId, ServerCallContext context)
-    {
-        EncryptPayloadActorEvent encryptCommand = new(PubKeyExchangeType.DataCenterEphemeralConnect,
-            payload);
-
-        ForwardToConnectActorEvent encryptForwarder = new(connectId, encryptCommand);
-
-        Result<CipherPayload, EcliptixProtocolFailure> encryptResult =
-            await ProtocolActor.Ask<Result<CipherPayload, EcliptixProtocolFailure>>(
-                encryptForwarder, context.CancellationToken);
-
-        if (encryptResult.IsOk) return encryptResult.Unwrap();
-
-        throw GrpcFailureException.FromDomainFailure(encryptResult.UnwrapErr());
+        return await CipherPayloadHandler.HandleResult(updateOperationResult, connectId, context);
     }
 }
