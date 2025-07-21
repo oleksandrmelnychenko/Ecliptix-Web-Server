@@ -1,7 +1,6 @@
 using System.Globalization;
 using Akka.Actor;
 using Ecliptix.Core.Protocol;
-using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Domain.Memberships.WorkerActors;
 
 namespace Ecliptix.Core.Services.Memberships;

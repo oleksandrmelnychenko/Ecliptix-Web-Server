@@ -18,6 +18,10 @@ public interface ICipherPayloadHandler
 
     Task<CipherPayload> RespondFailure<T>(FailureBase failure, uint connectId, ServerCallContext context)
         where T : IMessage<T>, new();
+    
+    Task<CipherPayload> HandleResult<TSuccess, TFailure>(Result<TSuccess, TFailure> result, uint connectId, ServerCallContext context)
+        where TSuccess : IMessage<TSuccess>, new()
+        where TFailure : FailureBase;
 }
 
 public class CipherPayloadHandler : ICipherPayloadHandler
@@ -86,5 +90,15 @@ public class CipherPayloadHandler : ICipherPayloadHandler
             return new CipherPayload();
         }
         return encryptResult.Unwrap();
+    }
+    
+    public async Task<CipherPayload> HandleResult<TSuccess, TFailure>(Result<TSuccess, TFailure> result, uint connectId, ServerCallContext context)
+        where TSuccess : IMessage<TSuccess>, new()
+        where TFailure : FailureBase
+    {
+        return await result.Match(
+            async response => await RespondSuccess<TSuccess>(response.ToByteArray(), connectId, context),
+            async error => await RespondFailure<TSuccess>(error, connectId, context)
+        );
     }
 }

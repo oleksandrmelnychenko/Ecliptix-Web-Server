@@ -1,6 +1,5 @@
 using Akka.Actor;
 using Ecliptix.Core.Protocol;
-using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
@@ -9,7 +8,6 @@ using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.Membership;
-using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 using Grpc.Core;
 
@@ -33,8 +31,6 @@ public class MembershipServices(
             return await CipherPayloadHandler.RespondFailure<OprfRecoverySecureKeyInitResponse>(
                 decryptionResult.UnwrapErr(), connectId, context);
         }
-
-        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
 
         byte[] decryptedBytes = decryptionResult.Unwrap();
         OpaqueSignInInitRequest signInRequest = Helpers.ParseFromBytes<OpaqueSignInInitRequest>(decryptedBytes);
@@ -78,13 +74,7 @@ public class MembershipServices(
             await MembershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent,
                 context.CancellationToken);
 
-        return await initSignInResult.Match(
-            async response =>
-                await CipherPayloadHandler.RespondSuccess<OpaqueSignInInitResponse>(response.ToByteArray(),
-                    connectId, context),
-            async error =>
-                await CipherPayloadHandler.RespondFailure<OpaqueSignInInitResponse>(error, connectId, context)
-        );
+        return await CipherPayloadHandler.HandleResult(initSignInResult, connectId, context);
     }
 
 
@@ -92,11 +82,6 @@ public class MembershipServices(
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
-
-        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
-            request);
-
-        ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
 
         Result<byte[], FailureBase> decryptionResult =
             await CipherPayloadHandler.DecryptRequest(request, connectId, context);
@@ -107,8 +92,6 @@ public class MembershipServices(
                 decryptionResult.UnwrapErr(), connectId, context);
         }
 
-        if (decryptionResult.IsErr) throw GrpcFailureException.FromDomainFailure(decryptionResult.UnwrapErr());
-
         byte[] decryptedBytes = decryptionResult.Unwrap();
         OpaqueSignInFinalizeRequest signInRequest = Helpers.ParseFromBytes<OpaqueSignInFinalizeRequest>(decryptedBytes);
 
@@ -116,13 +99,7 @@ public class MembershipServices(
             await MembershipActor.Ask<Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>>(
                 new SignInComplete(signInRequest));
         
-        return await finalizeSignInResult.Match(
-            async response =>
-                await CipherPayloadHandler.RespondSuccess<OpaqueSignInFinalizeResponse>(response.ToByteArray(),
-                    connectId, context),
-            async error =>
-                await CipherPayloadHandler.RespondFailure<OpaqueSignInFinalizeResponse>(error, connectId, context)
-        );
+        return await CipherPayloadHandler.HandleResult(finalizeSignInResult, connectId, context);
     }
 
     public override async Task<CipherPayload> OpaqueRegistrationCompleteRequest(CipherPayload request,
@@ -149,13 +126,7 @@ public class MembershipServices(
         Result<OprfRegistrationCompleteResponse, VerificationFlowFailure> completeRegistrationRecordResult =
             await MembershipActor.Ask<Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>>(@event);
 
-        return await completeRegistrationRecordResult.Match(
-            async response =>
-                await CipherPayloadHandler.RespondSuccess<OprfRegistrationCompleteResponse>(response.ToByteArray(),
-                    connectId, context),
-            async error =>
-                await CipherPayloadHandler.RespondFailure<OprfRegistrationCompleteResponse>(error, connectId, context)
-        );
+        return await CipherPayloadHandler.HandleResult(completeRegistrationRecordResult, connectId, context);
     }
 
     public override async Task<CipherPayload> OpaqueRecoverySecretKeyCompleteRequest(CipherPayload request,
@@ -182,13 +153,7 @@ public class MembershipServices(
         Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure> completeRecoverySecretKeyResult =
             await MembershipActor.Ask<Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>>(@event);
         
-        return await completeRecoverySecretKeyResult.Match(
-            async response =>
-                await CipherPayloadHandler.RespondSuccess<OprfRecoverySecretKeyCompleteResponse>(response.ToByteArray(),
-                    connectId, context),
-            async error =>
-                await CipherPayloadHandler.RespondFailure<OprfRecoverySecretKeyCompleteResponse>(error, connectId, context)
-        );
+        return await CipherPayloadHandler.HandleResult(completeRecoverySecretKeyResult, connectId, context);
     }
 
     public override async Task<CipherPayload> OpaqueRegistrationInitRequest(CipherPayload request,
@@ -216,13 +181,7 @@ public class MembershipServices(
             await MembershipActor.Ask<Result<OprfRegistrationInitResponse, VerificationFlowFailure>>(@event,
                 context.CancellationToken);
 
-        return await updateOperationResult.Match(
-            async response =>
-                await CipherPayloadHandler.RespondSuccess<OprfRegistrationInitResponse>(response.ToByteArray(),
-                    connectId, context),
-            async error =>
-                await CipherPayloadHandler.RespondFailure<OprfRegistrationInitResponse>(error, connectId, context)
-        );
+        return await CipherPayloadHandler.HandleResult(updateOperationResult, connectId, context);
     }
 
     public override async Task<CipherPayload> OpaqueRecoverySecretKeyInitRequest(CipherPayload request, ServerCallContext context)
@@ -249,12 +208,6 @@ public class MembershipServices(
             await MembershipActor.Ask<Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>>(@event, 
                 context.CancellationToken);
 
-        return await updateOperationResult.Match(
-            async response =>
-                await CipherPayloadHandler.RespondSuccess<OprfRecoverySecureKeyInitResponse>(response.ToByteArray(),
-                    connectId, context),
-            async error =>
-                await CipherPayloadHandler.RespondFailure<OprfRecoverySecureKeyInitResponse>(error, connectId, context)
-        );
+        return await CipherPayloadHandler.HandleResult(updateOperationResult, connectId, context);
     }
 }
