@@ -1,0 +1,22 @@
+using Ecliptix.Domain.Utilities;
+using Ecliptix.Protobuf.CipherPayload;
+using Google.Protobuf;
+using Grpc.Core;
+
+namespace Ecliptix.Core.Protocol;
+
+public interface ICipherPayloadHandler
+{
+    Task<Result<CipherPayload, FailureBase>> EncryptResponse(byte[] payload, uint connectId, ServerCallContext context);
+    Task<Result<byte[], FailureBase>> DecryptRequest(CipherPayload cipherPayload, uint connectId, ServerCallContext context);
+
+    Task<CipherPayload> RespondSuccess<T>(byte[] payload, uint connectId, ServerCallContext context)
+        where T : IMessage<T>, new();
+
+    Task<CipherPayload> RespondFailure<T>(FailureBase failure, uint connectId, ServerCallContext context)
+        where T : IMessage<T>, new();
+    
+    Task<CipherPayload> HandleResult<TSuccess, TFailure>(Result<TSuccess, TFailure> result, uint connectId, ServerCallContext context)
+        where TSuccess : IMessage<TSuccess>, new()
+        where TFailure : FailureBase;
+}
