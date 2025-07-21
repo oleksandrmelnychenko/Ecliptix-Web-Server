@@ -1,4 +1,5 @@
 using Akka.Actor;
+using Ecliptix.Core.Protocol;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Memberships.ActorEvents;
@@ -16,8 +17,9 @@ namespace Ecliptix.Core.Services.Memberships;
 
 public class MembershipServices(
     IEcliptixActorRegistry actorRegistry,
-    IPhoneNumberValidator phoneNumberValidator
-) : MembershipServicesBase(actorRegistry)
+    IPhoneNumberValidator phoneNumberValidator,
+    ICipherPayloadHandler cipherPayloadHandler
+) : MembershipServicesBase(actorRegistry, cipherPayloadHandler)
 {
     public override async Task<CipherPayload> OpaqueSignInInitRequest(CipherPayload request, ServerCallContext context)
     {

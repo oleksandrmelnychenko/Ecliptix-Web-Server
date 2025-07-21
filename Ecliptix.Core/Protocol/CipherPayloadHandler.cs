@@ -24,9 +24,9 @@ public class CipherPayloadHandler : ICipherPayloadHandler
 {
     private readonly IActorRef _protocolActor;
     
-    public CipherPayloadHandler(IActorRef protocolActor)
+    public CipherPayloadHandler(IEcliptixActorRegistry actorRegistry)
     {
-        _protocolActor = protocolActor;
+        _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
     }
     
     public async Task<Result<CipherPayload, FailureBase>> EncryptResponse(byte[] payload, uint connectId,
