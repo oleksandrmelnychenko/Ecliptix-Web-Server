@@ -219,7 +219,6 @@ public class MembershipServices(
             return await RespondFailure<OprfRecoverySecureKeyInitResponse>(decryptionResult.UnwrapErr(), connectId,
                 context);
         }
-            
         
         OprfRecoverySecureKeyInitRequest opaqueRecoveryInitRequest =
             Helpers.ParseFromBytes<OprfRecoverySecureKeyInitRequest>(decryptionResult.Unwrap());
@@ -231,14 +230,15 @@ public class MembershipServices(
         Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure> updateOperationResult = 
             await MembershipActor.Ask<Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>>(@event, 
                 context.CancellationToken);
-
+            
         return await updateOperationResult.Match(
-            async response => await EncryptResponse(response.ToByteArray(), connectId, context),
-            async failureResponse =>
-                await RespondFailure<OprfRecoverySecureKeyInitResponse>(failureResponse, connectId, context));
+            async response => await RespondSuccess<OprfRecoverySecureKeyInitResponse>(response.ToByteArray(), connectId, context),
+            async error => await RespondFailure<OprfRecoverySecureKeyInitResponse>(error, connectId, context)
+        );
     }
 
-    private async Task<CipherPayload> EncryptResponse(byte[] payload, uint connectId, ServerCallContext context)
+    private async Task<Result<CipherPayload, FailureBase>> EncryptResponse(byte[] payload, uint connectId,
+        ServerCallContext context)
     {
         EncryptPayloadActorEvent encryptCommand = new(PubKeyExchangeType.DataCenterEphemeralConnect,
             payload);
@@ -249,9 +249,10 @@ public class MembershipServices(
             await ProtocolActor.Ask<Result<CipherPayload, EcliptixProtocolFailure>>(
                 encryptForwarder, context.CancellationToken);
 
-        if (encryptResult.IsOk) return encryptResult.Unwrap();
-
-        throw GrpcFailureException.FromDomainFailure(encryptResult.UnwrapErr());
+        return encryptResult.Match(
+            ok: success => Result<CipherPayload, FailureBase>.Ok(success),
+            err: failure => Result<CipherPayload, FailureBase>.Err(failure)
+        );
     }
 
     private async Task<Result<byte[], FailureBase>> DecryptRequest(CipherPayload request, uint connectId,
@@ -272,9 +273,26 @@ public class MembershipServices(
         );
     }
 
+    private async Task<CipherPayload> RespondSuccess<T>(byte[] payload, uint connectId, ServerCallContext context) where T : IMessage<T>, new()
+    {
+        Result<CipherPayload, FailureBase> encryptionResult = await EncryptResponse(payload, connectId, context);
+
+        if (encryptionResult.IsErr)
+        { 
+            return await RespondFailure<T>(encryptionResult.UnwrapErr(), connectId, context);
+        }
+        
+        return encryptionResult.Unwrap();
+    }
+    
     private async Task<CipherPayload> RespondFailure<T>(FailureBase failure, uint connectId, ServerCallContext context) where T : IMessage<T>, new()
     {
         context.Status = failure.ToGrpcStatus();
-        return await EncryptResponse(new T().ToByteArray(), connectId, context);
+        Result<CipherPayload, FailureBase> encryptResult = await EncryptResponse(new T().ToByteArray(), connectId, context);
+        if (encryptResult.IsErr)
+        {
+            return new CipherPayload();
+        }
+        return encryptResult.Unwrap();
     }
 }
