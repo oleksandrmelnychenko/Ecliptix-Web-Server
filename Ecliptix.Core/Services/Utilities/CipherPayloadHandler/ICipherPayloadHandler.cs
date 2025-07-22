@@ -3,7 +3,7 @@ using Ecliptix.Protobuf.CipherPayload;
 using Google.Protobuf;
 using Grpc.Core;
 
-namespace Ecliptix.Core.Services.Utilities;
+namespace Ecliptix.Core.Services.Utilities.CipherPayloadHandler;
 
 public interface ICipherPayloadHandler
 {

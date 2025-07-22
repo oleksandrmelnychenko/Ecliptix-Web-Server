@@ -1,5 +1,5 @@
 using Akka.Actor;
-using Ecliptix.Core.Services.Utilities;
+using Ecliptix.Core.Services.Utilities.CipherPayloadHandler;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
@@ -15,8 +15,9 @@ namespace Ecliptix.Core.Services.Memberships;
 public class MembershipServices(
     IEcliptixActorRegistry actorRegistry,
     IPhoneNumberValidator phoneNumberValidator,
-    ICipherPayloadHandler cipherPayloadHandler
-) : MembershipServicesBase(actorRegistry, cipherPayloadHandler)
+    ICipherPayloadHandlerFactory cipherPayloadHandlerFactory
+) : MembershipServicesBase(actorRegistry, cipherPayloadHandlerFactory)
+
 {
     public override async Task<CipherPayload> OpaqueSignInInitRequest(CipherPayload request, ServerCallContext context)
     {

@@ -1,7 +1,8 @@
 using System.Globalization;
 using Akka.Actor;
-using Ecliptix.Core.Protocol;
+using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Services.Utilities;
+using Ecliptix.Core.Services.Utilities.CipherPayloadHandler;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
@@ -12,11 +13,13 @@ namespace Ecliptix.Core.Services.Memberships;
 
 public abstract class MembershipServicesBase(
     IEcliptixActorRegistry actorRegistry,
-    ICipherPayloadHandler cipherPayloadHandler
+    ICipherPayloadHandlerFactory cipherPayloadHandlerFactory
     ) : Protobuf.Membership.MembershipServices.MembershipServicesBase
 {
     protected readonly IActorRef MembershipActor = actorRegistry.Get<MembershipActor>();
-    protected readonly ICipherPayloadHandler CipherPayloadHandler = cipherPayloadHandler;
+
+    protected readonly ICipherPayloadHandler CipherPayloadHandler =
+        cipherPayloadHandlerFactory.Create<EcliptixProtocolSystemActor>();
     protected string CultureName { get; private set; } = CultureInfo.CurrentCulture.Name;
     
     

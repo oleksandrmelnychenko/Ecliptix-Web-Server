@@ -6,15 +6,15 @@ using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 using Grpc.Core;
 
-namespace Ecliptix.Core.Services.Utilities;
+namespace Ecliptix.Core.Services.Utilities.CipherPayloadHandler;
 
-public class CipherPayloadHandler : ICipherPayloadHandler
+public class CipherPayloadHandler<T> : ICipherPayloadHandler where T : ActorBase
 {
     private readonly IActorRef _protocolActor;
     
     public CipherPayloadHandler(IEcliptixActorRegistry actorRegistry)
     {
-        _protocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
+        _protocolActor = actorRegistry.Get<T>();
     }
     
     public async Task<Result<CipherPayload, FailureBase>> EncryptResponse(byte[] payload, uint connectId,
