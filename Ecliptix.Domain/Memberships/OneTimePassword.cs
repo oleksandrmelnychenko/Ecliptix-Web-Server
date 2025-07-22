@@ -22,10 +22,8 @@ public sealed class OneTimePassword
             () =>
             {
                 Totp totp = new(_otpSecretKey, mode: OtpHashMode.Sha256);
-                //string otp = totp.ComputeTotp();
+                string otp = totp.ComputeTotp();
 
-                string otp = "1234";
-                
                 Console.WriteLine($"\n\nOTP: {otp}\n\n");
 
                 (string hash, string salt) = OneTimePasswordHashing.HashOtp(otp);
