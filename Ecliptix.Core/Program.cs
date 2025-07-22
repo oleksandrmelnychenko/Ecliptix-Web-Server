@@ -4,11 +4,11 @@ using System.IO.Compression;
 using Akka.Actor;
 using Akka.Configuration;
 using Ecliptix.Core.Interceptors;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
 using Ecliptix.Core.Services.Memberships;
+using Ecliptix.Core.Services.Utilities.CipherPayloadHandler;
 using Ecliptix.Domain;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.DbConnectionFactory;
@@ -47,7 +47,7 @@ try
     builder.Services.AddSingleton<IEcliptixActorRegistry, ActorRegistry>();
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
-    builder.Services.AddSingleton<ICipherPayloadHandler, CipherPayloadHandler>();
+    builder.Services.AddSingleton<ICipherPayloadHandlerFactory, CipherPayloadHandlerFactory>();
     builder.Services.AddSingleton<IOpaqueProtocolService>(sp =>
     { 
         IConfiguration config = sp.GetRequiredService<IConfiguration>();

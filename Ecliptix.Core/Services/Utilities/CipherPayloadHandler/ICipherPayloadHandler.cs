@@ -3,7 +3,7 @@ using Ecliptix.Protobuf.CipherPayload;
 using Google.Protobuf;
 using Grpc.Core;
 
-namespace Ecliptix.Core.Protocol;
+namespace Ecliptix.Core.Services.Utilities.CipherPayloadHandler;
 
 public interface ICipherPayloadHandler
 {
@@ -15,6 +15,8 @@ public interface ICipherPayloadHandler
 
     Task<CipherPayload> RespondFailure<T>(FailureBase failure, uint connectId, ServerCallContext context)
         where T : IMessage<T>, new();
+    
+    Task<CipherPayload> RespondFailure(FailureBase failure, uint connectId, ServerCallContext context);
     
     Task<CipherPayload> HandleResult<TSuccess, TFailure>(Result<TSuccess, TFailure> result, uint connectId, ServerCallContext context)
         where TSuccess : IMessage<TSuccess>, new()
