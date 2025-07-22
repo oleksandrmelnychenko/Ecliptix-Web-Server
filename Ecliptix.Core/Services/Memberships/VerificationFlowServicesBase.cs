@@ -1,22 +1,27 @@
 using System.Globalization;
 using Akka.Actor;
-using Akka.Hosting;
 using Ecliptix.Core.Protocol.Actors;
+using Ecliptix.Core.Services.Utilities;
+using Ecliptix.Core.Services.Utilities.CipherPayloadHandler;
 using Ecliptix.Domain.Memberships.WorkerActors;
+using Ecliptix.Domain.Utilities;
+using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.Membership;
+using Google.Protobuf;
 using Grpc.Core;
 using Serilog;
 
 namespace Ecliptix.Core.Services.Memberships;
 
 public abstract class VerificationFlowServicesBase(
-    IEcliptixActorRegistry actorRegistry)
+    IEcliptixActorRegistry actorRegistry,
+    ICipherPayloadHandlerFactory cipherPayloadHandlerFactory)
     : AuthVerificationServices.AuthVerificationServicesBase
 {
-    protected readonly IActorRef ProtocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
-
     protected readonly IActorRef VerificationFlowManagerActor = actorRegistry.Get<VerificationFlowManagerActor>();
 
+    protected readonly ICipherPayloadHandler CipherPayloadHandler =
+        cipherPayloadHandlerFactory.Create<EcliptixProtocolSystemActor>();
     protected string CultureName { get; private set; } = CultureInfo.CurrentCulture.Name;
 
     protected void StopVerificationFlowActor(ServerCallContext context, uint connectId)
@@ -42,5 +47,53 @@ public abstract class VerificationFlowServicesBase(
                 "Failed to send stop signal to verification flow actor for ConnectId {ConnectId}",
                 connectId);
         }
+    }
+    
+    protected async Task<CipherPayload> ExecuteWithDecryption<TRequest, TResponse>(
+        CipherPayload encryptedRequest,
+        ServerCallContext context,
+        Func<TRequest, uint, CancellationToken, Task<CipherPayload>> handler)
+        where TRequest : class, IMessage<TRequest>, new()
+        where TResponse : class, IMessage<TResponse>, new()
+    {
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
+
+
+        Result<byte[], FailureBase> decryptionResult = await CipherPayloadHandler.DecryptRequest(encryptedRequest, connectId, context);
+
+        if (decryptionResult.IsErr)
+        {
+            return await CipherPayloadHandler.RespondFailure(decryptionResult.UnwrapErr(), connectId, context);
+        }
+
+        byte[] decryptedBytes = decryptionResult.Unwrap();
+        TRequest parsedRequest = Helpers.ParseFromBytes<TRequest>(decryptedBytes);
+
+        return await handler(parsedRequest, connectId, context.CancellationToken);
+    }
+    
+    protected async Task<Result<Unit, FailureBase>> ExecuteWithDecryptionForStreaming<TRequest, TFailure>(
+        CipherPayload encryptedRequest,
+        ServerCallContext context,
+        Func<TRequest, uint, CancellationToken, Task<Result<Unit, TFailure>>> handler)
+        where TRequest : class, IMessage<TRequest>, new()
+        where TFailure : FailureBase
+    {
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
+
+        Result<byte[], FailureBase> decryptionResult =
+            await CipherPayloadHandler.DecryptRequest(encryptedRequest, connectId, context);
+
+        if (decryptionResult.IsErr)
+            return Result<Unit, FailureBase>.Err(decryptionResult.UnwrapErr());
+
+        byte[] decryptedBytes = decryptionResult.Unwrap();
+        TRequest parsedRequest = Helpers.ParseFromBytes<TRequest>(decryptedBytes);
+
+        Result<Unit, TFailure> result = await handler(parsedRequest, connectId, context.CancellationToken);
+        return result.Match(
+            ok: success => Result<Unit, FailureBase>.Ok(success),
+            err: failure => Result<Unit, FailureBase>.Err(failure)
+        );
     }
 }

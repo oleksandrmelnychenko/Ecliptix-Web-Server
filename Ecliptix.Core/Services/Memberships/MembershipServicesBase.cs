@@ -26,7 +26,7 @@ public abstract class MembershipServicesBase(
     protected async Task<CipherPayload> ExecuteWithDecryption<TRequest, TResponse>(
         CipherPayload encryptedRequest,
         ServerCallContext context,
-        Func<TRequest, uint, CancellationToken, Task<CipherPayload>> businessLogic)
+        Func<TRequest, uint, CancellationToken, Task<CipherPayload>> handler)
         where TRequest : class, IMessage<TRequest>, new()
         where TResponse : class, IMessage<TResponse>, new()
     {
@@ -44,6 +44,6 @@ public abstract class MembershipServicesBase(
         byte[] decryptedBytes = decryptionResult.Unwrap();
         TRequest parsedRequest = Helpers.ParseFromBytes<TRequest>(decryptedBytes);
 
-        return await businessLogic(parsedRequest, connectId, context.CancellationToken);
+        return await handler(parsedRequest, connectId, context.CancellationToken);
     }
 }

@@ -59,10 +59,21 @@ public class CipherPayloadHandler<T> : ICipherPayloadHandler where T : ActorBase
 
         if (encryptionResult.IsErr)
         { 
-            return await RespondFailure(encryptionResult.UnwrapErr(), connectId, context);
+            return await RespondFailure<T>(encryptionResult.UnwrapErr(), connectId, context);
         }
         
         return encryptionResult.Unwrap();
+    }
+    
+    public async Task<CipherPayload> RespondFailure<T>(FailureBase failure, uint connectId, ServerCallContext context) where T : IMessage<T>, new()
+    {
+        context.Status = failure.ToGrpcStatus();
+        Result<CipherPayload, FailureBase> encryptResult = await EncryptResponse(new T().ToByteArray(), connectId, context);
+        if (encryptResult.IsErr)
+        {
+            return new CipherPayload();
+        }
+        return encryptResult.Unwrap();
     }
     
     public async Task<CipherPayload> RespondFailure(FailureBase failure, uint connectId, ServerCallContext context)
@@ -76,12 +87,13 @@ public class CipherPayloadHandler<T> : ICipherPayloadHandler where T : ActorBase
         return encryptResult.Unwrap();
     }
     
-    public async Task<CipherPayload> HandleResult<TSuccess>(Result<TSuccess, FailureBase> result, uint connectId, ServerCallContext context)
+    public async Task<CipherPayload> HandleResult<TSuccess, TFailure>(Result<TSuccess, TFailure> result, uint connectId, ServerCallContext context)
         where TSuccess : IMessage<TSuccess>, new()
+        where TFailure : FailureBase
     {
         return await result.Match(
             async response => await RespondSuccess<TSuccess>(response.ToByteArray(), connectId, context),
-            async error => await RespondFailure(error, connectId, context)
+            async error => await RespondFailure<TSuccess>(error, connectId, context)
         );
     }
 }
