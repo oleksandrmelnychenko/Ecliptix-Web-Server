@@ -16,8 +16,8 @@ namespace Ecliptix.Core.Services.Memberships;
 public class VerificationFlowServices(
     IEcliptixActorRegistry actorRegistry,
     IPhoneNumberValidator phoneNumberValidator,
-    ICipherPayloadHandlerFactory cipherPayloadHandlerFactory)
-    : VerificationFlowServicesBase(actorRegistry, cipherPayloadHandlerFactory)
+    ICipherPayloadHandler cipherPayloadHandler)
+    : VerificationFlowServicesBase(actorRegistry, cipherPayloadHandler)
 {
     public override async Task InitiateVerification(
         CipherPayload request,

@@ -13,8 +13,8 @@ namespace Ecliptix.Core.Services;
 
 public class AppDeviceServices(
     IEcliptixActorRegistry actorRegistry,
-    ICipherPayloadHandlerFactory cipherPayloadHandlerFactory)
-    : AppDeviceServiceBase(actorRegistry, cipherPayloadHandlerFactory)
+    ICipherPayloadHandler cipherPayloadHandler)
+    : AppDeviceServiceBase(actorRegistry, cipherPayloadHandler)
 {
     public override async Task<RestoreSecrecyChannelResponse> RestoreAppDeviceSecrecyChannel(
         RestoreSecrecyChannelRequest request, ServerCallContext context)

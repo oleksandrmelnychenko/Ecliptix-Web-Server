@@ -47,7 +47,7 @@ try
     builder.Services.AddSingleton<IEcliptixActorRegistry, ActorRegistry>();
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
-    builder.Services.AddSingleton<ICipherPayloadHandlerFactory, CipherPayloadHandlerFactory>();
+    builder.Services.AddSingleton<ICipherPayloadHandler, CipherPayloadHandler<EcliptixProtocolSystemActor>>();
     builder.Services.AddSingleton<IOpaqueProtocolService>(sp =>
     { 
         IConfiguration config = sp.GetRequiredService<IConfiguration>();

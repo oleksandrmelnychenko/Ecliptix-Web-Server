@@ -15,13 +15,12 @@ namespace Ecliptix.Core.Services;
 
 public abstract class AppDeviceServiceBase(
     IEcliptixActorRegistry actorRegistry,
-    ICipherPayloadHandlerFactory cipherPayloadHandlerFactory)
+    ICipherPayloadHandler cipherPayloadHandler)
     : AppDeviceServiceActions.AppDeviceServiceActionsBase
 {
     protected readonly IActorRef AppDevicePersistorActor = actorRegistry.Get<AppDevicePersistorActor>();
     protected readonly IActorRef ProtocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
-    protected readonly ICipherPayloadHandler CipherPayloadHandler =
-        cipherPayloadHandlerFactory.Create<EcliptixProtocolSystemActor>();
+    protected readonly ICipherPayloadHandler CipherPayloadHandler = cipherPayloadHandler;
     
     protected async Task<TResponse> ExecutePlain<TRequest, TResponse>(
         TRequest request,

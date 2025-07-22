@@ -15,8 +15,8 @@ namespace Ecliptix.Core.Services.Memberships;
 public class MembershipServices(
     IEcliptixActorRegistry actorRegistry,
     IPhoneNumberValidator phoneNumberValidator,
-    ICipherPayloadHandlerFactory cipherPayloadHandlerFactory
-) : MembershipServicesBase(actorRegistry, cipherPayloadHandlerFactory)
+    ICipherPayloadHandler cipherPayloadHandler
+) : MembershipServicesBase(actorRegistry, cipherPayloadHandler)
 
 {
     public override async Task<CipherPayload> OpaqueSignInInitRequest(CipherPayload request, ServerCallContext context)

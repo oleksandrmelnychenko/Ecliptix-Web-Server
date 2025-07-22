@@ -15,13 +15,12 @@ namespace Ecliptix.Core.Services.Memberships;
 
 public abstract class VerificationFlowServicesBase(
     IEcliptixActorRegistry actorRegistry,
-    ICipherPayloadHandlerFactory cipherPayloadHandlerFactory)
+    ICipherPayloadHandler cipherPayloadHandler)
     : AuthVerificationServices.AuthVerificationServicesBase
 {
     protected readonly IActorRef VerificationFlowManagerActor = actorRegistry.Get<VerificationFlowManagerActor>();
 
-    protected readonly ICipherPayloadHandler CipherPayloadHandler =
-        cipherPayloadHandlerFactory.Create<EcliptixProtocolSystemActor>();
+    protected readonly ICipherPayloadHandler CipherPayloadHandler = cipherPayloadHandler;
     protected string CultureName { get; private set; } = CultureInfo.CurrentCulture.Name;
 
     protected void StopVerificationFlowActor(ServerCallContext context, uint connectId)

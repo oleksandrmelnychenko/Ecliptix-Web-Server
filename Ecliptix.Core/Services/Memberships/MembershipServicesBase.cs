@@ -13,13 +13,12 @@ namespace Ecliptix.Core.Services.Memberships;
 
 public abstract class MembershipServicesBase(
     IEcliptixActorRegistry actorRegistry,
-    ICipherPayloadHandlerFactory cipherPayloadHandlerFactory
+    ICipherPayloadHandler cipherPayloadHandler
     ) : Protobuf.Membership.MembershipServices.MembershipServicesBase
 {
     protected readonly IActorRef MembershipActor = actorRegistry.Get<MembershipActor>();
 
-    protected readonly ICipherPayloadHandler CipherPayloadHandler =
-        cipherPayloadHandlerFactory.Create<EcliptixProtocolSystemActor>();
+    protected readonly ICipherPayloadHandler CipherPayloadHandler = cipherPayloadHandler;
     protected string CultureName { get; private set; } = CultureInfo.CurrentCulture.Name;
     
     
