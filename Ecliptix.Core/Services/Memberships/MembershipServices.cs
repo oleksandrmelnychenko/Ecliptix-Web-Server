@@ -1,5 +1,5 @@
 using Akka.Actor;
-using Ecliptix.Core.Protocol;
+using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;

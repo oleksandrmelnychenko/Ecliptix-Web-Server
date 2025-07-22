@@ -6,7 +6,7 @@ using Ecliptix.Protobuf.PubKeyExchange;
 using Google.Protobuf;
 using Grpc.Core;
 
-namespace Ecliptix.Core.Protocol;
+namespace Ecliptix.Core.Services.Utilities;
 
 public class CipherPayloadHandler : ICipherPayloadHandler
 {
