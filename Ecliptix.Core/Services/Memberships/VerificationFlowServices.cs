@@ -16,8 +16,8 @@ namespace Ecliptix.Core.Services.Memberships;
 public class VerificationFlowServices(
     IEcliptixActorRegistry actorRegistry,
     IPhoneNumberValidator phoneNumberValidator,
-    ICipherPayloadHandler cipherPayloadHandler)
-    : VerificationFlowServicesBase(actorRegistry, cipherPayloadHandler)
+    IGrpcCipherService grpcCipherService)
+    : VerificationFlowServicesBase(actorRegistry, grpcCipherService)
 {
     public override async Task InitiateVerification(
         CipherPayload request,
@@ -56,16 +56,15 @@ public class VerificationFlowServices(
 
         if (result.IsErr)
         {
-            CipherPayload payload = await CipherPayloadHandler.RespondFailure(result.UnwrapErr(),
+            CipherPayload payload = await GrpcCipherService.CreateFailureResponse(result.UnwrapErr(),
                 ServiceUtilities.ExtractConnectId(context), context);
             await responseStream.WriteAsync(payload);
         }
     }
 
 
-    public override async Task<CipherPayload> ValidatePhoneNumber(CipherPayload request, ServerCallContext context)
-    {
-        return await ExecuteWithDecryption<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(request, context,
+    public override async Task<CipherPayload> ValidatePhoneNumber(CipherPayload request, ServerCallContext context) =>
+        await ExecuteWithDecryption<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(request, context,
             async (message, connectId, ct) =>
             {
                 Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
@@ -73,7 +72,8 @@ public class VerificationFlowServices(
 
                 if (validationResult.IsErr)
                 {
-                    return await CipherPayloadHandler.RespondFailure(validationResult.UnwrapErr(), connectId, context);
+                    return await GrpcCipherService.CreateFailureResponse(validationResult.UnwrapErr(), connectId,
+                        context);
                 }
 
                 PhoneNumberValidationResult phoneValidationResult = validationResult.Unwrap();
@@ -101,7 +101,7 @@ public class VerificationFlowServices(
                             Message = failure.Message
                         });
 
-                    return await CipherPayloadHandler.RespondSuccess<ValidatePhoneNumberResponse>(
+                    return await GrpcCipherService.CreateSuccessResponse<ValidatePhoneNumberResponse>(
                         response.ToByteArray(), connectId, context);
                 }
                 else
@@ -111,22 +111,23 @@ public class VerificationFlowServices(
                         Result = VerificationResult.InvalidPhone,
                         Message = phoneValidationResult.MessageKey
                     };
-                    return await CipherPayloadHandler.RespondSuccess<ValidatePhoneNumberResponse>(
+                    return await GrpcCipherService.CreateSuccessResponse<ValidatePhoneNumberResponse>(
                         response.ToByteArray(), connectId, context);
                 }
             });
-    }
 
-    public override async Task<CipherPayload> RecoverySecretKeyPhoneVerification(CipherPayload request, ServerCallContext context)
-    {
-        return await ExecuteWithDecryption<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(request, context,
+
+    public override async Task<CipherPayload> RecoverySecretKeyPhoneVerification(CipherPayload request,
+        ServerCallContext context) =>
+        await ExecuteWithDecryption<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(request, context,
             async (message, connectId, ct) =>
             {
                 Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
                     phoneNumberValidator.ValidatePhoneNumber(message.PhoneNumber, CultureName);
                 if (validationResult.IsErr)
                 {
-                    return await CipherPayloadHandler.RespondFailure(validationResult.UnwrapErr(), connectId, context);
+                    return await GrpcCipherService.CreateFailureResponse(validationResult.UnwrapErr(), connectId,
+                        context);
                 }
 
                 PhoneNumberValidationResult phoneValidationResult = validationResult.Unwrap();
@@ -136,7 +137,7 @@ public class VerificationFlowServices(
                     VerifyPhoneForSecretKeyRecoveryActorEvent verifyPhoneEvent = new(
                         phoneValidationResult.ParsedPhoneNumberE164!,
                         phoneValidationResult.DetectedRegion);
-            
+
                     Result<Guid, VerificationFlowFailure> verifyPhoneResult = await VerificationFlowManagerActor
                         .Ask<Result<Guid, VerificationFlowFailure>>(verifyPhoneEvent, ct);
 
@@ -154,7 +155,7 @@ public class VerificationFlowServices(
                         }
                     );
 
-                    return await CipherPayloadHandler.RespondSuccess<ValidatePhoneNumberResponse>(
+                    return await GrpcCipherService.CreateSuccessResponse<ValidatePhoneNumberResponse>(
                         response.ToByteArray(), connectId, context);
                 }
                 else
@@ -164,25 +165,24 @@ public class VerificationFlowServices(
                         Result = VerificationResult.InvalidPhone,
                         Message = phoneValidationResult.MessageKey
                     };
-                    return await CipherPayloadHandler.RespondSuccess<ValidatePhoneNumberResponse>(
+                    return await GrpcCipherService.CreateSuccessResponse<ValidatePhoneNumberResponse>(
                         response.ToByteArray(), connectId, context);
                 }
             });
-    }
 
-    public override async Task<CipherPayload> VerifyOtp(CipherPayload request, ServerCallContext context)
-    {
-        return await ExecuteWithDecryption<VerifyCodeRequest, VerifyCodeRequest>(request, context,
+
+    public override async Task<CipherPayload> VerifyOtp(CipherPayload request, ServerCallContext context) =>
+        await ExecuteWithDecryption<VerifyCodeRequest, VerifyCodeRequest>(request, context,
             async (message, connectId, ct) =>
             {
                 VerifyFlowActorEvent actorEvent = new(connectId, message.Code, CultureName);
 
-                Result<VerifyCodeResponse, VerificationFlowFailure> verificationResult = await VerificationFlowManagerActor
-                    .Ask<Result<VerifyCodeResponse, VerificationFlowFailure>>(actorEvent, ct);
-                
-                return await CipherPayloadHandler.HandleResult(verificationResult, connectId, context);
+                Result<VerifyCodeResponse, VerificationFlowFailure> verificationResult =
+                    await VerificationFlowManagerActor
+                        .Ask<Result<VerifyCodeResponse, VerificationFlowFailure>>(actorEvent, ct);
+
+                return await GrpcCipherService.ProcessResult(verificationResult, connectId, context);
             });
-    }
 
     private async Task StreamCountdownUpdatesAsync(
         IServerStreamWriter<CipherPayload> responseStream,
@@ -190,21 +190,22 @@ public class VerificationFlowServices(
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
-        await foreach (var updateResult in reader.ReadAllAsync(context.CancellationToken))
+        await foreach (Result<VerificationCountdownUpdate, VerificationFlowFailure> updateResult in reader.ReadAllAsync(context.CancellationToken))
         {
             CipherPayload payload;
 
             if (updateResult.IsErr)
             {
-                payload = await CipherPayloadHandler.RespondFailure(updateResult.UnwrapErr(), connectId, context);
+                payload = await GrpcCipherService.CreateFailureResponse(updateResult.UnwrapErr(), connectId, context);
             }
             else
             {
-                var encryptResult =
-                    await CipherPayloadHandler.EncryptResponse(updateResult.Unwrap().ToByteArray(), connectId, context);
+                Result<CipherPayload, FailureBase> encryptResult =
+                    await GrpcCipherService.EncryptPayload(updateResult.Unwrap().ToByteArray(), connectId, context);
                 if (encryptResult.IsErr)
                 {
-                    payload = await CipherPayloadHandler.RespondFailure(encryptResult.UnwrapErr(), connectId, context);
+                    payload = await GrpcCipherService.CreateFailureResponse(encryptResult.UnwrapErr(), connectId,
+                        context);
                 }
                 else
                 {

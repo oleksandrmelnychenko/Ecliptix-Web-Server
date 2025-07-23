@@ -15,8 +15,8 @@ namespace Ecliptix.Core.Services.Memberships;
 public class MembershipServices(
     IEcliptixActorRegistry actorRegistry,
     IPhoneNumberValidator phoneNumberValidator,
-    ICipherPayloadHandler cipherPayloadHandler
-) : MembershipServicesBase(actorRegistry, cipherPayloadHandler)
+    IGrpcCipherService grpcCipherService
+) : MembershipServicesBase(actorRegistry, grpcCipherService)
 
 {
     public override async Task<CipherPayload> OpaqueSignInInitRequest(CipherPayload request, ServerCallContext context)
@@ -37,7 +37,7 @@ public class MembershipServices(
                             Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
                             Message = verificationFlowFailure.Message
                         }.ToByteArray();
-                        return await CipherPayloadHandler.RespondSuccess<OpaqueSignInInitResponse>(
+                        return await GrpcCipherService.CreateSuccessResponse<OpaqueSignInInitResponse>(
                             signInMembershipResponse,
                             connectId, context);
                     }
@@ -51,7 +51,7 @@ public class MembershipServices(
                         Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
                         Message = phoneNumberResult.MessageKey
                     }.ToByteArray();
-                    return await CipherPayloadHandler.RespondSuccess<OpaqueSignInInitResponse>(signInMembershipResponse,
+                    return await GrpcCipherService.CreateSuccessResponse<OpaqueSignInInitResponse>(signInMembershipResponse,
                         connectId, context);
                 }
 
@@ -62,7 +62,7 @@ public class MembershipServices(
                     await MembershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent, 
                         ct);
 
-                return await CipherPayloadHandler.HandleResult(initSignInResult, connectId, context);
+                return await GrpcCipherService.ProcessResult(initSignInResult, connectId, context);
             });
     }
 
@@ -79,7 +79,7 @@ public class MembershipServices(
                         await MembershipActor.Ask<Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>>(
                             new SignInComplete(message), ct);
 
-                    return await CipherPayloadHandler.HandleResult(finalizeSignInResult, connectId, context);
+                    return await GrpcCipherService.ProcessResult(finalizeSignInResult, connectId, context);
                 });
     }
 
@@ -98,7 +98,7 @@ public class MembershipServices(
                         await MembershipActor.Ask<Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>>(
                             @event, ct);
 
-                    return await CipherPayloadHandler.HandleResult(completeRegistrationRecordResult, connectId,
+                    return await GrpcCipherService.ProcessResult(completeRegistrationRecordResult, connectId,
                         context);
                 });
     }
@@ -118,7 +118,7 @@ public class MembershipServices(
                     await MembershipActor
                         .Ask<Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>>(@event, ct);
 
-                return await CipherPayloadHandler.HandleResult(completeRecoverySecretKeyResult, connectId, context);
+                return await GrpcCipherService.ProcessResult(completeRecoverySecretKeyResult, connectId, context);
             });
     }
 
@@ -138,7 +138,7 @@ public class MembershipServices(
                         await MembershipActor.Ask<Result<OprfRegistrationInitResponse, VerificationFlowFailure>>(@event,
                             ct);
 
-                    return await CipherPayloadHandler.HandleResult(updateOperationResult, connectId, context);
+                    return await GrpcCipherService.ProcessResult(updateOperationResult, connectId, context);
                 });
     }
 
@@ -156,7 +156,7 @@ public class MembershipServices(
                         .Ask<Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>>(
                             @event, ct);
 
-                    return await CipherPayloadHandler.HandleResult(result, connectId, context);
+                    return await GrpcCipherService.ProcessResult(result, connectId, context);
                 }
             );
     }

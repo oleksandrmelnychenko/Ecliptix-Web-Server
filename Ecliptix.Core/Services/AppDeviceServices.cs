@@ -13,13 +13,13 @@ namespace Ecliptix.Core.Services;
 
 public class AppDeviceServices(
     IEcliptixActorRegistry actorRegistry,
-    ICipherPayloadHandler cipherPayloadHandler)
-    : AppDeviceServiceBase(actorRegistry, cipherPayloadHandler)
+    IGrpcCipherService grpcCipherService)
+    : AppDeviceServiceBase(actorRegistry, grpcCipherService)
 {
     public override async Task<RestoreSecrecyChannelResponse> RestoreAppDeviceSecrecyChannel(
         RestoreSecrecyChannelRequest request, ServerCallContext context)
     {
-        return await ExecutePlain<RestoreSecrecyChannelRequest, RestoreSecrecyChannelResponse>(
+        return await ExecutePlainRequest(
             request,
             context,
             async (_, connectId, ct) =>
@@ -50,7 +50,7 @@ public class AppDeviceServices(
     public override async Task<PubKeyExchange> EstablishAppDeviceSecrecyChannel(
         PubKeyExchange request, ServerCallContext context)
     {
-        return await ExecutePlain<PubKeyExchange, PubKeyExchange>(
+        return await ExecutePlainRequest(
             request,
             context,
             async (parsedRequest, connectId, ct) =>
@@ -71,7 +71,7 @@ public class AppDeviceServices(
     public override async Task<CipherPayload> RegisterDeviceAppIfNotExist(
         CipherPayload request, ServerCallContext context)
     {
-        return await ExecuteEncrypted<AppDevice, AppDeviceRegisteredStateReply>(
+        return await ExecuteEncryptedRequest<AppDevice, AppDeviceRegisteredStateReply>(
             request,
             context,
             PubKeyExchangeType.DataCenterEphemeralConnect,

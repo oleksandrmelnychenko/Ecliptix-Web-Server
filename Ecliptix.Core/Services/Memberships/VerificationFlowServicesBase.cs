@@ -15,12 +15,12 @@ namespace Ecliptix.Core.Services.Memberships;
 
 public abstract class VerificationFlowServicesBase(
     IEcliptixActorRegistry actorRegistry,
-    ICipherPayloadHandler cipherPayloadHandler)
+    IGrpcCipherService grpcCipherService)
     : AuthVerificationServices.AuthVerificationServicesBase
 {
     protected readonly IActorRef VerificationFlowManagerActor = actorRegistry.Get<VerificationFlowManagerActor>();
 
-    protected readonly ICipherPayloadHandler CipherPayloadHandler = cipherPayloadHandler;
+    protected readonly IGrpcCipherService GrpcCipherService = grpcCipherService;
     protected string CultureName { get; private set; } = CultureInfo.CurrentCulture.Name;
 
     protected void StopVerificationFlowActor(ServerCallContext context, uint connectId)
@@ -58,11 +58,11 @@ public abstract class VerificationFlowServicesBase(
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
 
-        Result<byte[], FailureBase> decryptionResult = await CipherPayloadHandler.DecryptRequest(encryptedRequest, connectId, context);
+        Result<byte[], FailureBase> decryptionResult = await GrpcCipherService.DecryptPayload(encryptedRequest, connectId, context);
 
         if (decryptionResult.IsErr)
         {
-            return await CipherPayloadHandler.RespondFailure(decryptionResult.UnwrapErr(), connectId, context);
+            return await GrpcCipherService.CreateFailureResponse(decryptionResult.UnwrapErr(), connectId, context);
         }
 
         byte[] decryptedBytes = decryptionResult.Unwrap();
@@ -81,7 +81,7 @@ public abstract class VerificationFlowServicesBase(
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
         Result<byte[], FailureBase> decryptionResult =
-            await CipherPayloadHandler.DecryptRequest(encryptedRequest, connectId, context);
+            await GrpcCipherService.DecryptPayload(encryptedRequest, connectId, context);
 
         if (decryptionResult.IsErr)
             return Result<Unit, FailureBase>.Err(decryptionResult.UnwrapErr());

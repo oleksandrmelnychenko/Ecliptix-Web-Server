@@ -5,9 +5,7 @@ namespace Ecliptix.Core.Services.Utilities;
 
 public static class MetadataExtensions
 {
-    public const string KeyExchangeContextType = "KeyExchangeContextType";
-
-    public const string ComponentNotFoundFormat = "Component by {0} not found in metadata";
+    private const string ComponentNotFoundFormat = "Component by {0} not found in metadata";
 
     public static Result<string, MetaDataSystemFailure> GetValueAsResult(this Metadata metadata, string key)
     {

@@ -13,12 +13,12 @@ namespace Ecliptix.Core.Services.Memberships;
 
 public abstract class MembershipServicesBase(
     IEcliptixActorRegistry actorRegistry,
-    ICipherPayloadHandler cipherPayloadHandler
+    IGrpcCipherService grpcCipherService
     ) : Protobuf.Membership.MembershipServices.MembershipServicesBase
 {
     protected readonly IActorRef MembershipActor = actorRegistry.Get<MembershipActor>();
 
-    protected readonly ICipherPayloadHandler CipherPayloadHandler = cipherPayloadHandler;
+    protected readonly IGrpcCipherService GrpcCipherService = grpcCipherService;
     protected string CultureName { get; private set; } = CultureInfo.CurrentCulture.Name;
     
     
@@ -32,11 +32,11 @@ public abstract class MembershipServicesBase(
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
 
-        Result<byte[], FailureBase> decryptionResult = await CipherPayloadHandler.DecryptRequest(encryptedRequest, connectId, context);
+        Result<byte[], FailureBase> decryptionResult = await GrpcCipherService.DecryptPayload(encryptedRequest, connectId, context);
 
         if (decryptionResult.IsErr)
         {
-            return await CipherPayloadHandler.RespondFailure<TResponse>(
+            return await GrpcCipherService.CreateFailureResponse<TResponse>(
                 decryptionResult.UnwrapErr(), connectId, context);
         }
 
