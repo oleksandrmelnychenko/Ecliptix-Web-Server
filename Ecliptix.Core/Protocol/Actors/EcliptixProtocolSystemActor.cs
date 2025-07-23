@@ -86,25 +86,24 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         string actorName = $"connect-{connectId}";
         IActorRef connectActor = Context.Child(actorName);
     
-        if (connectActor.IsNobody())
+        if (connectActor.IsNobody() && message.Payload is not KeepAlive)
         {
-            //Maybe here try to restore actor and it's state.
-            
-            
-            object errorResult = message.Payload switch
+            try
             {
-                EncryptPayloadActorEvent => Result<CipherPayload, EcliptixProtocolFailure>.Err(
-                    CreateNotFoundError(connectId)),
-                DecryptCipherPayloadActorEvent => Result<byte[], EcliptixProtocolFailure>.Err(
-                    CreateNotFoundError(connectId)),
-                RestoreAppDeviceSecrecyChannelState => Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Err(
-                    CreateNotFoundError(connectId)),
-                KeepAlive => Akka.Done.Instance,
-                _ => Result<object, EcliptixProtocolFailure>.Err(CreateNotFoundError(connectId))
-            };
-    
-            if (message.Payload is not KeepAlive)
-                Sender.Tell(errorResult);
+                connectActor = Context.ActorOf(EcliptixProtocolConnectActor.Build(connectId), actorName);
+                Context.Watch(connectActor);
+                
+                object? result =
+                    await connectActor.Ask(message.Payload,
+                        timeout: TimeSpan.FromSeconds(30));
+                Sender.Tell(result);
+            }
+            catch (Exception ex)
+            {
+                EcliptixProtocolFailure failure =
+                    EcliptixProtocolFailure.ActorNotCreated($"Failed to create actor for connectId: {connectId}", ex);
+                Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(failure));
+            }
         }
         else
         {
