@@ -88,6 +88,9 @@ public class EcliptixProtocolSystemActor : ReceiveActor
     
         if (connectActor.IsNobody())
         {
+            //Maybe here try to restore actor and it's state.
+            
+            
             object errorResult = message.Payload switch
             {
                 EncryptPayloadActorEvent => Result<CipherPayload, EcliptixProtocolFailure>.Err(

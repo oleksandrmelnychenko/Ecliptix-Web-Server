@@ -25,7 +25,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 {
     public override string PersistenceId { get; } = $"connect-{connectId}";
     private const int SnapshotInterval = 50;
-    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(15);
 
     private EcliptixSessionState? _state;
     private EcliptixProtocolSystem? _liveSystem;
