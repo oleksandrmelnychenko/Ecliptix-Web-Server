@@ -85,25 +85,16 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         uint connectId = message.ConnectId;
         string actorName = $"connect-{connectId}";
         IActorRef connectActor = Context.Child(actorName);
-    
+
         if (connectActor.IsNobody() && message.Payload is not KeepAlive)
         {
-            try
-            {
-                connectActor = Context.ActorOf(EcliptixProtocolConnectActor.Build(connectId), actorName);
-                Context.Watch(connectActor);
-                
-                object? result =
-                    await connectActor.Ask(message.Payload,
-                        timeout: TimeSpan.FromSeconds(30));
-                Sender.Tell(result);
-            }
-            catch (Exception ex)
-            {
-                EcliptixProtocolFailure failure =
-                    EcliptixProtocolFailure.ActorNotCreated($"Failed to create actor for connectId: {connectId}", ex);
-                Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(failure));
-            }
+            connectActor = Context.ActorOf(EcliptixProtocolConnectActor.Build(connectId), actorName);
+            Context.Watch(connectActor);
+
+            object? result =
+                await connectActor.Ask(message.Payload,
+                    timeout: TimeSpan.FromSeconds(30));
+            Sender.Tell(result);
         }
         else
         {
@@ -119,72 +110,6 @@ public class EcliptixProtocolSystemActor : ReceiveActor
                 Sender.Tell(result);
             }
         }
-    }
-    
-    // // NEW ADDED 2025-07-07 16:12 by Vitalik Koliesnikov
-    // private async Task ProcessForwarding(ForwardToConnectActorEvent message)
-    // {
-    //     uint connectId = message.ConnectId;
-    //     string actorName = $"connect-{connectId}";
-    //     IActorRef connectActor = Context.Child(actorName);
-    //
-    //     if (connectActor.IsNobody())
-    //     {
-    //         try
-    //         {
-    //             connectActor = Context.ActorOf(EcliptixProtocolConnectActor.Build(connectId), actorName);
-    //             Context.Watch(connectActor);
-    //             Log.Information("Session actor [{ActorName}] created for connectId {ConnectId}", actorName, connectId);
-    //         }
-    //         catch (Exception ex)
-    //         {
-    //             EcliptixProtocolFailure failure = EcliptixProtocolFailure.ActorNotCreated(
-    //                 $"Failed to create session actor for connectId: {connectId}", ex);
-    //             object errorResult = message.Payload switch
-    //             {
-    //                 EncryptPayloadActorEvent => Result<CipherPayload, EcliptixProtocolFailure>.Err(failure),
-    //                 DecryptCipherPayloadActorEvent => Result<byte[], EcliptixProtocolFailure>.Err(failure),
-    //                 RestoreAppDeviceSecrecyChannelState => Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Err(failure),
-    //                 KeepAlive => Akka.Done.Instance,
-    //                 _ => Result<object, EcliptixProtocolFailure>.Err(failure)
-    //             };
-    //
-    //             Sender.Tell(errorResult);
-    //             return;
-    //         }
-    //     }
-    //     if (message.Payload is KeepAlive)
-    //     {
-    //         connectActor.Tell(message.Payload, ActorRefs.NoSender);
-    //         return;
-    //     }
-    //
-    //     try
-    //     {
-    //         object? result = await connectActor.Ask(message.Payload, timeout: TimeSpan.FromSeconds(30));
-    //         Sender.Tell(result);
-    //     }
-    //     catch (AskTimeoutException)
-    //     {
-    //         EcliptixProtocolFailure timeoutFailure = EcliptixProtocolFailure.Generic(
-    //             $"Timeout while forwarding message to connect actor {actorName}");
-    //
-    //         object errorResult = message.Payload switch
-    //         {
-    //             EncryptPayloadActorEvent => Result<CipherPayload, EcliptixProtocolFailure>.Err(timeoutFailure),
-    //             DecryptCipherPayloadActorEvent => Result<byte[], EcliptixProtocolFailure>.Err(timeoutFailure),
-    //             RestoreAppDeviceSecrecyChannelState => Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Err(timeoutFailure),
-    //             _ => Result<object, EcliptixProtocolFailure>.Err(timeoutFailure)
-    //         };
-    //
-    //         Sender.Tell(errorResult);
-    //     }
-    // }
-
-    private static EcliptixProtocolFailure CreateNotFoundError(uint connectId)
-    {
-        return EcliptixProtocolFailure.ActorRefNotFound(
-            $"Secure session with Id:{connectId} not found or has timed out. Please re-establish the connection.");
     }
 
     public static Props Build()
