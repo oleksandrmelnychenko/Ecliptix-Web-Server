@@ -7,6 +7,8 @@ using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
+using Serilog;
+using Serilog.Events;
 using Sodium;
 
 namespace Ecliptix.Core.Protocol;
@@ -98,10 +100,13 @@ public sealed class EcliptixProtocolConnection : IDisposable
             byte[] tempInitialSk = new byte[Constants.X25519PrivateKeySize];
             if (initialSendingDhPrivateKeyHandle.Read(tempInitialSk).IsOk)
             {
-                Console.WriteLine($"[EcliptixProtocolConnection] Initial Sending DH Private Key: {Convert.ToHexString(tempInitialSk)}");
+                if (Log.IsEnabled(LogEventLevel.Debug))
+                    Log.Debug("[EcliptixProtocolConnection] Initial Sending DH Private Key: {tempInitialSk}",  Convert.ToHexString(tempInitialSk));
             }
-            Console.WriteLine($"[EcliptixProtocolConnection] Initial Sending DH Public Key: {Convert.ToHexString(initialSendingDhPublicKey)}");
-
+            
+            if (Log.IsEnabled(LogEventLevel.Debug)) 
+                Log.Debug("[EcliptixProtocolConnection] Initial Sending DH Public Key: {initialSendingDhPublicKey}", Convert.ToHexString(initialSendingDhPublicKey));
+    
             Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> persistentKeysResult = SodiumInterop.GenerateX25519KeyPair("Persistent DH");
             if (persistentKeysResult.IsErr)
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(persistentKeysResult.UnwrapErr());
@@ -110,9 +115,12 @@ public sealed class EcliptixProtocolConnection : IDisposable
             byte[] tempPersistentSk = new byte[Constants.X25519PrivateKeySize];
             if (persistentDhPrivateKeyHandle.Read(tempPersistentSk).IsOk)
             {
-                Console.WriteLine($"[EcliptixProtocolConnection] Persistent DH Private Key: {Convert.ToHexString(tempPersistentSk)}");
+                if (Log.IsEnabled(LogEventLevel.Debug))
+                    Log.Debug("[EcliptixProtocolConnection] Persistent DH Private Key: {tempPersistentSk}", Convert.ToHexString(tempPersistentSk));
             }
-            Console.WriteLine($"[EcliptixProtocolConnection] Persistent DH Public Key: {Convert.ToHexString(persistentDhPublicKey)}");
+            
+            if(Log.IsEnabled(LogEventLevel.Debug))
+                Log.Debug($"[EcliptixProtocolConnection] Persistent DH Public Key: {persistentDhPublicKey}", Convert.ToHexString(persistentDhPublicKey));
 
             byte[] initialSkBytes = initialSendingDhPrivateKeyHandle.ReadBytes(Constants.X25519PrivateKeySize).Unwrap();
             byte[] tempChainKey = new byte[Constants.X25519KeySize];
@@ -135,7 +143,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[EcliptixProtocolConnection] Error creating connection: {ex.Message}");
+            if(Log.IsEnabled(LogEventLevel.Debug))
+                Log.Debug("[EcliptixProtocolConnection] Error creating connection: {ex}", ex.Message);
             initialSendingDhPrivateKeyHandle?.Dispose();
             sendingStep?.Dispose();
             persistentDhPrivateKeyHandle?.Dispose();
@@ -182,16 +191,20 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     proto.ReceivingStep = receivingStepStateResult.Unwrap();
                 }
 
-                // Log keys when exporting to proto state
-                Console.WriteLine($"[EcliptixProtocolConnection] Exporting to Proto State (Connection ID: {_id}):");
-                Console.WriteLine($"  Root Key: {Convert.ToHexString(rootKeyResult.Unwrap())}");
-                Console.WriteLine($"  Peer DH Public Key: {(_peerDhPublicKey != null ? Convert.ToHexString(_peerDhPublicKey) : "<null>")}");
+                if (Log.IsEnabled(LogEventLevel.Debug))
+                {
+                    // Log keys when exporting to proto state
+                    Log.Debug("[EcliptixProtocolConnection] Exporting to Proto State (Connection ID: {id}):", _id);
+                    Log.Debug("  Root Key: {rootKeyResult}", Convert.ToHexString(rootKeyResult.Unwrap()));
+                    Log.Debug("  Peer DH Public Key: {peerDhPublicKey}", _peerDhPublicKey != null ? Convert.ToHexString(_peerDhPublicKey) : "<null>");
+                }
 
                 return Result<RatchetState, EcliptixProtocolFailure>.Ok(proto);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[EcliptixProtocolConnection] Error exporting to proto state: {ex.Message}");
+                if(Log.IsEnabled(LogEventLevel.Debug))
+                    Log.Debug("[EcliptixProtocolConnection] Error exporting to proto state: {exMessage}", ex.Message);
                 return Result<RatchetState, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic("Failed to export connection to proto state.", ex));
             }
@@ -230,9 +243,12 @@ public sealed class EcliptixProtocolConnection : IDisposable
             byte[] tempRootKey = new byte[Constants.X25519KeySize];
             if (rootKeyHandle.Read(tempRootKey).IsOk)
             {
-                Console.WriteLine($"[EcliptixProtocolConnection] Restored Root Key: {Convert.ToHexString(tempRootKey)}");
+                if(Log.IsEnabled(LogEventLevel.Debug))
+                    Log.Debug("[EcliptixProtocolConnection] Restored Root Key: {tempRootKey}", Convert.ToHexString(tempRootKey));
             }
-            Console.WriteLine($"[EcliptixProtocolConnection] Restored Peer DH Public Key: {(proto.PeerDhPublicKey.IsEmpty ? "<null>" : Convert.ToHexString(proto.PeerDhPublicKey.ToByteArray()))}");
+            
+            if(Log.IsEnabled(LogEventLevel.Debug))
+                Log.Debug("[EcliptixProtocolConnection] Restored Peer DH Public Key: {peerDhPublicKey}", proto.PeerDhPublicKey.IsEmpty ? "<null>" : Convert.ToHexString(proto.PeerDhPublicKey.ToByteArray()));
 
             sendingStep = null;
             receivingStep = null;
@@ -242,7 +258,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[EcliptixProtocolConnection] Error restoring from proto state: {ex.Message}");
+            if(Log.IsEnabled(LogEventLevel.Debug))
+                Log.Debug("[EcliptixProtocolConnection] Error restoring from proto state: {ex}", ex.Message);
             sendingStep?.Dispose();
             receivingStep?.Dispose();
             rootKeyHandle?.Dispose();
@@ -279,7 +296,9 @@ public sealed class EcliptixProtocolConnection : IDisposable
             {
                 _peerBundle = peerBundle;
                 // Log peer bundle
-                Console.WriteLine($"[EcliptixProtocolConnection] Set Peer Bundle: IdentityX25519={Convert.ToHexString(peerBundle.IdentityX25519)}, SignedPreKeyPublic={Convert.ToHexString(peerBundle.SignedPreKeyPublic)}");
+                if(Log.IsEnabled(LogEventLevel.Debug))
+                    Log.Debug("[EcliptixProtocolConnection] Set Peer Bundle: IdentityX25519={IdentityX25519}, SignedPreKeyPublic={SignedPreKeyPublic}", 
+                        Convert.ToHexString(peerBundle.IdentityX25519), Convert.ToHexString(peerBundle.SignedPreKeyPublic));
                 return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
             });
         }
@@ -305,7 +324,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     {
                         peerDhPublicCopy = (byte[])initialPeerDhPublicKey.Clone();
                         // Log peer DH public key
-                        Console.WriteLine($"[EcliptixProtocolConnection] Initial Peer DH Public Key: {Convert.ToHexString(peerDhPublicCopy)}");
+                        if(Log.IsEnabled(LogEventLevel.Debug))
+                            Log.Debug("[EcliptixProtocolConnection] Initial Peer DH Public Key: {peerDhPublicCopy}", Convert.ToHexString(peerDhPublicCopy));
                         return SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize).MapSodiumFailure()
                             .Bind(handle =>
                             {
@@ -316,7 +336,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     .Bind(_ =>
                     {
                         // Log root key
-                        Console.WriteLine($"[EcliptixProtocolConnection] Initial Root Key: {Convert.ToHexString(initialRootKey)}");
+                        if(Log.IsEnabled(LogEventLevel.Debug))
+                            Log.Debug("[EcliptixProtocolConnection] Initial Root Key: {initialRootKey}", Convert.ToHexString(initialRootKey));
                         localSenderCk = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
                         localReceiverCk = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
                         return DeriveInitialChainKeys(initialRootKey, localSenderCk, localReceiverCk);
@@ -327,7 +348,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
                         {
                             persistentPrivKeyBytes = bytes;
                             // Log persistent private key
-                            Console.WriteLine($"[EcliptixProtocolConnection] Persistent DH Private Key (Finalize): {Convert.ToHexString(persistentPrivKeyBytes)}");
+                            if(Log.IsEnabled(LogEventLevel.Debug))
+                                Log.Debug("[EcliptixProtocolConnection] Persistent DH Private Key (Finalize): {persistentPrivKeyBytes}", Convert.ToHexString(persistentPrivKeyBytes));
                             return Unit.Value;
                         }))
                     .Bind(_ => _sendingStep.UpdateKeysAfterDhRatchet(localSenderCk.AsSpan(0, Constants.X25519KeySize)
@@ -338,8 +360,11 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     .Map(receivingStep =>
                     {
                         // Log sender and receiver chain keys
-                        Console.WriteLine($"[EcliptixProtocolConnection] Sender Chain Key: {Convert.ToHexString(localSenderCk.AsSpan(0, Constants.X25519KeySize).ToArray())}");
-                        Console.WriteLine($"[EcliptixProtocolConnection] Receiver Chain Key: {Convert.ToHexString(localReceiverCk.AsSpan(0, Constants.X25519KeySize).ToArray())}");
+                        if(Log.IsEnabled(LogEventLevel.Debug))
+                        {
+                            Log.Debug("[EcliptixProtocolConnection] Sender Chain Key: {senderChainKey}", Convert.ToHexString(localSenderCk.AsSpan(0, Constants.X25519KeySize).ToArray()));
+                            Log.Debug("[EcliptixProtocolConnection] Receiver Chain Key: {receiverChainKey}", Convert.ToHexString(localReceiverCk.AsSpan(0, Constants.X25519KeySize).ToArray()));
+                        }
                         _rootKeyHandle = tempRootHandle;
                         tempRootHandle = null;
                         _receivingStep = receivingStep;
@@ -443,7 +468,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     _peerDhPublicKey = (byte[])receivedDhKey.Clone();
                     _receivedNewDhKey = true;
                     // Log deferred peer DH public key
-                    Console.WriteLine($"[EcliptixProtocolConnection] Deferred Peer DH Public Key Update: {Convert.ToHexString(_peerDhPublicKey)}");
+                    if(Log.IsEnabled(LogEventLevel.Debug))
+                        Log.Debug("[EcliptixProtocolConnection] Deferred Peer DH Public Key Update: {peerDhPublicKey}", Convert.ToHexString(_peerDhPublicKey));
                     return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
                 })
             );
@@ -531,8 +557,11 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     localPrivateKeyBytes = newEphemeralSkHandle.ReadBytes(Constants.X25519PrivateKeySize).Unwrap();
                     dhSecret = ScalarMult.Mult(localPrivateKeyBytes, _peerDhPublicKey);
                     // Log new ephemeral DH keys
-                    Console.WriteLine($"[EcliptixProtocolConnection] New Ephemeral DH Private Key: {Convert.ToHexString(localPrivateKeyBytes)}");
-                    Console.WriteLine($"[EcliptixProtocolConnection] New Ephemeral DH Public Key: {Convert.ToHexString(newEphemeralPublicKey)}");
+                    if(Log.IsEnabled(LogEventLevel.Debug))
+                    {
+                        Log.Debug("[EcliptixProtocolConnection] New Ephemeral DH Private Key: {localPrivateKeyBytes}", Convert.ToHexString(localPrivateKeyBytes));
+                        Log.Debug("[EcliptixProtocolConnection] New Ephemeral DH Public Key: {newEphemeralPublicKey}", Convert.ToHexString(newEphemeralPublicKey));
+                    }
                 }
                 else
                 {
@@ -543,8 +572,11 @@ public sealed class EcliptixProtocolConnection : IDisposable
                         .Unwrap();
                     dhSecret = ScalarMult.Mult(localPrivateKeyBytes, receivedDhPublicKeyBytes);
                     // Log DH keys for receiver
-                    Console.WriteLine($"[EcliptixProtocolConnection] Current Sending DH Private Key: {Convert.ToHexString(localPrivateKeyBytes)}");
-                    Console.WriteLine($"[EcliptixProtocolConnection] Received DH Public Key: {Convert.ToHexString(receivedDhPublicKeyBytes)}");
+                    if(Log.IsEnabled(LogEventLevel.Debug))
+                    {
+                        Log.Debug("[EcliptixProtocolConnection] Current Sending DH Private Key: {localPrivateKeyBytes}", Convert.ToHexString(localPrivateKeyBytes));
+                        Log.Debug("[EcliptixProtocolConnection] Received DH Public Key: {receivedDhPublicKeyBytes}", Convert.ToHexString(receivedDhPublicKeyBytes));
+                    }
                 }
             }, ex => EcliptixProtocolFailure.DeriveKey("DH calculation failed during ratchet.", ex));
             if (dhCalculationResult.IsErr) return dhCalculationResult;
@@ -560,8 +592,12 @@ public sealed class EcliptixProtocolConnection : IDisposable
             newChainKeyForTargetStep = hkdfOutput.AsSpan(Constants.X25519KeySize).ToArray();
 
             // Log new root and chain keys
-            Console.WriteLine($"[EcliptixProtocolConnection] New Root Key: {Convert.ToHexString(newRootKey)}");
-            Console.WriteLine($"[EcliptixProtocolConnection] New Chain Key for {(isSender ? "Sender" : "Receiver")}: {Convert.ToHexString(newChainKeyForTargetStep)}");
+            if(Log.IsEnabled(LogEventLevel.Debug))
+            {
+                Log.Debug("[EcliptixProtocolConnection] New Root Key: {newRootKey}", Convert.ToHexString(newRootKey));
+                Log.Debug("[EcliptixProtocolConnection] New Chain Key for {stepType}: {newChainKeyForTargetStep}", 
+                    (isSender ? "Sender" : "Receiver"), Convert.ToHexString(newChainKeyForTargetStep));
+            }
 
             Result<Unit, EcliptixProtocolFailure> writeResult = _rootKeyHandle.Write(newRootKey).MapSodiumFailure();
             if (writeResult.IsErr) return writeResult.MapErr(f => f);
@@ -584,7 +620,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     WipeIfNotNull(_peerDhPublicKey);
                     _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes!.Clone();
                     // Log updated peer DH public key
-                    Console.WriteLine($"[EcliptixProtocolConnection] Updated Peer DH Public Key: {Convert.ToHexString(_peerDhPublicKey)}");
+                    if(Log.IsEnabled(LogEventLevel.Debug))
+                        Log.Debug("[EcliptixProtocolConnection] Updated Peer DH Public Key: {peerDhPublicKey}", Convert.ToHexString(_peerDhPublicKey));
                 }
             }
 
