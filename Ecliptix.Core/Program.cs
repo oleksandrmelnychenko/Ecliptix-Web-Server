@@ -1,8 +1,8 @@
-using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO.Compression;
 using Akka.Actor;
 using Akka.Configuration;
+using Ecliptix.Core;
 using Ecliptix.Core.Interceptors;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Resources;
@@ -17,8 +17,10 @@ using Ecliptix.Domain.Memberships.OPAQUE;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Ecliptix.Domain.Memberships.WorkerActors;
+using Ecliptix.Domain.Providers.Twilio;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Context;
 
@@ -36,7 +38,6 @@ try
 {
     IConfiguration configuration = builder.Configuration;
 
-    builder.Services.AddSingleton<SNSProvider>();
     builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
     builder.Services.AddSingleton<SessionKeepAliveInterceptor>();
 
@@ -44,6 +45,13 @@ try
     RegisterValidators(builder.Services);
     RegisterGrpc(builder.Services);
   
+    builder.Services.Configure<TwilioSettings>(builder.Configuration.GetSection("TwilioSettings"));
+    builder.Services.AddSingleton<ISmsProvider>(serviceProvider =>
+    {
+        TwilioSettings twilioSettings = serviceProvider.GetRequiredService<IOptions<TwilioSettings>>().Value;
+        return new TwilioSmsProvider(twilioSettings);
+    });
+
     builder.Services.AddSingleton<IEcliptixActorRegistry, ActorRegistry>();
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
@@ -155,7 +163,7 @@ static void RegisterGrpc(IServiceCollection services)
 static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, IServiceProvider serviceProvider)
 {
     ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
-    SNSProvider snsProvider = serviceProvider.GetRequiredService<SNSProvider>();
+    ISmsProvider snsProvider = serviceProvider.GetRequiredService<ISmsProvider>();
 
     ILocalizationProvider localizationProvider =
         serviceProvider.GetRequiredService<ILocalizationProvider>();
@@ -211,7 +219,7 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        Log.Information("Actor system hosted service started.");
+        Log.Information("Actor system hosted service started");
         return Task.CompletedTask;
     }
 
@@ -219,30 +227,6 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
     {
         Log.Information("Actor system hosted service initiating shutdown...");
         await CoordinatedShutdown.Get(actorSystem).Run(CoordinatedShutdown.ClrExitReason.Instance);
-        Log.Information("Actor system hosted service shutdown complete.");
-    }
-}
-
-public interface IEcliptixActorRegistry
-{
-    void Register<TActor>(IActorRef actorRef) where TActor : ActorBase;
-    IActorRef Get<TActor>() where TActor : ActorBase;
-}
-
-public class ActorRegistry : IEcliptixActorRegistry
-{
-    private readonly ConcurrentDictionary<Type, IActorRef> _actors = new();
-
-    public void Register<TActor>(IActorRef actorRef) where TActor : ActorBase
-    {
-        _actors[typeof(TActor)] = actorRef;
-    }
-
-    public IActorRef Get<TActor>() where TActor : ActorBase
-    {
-        if (_actors.TryGetValue(typeof(TActor), out var actorRef))
-            return actorRef;
-
-        throw new InvalidOperationException($"Actor of type {typeof(TActor).Name} not registered.");
+        Log.Information("Actor system hosted service shutdown complete");
     }
 }

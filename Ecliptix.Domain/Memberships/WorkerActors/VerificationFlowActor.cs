@@ -5,6 +5,7 @@ using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
+using Ecliptix.Domain.Providers.Twilio;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Google.Protobuf;
@@ -20,7 +21,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private readonly IActorRef _membershipActor;
     private readonly IActorRef _persistor;
     private readonly Guid _phoneNumberIdentifier;
-    private readonly SNSProvider _snsProvider;
+    private readonly ISmsProvider _smsProvider;
     private OneTimePassword? _activeOtp;
     private ulong _activeOtpRemainingSeconds;
 
@@ -35,7 +36,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     public VerificationFlowActor(
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> writer,
-        IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
+        IActorRef persistor, IActorRef membershipActor, ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider, string cultureName)
     {
         _connectId = connectId;
@@ -43,7 +44,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         _writer = writer;
         _persistor = persistor;
         _membershipActor = membershipActor;
-        _snsProvider = snsProvider;
+        _smsProvider = smsProvider;
         _localizationProvider = localizationProvider;
         _cultureName = cultureName;
 
@@ -57,12 +58,12 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     public static Props Build(
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> writer,
-        IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
+        IActorRef persistor, IActorRef membershipActor,  ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider, string cultureName)
     {
         return Props.Create(() => new VerificationFlowActor(connectId, phoneNumberIdentifier, appDeviceIdentifier,
             purpose,
-            writer, persistor, membershipActor, snsProvider, localizationProvider, cultureName));
+            writer, persistor, membershipActor, smsProvider, localizationProvider, cultureName));
     }
 
     private void WaitingForFlow()
@@ -297,10 +298,10 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             _localizationProvider.Localize(VerificationFlowMessageKeys.AuthenticationCodeIs, cultureName);
         StringBuilder messageBuilder = new(localizedString + ": " + plainOtp);
 
-        Result<Unit, VerificationFlowFailure> smsResult =
-            await _snsProvider.SendSmsAsync(phoneNumberQueryRecord.PhoneNumber, messageBuilder.ToString());
+        var smsResult =
+            await _smsProvider.SendOtpAsync(phoneNumberQueryRecord.PhoneNumber, messageBuilder.ToString());
 
-        if (smsResult.IsErr) return Result<Unit, VerificationFlowFailure>.Err(smsResult.UnwrapErr());
+       // if (smsResult.IsErr) return Result<Unit, VerificationFlowFailure>.Err(smsResult.UnwrapErr());
 
         _activeOtp = otp;
 

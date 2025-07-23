@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
+using Ecliptix.Domain.Providers.Twilio;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Serilog;
@@ -15,7 +16,7 @@ public class VerificationFlowManagerActor : ReceiveActor
     private readonly ILocalizationProvider _localizationProvider;
     private readonly IActorRef _membershipActor;
     private readonly IActorRef _persistor;
-    private readonly SNSProvider _snsProvider;
+    private readonly ISmsProvider _smsProvider;
 
     private readonly Dictionary<IActorRef, ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>>
         _flowWriters = new();
@@ -23,12 +24,12 @@ public class VerificationFlowManagerActor : ReceiveActor
     public VerificationFlowManagerActor(
         IActorRef persistor,
         IActorRef membershipActor,
-        SNSProvider snsProvider,
+        ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider)
     {
         _persistor = persistor;
         _membershipActor = membershipActor;
-        _snsProvider = snsProvider;
+        _smsProvider = smsProvider;
         _localizationProvider = localizationProvider;
 
         Become(Ready);
@@ -65,7 +66,7 @@ public class VerificationFlowManagerActor : ReceiveActor
                     actorEvent.ChannelWriter,
                     _persistor,
                     _membershipActor,
-                    _snsProvider,
+                    _smsProvider,
                     _localizationProvider,
                     actorEvent.CultureName
                 ), actorName);
@@ -173,10 +174,10 @@ public class VerificationFlowManagerActor : ReceiveActor
     private static string GetActorName(uint connectId) =>
         $"flow-{connectId}";
 
-    public static Props Build(IActorRef persistor, IActorRef membershipActor, SNSProvider snsProvider,
+    public static Props Build(IActorRef persistor, IActorRef membershipActor, ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider)
     {
         return Props.Create(() =>
-            new VerificationFlowManagerActor(persistor, membershipActor, snsProvider, localizationProvider));
+            new VerificationFlowManagerActor(persistor, membershipActor, smsProvider, localizationProvider));
     }
 }
