@@ -95,6 +95,7 @@ public class MembershipActor : ReceiveActor
         Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Ok(
             new OprfRegistrationCompleteResponse
             {
+                Result = OprfRegistrationCompleteResponse.Types.RegistrationResult.Succeeded,
                 Message = "Registration completed successfully."
             }));
     }
