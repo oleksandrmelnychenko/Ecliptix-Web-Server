@@ -31,8 +31,10 @@ public class AppDeviceServices(
 
                 if (restoreResult.IsErr)
                 {
-                    var failure = restoreResult.UnwrapErr();
-                    if (failure.FailureType == EcliptixProtocolFailureType.ActorRefNotFound || ProtocolActor.IsNobody())
+                    EcliptixProtocolFailure failure = restoreResult.UnwrapErr();
+                    if (failure.FailureType == EcliptixProtocolFailureType.ActorRefNotFound 
+                        || failure.FailureType ==  EcliptixProtocolFailureType.StateMissing  
+                        || ProtocolActor.IsNobody())
                     {
                         return Result<RestoreSecrecyChannelResponse, FailureBase>.Ok(new RestoreSecrecyChannelResponse
                         {

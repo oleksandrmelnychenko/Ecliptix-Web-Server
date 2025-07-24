@@ -44,6 +44,11 @@ public sealed record EcliptixProtocolFailure(
         return new EcliptixProtocolFailure(EcliptixProtocolFailureType.ActorRefNotFound, details, inner);
     }
 
+    public static EcliptixProtocolFailure ActorStateNotFound(string details, Exception? inner = null)
+    {
+        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.StateMissing, details, inner);
+    }
+
     public static EcliptixProtocolFailure ActorNotCreated(string details, Exception? inner = null)
     {
         return new EcliptixProtocolFailure(EcliptixProtocolFailureType.ActorNotCreated, details, inner);
