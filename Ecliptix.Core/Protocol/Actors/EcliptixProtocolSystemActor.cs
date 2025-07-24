@@ -92,8 +92,7 @@ public class EcliptixProtocolSystemActor : ReceiveActor
             Context.Watch(connectActor);
 
             object? result =
-                await connectActor.Ask(message.Payload,
-                    timeout: TimeSpan.FromSeconds(30));
+                await connectActor.Ask(message.Payload);
             Sender.Tell(result);
         }
         else
@@ -105,8 +104,7 @@ public class EcliptixProtocolSystemActor : ReceiveActor
             else
             {
                 object? result =
-                    await connectActor.Ask(message.Payload,
-                        timeout: TimeSpan.FromSeconds(30));
+                    await connectActor.Ask(message.Payload);
                 Sender.Tell(result);
             }
         }
