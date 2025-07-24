@@ -144,7 +144,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
         if (_liveSystem == null || _state == null)
         {
             Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Session not ready or in an invalid state.")));
+                EcliptixProtocolFailure.Generic("pfhSession not ready or in an invalid state.")));
             return;
         }
 

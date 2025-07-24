@@ -68,7 +68,8 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             Log.Debug("  Current Index: {CurrentIndex}", proto.CurrentIndex);
         }
 
-        Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> createResult = Create(stepType, chainKeyBytes, dhPrivKeyBytes, dhPubKeyBytes);
+        Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> createResult =
+            Create(stepType, chainKeyBytes, dhPrivKeyBytes, dhPubKeyBytes);
         if (createResult.IsErr)
         {
             if (Log.IsEnabled(LogEventLevel.Debug))
@@ -82,7 +83,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
         return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(chainStep);
     }
-    
+
     internal Result<Unit, EcliptixProtocolFailure> SetCurrentIndex(uint value)
     {
         if (_disposed)
@@ -374,7 +375,10 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
     private Result<Unit, EcliptixProtocolFailure> HandleDhKeyUpdate(byte[]? newDhPrivateKey, byte[]? newDhPublicKey)
     {
-        if (newDhPrivateKey == null && newDhPublicKey == null) return OkResult;
+        if (newDhPrivateKey == null && newDhPublicKey == null)
+        {
+            return OkResult;
+        }
 
         if ((newDhPrivateKey == null) != (newDhPublicKey == null))
             return Result<Unit, EcliptixProtocolFailure>.Err(
@@ -386,12 +390,33 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("New DH public key has incorrect size."));
 
-        if (_dhPrivateKeyHandle == null)
+        Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> newHandleResult =
+            SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize)
+                .MapSodiumFailure()
+                .Bind(handle =>
+                {
+                    Result<Unit, SodiumFailure> writeResult = handle.Write(newDhPrivateKey.AsSpan());
+
+                    if (writeResult.IsErr)
+                    {
+                        handle.Dispose();
+                        return Result<SodiumSecureMemoryHandle, SodiumFailure>.Err(writeResult.UnwrapErr())
+                            .MapSodiumFailure();
+                    }
+
+                    return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Ok(handle);
+                });
+
+        if (newHandleResult.IsErr)
         {
-            _dhPrivateKeyHandle = SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize).Unwrap();
+            return Result<Unit, EcliptixProtocolFailure>.Err(newHandleResult.UnwrapErr());
         }
 
-        _dhPrivateKeyHandle.Write(newDhPrivateKey).Unwrap();
+        SodiumSecureMemoryHandle preparedNewHandle = newHandleResult.Unwrap();
+
+        _dhPrivateKeyHandle?.Dispose();
+        _dhPrivateKeyHandle = preparedNewHandle;
+
         WipeIfNotNull(_dhPublicKey).IgnoreResult();
         _dhPublicKey = (byte[])newDhPublicKey.Clone();
 
