@@ -45,8 +45,13 @@ message OprfRegistrationCompleteRequest {
   bytes membership_identifier = 2;
 }
 
-message OprfRegistrationCompleteResponse   {
-  optional string message = 1;
+message OprfRegistrationCompleteResponse {
+  enum RegistrationResult {
+    SUCCEEDED = 0;
+  }
+  
+  RegistrationResult result = 1;
+  optional string message = 2;
 }
 
 message OprfRecoverySecureKeyInitRequest {
