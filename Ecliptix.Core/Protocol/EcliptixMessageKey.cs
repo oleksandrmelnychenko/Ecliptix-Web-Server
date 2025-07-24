@@ -1,6 +1,7 @@
-using System;
 using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
+using Serilog;
+using Serilog.Events;
 
 namespace Ecliptix.Core.Protocol;
 
@@ -60,11 +61,13 @@ public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessage
         byte[] tempKey = new byte[Constants.X25519KeySize];
         if (messageKey.ReadKeyMaterial(tempKey).IsOk)
         {
-            Console.WriteLine($"[EcliptixMessageKey] Created Key [Index: {index}, Disposed: {messageKey._disposed}]: {Convert.ToHexString(tempKey)}");
+            if(Log.IsEnabled(LogEventLevel.Debug))
+                Log.Debug("[EcliptixMessageKey] Created Key [Index: {index}, Disposed: {messageKey}]: {tempKey}", index, messageKey._disposed, Convert.ToHexString(tempKey));
         }
         else
         {
-            Console.WriteLine($"[EcliptixMessageKey] Error reading key material for index {index}");
+            if(Log.IsEnabled(LogEventLevel.Debug)) 
+                Log.Debug("[EcliptixMessageKey] Error reading key material for index {index}", index);
         }
 
         return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(messageKey);
