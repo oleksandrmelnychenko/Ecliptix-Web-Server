@@ -375,6 +375,8 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
     private Result<Unit, EcliptixProtocolFailure> HandleDhKeyUpdate(byte[]? newDhPrivateKey, byte[]? newDhPublicKey)
     {
+        _messageKeys.Clear();
+        
         if (newDhPrivateKey == null && newDhPublicKey == null)
         {
             return OkResult;
