@@ -1,10 +1,8 @@
 ﻿using System.Data;
 using System.Text.RegularExpressions;
-using Akka.TestKit.Xunit2;
 using Microsoft.Data.SqlClient;
 using Testcontainers.MsSql;
 using Dapper;
-using Ecliptix.Domain.Memberships.ActorEvents;
 
 namespace Ecliptix.Tests.Integrations;
 
@@ -18,7 +16,7 @@ internal record LoginMembershipResult
 }
 
 [TestClass]
-public class MembershipIntegrationTests : TestKit
+public class MembershipIntegrationTests
 {
     private static MsSqlContainer _sqlContainer;
     private static SqlConnection _connection;
@@ -39,16 +37,11 @@ public class MembershipIntegrationTests : TestKit
     }
 
     [TestMethod]
-    public async Task SignInMembership_ReturnSuccess_WhenValidPhone()
+    [DataRow("+380501234567")]
+    public async Task SignInMembership_ReturnSuccess_WhenValidPhone(string phoneNumber)
     {
-        SignInMembershipActorEvent cmd = new(
-            PhoneNumber: "+380501234567",
-            OpaqueSignInInitRequest: null!,
-            CultureName: string.Empty);
-        
         DynamicParameters parameters = new();
-        parameters.Add("@PhoneNumber", cmd.PhoneNumber);
-
+        parameters.Add("@PhoneNumber", phoneNumber);
         
         LoginMembershipResult? result = await _connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
@@ -56,7 +49,6 @@ public class MembershipIntegrationTests : TestKit
             commandType: CommandType.StoredProcedure
         );
         
-
         Console.WriteLine(result!.Outcome);
         
         Assert.IsNotNull(result);
@@ -88,6 +80,5 @@ public class MembershipIntegrationTests : TestKit
                 }
             }
         }
-
     }
 }
