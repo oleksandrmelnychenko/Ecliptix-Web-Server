@@ -3,7 +3,7 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
-Scripts/init.sql
+Ecliptix.Tests/Scripts/init.sql
 
 # dotenv files
 .env
