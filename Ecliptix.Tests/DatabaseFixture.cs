@@ -35,13 +35,8 @@ public class DatabaseFixture : IAsyncDisposable
     {
         await ExecuteSqlFromFileAsync("truncate.sql");
     }
-
-    public async Task SeedDatabaseAsync()
-    {
-        await ExecuteSqlFromFileAsync("seed.sql");
-    }
     
-    private async Task ExecuteSqlFromFileAsync(string filename)
+    public async Task ExecuteSqlFromFileAsync(string filename)
     {
         string sqlPath = Path.Combine(AppContext.BaseDirectory, "Scripts", filename);
 
