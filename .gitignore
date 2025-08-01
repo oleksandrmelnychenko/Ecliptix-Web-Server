@@ -4,6 +4,7 @@
 ## Get latest from `dotnet new gitignore`
 
 Ecliptix.Tests/Scripts/init.sql
+Ecliptix.Tests/Scripts/truncate.sql
 
 # dotenv files
 .env
