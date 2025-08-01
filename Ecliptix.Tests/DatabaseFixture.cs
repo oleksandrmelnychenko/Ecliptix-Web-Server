@@ -5,55 +5,43 @@ using Testcontainers.MsSql;
 
 namespace Ecliptix.Tests;
 
-public class TestDatabase : IAsyncDisposable
+public class DatabaseFixture : IAsyncDisposable
 {
-    private static TestDatabase _instance;
-    public static TestDatabase Instance => _instance ??= new TestDatabase();
-    
-    public MsSqlContainer SqlContainer { get; private set; }
+    private readonly MsSqlContainer _container;
     public SqlConnection Connection { get; private set; }
-    
-    private bool _initialized;
-    
-    private TestDatabase() { }
+
+    public DatabaseFixture()
+    {
+        _container = new MsSqlBuilder()
+            .WithPassword("test_password_gDr9r74lhatO")
+            .Build();
+    }
     
     public async Task InitializeAsync()
     {
-        if (_initialized) return;
-
-        SqlContainer = new MsSqlBuilder()
-            .WithPassword("test_password_gDr9r74lhatO")
-            .Build();
-
-        await SqlContainer.StartAsync();
-        
-        Connection = new SqlConnection(SqlContainer.GetConnectionString());
+        await _container.StartAsync();
+        Connection = new SqlConnection(_container.GetConnectionString());
         await Connection.OpenAsync();
 
-        await SetupDatabaseAsync(Connection);
-        
-        _initialized = true;
+        await SetupDatabaseAsync();
     }
     
-    public async Task SetupDatabaseAsync(SqlConnection connection)
+    public async Task SetupDatabaseAsync()
     {
-        if (_initialized) return;
+        await ExecuteSqlFromFileAsync("init.sql");
+    }
+    
+    public async Task TruncateDatabaseAsync()
+    {
+        await ExecuteSqlFromFileAsync("truncate.sql");
+    }
 
-        await ExecuteSqlFromFileAsync(connection, "init.sql");
-        
-        _initialized = true;
-    }
-    
-    public async Task TruncateDatabaseAsync(SqlConnection connection)
+    public async Task SeedDatabaseAsync()
     {
-        if (!_initialized) return;
-        
-        await ExecuteSqlFromFileAsync(connection, "truncate.sql");
-        
-        _initialized = false;
+        await ExecuteSqlFromFileAsync("seed.sql");
     }
     
-    private static async Task ExecuteSqlFromFileAsync(SqlConnection connection, string filename)
+    private async Task ExecuteSqlFromFileAsync(string filename)
     {
         string sqlPath = Path.Combine(AppContext.BaseDirectory, "Scripts", filename);
 
@@ -73,7 +61,7 @@ public class TestDatabase : IAsyncDisposable
             {
                 try
                 {
-                    await connection.ExecuteAsync(trimmed);
+                    await Connection.ExecuteAsync(trimmed);
                 }
                 catch (Exception ex)
                 {
@@ -86,6 +74,6 @@ public class TestDatabase : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await Connection.DisposeAsync();
-        await SqlContainer.DisposeAsync();
+        await _container.DisposeAsync();
     }
 }

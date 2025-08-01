@@ -13,29 +13,15 @@ internal record LoginMembershipResult
 }
 
 [TestClass]
-public class MembershipIntegrationTests
+public class MembershipIntegrationTests : IntegrationTestBase
 {
-    private static TestDatabase Db => TestDatabase.Instance;
-
-    [ClassInitialize]
-    public static async Task Initialize(TestContext context)
-    {
-        await Db.InitializeAsync();
-    }
-
-    [TestInitialize]
-    public async Task TestInitialize()
-    {
-        await Db.TruncateDatabaseAsync(Db.Connection);
-    }
-    
     [TestMethod]
     public async Task SignInMembership_ReturnSuccess_WhenValidPhone()
     {
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", "+380501234567");
         
-        LoginMembershipResult? result = await Db.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
+        LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure

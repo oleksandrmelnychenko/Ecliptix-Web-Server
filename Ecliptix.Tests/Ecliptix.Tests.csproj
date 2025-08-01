@@ -25,10 +25,7 @@
     </ItemGroup>
     
     <ItemGroup>
-        <None Update="Scripts\init.sql">
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </None>
-        <None Update="Scripts\truncate.sql">
+        <None Update="Scripts\**\*">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
     </ItemGroup>
