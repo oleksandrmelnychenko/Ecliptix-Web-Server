@@ -35,7 +35,7 @@ public class TestDatabase : IAsyncDisposable
         _initialized = true;
     }
     
-    private async Task SetupDatabaseAsync(SqlConnection connection)
+    public async Task SetupDatabaseAsync(SqlConnection connection)
     {
         if (_initialized) return;
 
@@ -44,7 +44,7 @@ public class TestDatabase : IAsyncDisposable
         _initialized = true;
     }
     
-    private async Task TruncateDatabaseAsync(SqlConnection connection)
+    public async Task TruncateDatabaseAsync(SqlConnection connection)
     {
         if (!_initialized) return;
         

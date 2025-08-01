@@ -1,7 +1,4 @@
 ﻿using System.Data;
-using System.Text.RegularExpressions;
-using Microsoft.Data.SqlClient;
-using Testcontainers.MsSql;
 using Dapper;
 
 namespace Ecliptix.Tests.Integrations;
@@ -18,32 +15,27 @@ internal record LoginMembershipResult
 [TestClass]
 public class MembershipIntegrationTests
 {
-    private static MsSqlContainer _sqlContainer;
-    private static SqlConnection _connection;
+    private static TestDatabase Db => TestDatabase.Instance;
 
     [ClassInitialize]
     public static async Task Initialize(TestContext context)
     {
-        _sqlContainer = new MsSqlBuilder()
-            .WithPassword("test_password_gDr9r74lhatO")
-            .Build();
-        
-        await _sqlContainer.StartAsync();
-        
-        _connection = new SqlConnection(_sqlContainer.GetConnectionString());
-        await _connection.OpenAsync();
-
-        await SetupDatabaseAsync(_connection);
+        await Db.InitializeAsync();
     }
 
+    [TestInitialize]
+    public async Task TestInitialize()
+    {
+        await Db.TruncateDatabaseAsync(Db.Connection);
+    }
+    
     [TestMethod]
-    [DataRow("+380501234567")]
-    public async Task SignInMembership_ReturnSuccess_WhenValidPhone(string phoneNumber)
+    public async Task SignInMembership_ReturnSuccess_WhenValidPhone()
     {
         DynamicParameters parameters = new();
-        parameters.Add("@PhoneNumber", phoneNumber);
+        parameters.Add("@PhoneNumber", "+380501234567");
         
-        LoginMembershipResult? result = await _connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
+        LoginMembershipResult? result = await Db.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
@@ -52,33 +44,5 @@ public class MembershipIntegrationTests
         Console.WriteLine(result!.Outcome);
         
         Assert.IsNotNull(result);
-    }
-
-    private static async Task SetupDatabaseAsync(SqlConnection connection)
-    {
-        var sqlPath = Path.Combine(AppContext.BaseDirectory, "Scripts", "init.sql");
-
-        if (!File.Exists(sqlPath))
-            throw new FileNotFoundException("init.sql not found", sqlPath);
-
-        var sqlScript = await File.ReadAllTextAsync(sqlPath);
-
-        string[] batches = Regex.Split(sqlScript, @"^\s*GO\s*$", RegexOptions.Multiline | RegexOptions.IgnoreCase);
-        
-        foreach (var batch in batches)
-        {
-            var trimmed = batch.Trim();
-            if (!string.IsNullOrEmpty(trimmed))
-            {
-                try
-                {
-                    await connection.ExecuteAsync(trimmed);
-                }
-                catch (Exception ex)
-                {
-                    throw new Exception($"Failed to execute SQL batch:\n{trimmed}", ex);
-                }
-            }
-        }
     }
 }
