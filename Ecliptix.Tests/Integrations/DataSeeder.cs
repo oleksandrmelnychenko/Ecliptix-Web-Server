@@ -81,7 +81,7 @@ public class DataSeeder
         return this;
     }
 
-    public DataSeeder WithMembership(byte[]? secureKey = null)
+    public DataSeeder WithMembership(byte[]? secureKey = null, string status = "inactive")
     {
         _membershipUniqueId = Guid.NewGuid();
         _actions.Add(async () =>
@@ -92,12 +92,13 @@ public class DataSeeder
                                            Status, CreationStatus, UniqueId)
                                        VALUES (
                                            @PhoneNumberId, @AppDeviceId, @VerificationFlowId, @SecureKey,
-                                           'inactive', 'otp_verified', @UniqueId);
+                                           @Status, 'otp_verified', @UniqueId);
                                    """, _connection);
 
             cmd.Parameters.Add("@PhoneNumberId", SqlDbType.UniqueIdentifier).Value = _phoneUniqueId;
             cmd.Parameters.Add("@AppDeviceId", SqlDbType.UniqueIdentifier).Value = _deviceUniqueId;
             cmd.Parameters.Add("@VerificationFlowId", SqlDbType.UniqueIdentifier).Value = _verificationFlowUniqueId;
+            cmd.Parameters.Add("@Status", SqlDbType.VarChar).Value = status;
             cmd.Parameters.Add("@UniqueId", SqlDbType.UniqueIdentifier).Value = _membershipUniqueId;
 
             if (secureKey != null)
