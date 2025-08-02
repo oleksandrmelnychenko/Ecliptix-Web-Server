@@ -15,6 +15,40 @@ internal record LoginMembershipResult
 public class LoginMembershipProcedureTests : IntegrationTestBase
 {
     [TestMethod]
+    public async Task SignInMembership_ReturnLockoutTime_WhenAccountIsLockedOut()
+    {
+        // Arrange
+        string phoneNumber = "+380501234567";
+        DateTime lockoutUntil = DateTime.UtcNow.AddMinutes(30);
+        string lockoutOutcome = $"LOCKED_UNTIL:{lockoutUntil:yyyy-MM-ddTHH:mm:ss.fffffffZ}";
+
+        await DataSeeder.Build(DbFixture.Connection)
+            .WithLoginAttempt(phoneNumber, lockoutOutcome, isSuccess: false)
+            .SeedAsync();
+
+        DynamicParameters parameters = new();
+        parameters.Add("@PhoneNumber", "+380501234567");
+
+        // Act
+        LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
+            "dbo.LoginMembership",
+            parameters,
+            commandType: CommandType.StoredProcedure
+        );
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.IsNull(result.MembershipUniqueId);
+        Assert.IsNull(result.Status);
+        Assert.AreEqual(result.SecureKey, []);
+        Assert.IsNotNull(result.Outcome);
+    
+        // Should return remaining lockout time in minutes
+        int remainingMinutes = int.Parse(result.Outcome);
+        Assert.IsTrue(remainingMinutes > 0 && remainingMinutes <= 30);
+    }
+    
+    [TestMethod]
     public async Task LoginMembership_ReturnPhoneNotFound_WhenInvalidPhone()
     {
         // Arrange
