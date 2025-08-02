@@ -7,6 +7,11 @@ namespace Ecliptix.Tests;
 
 public class DatabaseFixture : IAsyncDisposable
 {
+    private static readonly Regex GoSplitter = new(
+        @"^\s*GO\s*(--.*)?$",
+        RegexOptions.Multiline | RegexOptions.IgnoreCase | RegexOptions.Compiled
+    );
+    
     private readonly MsSqlContainer _container;
     public SqlConnection Connection { get; private set; }
 
@@ -47,8 +52,7 @@ public class DatabaseFixture : IAsyncDisposable
 
         string sqlScript = await File.ReadAllTextAsync(sqlPath);
         
-        string[] batches = Regex.Split(sqlScript, @"^\s*GO\s*$", RegexOptions.Multiline | RegexOptions.IgnoreCase);
-
+        string[] batches = GoSplitter.Split(sqlScript);
         foreach (string batch in batches)
         {
             string trimmed = batch.Trim();
