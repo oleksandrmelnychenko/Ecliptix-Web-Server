@@ -13,10 +13,10 @@ internal record LoginMembershipResult
 }
 
 [TestClass]
-public class MembershipIntegrationTests : IntegrationTestBase
+public class LoginMembershipProcedureTests : IntegrationTestBase
 {
     [TestMethod]
-    public async Task SignInMembership_ReturnPhoneNotFound_WhenInvalidPhone()
+    public async Task LoginMembership_ReturnPhoneNotFound_WhenInvalidPhone()
     {
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", "+380501234567");
@@ -34,7 +34,7 @@ public class MembershipIntegrationTests : IntegrationTestBase
     [TestMethod]
     [DataRow("")]
     //[DataRow(null)] неможливо виконати команду з null, IF @PhoneNumber IS NULL OR @PhoneNumber = '' | IS NULL не спрацює
-    public async Task SignInMembership_ReturnPhoneNumberCannotByEmpty_WhenEmptyPhone(string phone)
+    public async Task LoginMembership_ReturnPhoneNumberCannotByEmpty_WhenEmptyPhone(string phone)
     {
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", phone);
@@ -50,7 +50,7 @@ public class MembershipIntegrationTests : IntegrationTestBase
     }
 
     [TestMethod]
-    public async Task SignInMembership_ReturnMembershipIdNotFound_WhenMembershipIdIsNull()
+    public async Task LoginMembership_ReturnMembershipIdNotFound_WhenMembershipIdIsNull()
     {
         // Assert
 
@@ -76,7 +76,7 @@ public class MembershipIntegrationTests : IntegrationTestBase
     }
     
     [TestMethod]
-    public async Task SignInMembership_ReturnSecureKeyNotSet_WhenSecureKeyIsNull()
+    public async Task LoginMembership_ReturnSecureKeyNotSet_WhenSecureKeyIsNull()
     {
         // Arrange
         await DataSeeder.Build(DbFixture.Connection)
@@ -102,4 +102,5 @@ public class MembershipIntegrationTests : IntegrationTestBase
         Assert.IsNotNull(result);
         Assert.AreEqual("secure_key_not_set", result.Outcome);
     }
+    
 }
