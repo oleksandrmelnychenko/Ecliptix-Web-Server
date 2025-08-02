@@ -19,23 +19,29 @@ public class LoginMembershipProcedureTests : IntegrationTestBase
     {
         // Arrange
         string phoneNumber = "+380501234567";
-        DateTime lockoutUntil = DateTime.UtcNow.AddMinutes(30);
-        string lockoutOutcome = $"LOCKED_UNTIL:{lockoutUntil:yyyy-MM-ddTHH:mm:ss.fffffffZ}";
-
         await DataSeeder.Build(DbFixture.Connection)
-            .WithLoginAttempt(phoneNumber, lockoutOutcome, isSuccess: false)
+            .WithLoginAttempt(phoneNumber, "", false)
+            .WithLoginAttempt(phoneNumber, "", false)
+            .WithLoginAttempt(phoneNumber, "", false)
             .SeedAsync();
 
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", "+380501234567");
 
         // Act
+        await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
+            "dbo.LoginMembership",
+            parameters,
+            commandType: CommandType.StoredProcedure
+        );
         LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
         );
 
+        Console.WriteLine(result.Outcome);
+        
         // Assert
         Assert.IsNotNull(result);
         Assert.IsNull(result.MembershipUniqueId);
@@ -44,8 +50,8 @@ public class LoginMembershipProcedureTests : IntegrationTestBase
         Assert.IsNotNull(result.Outcome);
     
         // Should return remaining lockout time in minutes
-        int remainingMinutes = int.Parse(result.Outcome);
-        Assert.IsTrue(remainingMinutes > 0 && remainingMinutes <= 30);
+        Assert.IsTrue(int.TryParse(result.Outcome, out var remainingMinutes));
+        Assert.IsTrue(remainingMinutes > 0 && remainingMinutes <= 5);
     }
     
     [TestMethod]
