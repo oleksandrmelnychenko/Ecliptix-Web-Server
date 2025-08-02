@@ -47,8 +47,7 @@ INSERT INTO Memberships  (
     SecureKey,
     Status,
     CreationStatus,
-    UniqueId
-                          
+    UniqueId                 
 )
 VALUES 
     ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000002',null,'inactive','otp_verified','00000000-0000-0000-0000-000000000002');
