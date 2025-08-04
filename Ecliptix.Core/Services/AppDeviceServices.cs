@@ -24,7 +24,7 @@ public class AppDeviceServices(
             context,
             async (_, connectId, ct) =>
             {
-                ForwardToConnectActorEvent forwardEvent = new ForwardToConnectActorEvent(connectId, new RestoreAppDeviceSecrecyChannelState());
+                ForwardToConnectActorEvent forwardEvent = new(connectId, new RestoreAppDeviceSecrecyChannelState());
                 Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure> restoreResult =
                     await ProtocolActor
                         .Ask<Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>>(forwardEvent, ct);
@@ -32,8 +32,8 @@ public class AppDeviceServices(
                 if (restoreResult.IsErr)
                 {
                     EcliptixProtocolFailure failure = restoreResult.UnwrapErr();
-                    if (failure.FailureType == EcliptixProtocolFailureType.ActorRefNotFound 
-                        || failure.FailureType ==  EcliptixProtocolFailureType.StateMissing  
+                    if (failure.FailureType == EcliptixProtocolFailureType.ActorRefNotFound
+                        || failure.FailureType == EcliptixProtocolFailureType.StateMissing
                         || ProtocolActor.IsNobody())
                     {
                         return Result<RestoreSecrecyChannelResponse, FailureBase>.Ok(new RestoreSecrecyChannelResponse
@@ -57,9 +57,8 @@ public class AppDeviceServices(
             context,
             async (parsedRequest, connectId, ct) =>
             {
-                BeginAppDeviceEphemeralConnectActorEvent actorEvent =
-                    new BeginAppDeviceEphemeralConnectActorEvent(parsedRequest, connectId);
-                
+                BeginAppDeviceEphemeralConnectActorEvent actorEvent = new(parsedRequest, connectId);
+
                 Result<DeriveSharedSecretReply, EcliptixProtocolFailure> reply =
                     await ProtocolActor.Ask<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>>(actorEvent, ct);
 
@@ -69,7 +68,6 @@ public class AppDeviceServices(
             });
     }
 
-
     public override async Task<CipherPayload> RegisterDeviceAppIfNotExist(
         CipherPayload request, ServerCallContext context)
     {
@@ -77,10 +75,11 @@ public class AppDeviceServices(
             request,
             context,
             PubKeyExchangeType.DataCenterEphemeralConnect,
-            async (appDevice, _ ,ct) =>
+            async (appDevice, _, ct) =>
             {
-                var registerResult = await AppDevicePersistorActor.Ask<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>>(
-                    new RegisterAppDeviceIfNotExistActorEvent(appDevice), ct);
+                Result<AppDeviceRegisteredStateReply, AppDeviceFailure> registerResult =
+                    await AppDevicePersistorActor.Ask<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>>(
+                        new RegisterAppDeviceIfNotExistActorEvent(appDevice), ct);
 
                 return registerResult.IsOk
                     ? Result<AppDeviceRegisteredStateReply, FailureBase>.Ok(registerResult.Unwrap())

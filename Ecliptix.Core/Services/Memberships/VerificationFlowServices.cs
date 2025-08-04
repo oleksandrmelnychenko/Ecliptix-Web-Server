@@ -170,7 +170,6 @@ public class VerificationFlowServices(
                 }
             });
 
-
     public override async Task<CipherPayload> VerifyOtp(CipherPayload request, ServerCallContext context) =>
         await ExecuteWithDecryption<VerifyCodeRequest, VerifyCodeRequest>(request, context,
             async (message, connectId, ct) =>

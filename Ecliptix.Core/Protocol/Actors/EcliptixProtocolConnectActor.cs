@@ -31,8 +31,8 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
     private EcliptixProtocolSystem? _liveSystem;
     
     private bool _savingFinalSnapshot;
-    private bool _pendingMessageDeletion = false;
-    private bool _pendingSnapshotDeletion = false;
+    private bool _pendingMessageDeletion;
+    private bool _pendingSnapshotDeletion;
 
     protected override bool ReceiveRecover(object message)
     {

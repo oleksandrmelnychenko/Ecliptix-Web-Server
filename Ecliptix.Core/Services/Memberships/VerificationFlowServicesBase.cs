@@ -57,7 +57,6 @@ public abstract class VerificationFlowServicesBase(
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-
         Result<byte[], FailureBase> decryptionResult = await GrpcCipherService.DecryptPayload(encryptedRequest, connectId, context);
 
         if (decryptionResult.IsErr)
@@ -91,8 +90,8 @@ public abstract class VerificationFlowServicesBase(
 
         Result<Unit, TFailure> result = await handler(parsedRequest, connectId, context.CancellationToken);
         return result.Match(
-            ok: success => Result<Unit, FailureBase>.Ok(success),
-            err: failure => Result<Unit, FailureBase>.Err(failure)
+            ok: Result<Unit, FailureBase>.Ok,
+            err: Result<Unit, FailureBase>.Err
         );
     }
 }
