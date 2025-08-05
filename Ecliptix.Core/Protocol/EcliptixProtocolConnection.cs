@@ -17,7 +17,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
 {
     private const int DhRotationInterval = 10;
     private const int AesGcmNonceSize = 12;
-    private static readonly TimeSpan SessionTimeout = TimeSpan.FromHours(24);
+    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromHours(24);
     private static readonly byte[] InitialSenderChainInfo = "ShieldInitSend"u8.ToArray();
     private static readonly byte[] InitialReceiverChainInfo = "ShieldInitRecv"u8.ToArray();
     private static readonly byte[] DhRatchetInfo = "ShieldDhRatchet"u8.ToArray();
@@ -661,7 +661,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
     private Result<Unit, EcliptixProtocolFailure> EnsureNotExpired()
     {
         return CheckDisposed().Bind(_ =>
-            DateTimeOffset.UtcNow - _createdAt > SessionTimeout
+            DateTimeOffset.UtcNow - _createdAt > ConnectTimeout
                 ? Result<Unit, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic($"Session {_id} has expired."))
                 : Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value));
