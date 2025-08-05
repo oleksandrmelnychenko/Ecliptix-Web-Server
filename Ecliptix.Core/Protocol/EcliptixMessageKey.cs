@@ -1,14 +1,11 @@
 using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
-using Serilog;
-using Serilog.Events;
 
 namespace Ecliptix.Core.Protocol;
 
 public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessageKey>
 {
     private bool _disposed;
-
     private SodiumSecureMemoryHandle _keyHandle;
 
     private EcliptixMessageKey(uint index, SodiumSecureMemoryHandle keyHandle)
@@ -29,10 +26,7 @@ public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessage
     public bool Equals(EcliptixMessageKey? other)
     {
         if (other is null) return false;
-        return
-            Index == other.Index &&
-            _disposed ==
-            other._disposed;
+        return Index == other.Index;
     }
 
     public static Result<EcliptixMessageKey, EcliptixProtocolFailure> New(uint index, ReadOnlySpan<byte> keyMaterial)
@@ -57,18 +51,6 @@ public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessage
         }
 
         EcliptixMessageKey messageKey = new(index, keyHandle);
-       
-        byte[] tempKey = new byte[Constants.X25519KeySize];
-        if (messageKey.ReadKeyMaterial(tempKey).IsOk)
-        {
-            if(Log.IsEnabled(LogEventLevel.Debug))
-                Log.Debug("[EcliptixMessageKey] Created Key [Index: {index}, Disposed: {messageKey}]: {tempKey}", index, messageKey._disposed, Convert.ToHexString(tempKey));
-        }
-        else
-        {
-            if(Log.IsEnabled(LogEventLevel.Debug)) 
-                Log.Debug("[EcliptixMessageKey] Error reading key material for index {index}", index);
-        }
 
         return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(messageKey);
     }
