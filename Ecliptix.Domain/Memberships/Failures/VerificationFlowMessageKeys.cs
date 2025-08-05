@@ -28,7 +28,7 @@ public static class VerificationFlowMessageKeys
 
     public const string ActivityStatusInvalid = "activity_status_invalid";
     public const string PhoneNumberCannotBeEmpty = "phone_cannot_be_empty";
-    public const string PhoneNotFound = "phone_not_found";
+    public const string PhoneNotFound = "phone_number_not_found";
     public const string Validation = "validation_failed";
 
     public const string InvalidCredentials = "invalid_credentials";
