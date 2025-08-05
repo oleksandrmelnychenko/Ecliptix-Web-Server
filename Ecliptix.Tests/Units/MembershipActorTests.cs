@@ -27,8 +27,8 @@ public sealed class MembershipActorTests : TestKit
         _opaqueMock = new Mock<IOpaqueProtocolService>();
 
         var localizationMock = new Mock<ILocalizationProvider>();
-        localizationMock.Setup(x => x.Localize("InvalidCredentials", It.IsAny<string>())).Returns("invalid");
-        localizationMock.Setup(x => x.Localize("TooManySigninAttempts", It.IsAny<string>())).Returns("rate-limit");
+        localizationMock.Setup(x => x.Localize("invalid_credentials", It.IsAny<string>())).Returns("invalid");
+        localizationMock.Setup(x => x.Localize("signin_too_many_attempts", It.IsAny<string>())).Returns("rate-limit");
 
         _membershipActor = Sys.ActorOf(MembershipActor.Build(_persistorProbe.Ref, _opaqueMock.Object, localizationMock.Object));
     }
@@ -54,9 +54,9 @@ public sealed class MembershipActorTests : TestKit
         if (failureTypeObj is null)
         {
             // Success persistor
-            var membershipRecord = new MembershipQueryRecord
+            MembershipQueryRecord membershipRecord = new MembershipQueryRecord
             {
-                SecureKey = new byte[] { 1, 2, 3 },
+                SecureKey = [1, 2, 3],
                 UniqueIdentifier = Guid.NewGuid(),
                 ActivityStatus = Membership.Types.ActivityStatus.Active,
                 CreationStatus = Membership.Types.CreationStatus.PassphraseSet
@@ -75,31 +75,25 @@ public sealed class MembershipActorTests : TestKit
                 .Returns(opaqueResult);
 
             _membershipActor.Tell(@event, TestActor);
-
-            _persistorProbe.ExpectMsg<SignInMembershipActorEvent>();
+            SignInMembershipActorEvent? receivedEvent = _persistorProbe.ExpectMsg<SignInMembershipActorEvent>(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(@event.PhoneNumber, receivedEvent.PhoneNumber);
             _persistorProbe.Sender.Tell(Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(membershipRecord));
         }
         else
         {
             // Failure persistor
-            Console.WriteLine("1");
             VerificationFlowFailureType failureType = (VerificationFlowFailureType)failureTypeObj;
-            Console.WriteLine("2");
             VerificationFlowFailure failure = new VerificationFlowFailure(failureType, "msg");
 
-            Console.WriteLine("3");
             _membershipActor.Tell(@event, TestActor);
-            Console.WriteLine("4");
-            _persistorProbe.ExpectMsg<SignInMembershipActorEvent>();
-            Console.WriteLine("5");
+            SignInMembershipActorEvent? receivedEvent = _persistorProbe.ExpectMsg<SignInMembershipActorEvent>(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(@event.PhoneNumber, receivedEvent.PhoneNumber);
             _persistorProbe.Sender.Tell(Result<MembershipQueryRecord, VerificationFlowFailure>.Err(failure));
-            Console.WriteLine("6");
         }
 
         // Assert
-        Console.WriteLine("7");
         Result<OpaqueSignInInitResponse, VerificationFlowFailure> result =
-            ExpectMsg<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>();
+            ExpectMsg<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(TimeSpan.FromSeconds(5));
 
         if (expectedResultObj is null)
         {
