@@ -88,11 +88,18 @@ try
     builder.Services.AddSingleton(actorSystem);
     builder.Services.AddHostedService<ActorSystemHostedService>();
 
+    string? port = Environment.GetEnvironmentVariable("PORT");
+    if (!int.TryParse(port, out var listenPort))
+    {
+        listenPort = configuration.GetValue("GrpcServer:Port", 5051);
+    }
+
     builder.WebHost.ConfigureKestrel(options =>
     {
-        int grpcPort = configuration.GetValue("GrpcServer:Port", 5001);
-        options.ListenAnyIP(grpcPort, listenOptions => { listenOptions.Protocols = HttpProtocols.Http2; });
-        options.ListenAnyIP(5002);
+        options.ListenAnyIP(listenPort, listenOptions =>
+        {
+            listenOptions.Protocols = HttpProtocols.Http2;
+        });
     });
 
     WebApplication app = builder.Build();
