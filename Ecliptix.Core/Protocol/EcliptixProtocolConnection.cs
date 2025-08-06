@@ -32,7 +32,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
     private SodiumSecureMemoryHandle? _currentSendingDhPrivateKeyHandle;
     private volatile bool _disposed;
     private readonly SodiumSecureMemoryHandle? _initialSendingDhPrivateKeyHandle;
-    private ulong _nonceCounter;
+    private uint _nonceCounter;
     private PublicKeyBundle? _peerBundle;
     private byte[]? _peerDhPublicKey;
     private readonly SodiumSecureMemoryHandle? _persistentDhPrivateKeyHandle;
@@ -68,7 +68,9 @@ public sealed class EcliptixProtocolConnection : IDisposable
         _id = id;
         _isInitiator = proto.IsInitiator;
         _createdAt = proto.CreatedAt.ToDateTimeOffset();
-        _nonceCounter = proto.NonceCounter;
+        // Migration: Handle old ulong nonce counter format
+        // If the high 32 bits are used (value > uint.MaxValue), reset to avoid issues
+        _nonceCounter = proto.NonceCounter > uint.MaxValue ? 0 : (uint)proto.NonceCounter;
         _peerBundle = PublicKeyBundle.FromProtobufExchange(proto.PeerBundle).Unwrap();
         _peerDhPublicKey = proto.PeerDhPublicKey.IsEmpty ? null : proto.PeerDhPublicKey.ToByteArray();
         _isFirstReceivingRatchet = proto.IsFirstReceivingRatchet;
@@ -301,11 +303,18 @@ public sealed class EcliptixProtocolConnection : IDisposable
                             persistentPrivKeyBytes = bytes;
                             return Unit.Value;
                         }))
-                    .Bind(_ => _sendingStep.UpdateKeysAfterDhRatchet(localSenderCk.AsSpan(0, Constants.X25519KeySize)
-                        .ToArray()))
-                    .Bind(_ => EcliptixProtocolChainStep.Create(ChainStepType.Receiver,
-                        localReceiverCk.AsSpan(0, Constants.X25519KeySize).ToArray(), persistentPrivKeyBytes,
-                        _persistentDhPublicKey))
+                    .Bind(_ => {
+                        var senderKey = localSenderCk.AsSpan(0, Constants.X25519KeySize).ToArray();
+                        Console.WriteLine($"[SERVER] Final Sender Chain Key being used: {Convert.ToHexString(senderKey)}");
+                        return _sendingStep.UpdateKeysAfterDhRatchet(senderKey);
+                    })
+                    .Bind(_ => {
+                        var receiverKey = localReceiverCk.AsSpan(0, Constants.X25519KeySize).ToArray();
+                        Console.WriteLine($"[SERVER] Final Receiver Chain Key being used: {Convert.ToHexString(receiverKey)}");
+                        return EcliptixProtocolChainStep.Create(ChainStepType.Receiver,
+                            receiverKey, persistentPrivKeyBytes,
+                            _persistentDhPublicKey);
+                    })
                     .Map(receivingStep =>
                     {
                         _rootKeyHandle = tempRootHandle;
@@ -424,9 +433,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
             {
                 Span<byte> nonceBuffer = stackalloc byte[AesGcmNonceSize];
                 RandomNumberGenerator.Fill(nonceBuffer[..8]);
-                ulong currentNonceValue =
-                    (ulong)Interlocked.Increment(ref Unsafe.As<ulong, long>(ref _nonceCounter)) - 1;
-                BinaryPrimitives.WriteUInt64LittleEndian(nonceBuffer, currentNonceValue);
+                uint currentNonce = (uint)Interlocked.Increment(ref _nonceCounter) - 1;
+                BinaryPrimitives.WriteUInt32LittleEndian(nonceBuffer[8..], currentNonce);
                 return nonceBuffer.ToArray();
             });
         }
@@ -628,6 +636,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
     {
         return Result<Unit, EcliptixProtocolFailure>.Try(() =>
         {
+            Console.WriteLine($"[SERVER] DeriveInitialChainKeys - Root Key: {Convert.ToHexString(rootKey)}");
             Span<byte> sendSpan = stackalloc byte[Constants.X25519KeySize];
             Span<byte> recvSpan = stackalloc byte[Constants.X25519KeySize];
             using (HkdfSha256 hkdfSend = new(rootKey, null))
@@ -639,16 +648,23 @@ public sealed class EcliptixProtocolConnection : IDisposable
             {
                 hkdfRecv.Expand(InitialReceiverChainInfo, recvSpan);
             }
+            Console.WriteLine($"[SERVER] Raw HKDF Send result: {Convert.ToHexString(sendSpan)}");
+            Console.WriteLine($"[SERVER] Raw HKDF Recv result: {Convert.ToHexString(recvSpan)}");
+            Console.WriteLine($"[SERVER] Is Initiator: {_isInitiator}");
 
             if (_isInitiator)
             {
                 sendSpan.CopyTo(senderCkDest);
                 recvSpan.CopyTo(receiverCkDest);
+                Console.WriteLine($"[SERVER] As initiator - Sender Chain Key: {Convert.ToHexString(senderCkDest)}");
+                Console.WriteLine($"[SERVER] As initiator - Receiver Chain Key: {Convert.ToHexString(receiverCkDest)}");
             }
             else
             {
                 recvSpan.CopyTo(senderCkDest);
                 sendSpan.CopyTo(receiverCkDest);
+                Console.WriteLine($"[SERVER] As responder - Sender Chain Key: {Convert.ToHexString(senderCkDest)} (from recv)");
+                Console.WriteLine($"[SERVER] As responder - Receiver Chain Key: {Convert.ToHexString(receiverCkDest)} (from send)");
             }
         }, ex => EcliptixProtocolFailure.DeriveKey("Failed to derive initial chain keys.", ex));
     }

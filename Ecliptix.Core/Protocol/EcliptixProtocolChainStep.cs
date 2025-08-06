@@ -1,3 +1,4 @@
+using System;
 using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
@@ -122,6 +123,8 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         try
         {
             chainKeyBytes = _chainKeyHandle.ReadBytes(Constants.X25519KeySize).Unwrap();
+            Console.WriteLine($"[SERVER] Starting key derivation for {_stepType} from index {currentIndex + 1} to {targetIndex}");
+            Console.WriteLine($"[SERVER] Initial chain key: {Convert.ToHexString(chainKeyBytes)}");
 
             Span<byte> currentChainKey = stackalloc byte[Constants.X25519KeySize];
             chainKeyBytes.CopyTo(currentChainKey);
@@ -131,11 +134,13 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
             for (uint idx = currentIndex + 1; idx <= targetIndex; idx++)
             {
-                using HkdfSha256 hkdfMsg = new(currentChainKey);
+                using HkdfSha256 hkdfMsg = new(currentChainKey, null);
                 hkdfMsg.Expand(Constants.MsgInfo, msgKey);
+                Console.WriteLine($"[SERVER] Derived message key for {_stepType} index {idx}: {Convert.ToHexString(msgKey)}");
 
-                using HkdfSha256 hkdfChain = new(currentChainKey);
+                using HkdfSha256 hkdfChain = new(currentChainKey, null);
                 hkdfChain.Expand(Constants.ChainInfo, nextChainKey);
+                Console.WriteLine($"[SERVER] Next chain key for {_stepType}: {Convert.ToHexString(nextChainKey)}");
 
                 Result<EcliptixMessageKey, EcliptixProtocolFailure> keyResult = EcliptixMessageKey.New(idx, msgKey);
                 if (keyResult.IsErr)

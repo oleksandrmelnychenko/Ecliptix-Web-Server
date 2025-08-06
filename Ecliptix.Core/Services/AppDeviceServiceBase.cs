@@ -44,25 +44,36 @@ public abstract class AppDeviceServiceBase(
         where TResponse : class, IMessage<TResponse>, new()
     {
         uint connectionId = ServiceUtilities.ExtractConnectId(context);
+        Console.WriteLine($"[SERVER] ExecuteEncryptedRequest - ConnectionId: {connectionId}, RequestType: {typeof(TRequest).Name}");
 
         Result<byte[], EcliptixProtocolFailure> decryptResult = await DecryptIncomingPayload<TResponse>(
             encryptedRequest, connectionId, exchangeType, context.CancellationToken);
 
         if (decryptResult.IsErr)
+        {
+            Console.WriteLine($"[SERVER] Decryption failed: {decryptResult.UnwrapErr().Message}");
             return await grpcCipherService.CreateFailureResponse<TResponse>(
                 decryptResult.UnwrapErr(), connectionId, context);
+        }
 
+        Console.WriteLine($"[SERVER] Successfully decrypted incoming payload");
         TRequest parsedRequest = Helpers.ParseFromBytes<TRequest>(decryptResult.Unwrap());
 
         Result<TResponse, FailureBase> handlerResult =
             await handler(parsedRequest, connectionId, context.CancellationToken);
 
         if (handlerResult.IsErr)
+        {
+            Console.WriteLine($"[SERVER] Handler failed: {handlerResult.UnwrapErr().Message}");
             return await grpcCipherService.CreateFailureResponse<TResponse>(
                 handlerResult.UnwrapErr(), connectionId, context);
+        }
 
-        return await EncryptOutgoingPayload(
+        Console.WriteLine($"[SERVER] Handler succeeded, encrypting response");
+        var encryptedResponse = await EncryptOutgoingPayload(
             handlerResult.Unwrap(), connectionId, exchangeType, context);
+        Console.WriteLine($"[SERVER] Returning encrypted response - Nonce: {Convert.ToHexString(encryptedResponse.Nonce.ToByteArray())}, Size: {encryptedResponse.Cipher.Length}");
+        return encryptedResponse;
     }
 
     private async Task<Result<byte[], EcliptixProtocolFailure>> DecryptIncomingPayload<TResponse>(

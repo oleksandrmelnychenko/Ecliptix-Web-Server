@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Ecliptix.Core.Protocol.Utilities;
 using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Core.Protocol;
@@ -83,10 +84,12 @@ public static class AesGcmService
         ReadOnlySpan<byte> plaintext,
         ReadOnlySpan<byte> associatedData = default)
     {
-        byte[] ciphertext = new byte[plaintext.Length];
-        byte[] tag = new byte[Constants.AesGcmTagSize];
-        Encrypt(key, nonce, plaintext, ciphertext, tag, associatedData);
-        return (ciphertext, tag);
+        using var ciphertextMemory = ScopedSecureMemory.Allocate(plaintext.Length);
+        using var tagMemory = ScopedSecureMemory.Allocate(Constants.AesGcmTagSize);
+        
+        Encrypt(key, nonce, plaintext, ciphertextMemory.AsSpan(), tagMemory.AsSpan(), associatedData);
+        
+        return (ciphertextMemory.AsSpan().ToArray(), tagMemory.AsSpan().ToArray());
     }
 
     public static byte[] DecryptAllocating(
@@ -96,8 +99,9 @@ public static class AesGcmService
         ReadOnlySpan<byte> tag,
         ReadOnlySpan<byte> associatedData = default)
     {
-        byte[] plaintext = new byte[ciphertext.Length];
-        Decrypt(key, nonce, ciphertext, tag, plaintext, associatedData);
-        return plaintext;
+        using var plaintextMemory = ScopedSecureMemory.Allocate(ciphertext.Length);
+        Decrypt(key, nonce, ciphertext, tag, plaintextMemory.AsSpan(), associatedData);
+        
+        return plaintextMemory.AsSpan().ToArray();
     }
 }

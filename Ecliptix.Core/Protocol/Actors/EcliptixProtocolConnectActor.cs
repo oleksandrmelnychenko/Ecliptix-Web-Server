@@ -1,6 +1,7 @@
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
+using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
 using Ecliptix.Protobuf.CipherPayload;
@@ -166,6 +167,32 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 
     private void HandleInitialKeyExchange(DeriveSharedSecretActorEvent cmd)
     {
+        // Check if we already have a recovered session
+        if (_liveSystem != null && _state != null)
+        {
+            Context.GetLogger().Info($"[HandleInitialKeyExchange] Using existing recovered session for connectId {cmd.ConnectId}");
+            // Use the existing system from recovery
+            Result<PubKeyExchange, EcliptixProtocolFailure> existingReplyResult =
+                _liveSystem.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.PubKeyExchange);
+            
+            if (existingReplyResult.IsOk)
+            {
+                // Update state after successful response
+                Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
+                    EcliptixProtocol.CreateStateFromSystem(_state, _liveSystem);
+                if (newStateResult.IsOk)
+                {
+                    _state = newStateResult.Unwrap();
+                    Persist(_state, _ => { });
+                }
+            }
+            
+            Sender.Tell(existingReplyResult.Map(reply => new DeriveSharedSecretReply(reply)));
+            return;
+        }
+        
+        // Only create a new session if we don't have one from recovery
+        Context.GetLogger().Info($"[HandleInitialKeyExchange] Creating new session for connectId {cmd.ConnectId}");
         EcliptixSystemIdentityKeys identityKeys = EcliptixSystemIdentityKeys.Create(10).Unwrap();
         EcliptixProtocolSystem system = new(identityKeys);
         Result<PubKeyExchange, EcliptixProtocolFailure> replyResult =

@@ -599,6 +599,15 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             {
                 dh4 = ScalarMult.Mult(ephemeralSecretBytes, remoteBundle.OneTimePreKeys[0].PublicKey);
             }
+            
+            Console.WriteLine($"[SERVER] X3DH AS INITIATOR:");
+            Console.WriteLine($"  DH1 (Eph * RemoteId): {Convert.ToHexString(dh1)}");
+            Console.WriteLine($"  DH2 (Eph * RemoteSpk): {Convert.ToHexString(dh2)}");
+            Console.WriteLine($"  DH3 (Id * RemoteSpk): {Convert.ToHexString(dh3)}");
+            if (useOpk)
+            {
+                Console.WriteLine($"  DH4 (Eph * RemoteOpk): {Convert.ToHexString(dh4)}");
+            }
 
             if (Log.IsEnabled(LogEventLevel.Debug))
             {
@@ -732,6 +741,11 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             dh1 = ScalarMult.Mult(identitySecretBytes, remoteEphemeralPublicKeyX.ToArray());
             dh2 = ScalarMult.Mult(signedPreKeySecretBytes, remoteEphemeralPublicKeyX.ToArray());
             dh3 = ScalarMult.Mult(signedPreKeySecretBytes, remoteIdentityPublicKeyX.ToArray());
+            
+            Console.WriteLine($"[SERVER] X3DH AS RECIPIENT:");
+            Console.WriteLine($"  DH1 (Id * RemoteEph): {Convert.ToHexString(dh1)}");
+            Console.WriteLine($"  DH2 (Spk * RemoteEph): {Convert.ToHexString(dh2)}");
+            Console.WriteLine($"  DH3 (Spk * RemoteId): {Convert.ToHexString(dh3)}");
             if (oneTimePreKeySecretBytes != null)
                 dh4 = ScalarMult.Mult(oneTimePreKeySecretBytes, remoteEphemeralPublicKeyX.ToArray());
 

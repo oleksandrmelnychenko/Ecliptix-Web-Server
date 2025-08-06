@@ -3,6 +3,7 @@ namespace Ecliptix.Domain.Utilities;
 public static class Constants
 {
     public const int X25519KeySize = 32;
+    public const uint CacheWindowSize = 1000;
     public const int Ed25519KeySize = 32;
 
     public const int Ed25519PublicKeySize = 32;
@@ -14,11 +15,17 @@ public static class Constants
     public const int AesGcmNonceSize = 12;
     public const int AesGcmTagSize = 16;
 
-    public static readonly byte[] MsgInfo = [0x01];
-    public static readonly byte[] ChainInfo = [0x02];
+    public static readonly TimeSpan RotationTimeout = TimeSpan.FromSeconds(3600);
 
-    public static readonly byte[] X3dhInfo =
-    [
-        0x45, 0x63, 0x6C, 0x69, 0x70, 0x74, 0x69, 0x78, 0x5F, 0x58, 0x33, 0x44, 0x48
-    ];
+    // HKDF Info constants
+    public static readonly byte[] MsgInfo = { 0x01 };
+    public static readonly byte[] ChainInfo = { 0x02 };
+
+    public static readonly byte[] DhRatchetInfo = { 0x03 }; // For Root Key + Chain Key derivation post-DH
+
+    // Info constants for initial chain key derivation from root key
+    // Ensure these are distinct from DhRatchetInfo and each other
+    public static readonly byte[] InitialSenderChainInfo = { 0x11 };
+    public static readonly byte[] InitialReceiverChainInfo = { 0x12 };
+    public static ReadOnlySpan<byte> X3dhInfo => "Ecliptix_X3DH"u8;
 }
