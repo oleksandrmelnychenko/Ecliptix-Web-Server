@@ -74,20 +74,58 @@ public class EcliptixProtocolSystem : IDisposable
         Console.WriteLine($"[SERVER] ProcessAndRespondToPubKeyExchange - ConnectId: {connectId}, State: {peerInitialMessageProto.State}");
         Console.WriteLine($"[SERVER] Has existing connection: {_connectSession != null}");
         
-        // If we already have a connection (from recovery), just return our existing identity keys
+        // If we already have a connection (from recovery), verify state integrity before proceeding
         if (_connectSession != null)
         {
-            Console.WriteLine($"[SERVER] Using existing recovered session - returning stored identity keys");
-            return ecliptixSystemIdentityKeys.CreatePublicBundle()
-                .AndThen(bundle => _connectSession.GetCurrentSenderDhPublicKey()
-                    .Map(dhPublicKey => new PubKeyExchange
-                    {
-                        State = PubKeyExchangeState.Pending,
-                        OfType = peerInitialMessageProto.OfType,
-                        Payload = bundle.ToProtobufExchange().ToByteString(),
-                        InitialDhPublicKey = ByteString.CopyFrom(dhPublicKey ?? 
-                            throw new InvalidOperationException("DH public key is null"))
-                    }));
+            Console.WriteLine($"[SERVER] Using existing recovered session - performing state verification");
+            
+            // NEW: Verify the recovered session state integrity
+            var stateVerificationResult = VerifyRecoveredSessionState();
+            if (stateVerificationResult.IsErr)
+            {
+                Console.WriteLine($"[SERVER] Recovered session state verification failed: {stateVerificationResult.UnwrapErr().Message}");
+                
+                // SECURITY: Don't dispose session here as it could leave actor in inconsistent state
+                // Instead, return error to force proper cleanup at actor level
+                return Result<PubKeyExchange, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.ActorStateNotFound(
+                        "Session state corrupted - full re-handshake required"));
+            }
+            else
+            {
+                Console.WriteLine($"[SERVER] Recovered session state verified successfully - returning stored identity keys");
+                
+                // NEW: Check if client is attempting fresh handshake with different identity
+                var clientIdentityCheckResult = CheckClientIdentityForFreshHandshake(peerInitialMessageProto);
+                if (clientIdentityCheckResult.IsErr)
+                {
+                    Console.WriteLine($"[SERVER] Client identity change detected: {clientIdentityCheckResult.UnwrapErr().Message}");
+                    Console.WriteLine("[SERVER] Client is performing fresh handshake - clearing old session state");
+                    
+                    // Client has new identity keys, this is a fresh handshake, not recovery
+                    // Clear the existing session and fall through to create new one
+                    _connectSession?.Dispose();
+                    _connectSession = null;
+                    
+                    // Don't return here - fall through to create fresh session
+                }
+                else
+                {
+                    Console.WriteLine("[SERVER] Client identity matches recovered session - proceeding with state restoration");
+                    
+                    // Only return the existing session if identity keys match
+                    return ecliptixSystemIdentityKeys.CreatePublicBundle()
+                        .AndThen(bundle => _connectSession.GetCurrentSenderDhPublicKey()
+                            .Map(dhPublicKey => new PubKeyExchange
+                            {
+                                State = PubKeyExchangeState.Pending,
+                                OfType = peerInitialMessageProto.OfType,
+                                Payload = bundle.ToProtobufExchange().ToByteString(),
+                                InitialDhPublicKey = ByteString.CopyFrom(dhPublicKey ?? 
+                                    throw new InvalidOperationException("DH public key is null"))
+                            }));
+                }
+            }
         }
         
         SodiumSecureMemoryHandle? rootKeyHandle = null;
@@ -274,6 +312,14 @@ public class EcliptixProtocolSystem : IDisposable
                 return Result<byte[], EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic("Session not established."));
 
+            // NEW: Enhanced message validation with recovery hints
+            var validationResult = ValidateIncomingMessage(cipherPayloadProto);
+            if (validationResult.IsErr)
+            {
+                Console.WriteLine($"[SERVER] Message validation failed: {validationResult.UnwrapErr().Message}");
+                return Result<byte[], EcliptixProtocolFailure>.Err(validationResult.UnwrapErr());
+            }
+
             byte[]? receivedDhKey = cipherPayloadProto.DhPublicKey.Length > 0
                 ? cipherPayloadProto.DhPublicKey.ToByteArray()
                 : null;
@@ -285,23 +331,15 @@ public class EcliptixProtocolSystem : IDisposable
                 if (ratchetResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(ratchetResult.UnwrapErr());
             }
 
-            Result<EcliptixMessageKey, EcliptixProtocolFailure> deriveResult = _connectSession.ProcessReceivedMessage(cipherPayloadProto.RatchetIndex);
+            // NEW: Attempt message processing with enhanced recovery logic
+            Result<EcliptixMessageKey, EcliptixProtocolFailure> deriveResult = AttemptMessageProcessingWithRecovery(cipherPayloadProto, receivedDhKey);
             if (deriveResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(deriveResult.UnwrapErr());
 
             Result<EcliptixMessageKey, EcliptixProtocolFailure> clonedKeyResult = CloneMessageKey(deriveResult.Unwrap());
             if (clonedKeyResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(clonedKeyResult.UnwrapErr());
             messageKeyClone = clonedKeyResult.Unwrap();
             
-            // Log the message key being used
-            byte[]? keyMaterial = null;
-            try {
-                keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
-                Span<byte> keySpan = keyMaterial.AsSpan(0, Constants.AesKeySize);
-                messageKeyClone.ReadKeyMaterial(keySpan);
-                Console.WriteLine($"[SERVER] Using message key for decryption: {Convert.ToHexString(keySpan)}");
-            } finally {
-                if (keyMaterial != null) ArrayPool<byte>.Shared.Return(keyMaterial, clearArray: true);
-            }
+            // Message key loaded successfully (key material not logged for security)
 
             Result<PublicKeyBundle, EcliptixProtocolFailure> peerBundleResult = _connectSession.GetPeerBundle();
             if (peerBundleResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(peerBundleResult.UnwrapErr());
@@ -316,7 +354,13 @@ public class EcliptixProtocolSystem : IDisposable
 
             if (decryptResult.IsErr && receivedDhKey != null && cipherPayloadProto.RatchetIndex <= 5)
             {
-                _connectSession.PerformReceivingRatchet(receivedDhKey).IgnoreResult();
+                // SECURITY FIX: Check ratchet result instead of ignoring it
+                var ratchetResult = _connectSession.PerformReceivingRatchet(receivedDhKey);
+                if (ratchetResult.IsErr)
+                {
+                    Console.WriteLine($"[SERVER] Fallback ratchet operation failed: {ratchetResult.UnwrapErr().Message}");
+                    return Result<byte[], EcliptixProtocolFailure>.Err(ratchetResult.UnwrapErr());
+                }
 
                 deriveResult = _connectSession.ProcessReceivedMessage(cipherPayloadProto.RatchetIndex);
                 if (deriveResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(deriveResult.UnwrapErr());
@@ -331,8 +375,15 @@ public class EcliptixProtocolSystem : IDisposable
 
             if (decryptResult.IsErr)
             {
+                // Check if this might be an identity key mismatch
+                // This can happen when a client reconnects with different identity keys
+                // but the server still has the old session persisted
+                Console.WriteLine($"[SERVER] Decryption failed for message with RatchetIndex: {cipherPayloadProto.RatchetIndex}");
+                Console.WriteLine($"[SERVER] This might indicate client identity key change - consider fresh handshake");
+                
+                // Return specific error that should trigger fresh handshake on client side
                 return Result<byte[], EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic("Decrypt failed; possible desync—resync chains or rekey."));
+                    EcliptixProtocolFailure.ActorStateNotFound("Session authentication failed - fresh handshake required"));
             }
 
             return decryptResult;
@@ -480,6 +531,242 @@ public class EcliptixProtocolSystem : IDisposable
         finally
         {
             if (keyMaterial != null) ArrayPool<byte>.Shared.Return(keyMaterial, clearArray: true);
+        }
+    }
+
+    /// <summary>
+    /// Validates incoming message for potential issues that might require recovery
+    /// </summary>
+    private Result<Unit, EcliptixProtocolFailure> ValidateIncomingMessage(CipherPayload payload)
+    {
+        // Check basic payload structure
+        if (payload.Nonce.IsEmpty || payload.Cipher.IsEmpty)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Invalid payload - missing nonce or cipher"));
+
+        // Validate nonce size
+        if (payload.Nonce.Length != Constants.AesGcmNonceSize)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic($"Invalid nonce size: {payload.Nonce.Length}, expected: {Constants.AesGcmNonceSize}"));
+
+        // NOTE: Removed unsafe chain index validation that used non-existent methods
+        // This should be implemented properly in EcliptixProtocolConnection
+        Console.WriteLine($"[SERVER] Processing message with ratchet index: {payload.RatchetIndex}");
+
+        return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
+    }
+
+    /// <summary>
+    /// Attempts to process message with multiple recovery strategies
+    /// </summary>
+    private Result<EcliptixMessageKey, EcliptixProtocolFailure> AttemptMessageProcessingWithRecovery(
+        CipherPayload payload, byte[]? receivedDhKey)
+    {
+        if (_connectSession == null)
+            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Session not established"));
+
+        // Strategy 1: Normal processing
+        var normalResult = _connectSession.ProcessReceivedMessage(payload.RatchetIndex);
+        if (normalResult.IsOk)
+        {
+            Console.WriteLine("[SERVER] Normal message processing succeeded");
+            return normalResult;
+        }
+
+        Console.WriteLine($"[SERVER] Normal processing failed: {normalResult.UnwrapErr().Message}");
+
+        // Strategy 2: Try with DH ratchet if we have received DH key and index is low
+        if (receivedDhKey != null && payload.RatchetIndex <= 5)
+        {
+            Console.WriteLine("[SERVER] Attempting recovery with DH ratchet");
+            var ratchetResult = _connectSession.PerformReceivingRatchet(receivedDhKey);
+            if (ratchetResult.IsOk)
+            {
+                var retryResult = _connectSession.ProcessReceivedMessage(payload.RatchetIndex);
+                if (retryResult.IsOk)
+                {
+                    Console.WriteLine("[SERVER] Recovery with DH ratchet succeeded");
+                    return retryResult;
+                }
+                Console.WriteLine($"[SERVER] Retry after DH ratchet failed: {retryResult.UnwrapErr().Message}");
+            }
+            else
+            {
+                Console.WriteLine($"[SERVER] DH ratchet failed: {ratchetResult.UnwrapErr().Message}");
+            }
+        }
+
+        // Strategy 3: REMOVED - Message skipping is unsafe in Double Ratchet protocol
+        // Skipping messages could break forward secrecy if they contained DH rotations
+        Console.WriteLine("[SERVER] Message gap recovery strategies are limited for security reasons");
+
+        // All recovery strategies failed
+        Console.WriteLine("[SERVER] All message recovery strategies failed");
+        return normalResult; // Return original error
+    }
+
+    /// <summary>
+    /// REMOVED: GetCurrentReceivingIndex - method doesn't exist and reflection is unsafe
+    /// This functionality should be properly implemented in EcliptixProtocolConnection
+    /// </summary>
+
+    /// <summary>
+    /// REMOVED: TrySkipReceivedMessage - method doesn't exist and message skipping 
+    /// could break forward secrecy in Double Ratchet protocol
+    /// </summary>
+
+    /// <summary>
+    /// Verifies the integrity of a recovered session state
+    /// </summary>
+    private Result<Unit, EcliptixProtocolFailure> VerifyRecoveredSessionState()
+    {
+        if (_connectSession == null)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("No session to verify"));
+
+        try
+        {
+            // Check if we can get basic state information
+            var peerBundleResult = _connectSession.GetPeerBundle();
+            if (peerBundleResult.IsErr)
+                return Result<Unit, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic($"Cannot retrieve peer bundle: {peerBundleResult.UnwrapErr().Message}"));
+
+            // Check if we can get current DH key
+            var dhKeyResult = _connectSession.GetCurrentSenderDhPublicKey();
+            if (dhKeyResult.IsErr)
+                return Result<Unit, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic($"Cannot retrieve sender DH key: {dhKeyResult.UnwrapErr().Message}"));
+
+            // Verify the peer bundle has valid keys
+            var peerBundle = peerBundleResult.Unwrap();
+            if (peerBundle.IdentityX25519 == null || peerBundle.IdentityX25519.Length != Constants.X25519PublicKeySize)
+                return Result<Unit, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic("Invalid peer identity key in recovered state"));
+
+            if (peerBundle.SignedPreKeyPublic == null || peerBundle.SignedPreKeyPublic.Length != Constants.X25519PublicKeySize)
+                return Result<Unit, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic("Invalid peer signed pre-key in recovered state"));
+
+            // Verify system identity keys are still valid
+            if (ecliptixSystemIdentityKeys.IdentityX25519PublicKey == null || 
+                ecliptixSystemIdentityKeys.IdentityX25519PublicKey.Length != Constants.X25519PublicKeySize)
+                return Result<Unit, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic("Invalid system identity key"));
+
+            Console.WriteLine("[SERVER] Session state verification passed all checks");
+            return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic($"Session state verification failed: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Checks if client is attempting a fresh handshake with different identity keys
+    /// Returns Error if identities don't match (indicating fresh handshake needed)
+    /// </summary>
+    private Result<Unit, EcliptixProtocolFailure> CheckClientIdentityForFreshHandshake(PubKeyExchange peerMessage)
+    {
+        if (_connectSession == null)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("No session to compare against"));
+
+        try
+        {
+            // Parse the client's current public key bundle
+            var currentBundleResult = Result<Protobuf.PubKeyExchange.PublicKeyBundle, EcliptixProtocolFailure>.Try(
+                () => Protobuf.PubKeyExchange.PublicKeyBundle.Parser.ParseFrom(peerMessage.Payload),
+                ex => EcliptixProtocolFailure.Decode("Failed to parse client bundle for identity check", ex));
+            
+            if (currentBundleResult.IsErr)
+                return Result<Unit, EcliptixProtocolFailure>.Err(currentBundleResult.UnwrapErr());
+
+            var currentBundle = currentBundleResult.Unwrap();
+
+            // Get the previously stored peer bundle
+            var storedBundleResult = _connectSession.GetPeerBundle();
+            if (storedBundleResult.IsErr)
+                return Result<Unit, EcliptixProtocolFailure>.Err(storedBundleResult.UnwrapErr());
+
+            var storedBundle = storedBundleResult.Unwrap();
+
+            // Compare identity keys - if they DON'T match, this is a fresh handshake
+            bool x25519Matches = currentBundle.IdentityX25519PublicKey.Span.SequenceEqual(storedBundle.IdentityX25519);
+            bool ed25519Matches = currentBundle.IdentityPublicKey.Span.SequenceEqual(storedBundle.IdentityEd25519);
+
+            if (!x25519Matches || !ed25519Matches)
+            {
+                return Result<Unit, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic(
+                        $"Client identity keys have changed - X25519 match: {x25519Matches}, Ed25519 match: {ed25519Matches}. Fresh handshake required."));
+            }
+
+            Console.WriteLine("[SERVER] Client identity keys match stored session");
+            return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic($"Client identity check failed: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Verifies that the client identity matches the previously established session
+    /// </summary>
+    private Result<Unit, EcliptixProtocolFailure> VerifyClientIdentityConsistency(PubKeyExchange peerMessage)
+    {
+        if (_connectSession == null)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("No session for identity verification"));
+
+        try
+        {
+            // Parse the client's current public key bundle
+            var currentBundleResult = Result<Protobuf.PubKeyExchange.PublicKeyBundle, EcliptixProtocolFailure>.Try(
+                () => Protobuf.PubKeyExchange.PublicKeyBundle.Parser.ParseFrom(peerMessage.Payload),
+                ex => EcliptixProtocolFailure.Decode("Failed to parse client bundle for identity verification", ex));
+            
+            if (currentBundleResult.IsErr)
+                return Result<Unit, EcliptixProtocolFailure>.Err(currentBundleResult.UnwrapErr());
+
+            var currentBundle = currentBundleResult.Unwrap();
+
+            // Get the previously stored peer bundle
+            var storedBundleResult = _connectSession.GetPeerBundle();
+            if (storedBundleResult.IsErr)
+                return Result<Unit, EcliptixProtocolFailure>.Err(storedBundleResult.UnwrapErr());
+
+            var storedBundle = storedBundleResult.Unwrap();
+
+            // Compare identity keys (these should never change)
+            if (!currentBundle.IdentityX25519PublicKey.Span.SequenceEqual(storedBundle.IdentityX25519))
+            {
+                return Result<Unit, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic(
+                        $"Client X25519 identity key mismatch - stored: {Convert.ToHexString(storedBundle.IdentityX25519)}, " +
+                        $"received: {Convert.ToHexString(currentBundle.IdentityX25519PublicKey.Span)}"));
+            }
+
+            if (!currentBundle.IdentityPublicKey.Span.SequenceEqual(storedBundle.IdentityEd25519))
+            {
+                return Result<Unit, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic(
+                        $"Client Ed25519 identity key mismatch - stored: {Convert.ToHexString(storedBundle.IdentityEd25519)}, " +
+                        $"received: {Convert.ToHexString(currentBundle.IdentityPublicKey.Span)}"));
+            }
+
+            Console.WriteLine("[SERVER] Client identity consistency verification passed");
+            return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic($"Client identity verification failed: {ex.Message}"));
         }
     }
 }

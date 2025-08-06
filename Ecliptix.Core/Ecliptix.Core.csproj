@@ -68,4 +68,9 @@
             <DependentUpon>VerificationFlowRes.resx</DependentUpon>
         </Compile>
     </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="Protocol\Configuration\" />
+      <Folder Include="Protocol\Services\" />
+    </ItemGroup>
 </Project>

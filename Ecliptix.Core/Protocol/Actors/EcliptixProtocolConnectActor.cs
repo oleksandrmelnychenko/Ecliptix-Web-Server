@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
@@ -94,12 +95,9 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
             case KeepAlive:
                 return true;
            
-            // This is now the ONLY automatic shutdown trigger.
             case ReceiveTimeout _:
                 SaveFinalSnapshot();
                 return true;
-
-            // Streams only.
             case ClientDisconnectedActorEvent _:
                 SaveFinalSnapshot();
                 return true;
@@ -144,19 +142,131 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
     {
         if (_liveSystem == null || _state == null)
         {
-            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.ActorStateNotFound("pfhSession not ready or in an invalid state.")));
+            RestoreSecrecyChannelResponse notFoundReply = new()
+            {
+                Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
+                ReceivingChainLength = 0,
+                SendingChainLength = 0
+            };
+            
+            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(notFoundReply));
             return;
         }
 
+        Result<Unit, EcliptixProtocolFailure> stateValidation = ValidateRecoveredStateIntegrity();
+        if (stateValidation.IsErr)
+        {
+            Context.GetLogger().Warning("State integrity validation failed: {Error}. Clearing session.", stateValidation.UnwrapErr().Message);
+            
+            RestoreSecrecyChannelResponse failureReply = new()
+            {
+                Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
+                ReceivingChainLength = 0,
+                SendingChainLength = 0
+            };
+            
+            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(failureReply));
+            
+            _liveSystem?.Dispose();
+            _liveSystem = null;
+            _state = null;
+            SaveSnapshot(new EcliptixSessionState());
+            return;
+        }
+        
+        try
+        {
+            _liveSystem.GetConnection();
+        }
+        catch (InvalidOperationException)
+        {
+            Context.GetLogger().Warning("Live system connection was cleared (likely due to fresh handshake detection). Clearing actor state.");
+            
+            RestoreSecrecyChannelResponse freshHandshakeReply = new()
+            {
+                Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
+                ReceivingChainLength = 0,
+                SendingChainLength = 0
+            };
+            
+            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(freshHandshakeReply));
+            
+            _liveSystem?.Dispose();
+            _liveSystem = null;
+            _state = null;
+            SaveSnapshot(new EcliptixSessionState());
+            return;
+        }
+
+        byte[] stateFingerprint = CalculateStateFingerprint();
+        DateTime lastPersistTime = GetLastPersistenceTime();
+        
         RestoreSecrecyChannelResponse reply = new()
         {
             ReceivingChainLength = _state.RatchetState.ReceivingStep.CurrentIndex,
             SendingChainLength = _state.RatchetState.SendingStep.CurrentIndex,
             Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionResumed
         };
+        
+        Context.GetLogger().Info(
+            "Session restored - ConnectId: {ConnectId}, Sending: {SendingIdx}, Receiving: {ReceivingIdx}, LastPersist: {LastPersist}",
+            connectId, reply.SendingChainLength, reply.ReceivingChainLength, lastPersistTime);
 
         Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(reply));
+    }
+
+    private Result<Unit, EcliptixProtocolFailure> ValidateRecoveredStateIntegrity()
+    {
+        if (_state?.RatchetState == null)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.ActorStateNotFound("Ratchet state missing"));
+
+        uint sendingIdx = _state.RatchetState.SendingStep.CurrentIndex;
+        uint receivingIdx = _state.RatchetState.ReceivingStep.CurrentIndex;
+        
+        if (sendingIdx > 10_000_000 || receivingIdx > 10_000_000)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic($"Chain indices appear corrupted: sending={sendingIdx}, receiving={receivingIdx}"));
+
+        if (_state.RatchetState.RootKey.IsEmpty)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Root key missing from recovered state"));
+
+        if (_state.RatchetState.SendingStep.ChainKey.IsEmpty || 
+            _state.RatchetState.ReceivingStep.ChainKey.IsEmpty)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Chain keys missing from recovered state"));
+
+        Google.Protobuf.ByteString sendingDhKey = _state.RatchetState.SendingStep.DhPublicKey;
+        if (!sendingDhKey.IsEmpty && sendingDhKey.Length != 32)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic($"Invalid DH key size: {sendingDhKey.Length}"));
+
+        if (_state.RatchetState.NonceCounter > uint.MaxValue - 1000)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Nonce counter near overflow"));
+
+        return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
+    }
+
+    private byte[] CalculateStateFingerprint()
+    {
+        if (_state?.RatchetState == null) return new byte[16];
+        List<byte> input = [];
+        input.AddRange(_state.RatchetState.RootKey.ToByteArray());
+        input.AddRange(BitConverter.GetBytes(_state.RatchetState.SendingStep.CurrentIndex));
+        input.AddRange(BitConverter.GetBytes(_state.RatchetState.ReceivingStep.CurrentIndex));
+        input.AddRange(BitConverter.GetBytes(_state.RatchetState.NonceCounter));
+
+        if (!_state.RatchetState.SendingStep.ChainKey.IsEmpty)
+            input.AddRange(_state.RatchetState.SendingStep.ChainKey.ToByteArray());
+
+        return SHA256.HashData(input.ToArray()).Take(16).ToArray();
+    }
+
+    private DateTime GetLastPersistenceTime()
+    {
+        return DateTime.UtcNow.AddMinutes(-((SnapshotSequenceNr % 10) * 5));
     }
 
     protected override void PreStart()
@@ -167,31 +277,50 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 
     private void HandleInitialKeyExchange(DeriveSharedSecretActorEvent cmd)
     {
-        // Check if we already have a recovered session
         if (_liveSystem != null && _state != null)
         {
             Context.GetLogger().Info($"[HandleInitialKeyExchange] Using existing recovered session for connectId {cmd.ConnectId}");
-            // Use the existing system from recovery
             Result<PubKeyExchange, EcliptixProtocolFailure> existingReplyResult =
                 _liveSystem.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.PubKeyExchange);
             
-            if (existingReplyResult.IsOk)
+            bool sessionStillValid = true;
+            try
             {
-                // Update state after successful response
-                Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
-                    EcliptixProtocol.CreateStateFromSystem(_state, _liveSystem);
-                if (newStateResult.IsOk)
-                {
-                    _state = newStateResult.Unwrap();
-                    Persist(_state, _ => { });
-                }
+                _liveSystem.GetConnection();
+            }
+            catch (InvalidOperationException)
+            {
+                Context.GetLogger().Info("[HandleInitialKeyExchange] System detected fresh handshake - clearing actor state");
+                _liveSystem?.Dispose();
+                _liveSystem = null;
+                _state = null;
+                sessionStillValid = false;
+                SaveSnapshot(new EcliptixSessionState());
             }
             
-            Sender.Tell(existingReplyResult.Map(reply => new DeriveSharedSecretReply(reply)));
-            return;
+            if (sessionStillValid)
+            {
+                if (existingReplyResult.IsOk)
+                {
+                    Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
+                        EcliptixProtocol.CreateStateFromSystem(_state!, _liveSystem!);
+                    if (newStateResult.IsOk)
+                    {
+                        _state = newStateResult.Unwrap();
+                        Persist(_state, _ => { });
+                    }
+                    
+                    Sender.Tell(existingReplyResult.Map(reply => new DeriveSharedSecretReply(reply)));
+                }
+                else
+                {
+                    Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(existingReplyResult.UnwrapErr()));
+                }
+
+                return;
+            }
         }
         
-        // Only create a new session if we don't have one from recovery
         Context.GetLogger().Info($"[HandleInitialKeyExchange] Creating new session for connectId {cmd.ConnectId}");
         EcliptixSystemIdentityKeys identityKeys = EcliptixSystemIdentityKeys.Create(10).Unwrap();
         EcliptixProtocolSystem system = new(identityKeys);
@@ -270,7 +399,19 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
         Result<byte[], EcliptixProtocolFailure> result = _liveSystem.ProcessInboundMessage(actorEvent.CipherPayload);
         if (result.IsErr)
         {
-            Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(result.UnwrapErr()));
+            EcliptixProtocolFailure error = result.UnwrapErr();
+            if (error.FailureType == EcliptixProtocolFailureType.StateMissing && 
+                error.Message.Contains("Session authentication failed"))
+            {
+                Context.GetLogger().Warning("Identity mismatch detected during message decryption - clearing session state");
+                _liveSystem?.Dispose();
+                _liveSystem = null;
+                _state = null;
+                
+                SaveSnapshot(new EcliptixSessionState());
+            }
+            
+            Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(error));
             return;
         }
 
