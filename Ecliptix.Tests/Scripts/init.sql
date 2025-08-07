@@ -881,10 +881,6 @@ VALUES (@PhoneNumberId, GETUTCDATE(), @Outcome, @IsSuccess);
 END;
 go
 
---------------------------------------------------------------------------------
--- Procedure: LoginMembership
--- Purpose: Authenticates a user with lockout logic and returns SecureKey.
---------------------------------------------------------------------------------
 CREATE   PROCEDURE dbo.LoginMembership
     @PhoneNumber NVARCHAR(18)
 AS
@@ -894,9 +890,9 @@ BEGIN
     DECLARE @MembershipUniqueId UNIQUEIDENTIFIER, @Status NVARCHAR(20), @Outcome NVARCHAR(100);
     DECLARE @PhoneNumberId UNIQUEIDENTIFIER, @StoredSecureKey VARBINARY(MAX), @CreationStatus NVARCHAR(20);
     DECLARE @CurrentTime DATETIME2(7) = GETUTCDATE();
-    DECLARE @FailedAttemptsCount INT;
+    DECLARE @AttemptsInLast5Minutes INT;
     DECLARE @LockoutDurationMinutes INT = 5;
-    DECLARE @MaxAttemptsBeforeLockout INT = 5;
+    DECLARE @MaxAttemptsInPeriod INT = 5;
     DECLARE @LockoutMarkerPrefix NVARCHAR(20) = 'LOCKED_UNTIL:';
     DECLARE @LockedUntilTs DATETIME2(7);
     DECLARE @LastLockoutInitTime DATETIME2(7);
@@ -928,20 +924,30 @@ ELSE IF @LockedUntilTs IS NOT NULL AND @CurrentTime >= @LockedUntilTs
 BEGIN
 DELETE FROM dbo.LoginAttempts
 WHERE PhoneNumber = @PhoneNumber
-  AND Timestamp <= @LastLockoutInitTime
-  AND (IsSuccess = 0 OR Outcome LIKE @LockoutPattern);
+  AND Timestamp <= @LastLockoutInitTime;
 END
 END
 
-    -- 2. Count relevant failed attempts
-SELECT @FailedAttemptsCount = COUNT(*)
+    -- 2. Count attempts in last 5 minutes (excluding lockout markers)
+SELECT @AttemptsInLast5Minutes = COUNT(*)
 FROM dbo.LoginAttempts
 WHERE PhoneNumber = @PhoneNumber
-  AND IsSuccess = 0
-  AND Timestamp > ISNULL((SELECT MAX(Timestamp) FROM dbo.LoginAttempts WHERE PhoneNumber = @PhoneNumber AND Outcome LIKE @LockoutPattern), '1900-01-01');
+  AND Timestamp > DATEADD(minute, -5, @CurrentTime)
+  AND Outcome NOT LIKE @LockoutPattern;
 
--- 3. Login attempt logic
-IF @PhoneNumber IS NULL OR @PhoneNumber = ''
+-- 3. Check if we already have 5 attempts in last 5 minutes
+IF @AttemptsInLast5Minutes >= @MaxAttemptsInPeriod
+BEGIN
+        SET @LockedUntilTs = DATEADD(minute, @LockoutDurationMinutes, @CurrentTime);
+        DECLARE @NewLockoutMarker NVARCHAR(MAX) = CONCAT(@LockoutMarkerPrefix, CONVERT(NVARCHAR(30), @LockedUntilTs, 127));
+EXEC dbo.LogLoginAttempt @PhoneNumber, @NewLockoutMarker, 0;
+        SET @Outcome = CAST(@LockoutDurationMinutes AS NVARCHAR(100));
+SELECT NULL AS MembershipUniqueId, NULL AS Status, @Outcome AS Outcome, NULL AS SecureKey;
+RETURN;
+END
+
+    -- 4. Login attempt logic
+    IF @PhoneNumber IS NULL OR @PhoneNumber = ''
         SET @Outcome = 'phone_number_cannot_be_empty';
 ELSE
 BEGIN
@@ -973,7 +979,7 @@ ELSE
 END
 END
 
-    -- 4. Handle result
+    -- 5. Handle result
     IF @Outcome = 'success'
 BEGIN
 EXEC dbo.LogLoginAttempt @PhoneNumber, @Outcome, 1;
@@ -988,14 +994,6 @@ END
 ELSE
 BEGIN
 EXEC dbo.LogLoginAttempt @PhoneNumber, @Outcome, 0;
-        SET @FailedAttemptsCount = @FailedAttemptsCount + 1;
-        IF @FailedAttemptsCount >= @MaxAttemptsBeforeLockout
-BEGIN
-            SET @LockedUntilTs = DATEADD(minute, @LockoutDurationMinutes, @CurrentTime);
-            DECLARE @NewLockoutMarker NVARCHAR(MAX) = CONCAT(@LockoutMarkerPrefix, CONVERT(NVARCHAR(30), @LockedUntilTs, 127));
-EXEC dbo.LogLoginAttempt @PhoneNumber, @NewLockoutMarker, 0;
-            SET @Outcome = CAST(@LockoutDurationMinutes AS NVARCHAR(100));
-END
 SELECT NULL AS MembershipUniqueId,
        NULL AS Status,
        @Outcome AS Outcome,

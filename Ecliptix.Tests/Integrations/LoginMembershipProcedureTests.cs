@@ -1,4 +1,5 @@
-﻿using System.Data;
+﻿using System.ComponentModel;
+using System.Data;
 using Dapper;
 
 namespace Ecliptix.Tests.Integrations;
@@ -15,7 +16,9 @@ internal record LoginMembershipResult
 public class LoginMembershipProcedureTests : IntegrationTestBase
 {
     [TestMethod]
-    public async Task SignInMembership_ReturnLockoutTime_WhenLockoutMarkerExists()
+    [DataRow(true, DisplayName = "SignInMembership_ReturnLockoutTime_WhenLockoutMarkerExists_WithSuccessfulStatus")]
+    [DataRow(false, DisplayName = "SignInMembership_ReturnLockoutTime_WhenLockoutMarkerExists_WithUnSuccessfulStatus")]
+    public async Task SignInMembership_ReturnLockoutTime_WhenLockoutMarkerExists(bool isSuccess)
     {
         // Arrange
         string phoneNumber = "+380501234567";
@@ -23,7 +26,7 @@ public class LoginMembershipProcedureTests : IntegrationTestBase
         string lockoutOutcome = $"LOCKED_UNTIL:{lockedUntil:yyyy-MM-ddTHH:mm:ss.fffffffZ}";
 
         await DataSeeder.Build(DbFixture.Connection)
-            .WithLoginAttempt(phoneNumber, lockoutOutcome, false)
+            .WithLoginAttempt(phoneNumber, lockoutOutcome, isSuccess)
             .SeedAsync();
 
         DynamicParameters parameters = new();
@@ -195,6 +198,47 @@ public class LoginMembershipProcedureTests : IntegrationTestBase
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("inactive_membership", result.Outcome);
+    }
+
+    [TestMethod]
+    public async Task LoginMembership_ReturnLockout_WhenMakeSomeFailedAttempts_WithValidMembership()
+    {
+        // Arrange
+        string phoneNumber = "+380501234567";
+        
+        DataSeeder seeder = DataSeeder.Build(DbFixture.Connection)
+            .WithPhone(phoneNumber)
+            .WithAppDevice()
+            .WithVerificationFlow()
+            .WithMembership(secureKey: [0x01], status: "active");
+        
+        int maxAttempts = 6;
+        for (int i = 0; i < maxAttempts; i++)
+            seeder.WithLoginAttempt(phoneNumber, "success", true);
+        await seeder.SeedAsync();
+        
+        DynamicParameters parameters = new();
+        parameters.Add("@PhoneNumber", phoneNumber);
+        
+        // Act
+        LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
+            "dbo.LoginMembership",
+            parameters,
+            commandType: CommandType.StoredProcedure
+        );
+        
+        Console.WriteLine(result.Outcome);
+        
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.IsNull(result.MembershipUniqueId);
+        Assert.IsNull(result.Status);
+        Assert.AreEqual(result.SecureKey, []);
+        Assert.IsNotNull(result.Outcome);
+
+        // Should return lockout time in minutes (5)
+        Assert.IsTrue(int.TryParse(result.Outcome, out var remainingMinutes));
+        Assert.IsTrue(remainingMinutes > 0 && remainingMinutes <= 5);
     }
     
     [TestMethod]
