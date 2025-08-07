@@ -7,6 +7,8 @@ using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
 using Ecliptix.Protobuf.CipherPayload;
 using Ecliptix.Protobuf.PubKeyExchange;
+using LanguageExt;
+using Unit = Ecliptix.Domain.Utilities.Unit;
 
 namespace Ecliptix.Core.Protocol.Actors;
 
@@ -31,7 +33,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 
     private EcliptixSessionState? _state;
     private EcliptixProtocolSystem? _liveSystem;
-    
+
     private bool _savingFinalSnapshot;
     private bool _pendingMessageDeletion;
     private bool _pendingSnapshotDeletion;
@@ -55,17 +57,25 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
                     if (systemResult.IsOk)
                     {
                         _liveSystem = systemResult.Unwrap();
-                        Context.GetLogger().Info($"[RecoveryCompleted] Protocol system successfully recreated for connectId {connectId}");
+                        Context.GetLogger()
+                            .Info(
+                                $"[RecoveryCompleted] Protocol system successfully recreated for connectId {connectId}");
                     }
                     else
                     {
-                        Context.GetLogger().Warning($"[RecoveryCompleted] Failed to recreate protocol system for connectId {connectId}");
-                        Context.Stop(Self);
+                        Context.GetLogger()
+                            .Warning(
+                                $"[RecoveryCompleted] Failed to recreate protocol system for connectId {connectId}. Clearing corrupted state.");
+                        _liveSystem?.Dispose();
+                        _liveSystem = null;
+                        _state = null;
+                        SaveSnapshot(new EcliptixSessionState());
                     }
                 }
                 else
                 {
-                    Context.GetLogger().Info($"[RecoveryCompleted] No previous session state found for connectId {connectId}");
+                    Context.GetLogger()
+                        .Info($"[RecoveryCompleted] No previous session state found for connectId {connectId}");
                 }
 
                 return true;
@@ -94,7 +104,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
                 return true;
             case KeepAlive:
                 return true;
-           
+
             case ReceiveTimeout _:
                 SaveFinalSnapshot();
                 return true;
@@ -109,29 +119,29 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
                     _pendingMessageDeletion = true;
                     _pendingSnapshotDeletion = true;
                 }
-                
+
                 DeleteMessages(success.Metadata.SequenceNr);
                 DeleteSnapshots(new SnapshotSelectionCriteria(success.Metadata.SequenceNr - 1));
-                
+
                 return true;
             case SaveSnapshotFailure failure:
                 return true;
 
             case DeleteMessagesSuccess success:
-                if(_savingFinalSnapshot && _pendingMessageDeletion)
+                if (_savingFinalSnapshot && _pendingMessageDeletion)
                 {
                     _pendingMessageDeletion = false;
                     TryCompleteShutdown();
                 }
-                
+
                 return true;
             case DeleteSnapshotsSuccess success:
-                if(_savingFinalSnapshot && _pendingSnapshotDeletion)
+                if (_savingFinalSnapshot && _pendingSnapshotDeletion)
                 {
                     _pendingSnapshotDeletion = false;
                     TryCompleteShutdown();
                 }
-                
+
                 return true;
             default:
                 return false;
@@ -148,7 +158,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
                 ReceivingChainLength = 0,
                 SendingChainLength = 0
             };
-            
+
             Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(notFoundReply));
             return;
         }
@@ -156,41 +166,18 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
         Result<Unit, EcliptixProtocolFailure> stateValidation = ValidateRecoveredStateIntegrity();
         if (stateValidation.IsErr)
         {
-            Context.GetLogger().Warning("State integrity validation failed: {Error}. Clearing session.", stateValidation.UnwrapErr().Message);
-            
+            Context.GetLogger().Warning("State integrity validation failed: {Error}. Clearing session.",
+                stateValidation.UnwrapErr().Message);
+
             RestoreSecrecyChannelResponse failureReply = new()
             {
                 Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
                 ReceivingChainLength = 0,
                 SendingChainLength = 0
             };
-            
+
             Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(failureReply));
-            
-            _liveSystem?.Dispose();
-            _liveSystem = null;
-            _state = null;
-            SaveSnapshot(new EcliptixSessionState());
-            return;
-        }
-        
-        try
-        {
-            _liveSystem.GetConnection();
-        }
-        catch (InvalidOperationException)
-        {
-            Context.GetLogger().Warning("Live system connection was cleared (likely due to fresh handshake detection). Clearing actor state.");
-            
-            RestoreSecrecyChannelResponse freshHandshakeReply = new()
-            {
-                Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
-                ReceivingChainLength = 0,
-                SendingChainLength = 0
-            };
-            
-            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(freshHandshakeReply));
-            
+
             _liveSystem?.Dispose();
             _liveSystem = null;
             _state = null;
@@ -198,16 +185,41 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
             return;
         }
 
-        byte[] stateFingerprint = CalculateStateFingerprint();
+        try
+        {
+            _liveSystem.GetConnection();
+        }
+        catch (InvalidOperationException)
+        {
+            Context.GetLogger()
+                .Warning(
+                    "Live system connection was cleared (likely due to fresh handshake detection). Clearing actor state.");
+
+            RestoreSecrecyChannelResponse freshHandshakeReply = new()
+            {
+                Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
+                ReceivingChainLength = 0,
+                SendingChainLength = 0
+            };
+
+            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(freshHandshakeReply));
+
+            _liveSystem?.Dispose();
+            _liveSystem = null;
+            _state = null;
+            SaveSnapshot(new EcliptixSessionState());
+            return;
+        }
+
         DateTime lastPersistTime = GetLastPersistenceTime();
-        
+
         RestoreSecrecyChannelResponse reply = new()
         {
             ReceivingChainLength = _state.RatchetState.ReceivingStep.CurrentIndex,
             SendingChainLength = _state.RatchetState.SendingStep.CurrentIndex,
             Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionResumed
         };
-        
+
         Context.GetLogger().Info(
             "Session restored - ConnectId: {ConnectId}, Sending: {SendingIdx}, Receiving: {ReceivingIdx}, LastPersist: {LastPersist}",
             connectId, reply.SendingChainLength, reply.ReceivingChainLength, lastPersistTime);
@@ -223,16 +235,17 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 
         uint sendingIdx = _state.RatchetState.SendingStep.CurrentIndex;
         uint receivingIdx = _state.RatchetState.ReceivingStep.CurrentIndex;
-        
+
         if (sendingIdx > 10_000_000 || receivingIdx > 10_000_000)
             return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic($"Chain indices appear corrupted: sending={sendingIdx}, receiving={receivingIdx}"));
+                EcliptixProtocolFailure.Generic(
+                    $"Chain indices appear corrupted: sending={sendingIdx}, receiving={receivingIdx}"));
 
         if (_state.RatchetState.RootKey.IsEmpty)
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Root key missing from recovered state"));
 
-        if (_state.RatchetState.SendingStep.ChainKey.IsEmpty || 
+        if (_state.RatchetState.SendingStep.ChainKey.IsEmpty ||
             _state.RatchetState.ReceivingStep.ChainKey.IsEmpty)
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Chain keys missing from recovered state"));
@@ -249,20 +262,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
-    private byte[] CalculateStateFingerprint()
-    {
-        if (_state?.RatchetState == null) return new byte[16];
-        List<byte> input = [];
-        input.AddRange(_state.RatchetState.RootKey.ToByteArray());
-        input.AddRange(BitConverter.GetBytes(_state.RatchetState.SendingStep.CurrentIndex));
-        input.AddRange(BitConverter.GetBytes(_state.RatchetState.ReceivingStep.CurrentIndex));
-        input.AddRange(BitConverter.GetBytes(_state.RatchetState.NonceCounter));
-
-        if (!_state.RatchetState.SendingStep.ChainKey.IsEmpty)
-            input.AddRange(_state.RatchetState.SendingStep.ChainKey.ToByteArray());
-
-        return SHA256.HashData(input.ToArray()).Take(16).ToArray();
-    }
 
     private DateTime GetLastPersistenceTime()
     {
@@ -279,10 +278,11 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
     {
         if (_liveSystem != null && _state != null)
         {
-            Context.GetLogger().Info($"[HandleInitialKeyExchange] Using existing recovered session for connectId {cmd.ConnectId}");
+            Context.GetLogger()
+                .Info($"[HandleInitialKeyExchange] Using existing recovered session for connectId {cmd.ConnectId}");
             Result<PubKeyExchange, EcliptixProtocolFailure> existingReplyResult =
                 _liveSystem.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.PubKeyExchange);
-            
+
             bool sessionStillValid = true;
             try
             {
@@ -290,14 +290,15 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
             }
             catch (InvalidOperationException)
             {
-                Context.GetLogger().Info("[HandleInitialKeyExchange] System detected fresh handshake - clearing actor state");
+                Context.GetLogger()
+                    .Info("[HandleInitialKeyExchange] System detected fresh handshake - clearing actor state");
                 _liveSystem?.Dispose();
                 _liveSystem = null;
                 _state = null;
                 sessionStillValid = false;
                 SaveSnapshot(new EcliptixSessionState());
             }
-            
+
             if (sessionStillValid)
             {
                 if (existingReplyResult.IsOk)
@@ -309,18 +310,19 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
                         _state = newStateResult.Unwrap();
                         Persist(_state, _ => { });
                     }
-                    
+
                     Sender.Tell(existingReplyResult.Map(reply => new DeriveSharedSecretReply(reply)));
                 }
                 else
                 {
-                    Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(existingReplyResult.UnwrapErr()));
+                    Sender.Tell(
+                        Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(existingReplyResult.UnwrapErr()));
                 }
 
                 return;
             }
         }
-        
+
         Context.GetLogger().Info($"[HandleInitialKeyExchange] Creating new session for connectId {cmd.ConnectId}");
         EcliptixSystemIdentityKeys identityKeys = EcliptixSystemIdentityKeys.Create(10).Unwrap();
         EcliptixProtocolSystem system = new(identityKeys);
@@ -400,17 +402,18 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
         if (result.IsErr)
         {
             EcliptixProtocolFailure error = result.UnwrapErr();
-            if (error.FailureType == EcliptixProtocolFailureType.StateMissing && 
+            if (error.FailureType == EcliptixProtocolFailureType.StateMissing &&
                 error.Message.Contains("Session authentication failed"))
             {
-                Context.GetLogger().Warning("Identity mismatch detected during message decryption - clearing session state");
+                Context.GetLogger()
+                    .Warning("Identity mismatch detected during message decryption - clearing session state");
                 _liveSystem?.Dispose();
                 _liveSystem = null;
                 _state = null;
-                
+
                 SaveSnapshot(new EcliptixSessionState());
             }
-            
+
             Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(error));
             return;
         }
@@ -458,7 +461,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 
     private void TryCompleteShutdown()
     {
-        if(!_pendingMessageDeletion && !_pendingSnapshotDeletion)
+        if (!_pendingMessageDeletion && !_pendingSnapshotDeletion)
         {
             Context.GetLogger().Info("All cleanup operations completed. Stopping actor.");
             Context.Stop(Self);

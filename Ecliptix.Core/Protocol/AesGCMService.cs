@@ -84,8 +84,8 @@ public static class AesGcmService
         ReadOnlySpan<byte> plaintext,
         ReadOnlySpan<byte> associatedData = default)
     {
-        using var ciphertextMemory = ScopedSecureMemory.Allocate(plaintext.Length);
-        using var tagMemory = ScopedSecureMemory.Allocate(Constants.AesGcmTagSize);
+        using ScopedSecureMemory ciphertextMemory = ScopedSecureMemory.Allocate(plaintext.Length);
+        using ScopedSecureMemory tagMemory = ScopedSecureMemory.Allocate(Constants.AesGcmTagSize);
         
         Encrypt(key, nonce, plaintext, ciphertextMemory.AsSpan(), tagMemory.AsSpan(), associatedData);
         

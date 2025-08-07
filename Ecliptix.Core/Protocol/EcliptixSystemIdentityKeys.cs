@@ -127,6 +127,38 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
     public static Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure> FromProtoState(IdentityKeysState proto)
     {
+        if (proto == null)
+            return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput("Proto state is null."));
+
+        if (proto.Ed25519SecretKey == null || proto.Ed25519SecretKey.IsEmpty)
+            return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput("Ed25519 secret key is null or empty."));
+
+        if (proto.IdentityX25519SecretKey == null || proto.IdentityX25519SecretKey.IsEmpty)
+            return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput("Identity X25519 secret key is null or empty."));
+
+        if (proto.SignedPreKeySecret == null || proto.SignedPreKeySecret.IsEmpty)
+            return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput("Signed prekey secret is null or empty."));
+
+        if (proto.Ed25519PublicKey == null || proto.Ed25519PublicKey.IsEmpty)
+            return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput("Ed25519 public key is null or empty."));
+
+        if (proto.IdentityX25519PublicKey == null || proto.IdentityX25519PublicKey.IsEmpty)
+            return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput("Identity X25519 public key is null or empty."));
+
+        if (proto.SignedPreKeyPublic == null || proto.SignedPreKeyPublic.IsEmpty)
+            return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput("Signed prekey public key is null or empty."));
+
+        if (proto.SignedPreKeySignature == null || proto.SignedPreKeySignature.IsEmpty)
+            return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput("Signed prekey signature is null or empty."));
+
         SodiumSecureMemoryHandle? edSkHandle = null;
         SodiumSecureMemoryHandle? idXSkHandle = null;
         SodiumSecureMemoryHandle? spkSkHandle = null;
@@ -176,15 +208,27 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                     EcliptixProtocolFailure.InvalidInput("Invalid signed prekey signature length."));
 
             opks = [];
-            foreach (OneTimePreKeySecret opkProto in proto.OneTimePreKeys)
+            if (proto.OneTimePreKeys != null)
             {
-                byte[] opkSkBytes = opkProto.PrivateKey.ToByteArray();
-                if (opkSkBytes.Length != Constants.X25519PrivateKeySize)
-                    return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
-                        EcliptixProtocolFailure.InvalidInput(
-                            $"Invalid OPK secret key length for ID {opkProto.PreKeyId}."));
+                foreach (OneTimePreKeySecret opkProto in proto.OneTimePreKeys)
+                {
+                    if (opkProto?.PrivateKey == null || opkProto.PrivateKey.IsEmpty)
+                        return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                            EcliptixProtocolFailure.InvalidInput(
+                                $"OPK private key is null or empty for ID {opkProto?.PreKeyId}."));
 
-                byte[] opkPkBytes = opkProto.PublicKey.ToByteArray();
+                    if (opkProto?.PublicKey == null || opkProto.PublicKey.IsEmpty)
+                        return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                            EcliptixProtocolFailure.InvalidInput(
+                                $"OPK public key is null or empty for ID {opkProto?.PreKeyId}."));
+
+                    byte[] opkSkBytes = opkProto.PrivateKey.ToByteArray();
+                    if (opkSkBytes.Length != Constants.X25519PrivateKeySize)
+                        return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                            EcliptixProtocolFailure.InvalidInput(
+                                $"Invalid OPK secret key length for ID {opkProto.PreKeyId}."));
+
+                    byte[] opkPkBytes = opkProto.PublicKey.ToByteArray();
                 if (opkPkBytes.Length != Constants.X25519PublicKeySize)
                     return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
                         EcliptixProtocolFailure.InvalidInput(
@@ -193,8 +237,9 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 SodiumSecureMemoryHandle skHandle = SodiumSecureMemoryHandle.Allocate(opkSkBytes.Length).Unwrap();
                 skHandle.Write(opkSkBytes).Unwrap();
 
-                OneTimePreKeyLocal opk = OneTimePreKeyLocal.CreateFromParts(opkProto.PreKeyId, skHandle, opkPkBytes);
-                opks.Add(opk);
+                    OneTimePreKeyLocal opk = OneTimePreKeyLocal.CreateFromParts(opkProto.PreKeyId, skHandle, opkPkBytes);
+                    opks.Add(opk);
+                }
             }
 
             if (Log.IsEnabled(LogEventLevel.Debug))
