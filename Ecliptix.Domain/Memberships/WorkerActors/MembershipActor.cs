@@ -243,15 +243,20 @@ public class MembershipActor : ReceiveActor
 
             case VerificationFlowFailureType.RateLimitExceeded:
             {
-                string message = _localizationProvider.Localize(
+                
+                string messageTemplate = _localizationProvider.Localize(
                     VerificationFlowMessageKeys.TooManySigninAttempts,
                     cultureName
                 );
+                
+                int.TryParse(failure.Message, out int minutesUntilRetry);
+                string message = string.Format(messageTemplate, minutesUntilRetry);
+                
                 return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
                 {
                     Result = OpaqueSignInInitResponse.Types.SignInResult.LoginAttemptExceeded,
                     Message = message,
-                    MinutesUntilRetry = 5
+                    MinutesUntilRetry = minutesUntilRetry
                 });
             }
 

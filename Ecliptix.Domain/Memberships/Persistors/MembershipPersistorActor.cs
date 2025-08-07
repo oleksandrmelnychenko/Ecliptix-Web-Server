@@ -67,7 +67,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
         if (int.TryParse(result.Outcome, out int _))
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.RateLimitExceeded(VerificationFlowMessageKeys.TooManySigninAttempts));
+                VerificationFlowFailure.RateLimitExceeded(result.Outcome));
 
         return result.Outcome switch
         {
