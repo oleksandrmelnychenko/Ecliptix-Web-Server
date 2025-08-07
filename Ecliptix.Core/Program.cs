@@ -17,6 +17,7 @@ using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Providers.Twilio;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.Extensions.Options;
 using Serilog;
@@ -25,12 +26,20 @@ using Serilog.Context;
 const string systemActorName = "EcliptixProtocolSystemActor";
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-
-Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(builder.Configuration)
-    .CreateLogger();
-
-builder.Host.UseSerilog();
+builder.Host.UseSerilog((context, services, loggerConfig) => 
+{
+    string? appInsightsConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] ?? null;
+    loggerConfig
+        .ReadFrom.Configuration(context.Configuration)
+        .ReadFrom.Services(services);
+        
+    if (!string.IsNullOrEmpty(appInsightsConnectionString))
+    {
+        loggerConfig.WriteTo.ApplicationInsights(
+            new TelemetryConfiguration { ConnectionString = appInsightsConnectionString },
+            TelemetryConverter.Traces);
+    }
+});
 
 try
 {
