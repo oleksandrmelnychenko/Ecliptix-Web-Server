@@ -28,7 +28,7 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseSerilog((context, services, loggerConfig) => 
 {
-    string? appInsightsConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] ?? null;
+    string? appInsightsConnectionString = Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING");
     loggerConfig
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services);
