@@ -27,6 +27,7 @@
         <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.12.0" />
         <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
         <PackageReference Include="protobuf-net" Version="3.2.52" />
+        <PackageReference Include="Serilog.Sinks.ApplicationInsights" Version="4.0.0" />
         <PackageReference Include="Sodium.Core" Version="1.4.0"/>
     </ItemGroup>
 
@@ -42,9 +43,6 @@
      </ItemGroup>-->
 
     <ItemGroup>
-        <Content Include="..\.dockerignore">
-            <Link>.dockerignore</Link>
-        </Content>
         <Content Include="akka.conf">
             <CopyToPublishDirectory>Always</CopyToPublishDirectory>
         </Content>
