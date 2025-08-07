@@ -12,14 +12,12 @@ using Ecliptix.Core.Services.Utilities.CipherPayloadHandler;
 using Ecliptix.Domain;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.DbConnectionFactory;
-using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.OPAQUE;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Providers.Twilio;
 using Microsoft.AspNetCore.Localization;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Context;
@@ -36,8 +34,6 @@ builder.Host.UseSerilog();
 
 try
 {
-    IConfiguration configuration = builder.Configuration;
-
     builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
     builder.Services.AddSingleton<SessionKeepAliveInterceptor>();
 
@@ -87,20 +83,6 @@ try
 
     builder.Services.AddSingleton(actorSystem);
     builder.Services.AddHostedService<ActorSystemHostedService>();
-
-    string? port = Environment.GetEnvironmentVariable("PORT");
-    if (!int.TryParse(port, out var listenPort))
-    {
-        listenPort = configuration.GetValue("GrpcServer:Port", 5051);
-    }
-
-    builder.WebHost.ConfigureKestrel(options =>
-    {
-        options.ListenAnyIP(listenPort, listenOptions =>
-        {
-            listenOptions.Protocols = HttpProtocols.Http2;
-        });
-    });
 
     WebApplication app = builder.Build();
 
