@@ -140,6 +140,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         ReceiveAsync<VerificationFlowExpiredEvent>(HandleSessionExpired);
         ReceiveAsync<VerifyFlowActorEvent>(HandleVerifyOtp);
         ReceiveAsync<InitiateVerificationFlowActorEvent>(HandleResendRequest);
+        Receive<PrepareForTerminationMessage>(_ => PrepareForTermination());
     }
 
     private async Task HandleVerifyOtp(VerifyFlowActorEvent actorEvent)
@@ -414,11 +415,17 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         if (_sessionTimer?.IsCancellationRequested == false) _sessionTimer.Cancel();
     }
-
-    protected override void PostStop()
+    
+    private void ExpireAssociatedOtp()
+    {
+        _persistor.Tell(new ExpireAssociatedOtpActorEvent(_verificationFlow.Value!.UniqueIdentifier));
+    }
+    private void PrepareForTermination()
     {
         CancelTimers();
-        Log.Information("VerificationFlowActor for ConnectId {ConnectId} stopped", _connectId);
-        base.PostStop();
+        Log.Information("VerificationFlowActor for ConnectId {ConnectId} - timers clear", _connectId);
+        ExpireAssociatedOtp();
+        Log.Information("Expired associated OTP for FlowUniqueId {FlowUniqueId}", _verificationFlow.Value!.UniqueIdentifier);
+        Log.Information("VerificationFlowActor for ConnectId {ConnectId} is preparing for termination", _connectId);
     }
 }

@@ -10,7 +10,6 @@ using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Logging;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
@@ -52,6 +51,9 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             ExecuteWithConnection(conn => CreateOtpAsync(conn, actorEvent), "CreateOtp").PipeTo(Sender));
         Receive<UpdateOtpStatusActorEvent>(actorEvent =>
             ExecuteWithConnection(conn => UpdateOtpStatusAsync(conn, actorEvent), "UpdateOtpStatus").PipeTo(Sender));
+        Receive<ExpireAssociatedOtpActorEvent>(actorEvent => 
+            ExecuteWithConnection(conn => ExpireAssociatedOtpAsync(conn, actorEvent), "ExpireAssociatedOtp")
+                .PipeTo(Sender));
     }
 
     private async Task<Result<VerificationFlowQueryRecord, VerificationFlowFailure>> InitiateFlowAsync(
@@ -204,6 +206,17 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         return result.Success
             ? Result<Guid, VerificationFlowFailure>.Ok(result.PhoneNumberUniqueId)
             : Result<Guid, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(result.Outcome));
+    }
+
+    private async Task<Result<Unit, VerificationFlowFailure>> ExpireAssociatedOtpAsync(IDbConnection conn, 
+        ExpireAssociatedOtpActorEvent cmd)
+    {
+        await conn.ExecuteAsync(
+            "dbo.ExpireAssociatedOtp",
+            new { FlowUniqueId = cmd.FlowUniqueId },
+            commandType: CommandType.StoredProcedure);
+        
+        return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
     }
 
     private static Result<VerificationFlowQueryRecord, VerificationFlowFailure> MapToVerificationFlowRecord(

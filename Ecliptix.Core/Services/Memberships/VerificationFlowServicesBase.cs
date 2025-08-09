@@ -1,8 +1,8 @@
 using System.Globalization;
 using Akka.Actor;
-using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Services.Utilities;
 using Ecliptix.Core.Services.Utilities.CipherPayloadHandler;
+using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.CipherPayload;
@@ -33,8 +33,8 @@ public abstract class VerificationFlowServicesBase(
             string actorPath = $"/membership/{nameof(VerificationFlowManagerActor)}/{actorName}";
 
             ActorSelection? actorSelection = actorSystem.ActorSelection(actorPath);
-
-            actorSelection.Tell(PoisonPill.Instance);
+            
+            actorSelection.Tell(new PrepareForTerminationMessage());
 
             Log.Information(
                 "Client for ConnectId {ConnectId} disconnected. Sent PoisonPill to actor selection [{ActorPath}]",
