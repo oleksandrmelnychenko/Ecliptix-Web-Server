@@ -13,11 +13,11 @@
         <PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
         <PackageReference Include="Dapper" Version="2.1.66"/>
         <PackageReference Include="Grpc.AspNetCore.Server" Version="2.71.0" />
-        <PackageReference Include="libphonenumber-csharp" Version="9.0.10" />
+        <PackageReference Include="libphonenumber-csharp" Version="9.0.11" />
         <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.0-preview2.25178.5" />
         <PackageReference Include="Otp.NET" Version="1.4.0"/>
         <PackageReference Include="Polly" Version="8.6.2" />
-        <PackageReference Include="protobuf-net" Version="3.2.52" />
+        <PackageReference Include="protobuf-net" Version="3.2.56" />
         <PackageReference Include="protobuf-net.Grpc" Version="1.2.2"/>
         <PackageReference Include="Protobuf.Grpc" Version="1.0.170"/>
         <PackageReference Include="Google.Protobuf" Version="3.31.1" />
