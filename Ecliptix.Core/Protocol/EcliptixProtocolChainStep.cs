@@ -113,7 +113,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
         uint currentIndex = currentIndexResult.Unwrap();
 
-        if (targetIndex <= currentIndex)
+        if (targetIndex < currentIndex)
         {
             return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.InvalidInput(
                 $"[{_stepType}] Requested index {targetIndex} is not future (current: {currentIndex}) and not cached."));
