@@ -53,4 +53,10 @@ message ChainStepState {
   bytes chain_key = 2;
   bytes dh_private_key = 3;
   bytes dh_public_key = 4;
+  repeated CachedMessageKey cached_message_keys = 5;
+}
+
+message CachedMessageKey {
+  uint32 index = 1;
+  bytes key_material = 2;
 }

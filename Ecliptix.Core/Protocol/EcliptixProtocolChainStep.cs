@@ -81,6 +81,29 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         chainStep.SetCurrentIndex(proto.CurrentIndex)
             .Unwrap();
 
+        // Restore cached message keys
+        foreach (CachedMessageKey cachedKey in proto.CachedMessageKeys)
+        {
+            Result<EcliptixMessageKey, EcliptixProtocolFailure> messageKeyResult =
+                EcliptixMessageKey.New(cachedKey.Index, cachedKey.KeyMaterial.Span);
+            
+            if (messageKeyResult.IsOk)
+            {
+                EcliptixMessageKey messageKey = messageKeyResult.Unwrap();
+                if (!chainStep._messageKeys.TryAdd(cachedKey.Index, messageKey))
+                {
+                    // If key already exists (shouldn't happen), dispose the new one
+                    messageKey.Dispose();
+                }
+            }
+            // If key restoration fails, we continue without it (graceful degradation)
+        }
+
+        if (Log.IsEnabled(LogEventLevel.Debug) && proto.CachedMessageKeys.Count > 0)
+        {
+            Log.Debug("  Restored {CachedKeyCount} cached message keys", proto.CachedMessageKeys.Count);
+        }
+
         return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(chainStep);
     }
 
@@ -269,6 +292,32 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
             if (dhPrivKey != null) proto.DhPrivateKey = ByteString.CopyFrom(dhPrivKey);
             if (_dhPublicKey != null) proto.DhPublicKey = ByteString.CopyFrom(_dhPublicKey);
+
+            // Serialize cached message keys
+            foreach (KeyValuePair<uint, EcliptixMessageKey> kvp in _messageKeys)
+            {
+                byte[]? keyMaterial = null;
+                try
+                {
+                    keyMaterial = new byte[Constants.X25519KeySize];
+                    Result<Unit, EcliptixProtocolFailure> readResult = kvp.Value.ReadKeyMaterial(keyMaterial);
+                    if (readResult.IsErr)
+                    {
+                        // If we can't read a cached key, skip it rather than failing completely
+                        continue;
+                    }
+
+                    proto.CachedMessageKeys.Add(new CachedMessageKey
+                    {
+                        Index = kvp.Key,
+                        KeyMaterial = ByteString.CopyFrom(keyMaterial)
+                    });
+                }
+                finally
+                {
+                    if (keyMaterial != null) SodiumInterop.SecureWipe(keyMaterial).IgnoreResult();
+                }
+            }
 
             return Result<ChainStepState, EcliptixProtocolFailure>.Ok(proto);
         }
