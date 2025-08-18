@@ -30,7 +30,6 @@ public static class EcliptixProtocol
             return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Err(connResult.UnwrapErr());
         }
 
-        // Log restored keys
         if (Log.IsEnabled(LogEventLevel.Debug))
         {
             Log.Debug("[EcliptixProtocol] RecreateSystemFromState (ConnectId: {ConnectId}):", state.ConnectId);
@@ -49,7 +48,6 @@ public static class EcliptixProtocol
         {
             EcliptixSessionState? newState = oldState.Clone();
             newState.RatchetState = newRatchetState;
-            // Log updated connection state
             if (Log.IsEnabled(LogEventLevel.Debug))
             {
                 Log.Debug("[EcliptixProtocol] CreateStateFromSystem:");
@@ -77,7 +75,6 @@ public static class EcliptixProtocol
                         PeerHandshakeMessage = peerMsg,
                         RatchetState = ratchetStateProto
                     };
-                    // Log initial state
                     if (Log.IsEnabled(LogEventLevel.Debug))
                     {
                         Log.Debug("[EcliptixProtocol] CreateInitialState (ConnectId: {ConnectId}):", connectId);

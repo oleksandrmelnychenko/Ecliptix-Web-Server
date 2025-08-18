@@ -662,7 +662,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
             if (updateResult.IsErr) return updateResult;
 
-            // Clear replay protection windows when ratchet rotates as message indices will reset
             _replayProtection.OnRatchetRotation();
 
             _receivedNewDhKey = false;

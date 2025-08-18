@@ -138,7 +138,6 @@ public sealed class ReplayProtection : IDisposable
 
         lock (_lock)
         {
-            // Clear message windows when ratchet rotates as message indices will reset
             _messageWindows.Clear();
             Console.WriteLine("[REPLAY] Cleared message windows due to ratchet rotation");
         }

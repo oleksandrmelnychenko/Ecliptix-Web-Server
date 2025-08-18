@@ -82,7 +82,6 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
                 byte[] newChainKey = new byte[Constants.X25519KeySize];
                 try
                 {
-                    // Use HKDF to match client implementation for chain key advancement
                     System.Security.Cryptography.HKDF.DeriveKey(
                         System.Security.Cryptography.HashAlgorithmName.SHA256,
                         ikm: chainKey,
