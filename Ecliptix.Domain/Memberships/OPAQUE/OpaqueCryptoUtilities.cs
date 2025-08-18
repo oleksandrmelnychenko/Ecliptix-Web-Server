@@ -170,6 +170,57 @@ public static class OpaqueCryptoUtilities
         return Result<Unit, OpaqueFailure>.Ok(Unit.Value);
     }
 
+    public static Result<byte[], OpaqueFailure> Encrypt(ReadOnlySpan<byte> plaintext, ReadOnlySpan<byte> key, ReadOnlySpan<byte> associatedData = default)
+    {
+        try
+        {
+            IBufferedCipher cipher = CipherUtilities.GetCipher("AES/GCM/NoPadding");
+            byte[] nonce = new byte[AesGcmNonceLengthBytes];
+            SecureRandomInstance.NextBytes(nonce);
+
+            byte[]? associatedDataArray = associatedData.IsEmpty ? null : associatedData.ToArray();
+            AeadParameters cipherParams = new(new KeyParameter(key.ToArray()), AesGcmTagLengthBits, nonce, associatedDataArray);
+            cipher.Init(true, cipherParams);
+
+            int outputSize = cipher.GetOutputSize(plaintext.Length);
+            byte[] result = new byte[AesGcmNonceLengthBytes + outputSize];
+
+            nonce.CopyTo(result, 0);
+
+            int len = cipher.ProcessBytes(plaintext.ToArray(), 0, plaintext.Length, result, AesGcmNonceLengthBytes);
+            cipher.DoFinal(result, AesGcmNonceLengthBytes + len);
+
+            return Result<byte[], OpaqueFailure>.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.EncryptFailed(ex.Message, ex));
+        }
+    }
+
+    public static Result<byte[], OpaqueFailure> Decrypt(ReadOnlySpan<byte> ciphertextWithNonce, ReadOnlySpan<byte> key, ReadOnlySpan<byte> associatedData = default)
+    {
+        if (ciphertextWithNonce.Length < AesGcmNonceLengthBytes)
+            return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.DecryptFailed());
+
+        ReadOnlySpan<byte> nonce = ciphertextWithNonce[..AesGcmNonceLengthBytes];
+        ReadOnlySpan<byte> ciphertext = ciphertextWithNonce[AesGcmNonceLengthBytes..];
+
+        try
+        {
+            IBufferedCipher cipher = CipherUtilities.GetCipher("AES/GCM/NoPadding");
+            byte[]? associatedDataArray = associatedData.IsEmpty ? null : associatedData.ToArray();
+            AeadParameters cipherParams = new(new KeyParameter(key.ToArray()), AesGcmTagLengthBits, nonce.ToArray(), associatedDataArray);
+            cipher.Init(false, cipherParams);
+
+            return Result<byte[], OpaqueFailure>.Ok(cipher.DoFinal(ciphertext.ToArray()));
+        }
+        catch (InvalidCipherTextException ex)
+        {
+            return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.DecryptFailed(ex.Message, ex));
+        }
+    }
+
     public static Result<byte[], OpaqueFailure> MaskResponse(
         ReadOnlySpan<byte> response,
         ReadOnlySpan<byte> maskingKey)

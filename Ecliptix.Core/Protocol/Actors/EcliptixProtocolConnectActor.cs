@@ -28,7 +28,7 @@ public sealed record KeepAlive
 public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 {
     public override string PersistenceId { get; } = $"connect-{connectId}";
-    private const int SnapshotInterval = 50;
+    private const int SnapshotInterval = Constants.SnapshotInterval;
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(1);
 
     private EcliptixSessionState? _state;
@@ -255,7 +255,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic($"Invalid DH key size: {sendingDhKey.Length}"));
 
-        if (_state.RatchetState.NonceCounter > uint.MaxValue - 1000)
+        if (_state.RatchetState.NonceCounter > uint.MaxValue - Constants.NonceCounterWarningThreshold)
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Nonce counter near overflow"));
 
@@ -265,7 +265,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
 
     private DateTime GetLastPersistenceTime()
     {
-        return DateTime.UtcNow.AddMinutes(-((SnapshotSequenceNr % 10) * 5));
+        return DateTime.UtcNow.AddMinutes(-((SnapshotSequenceNr % Constants.SnapshotModulus) * Constants.SnapshotMinuteMultiplier));
     }
 
     protected override void PreStart()

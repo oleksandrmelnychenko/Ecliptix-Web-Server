@@ -10,7 +10,7 @@ namespace Ecliptix.Core.Protocol;
 
 public sealed class EcliptixProtocolChainStep : IDisposable
 {
-    private const uint DefaultCacheWindowSize = 1000;
+    private const uint DefaultCacheWindowSize = Constants.DefaultCacheWindowSize;
 
     private static readonly Result<Unit, EcliptixProtocolFailure> OkResult =
         Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
@@ -81,7 +81,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         chainStep.SetCurrentIndex(proto.CurrentIndex)
             .Unwrap();
 
-        // Restore cached message keys
         foreach (CachedMessageKey cachedKey in proto.CachedMessageKeys)
         {
             Result<EcliptixMessageKey, EcliptixProtocolFailure> messageKeyResult =
@@ -92,11 +91,9 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                 EcliptixMessageKey messageKey = messageKeyResult.Unwrap();
                 if (!chainStep._messageKeys.TryAdd(cachedKey.Index, messageKey))
                 {
-                    // If key already exists (shouldn't happen), dispose the new one
                     messageKey.Dispose();
                 }
             }
-            // If key restoration fails, we continue without it (graceful degradation)
         }
 
         if (Log.IsEnabled(LogEventLevel.Debug) && proto.CachedMessageKeys.Count > 0)
@@ -311,7 +308,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             if (dhPrivKey != null) proto.DhPrivateKey = ByteString.CopyFrom(dhPrivKey);
             if (_dhPublicKey != null) proto.DhPublicKey = ByteString.CopyFrom(_dhPublicKey);
 
-            // Serialize cached message keys
             foreach (KeyValuePair<uint, EcliptixMessageKey> kvp in _messageKeys)
             {
                 byte[]? keyMaterial = null;
@@ -321,7 +317,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                     Result<Unit, EcliptixProtocolFailure> readResult = kvp.Value.ReadKeyMaterial(keyMaterial);
                     if (readResult.IsErr)
                     {
-                        // If we can't read a cached key, skip it rather than failing completely
                         continue;
                     }
 

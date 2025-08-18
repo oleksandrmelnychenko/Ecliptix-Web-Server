@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Core.Protocol;
 
@@ -62,23 +63,26 @@ public sealed class PerformanceProfiler
         
         if (metrics.Count == 0)
         {
-            report.AppendLine("No performance data collected.");
+            report.AppendLine(ProtocolMessages.NoPerformanceDataCollected);
             return report.ToString();
         }
 
-        report.AppendLine("Operation".PadRight(25) + "Count".PadLeft(8) + "Avg(ms)".PadLeft(10) + 
-                         "Max(ms)".PadLeft(10) + "Min(ms)".PadLeft(10));
-        report.AppendLine(new string('-', 63));
+        report.AppendLine(ProtocolMessages.OperationHeader.PadRight(Constants.OperationColumnWidth) + 
+                         ProtocolMessages.CountHeader.PadLeft(Constants.CountColumnWidth) + 
+                         ProtocolMessages.AverageHeader.PadLeft(Constants.MetricsColumnWidth) + 
+                         ProtocolMessages.MaxHeader.PadLeft(Constants.MetricsColumnWidth) + 
+                         ProtocolMessages.MinHeader.PadLeft(Constants.MetricsColumnWidth));
+        report.AppendLine(new string('-', Constants.TotalReportWidth));
 
         foreach ((string operation, (long count, double avgMs, double maxMs, double minMs)) in 
                  metrics.OrderByDescending(x => x.Value.Count))
         {
             report.AppendLine(
-                operation.PadRight(25) +
-                count.ToString().PadLeft(8) +
-                avgMs.ToString("F2").PadLeft(10) +
-                maxMs.ToString("F2").PadLeft(10) +
-                minMs.ToString("F2").PadLeft(10));
+                operation.PadRight(Constants.OperationColumnWidth) +
+                count.ToString().PadLeft(Constants.CountColumnWidth) +
+                avgMs.ToString(Constants.MetricsFormat).PadLeft(Constants.MetricsColumnWidth) +
+                maxMs.ToString(Constants.MetricsFormat).PadLeft(Constants.MetricsColumnWidth) +
+                minMs.ToString(Constants.MetricsFormat).PadLeft(Constants.MetricsColumnWidth));
         }
 
         return report.ToString();

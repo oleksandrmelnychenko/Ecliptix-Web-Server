@@ -6,6 +6,7 @@ namespace Ecliptix.Domain.Memberships.OPAQUE;
 public interface IOpaqueProtocolService
 {
     byte[] ProcessOprfRequest(byte[] oprfRequest);
+    byte[] ProcessOprfRequest(ReadOnlySpan<byte> oprfRequest);
 
     byte[] GetPublicKey();
 

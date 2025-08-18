@@ -2,7 +2,7 @@ using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Core.Protocol;
 
-public sealed class RatchetRecovery(uint maxSkippedMessages = 1000) : IDisposable
+public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultMaxSkippedMessages) : IDisposable
 {
     private readonly Dictionary<uint, EcliptixMessageKey> _skippedMessageKeys = new();
     private readonly Lock _lock = new();

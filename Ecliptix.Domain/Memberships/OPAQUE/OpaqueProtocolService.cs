@@ -28,9 +28,11 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
     private readonly AsymmetricCipherKeyPair _serverStaticKeyPair = OpaqueCryptoUtilities.GenerateKeyPairFromSeed(
         OpaqueCryptoUtilities.DeriveKey(secretKeySeed, null, ServerStaticKeyInfo, DefaultKeyLength));
 
-    public byte[] ProcessOprfRequest(byte[] oprfRequest)
+    public byte[] ProcessOprfRequest(byte[] oprfRequest) => ProcessOprfRequest(oprfRequest.AsSpan());
+
+    public byte[] ProcessOprfRequest(ReadOnlySpan<byte> oprfRequest)
     {
-        ECPoint requestPoint = OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(oprfRequest);
+        ECPoint requestPoint = OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(oprfRequest.ToArray());
 
         Result<Unit, OpaqueFailure> validationResult = OpaqueCryptoUtilities.ValidatePoint(requestPoint);
         if (validationResult.IsErr)
@@ -73,10 +75,10 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
     public Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(OpaqueSignInInitRequest request,
         MembershipOpaqueQueryRecord queryRecord)
     {
-        return InitiateSignIn(request.PeerOprf.ToByteArray(), queryRecord);
+        return InitiateSignIn(request.PeerOprf.Span, queryRecord);
     }
 
-    private Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(byte[] oprfRequest,
+    private Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(ReadOnlySpan<byte> oprfRequest,
         MembershipOpaqueQueryRecord queryRecord)
     {
         byte[] oprfResponse = ProcessOprfRequest(oprfRequest);
@@ -100,8 +102,9 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             Expiration = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow.AddMinutes(5))
         };
 
+        ReadOnlySpan<byte> serverStateBytes = serverState.ToByteArray().AsSpan();
         Result<byte[], OpaqueFailure> encryptResult =
-            OpaqueCryptoUtilities.Encrypt(serverState.ToByteArray(), _serverTokenEncryptionKey, null);
+            OpaqueCryptoUtilities.Encrypt(serverStateBytes, _serverTokenEncryptionKey.AsSpan());
         if (encryptResult.IsErr)
             return Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(OpaqueFailure.EncryptFailed());
 
@@ -147,7 +150,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
     public Result<OpaqueSignInFinalizeResponse, OpaqueFailure> FinalizeSignIn(OpaqueSignInFinalizeRequest request)
     {
         Result<byte[], OpaqueFailure> decryptResult =
-            OpaqueCryptoUtilities.Decrypt(request.ServerStateToken.ToByteArray(), _serverTokenEncryptionKey, null);
+            OpaqueCryptoUtilities.Decrypt(request.ServerStateToken.Span, _serverTokenEncryptionKey.AsSpan());
         if (decryptResult.IsErr)
             return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Err(decryptResult.UnwrapErr());
 
@@ -187,11 +190,11 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
 
         byte[] transcriptHash = HashTranscript(
             request.PhoneNumber,
-            serverState.OprfResponse.ToByteArray(),
-            serverState.ClientStaticPublicKey.ToByteArray(),
-            request.ClientEphemeralPublicKey.ToByteArray(),
+            serverState.OprfResponse.Span,
+            serverState.ClientStaticPublicKey.Span,
+            request.ClientEphemeralPublicKey.Span,
             serverStaticPublicKeyBytes,
-            serverState.ServerEphemeralPublicKey.ToByteArray());
+            serverState.ServerEphemeralPublicKey.Span);
 
         Result<(byte[] SessionKey, byte[] ClientMacKey, byte[] ServerMacKey), OpaqueFailure> keysResult =
             DeriveFinalKeys(akeResult, transcriptHash);
@@ -200,7 +203,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         (byte[] _, byte[] clientMacKey, byte[] serverMacKey) = keysResult.Unwrap();
         byte[] expectedClientMac = CreateMac(clientMacKey, transcriptHash);
 
-        if (!CryptographicOperations.FixedTimeEquals(expectedClientMac, request.ClientMac.ToByteArray()))
+        if (!CryptographicOperations.FixedTimeEquals(expectedClientMac, request.ClientMac.Span))
         {
             return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(new OpaqueSignInFinalizeResponse
             {
@@ -297,7 +300,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
     public Result<OpaquePasswordChangeInitResponse, OpaqueFailure> InitiatePasswordChange(
         OpaquePasswordChangeInitRequest request, MembershipOpaqueQueryRecord queryRecord)
     {
-        byte[] currentPasswordOprfResponse = ProcessOprfRequest(request.CurrentPasswordOprf.ToByteArray());
+        byte[] currentPasswordOprfResponse = ProcessOprfRequest(request.CurrentPasswordOprf.Span);
 
         AsymmetricCipherKeyPair serverEphemeralKeys = OpaqueCryptoUtilities.GenerateKeyPair();
 
@@ -319,8 +322,9 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             Expiration = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow.AddMinutes(5))
         };
 
+        ReadOnlySpan<byte> serverStateBytes = serverState.ToByteArray().AsSpan();
         Result<byte[], OpaqueFailure> encryptResult =
-            OpaqueCryptoUtilities.Encrypt(serverState.ToByteArray(), _serverTokenEncryptionKey, null);
+            OpaqueCryptoUtilities.Encrypt(serverStateBytes, _serverTokenEncryptionKey.AsSpan());
         if (encryptResult.IsErr)
             return Result<OpaquePasswordChangeInitResponse, OpaqueFailure>.Err(OpaqueFailure.EncryptFailed());
 
@@ -369,7 +373,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         OpaquePasswordChangeCompleteRequest request)
     {
         Result<byte[], OpaqueFailure> decryptResult =
-            OpaqueCryptoUtilities.Decrypt(request.ServerStateToken.ToByteArray(), _serverTokenEncryptionKey, null);
+            OpaqueCryptoUtilities.Decrypt(request.ServerStateToken.Span, _serverTokenEncryptionKey.AsSpan());
         if (decryptResult.IsErr)
             return Result<OpaquePasswordChangeCompleteResponse, OpaqueFailure>.Err(decryptResult.UnwrapErr());
 
@@ -410,11 +414,11 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
 
         byte[] transcriptHash = HashTranscript(
             request.PhoneNumber,
-            serverState.OprfResponse.ToByteArray(),
-            serverState.ClientStaticPublicKey.ToByteArray(),
-            request.ClientEphemeralPublicKey.ToByteArray(),
+            serverState.OprfResponse.Span,
+            serverState.ClientStaticPublicKey.Span,
+            request.ClientEphemeralPublicKey.Span,
             serverStaticPublicKeyBytes,
-            serverState.ServerEphemeralPublicKey.ToByteArray());
+            serverState.ServerEphemeralPublicKey.Span);
 
         Result<(byte[] SessionKey, byte[] ClientMacKey, byte[] ServerMacKey), OpaqueFailure> keysResult =
             DeriveFinalKeys(akeResult, transcriptHash);
@@ -424,7 +428,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         (byte[] _, byte[] clientMacKey, byte[] serverMacKey) = keysResult.Unwrap();
         byte[] expectedClientMac = CreateMac(clientMacKey, transcriptHash);
 
-        if (!CryptographicOperations.FixedTimeEquals(expectedClientMac, request.ClientMac.ToByteArray()))
+        if (!CryptographicOperations.FixedTimeEquals(expectedClientMac, request.ClientMac.Span))
         {
             return Result<OpaquePasswordChangeCompleteResponse, OpaqueFailure>.Ok(
                 new OpaquePasswordChangeCompleteResponse

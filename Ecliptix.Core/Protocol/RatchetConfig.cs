@@ -1,3 +1,5 @@
+using Ecliptix.Domain.Utilities;
+
 namespace Ecliptix.Core.Protocol;
 
 public sealed class RatchetConfig
@@ -30,7 +32,7 @@ public sealed class RatchetConfig
     
     public TimeSpan MaxChainAge { get; init; } = TimeSpan.FromHours(1);
     
-    public uint MaxMessagesWithoutRatchet { get; init; } = 1000;
+    public uint MaxMessagesWithoutRatchet { get; init; } = Constants.MaxMessagesWithoutRatchetDefault;
 
     public bool ShouldRatchet(uint messageIndex, DateTime lastRatchetTime, bool receivedNewDhKey, DateTime currentTime)
     {

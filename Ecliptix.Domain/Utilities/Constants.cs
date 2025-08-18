@@ -28,4 +28,23 @@ public static class Constants
     public static readonly byte[] InitialSenderChainInfo = { 0x11 };
     public static readonly byte[] InitialReceiverChainInfo = { 0x12 };
     public static ReadOnlySpan<byte> X3dhInfo => "Ecliptix_X3DH"u8;
+
+    // Protocol configuration constants
+    public const uint DefaultMaxSkippedMessages = 1000;
+    public const uint DefaultMaxOutOfOrderWindow = 1000;
+    public const uint MaxMessagesWithoutRatchetDefault = 1000;
+    public const uint DefaultCacheWindowSize = 1000;
+    public const uint NonceCounterWarningThreshold = 1000; // uint.MaxValue - 1000
+
+    // Performance profiler formatting constants
+    public const int OperationColumnWidth = 25;
+    public const int CountColumnWidth = 8;
+    public const int MetricsColumnWidth = 10;
+    public const int TotalReportWidth = 63;
+    public const string MetricsFormat = "F2";
+    
+    // Snapshot and persistence constants
+    public const int SnapshotInterval = 50;
+    public const int SnapshotModulus = 10;
+    public const int SnapshotMinuteMultiplier = 5;
 }

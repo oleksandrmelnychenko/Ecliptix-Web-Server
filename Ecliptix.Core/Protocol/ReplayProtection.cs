@@ -19,7 +19,7 @@ public sealed class ReplayProtection : IDisposable
 
     public ReplayProtection(
         TimeSpan nonceLifetime = default,
-        ulong maxOutOfOrderWindow = 1000,
+        ulong maxOutOfOrderWindow = Constants.DefaultMaxOutOfOrderWindow,
         ulong maxWindow = 5000)
     {
         _processedNonces = new ConcurrentDictionary<string, DateTime>();
