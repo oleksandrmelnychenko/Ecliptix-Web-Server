@@ -406,7 +406,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
                 error.Message.Contains("Session authentication failed"))
             {
                 Context.GetLogger()
-                    .Warning("Identity mismatch detected during message decryption - clearing session state");
+                    .Warning("AD compatibility strategies exhausted - this indicates client-server cryptographic context mismatch. Clearing session to force fresh handshake.");
                 _liveSystem?.Dispose();
                 _liveSystem = null;
                 _state = null;

@@ -84,6 +84,14 @@ public static class AesGcmService
         ReadOnlySpan<byte> plaintext,
         ReadOnlySpan<byte> associatedData = default)
     {
+        // Handle zero-length plaintext case
+        if (plaintext.Length == 0)
+        {
+            using ScopedSecureMemory zeroTagMemory = ScopedSecureMemory.Allocate(Constants.AesGcmTagSize);
+            Encrypt(key, nonce, plaintext, Span<byte>.Empty, zeroTagMemory.AsSpan(), associatedData);
+            return (Array.Empty<byte>(), zeroTagMemory.AsSpan().ToArray());
+        }
+
         using ScopedSecureMemory ciphertextMemory = ScopedSecureMemory.Allocate(plaintext.Length);
         using ScopedSecureMemory tagMemory = ScopedSecureMemory.Allocate(Constants.AesGcmTagSize);
         
@@ -99,6 +107,13 @@ public static class AesGcmService
         ReadOnlySpan<byte> tag,
         ReadOnlySpan<byte> associatedData = default)
     {
+        // Handle zero-length ciphertext case
+        if (ciphertext.Length == 0)
+        {
+            Decrypt(key, nonce, ciphertext, tag, Span<byte>.Empty, associatedData);
+            return Array.Empty<byte>();
+        }
+
         using var plaintextMemory = ScopedSecureMemory.Allocate(ciphertext.Length);
         Decrypt(key, nonce, ciphertext, tag, plaintextMemory.AsSpan(), associatedData);
         

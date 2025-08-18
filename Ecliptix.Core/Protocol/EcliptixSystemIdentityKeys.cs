@@ -680,9 +680,22 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             hkdfOutput = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
             Span<byte> hkdfOutputSpan = hkdfOutput.AsSpan(0, Constants.X25519KeySize);
 
-            using (HkdfSha256 hkdf = new(ikmBytes, salt: null))
+            try
             {
-                hkdf.Expand(info.ToArray(), hkdfOutputSpan);
+                System.Security.Cryptography.HKDF.DeriveKey(
+                    System.Security.Cryptography.HashAlgorithmName.SHA256,
+                    ikm: ikmBytes,
+                    output: hkdfOutputSpan,
+                    salt: null,
+                    info: info.ToArray()
+                );
+            }
+            catch (Exception ex)
+            {
+                ArrayPool<byte>.Shared.Return(hkdfOutput);
+                hkdfOutput = null;
+                return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.DeriveKey("HKDF failed during X3DH derivation.", ex));
             }
 
             if (Log.IsEnabled(LogEventLevel.Debug))
@@ -821,9 +834,22 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             hkdfOutput = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
             Span<byte> hkdfOutputSpan = hkdfOutput.AsSpan(0, Constants.X25519KeySize);
 
-            using (HkdfSha256 hkdf = new(ikmBytes, salt: null))
+            try
             {
-                hkdf.Expand(info.ToArray(), hkdfOutputSpan);
+                System.Security.Cryptography.HKDF.DeriveKey(
+                    System.Security.Cryptography.HashAlgorithmName.SHA256,
+                    ikm: ikmBytes,
+                    output: hkdfOutputSpan,
+                    salt: null,
+                    info: info.ToArray()
+                );
+            }
+            catch (Exception ex)
+            {
+                ArrayPool<byte>.Shared.Return(hkdfOutput);
+                hkdfOutput = null;
+                return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.DeriveKey("HKDF failed during recipient X3DH derivation.", ex));
             }
 
             if (Log.IsEnabled(LogEventLevel.Debug))

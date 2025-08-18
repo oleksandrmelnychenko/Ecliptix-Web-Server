@@ -57,4 +57,39 @@ public sealed record OpaqueFailure
     {
         return new OpaqueFailure(OpaqueCryptoFailureType.HashingFailure, details, inner);
     }
+
+    public static OpaqueFailure InvalidPoint(string details, Exception? inner = null)
+    {
+        return new OpaqueFailure(OpaqueCryptoFailureType.InvalidInput, details, inner);
+    }
+
+    public static OpaqueFailure SubgroupCheckFailed(string details, Exception? inner = null)
+    {
+        return new OpaqueFailure(OpaqueCryptoFailureType.InvalidInput, details, inner);
+    }
+
+    public static OpaqueFailure StretchingFailed(string details, Exception? inner = null)
+    {
+        return new OpaqueFailure(OpaqueCryptoFailureType.HashingFailure, details, inner);
+    }
+
+    public static OpaqueFailure EnvelopeFailed(string details, Exception? inner = null)
+    {
+        return new OpaqueFailure(OpaqueCryptoFailureType.EncryptFailure, details, inner);
+    }
+
+    public static OpaqueFailure MaskingFailed(string details, Exception? inner = null)
+    {
+        return new OpaqueFailure(OpaqueCryptoFailureType.EncryptFailure, details, inner);
+    }
+
+    public static OpaqueFailure KeyDerivationFailed(string details, Exception? inner = null)
+    {
+        return new OpaqueFailure(OpaqueCryptoFailureType.InvalidKeySignature, details, inner);
+    }
+
+    public static OpaqueFailure MacVerificationFailed(string details, Exception? inner = null)
+    {
+        return new OpaqueFailure(OpaqueCryptoFailureType.InvalidKeySignature, details, inner);
+    }
 }

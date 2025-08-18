@@ -15,4 +15,23 @@ public interface IOpaqueProtocolService
 
     Result<Unit, OpaqueFailure> CompleteRegistration(
         byte[] peerRegistrationRecord);
+
+    // Password Change Operations
+    Result<OpaquePasswordChangeInitResponse, OpaqueFailure> InitiatePasswordChange(
+        OpaquePasswordChangeInitRequest request, MembershipOpaqueQueryRecord queryRecord);
+
+    Result<OpaquePasswordChangeCompleteResponse, OpaqueFailure> CompletePasswordChange(
+        OpaquePasswordChangeCompleteRequest request);
+
+    // Session Management
+    Result<SessionValidationResponse, OpaqueFailure> ValidateSession(SessionValidationRequest request);
+
+    Result<InvalidateSessionResponse, OpaqueFailure> InvalidateSession(InvalidateSessionRequest request);
+
+    Result<InvalidateAllSessionsResponse, OpaqueFailure> InvalidateAllSessions(InvalidateAllSessionsRequest request);
+
+    // Account Recovery
+    Result<AccountRecoveryInitResponse, OpaqueFailure> InitiateAccountRecovery(AccountRecoveryInitRequest request);
+
+    Result<AccountRecoveryCompleteResponse, OpaqueFailure> CompleteAccountRecovery(AccountRecoveryCompleteRequest request);
 }

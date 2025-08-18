@@ -69,6 +69,40 @@ public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessage
         return _keyHandle.Read(destination[..Constants.X25519KeySize]).MapSodiumFailure();
     }
 
+    public static Result<EcliptixMessageKey, EcliptixProtocolFailure> DeriveFromChainKey(byte[] chainKey, uint messageIndex)
+    {
+        if (chainKey.Length != Constants.X25519KeySize)
+            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput($"Chain key must be {Constants.X25519KeySize} bytes"));
+
+        try
+        {
+            byte[] messageKeyBytes = new byte[Constants.AesKeySize];
+            try
+            {
+                // Use HKDF to match client implementation
+                System.Security.Cryptography.HKDF.DeriveKey(
+                    System.Security.Cryptography.HashAlgorithmName.SHA256,
+                    ikm: chainKey,
+                    output: messageKeyBytes,
+                    salt: null,
+                    info: Constants.MsgInfo
+                );
+
+                return New(messageIndex, messageKeyBytes);
+            }
+            finally
+            {
+                SodiumInterop.SecureWipe(messageKeyBytes);
+            }
+        }
+        catch (Exception ex)
+        {
+            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.DeriveKey("Failed to derive message key from chain key using HKDF", ex));
+        }
+    }
+
     private void Dispose(bool disposing)
     {
         if (!_disposed)

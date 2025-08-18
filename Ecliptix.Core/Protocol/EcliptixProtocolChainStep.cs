@@ -157,13 +157,31 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
             for (uint idx = currentIndex + 1; idx <= targetIndex; idx++)
             {
-                using HkdfSha256 hkdfMsg = new(currentChainKey, null);
-                hkdfMsg.Expand(Constants.MsgInfo, msgKey);
-                Console.WriteLine($"[SERVER] Derived message key for {_stepType} index {idx}: {Convert.ToHexString(msgKey)}");
+                try
+                {
+                    System.Security.Cryptography.HKDF.DeriveKey(
+                        System.Security.Cryptography.HashAlgorithmName.SHA256,
+                        ikm: currentChainKey,
+                        output: msgKey,
+                        salt: null,
+                        info: Constants.MsgInfo
+                    );
+                    Console.WriteLine($"[SERVER] Derived message key for {_stepType} index {idx}: {Convert.ToHexString(msgKey)}");
 
-                using HkdfSha256 hkdfChain = new(currentChainKey, null);
-                hkdfChain.Expand(Constants.ChainInfo, nextChainKey);
-                Console.WriteLine($"[SERVER] Next chain key for {_stepType}: {Convert.ToHexString(nextChainKey)}");
+                    System.Security.Cryptography.HKDF.DeriveKey(
+                        System.Security.Cryptography.HashAlgorithmName.SHA256,
+                        ikm: currentChainKey,
+                        output: nextChainKey,
+                        salt: null,
+                        info: Constants.ChainInfo
+                    );
+                    Console.WriteLine($"[SERVER] Next chain key for {_stepType}: {Convert.ToHexString(nextChainKey)}");
+                }
+                catch (Exception ex)
+                {
+                    return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.DeriveKey($"HKDF failed during derivation at index {idx}.", ex));
+                }
 
                 Result<EcliptixMessageKey, EcliptixProtocolFailure> keyResult = EcliptixMessageKey.New(idx, msgKey);
                 if (keyResult.IsErr)

@@ -115,6 +115,11 @@ public sealed record EcliptixProtocolFailure(
         return new EcliptixProtocolFailure(EcliptixProtocolFailureType.MemoryBufferError, details, inner);
     }
 
+    public static EcliptixProtocolFailure ReplayAttempt(string details, Exception? inner = null)
+    {
+        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.Generic, $"Replay attack detected: {details}", inner);
+    }
+
     public override object ToStructuredLog()
     {
         return new

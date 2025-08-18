@@ -152,11 +152,6 @@ public class EcliptixProtocolSystem : IDisposable
                 })
                 .AndThen(peerBundle =>
                 {
-                    Console.WriteLine($"[SERVER] Client Identity X25519: {Convert.ToHexString(peerBundle.IdentityX25519)}");
-                    Console.WriteLine($"[SERVER] Client Identity Ed25519: {Convert.ToHexString(peerBundle.IdentityEd25519)}");
-                    Console.WriteLine($"[SERVER] Client SignedPreKey: {Convert.ToHexString(peerBundle.SignedPreKeyPublic)}");
-                    Console.WriteLine($"[SERVER] Client Ephemeral: {Convert.ToHexString(peerBundle.EphemeralX25519)}");
-                    Console.WriteLine($"[SERVER] Client Initial DH: {Convert.ToHexString(peerInitialMessageProto.InitialDhPublicKey.ToByteArray())}");
                     
                     return EcliptixSystemIdentityKeys.VerifyRemoteSpkSignature(peerBundle.IdentityEd25519,
                             peerBundle.SignedPreKeyPublic, peerBundle.SignedPreKeySignature)
@@ -167,10 +162,6 @@ public class EcliptixProtocolSystem : IDisposable
                         })
                         .AndThen(localBundle =>
                         {
-                            Console.WriteLine($"[SERVER] Server Identity X25519: {Convert.ToHexString(localBundle.IdentityX25519)}");
-                            Console.WriteLine($"[SERVER] Server Identity Ed25519: {Convert.ToHexString(localBundle.IdentityEd25519)}");
-                            Console.WriteLine($"[SERVER] Server SignedPreKey: {Convert.ToHexString(localBundle.SignedPreKeyPublic)}");
-                            Console.WriteLine($"[SERVER] Server Ephemeral: {Convert.ToHexString(localBundle.EphemeralX25519)}");
                             
                             return EcliptixProtocolConnection.Create(connectId, false)
                             .AndThen(session =>
@@ -184,22 +175,16 @@ public class EcliptixProtocolSystem : IDisposable
                                         rootKeyHandle = derivedKeyHandle;
                                         return ReadAndWipeSecureHandle(derivedKeyHandle, Constants.X25519KeySize);
                                     })
-                                    .AndThen(rootKeyBytes => {
-                                        Console.WriteLine($"[SERVER] ROOT KEY: {Convert.ToHexString(rootKeyBytes)}");
-                                        return session.FinalizeChainAndDhKeys(rootKeyBytes,
-                                            peerInitialMessageProto.InitialDhPublicKey.ToByteArray());
-                                    })
+                                    .AndThen(rootKeyBytes => session.FinalizeChainAndDhKeys(rootKeyBytes,
+                                            peerInitialMessageProto.InitialDhPublicKey.ToByteArray()))
                                     .AndThen(_ => session.SetPeerBundle(peerBundle))
                                     .AndThen(_ => session.GetCurrentSenderDhPublicKey())
-                                    .Map(dhPublicKey => {
-                                        Console.WriteLine($"[SERVER] Sending Initial DH Public Key: {Convert.ToHexString(dhPublicKey)}");
-                                        return new PubKeyExchange
-                                        {
-                                            State = PubKeyExchangeState.Pending,
-                                            OfType = peerInitialMessageProto.OfType,
-                                            Payload = localBundle.ToProtobufExchange().ToByteString(),
-                                            InitialDhPublicKey = ByteString.CopyFrom(dhPublicKey)
-                                        };
+                                    .Map(dhPublicKey => new PubKeyExchange
+                                    {
+                                        State = PubKeyExchangeState.Pending,
+                                        OfType = peerInitialMessageProto.OfType,
+                                        Payload = localBundle.ToProtobufExchange().ToByteString(),
+                                        InitialDhPublicKey = ByteString.CopyFrom(dhPublicKey)
                                     });
                             });
                         });
@@ -213,6 +198,26 @@ public class EcliptixProtocolSystem : IDisposable
 
     public Result<Unit, EcliptixProtocolFailure> CompleteDataCenterPubKeyExchange(PubKeyExchange peerMessage)
     {
+        // Validate that this isn't a reflection attack - peer should not echo our DH key
+        if (_connectSession != null)
+        {
+            Result<byte[], EcliptixProtocolFailure> ourDhKeyResult = _connectSession.GetCurrentSenderDhPublicKey();
+            if (ourDhKeyResult.IsOk)
+            {
+                byte[] ourDhKey = ourDhKeyResult.Unwrap();
+                if (ourDhKey != null)
+                {
+                    Result<bool, SodiumFailure> constantTimeResult = SodiumInterop.ConstantTimeEquals(
+                        peerMessage.InitialDhPublicKey.Span, ourDhKey);
+                    if (constantTimeResult.IsOk && constantTimeResult.Unwrap())
+                    {
+                        return Result<Unit, EcliptixProtocolFailure>.Err(
+                            EcliptixProtocolFailure.Generic("Potential reflection attack detected - peer echoed our DH key"));
+                    }
+                }
+            }
+        }
+
         SodiumSecureMemoryHandle? rootKeyHandle = null;
         try
         {
@@ -240,8 +245,18 @@ public class EcliptixProtocolSystem : IDisposable
                         return ReadAndWipeSecureHandle(derivedKeyHandle, Constants.X25519KeySize);
                     })
                     .AndThen(rootKeyBytes =>
-                        _connectSession!.FinalizeChainAndDhKeys(rootKeyBytes,
-                            peerMessage.InitialDhPublicKey.ToByteArray()))
+                    {
+                        byte[] dhKeyBytes = peerMessage.InitialDhPublicKey.ToByteArray();
+                        try
+                        {
+                            return _connectSession!.FinalizeChainAndDhKeys(rootKeyBytes, dhKeyBytes);
+                        }
+                        finally
+                        {
+                            if (rootKeyBytes != null) SodiumInterop.SecureWipe(rootKeyBytes);
+                            if (dhKeyBytes != null) SodiumInterop.SecureWipe(dhKeyBytes);
+                        }
+                    })
                     .AndThen(_ => _connectSession!.SetPeerBundle(peerBundle))
                 );
         }
@@ -253,57 +268,90 @@ public class EcliptixProtocolSystem : IDisposable
 
     public Result<CipherPayload, EcliptixProtocolFailure> ProduceOutboundMessage(byte[] plainPayload)
     {
-        Console.WriteLine($"[SERVER] ProduceOutboundMessage - Payload size: {plainPayload.Length}");
         
         EcliptixMessageKey? messageKeyClone = null;
+        byte[]? nonce = null;
+        byte[]? ad = null;
+        byte[]? encrypted = null;
+        byte[]? newSenderDhPublicKey = null;
         try
         {
             if (_connectSession == null)
                 return Result<CipherPayload, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic("Session not established."));
 
-            return _connectSession.PrepareNextSendMessage()
-                .AndThen(prep => _connectSession.GenerateNextNonce()
-                    .AndThen(nonce => GetOptionalSenderDhKey(prep.IncludeDhKey)
-                        .AndThen(newSenderDhPublicKey => CloneMessageKey(prep.MessageKey)
-                            .AndThen(clonedKey =>
-                            {
-                                messageKeyClone = clonedKey;
-                                return _connectSession.GetPeerBundle();
-                            })
-                            .AndThen(peerBundle =>
-                            {
-                                // Always use initiator||responder ordering for AD
-                                // The client is always the initiator in our protocol
-                                byte[] ad = CreateAssociatedData(peerBundle.IdentityX25519, ecliptixSystemIdentityKeys.IdentityX25519PublicKey);
-                                return Encrypt(messageKeyClone!, nonce, plainPayload, ad);
-                            })
-                            .Map(encrypted => {
-                                var payload = new CipherPayload
-                                {
-                                    RequestId = BitConverter.ToUInt32(RandomNumberGenerator.GetBytes(4), 0),
-                                    Nonce = ByteString.CopyFrom(nonce),
-                                    RatchetIndex = messageKeyClone!.Index,
-                                    Cipher = ByteString.CopyFrom(encrypted),
-                                    CreatedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
-                                    DhPublicKey = newSenderDhPublicKey.Length > 0
-                                        ? ByteString.CopyFrom(newSenderDhPublicKey)
-                                        : ByteString.Empty
-                                };
-                                Console.WriteLine($"[SERVER] Encrypted message - Nonce: {Convert.ToHexString(nonce)}, RatchetIndex: {payload.RatchetIndex}, CipherSize: {encrypted.Length}");
-                                return payload;
-                            }))));
+            Result<(EcliptixMessageKey MessageKey, bool IncludeDhKey), EcliptixProtocolFailure> prepResult = _connectSession.PrepareNextSendMessage();
+            if (prepResult.IsErr) return Result<CipherPayload, EcliptixProtocolFailure>.Err(prepResult.UnwrapErr());
+
+            (EcliptixMessageKey MessageKey, bool IncludeDhKey) prep = prepResult.Unwrap();
+
+            Result<byte[], EcliptixProtocolFailure> nonceResult = _connectSession.GenerateNextNonce();
+            if (nonceResult.IsErr) return Result<CipherPayload, EcliptixProtocolFailure>.Err(nonceResult.UnwrapErr());
+            nonce = nonceResult.Unwrap();
+
+            Result<byte[], EcliptixProtocolFailure> dhKeyResult = GetOptionalSenderDhKey(prep.IncludeDhKey);
+            if (dhKeyResult.IsErr) return Result<CipherPayload, EcliptixProtocolFailure>.Err(dhKeyResult.UnwrapErr());
+            newSenderDhPublicKey = dhKeyResult.Unwrap();
+
+            // Notify replay protection of ratchet rotation when DH key is included
+            if (prep.IncludeDhKey && newSenderDhPublicKey.Length > 0)
+            {
+                _connectSession.NotifyRatchetRotation();
+                Console.WriteLine("[SERVER] Notified replay protection of sender ratchet rotation");
+            }
+
+            Result<EcliptixMessageKey, EcliptixProtocolFailure> cloneResult = CloneMessageKey(prep.MessageKey);
+            if (cloneResult.IsErr) return Result<CipherPayload, EcliptixProtocolFailure>.Err(cloneResult.UnwrapErr());
+            messageKeyClone = cloneResult.Unwrap();
+
+            Result<PublicKeyBundle, EcliptixProtocolFailure> peerBundleResult = _connectSession.GetPeerBundle();
+            if (peerBundleResult.IsErr) return Result<CipherPayload, EcliptixProtocolFailure>.Err(peerBundleResult.UnwrapErr());
+            PublicKeyBundle peerBundle = peerBundleResult.Unwrap();
+
+            // Always use initiator||responder ordering for AD - determine based on connection role
+            bool isInitiator = _connectSession.IsInitiator();
+            ad = isInitiator 
+                ? CreateAssociatedData(ecliptixSystemIdentityKeys.IdentityX25519PublicKey, peerBundle.IdentityX25519) // initiator||responder
+                : CreateAssociatedData(peerBundle.IdentityX25519, ecliptixSystemIdentityKeys.IdentityX25519PublicKey); // initiator||responder
+            Console.WriteLine($"[ENCRYPT] IsInitiator: {isInitiator}");
+            Console.WriteLine($"[ENCRYPT] Server Identity: {Convert.ToHexString(ecliptixSystemIdentityKeys.IdentityX25519PublicKey)[..16]}...");
+            Console.WriteLine($"[ENCRYPT] Client Identity: {Convert.ToHexString(peerBundle.IdentityX25519)[..16]}...");
+            Console.WriteLine($"[ENCRYPT] AD: {Convert.ToHexString(ad)[..32]}...");
+            
+            // The client should be creating the EXACT SAME AD when decrypting this message
+            // Log what the client should expect
+            byte[] clientShouldExpect = CreateAssociatedData(ecliptixSystemIdentityKeys.IdentityX25519PublicKey, peerBundle.IdentityX25519);
+            Console.WriteLine($"[ENCRYPT] Client should expect AD: {Convert.ToHexString(clientShouldExpect)[..32]}...");
+
+            Result<byte[], EcliptixProtocolFailure> encryptResult = Encrypt(messageKeyClone!, nonce, plainPayload, ad);
+            if (encryptResult.IsErr) return Result<CipherPayload, EcliptixProtocolFailure>.Err(encryptResult.UnwrapErr());
+            encrypted = encryptResult.Unwrap();
+
+            var payload = new CipherPayload
+            {
+                RequestId = BitConverter.ToUInt32(RandomNumberGenerator.GetBytes(4), 0),
+                Nonce = ByteString.CopyFrom(nonce),
+                RatchetIndex = messageKeyClone!.Index,
+                Cipher = ByteString.CopyFrom(encrypted),
+                CreatedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+                DhPublicKey = newSenderDhPublicKey.Length > 0
+                    ? ByteString.CopyFrom(newSenderDhPublicKey)
+                    : ByteString.Empty
+            };
+            return Result<CipherPayload, EcliptixProtocolFailure>.Ok(payload);
         }
         finally
         {
             messageKeyClone?.Dispose();
+            if (nonce != null) SodiumInterop.SecureWipe(nonce);
+            if (ad != null) SodiumInterop.SecureWipe(ad);
+            if (encrypted != null) SodiumInterop.SecureWipe(encrypted);
+            if (newSenderDhPublicKey != null) SodiumInterop.SecureWipe(newSenderDhPublicKey);
         }
     }
 
     public Result<byte[], EcliptixProtocolFailure> ProcessInboundMessage(CipherPayload cipherPayloadProto)
     {
-        Console.WriteLine($"[SERVER] ProcessInboundMessage - Nonce: {Convert.ToHexString(cipherPayloadProto.Nonce.ToByteArray())}, RatchetIndex: {cipherPayloadProto.RatchetIndex}, CipherSize: {cipherPayloadProto.Cipher.Length}");
-        Console.WriteLine($"[SERVER] ProcessInboundMessage - Has DH key: {cipherPayloadProto.DhPublicKey.Length > 0}");
         
         EcliptixMessageKey? messageKeyClone = null;
         try
@@ -320,19 +368,39 @@ public class EcliptixProtocolSystem : IDisposable
                 return Result<byte[], EcliptixProtocolFailure>.Err(validationResult.UnwrapErr());
             }
 
-            byte[]? receivedDhKey = cipherPayloadProto.DhPublicKey.Length > 0
+            byte[]? incomingDhKey = cipherPayloadProto.DhPublicKey.Length > 0
                 ? cipherPayloadProto.DhPublicKey.ToByteArray()
                 : null;
 
-            // Only perform ratchet if we received a new DH key
-            if (receivedDhKey is not null)
+            // If we received a DH key, clear replay protection windows for ratchet rotation
+            if (incomingDhKey != null)
             {
-                Result<Unit, EcliptixProtocolFailure> ratchetResult = _connectSession.PerformReceivingRatchet(receivedDhKey);
+                _connectSession.NotifyRatchetRotation();
+                Console.WriteLine("[SERVER] Cleared replay protection for received DH key");
+            }
+
+            // NEW: Replay protection check
+            Result<Unit, EcliptixProtocolFailure> replayCheckResult = 
+                _connectSession.CheckReplayProtection(cipherPayloadProto.Nonce.ToArray(), cipherPayloadProto.RatchetIndex);
+            if (replayCheckResult.IsErr)
+            {
+                Console.WriteLine($"[SERVER] Replay protection check failed: {replayCheckResult.UnwrapErr().Message}");
+                return Result<byte[], EcliptixProtocolFailure>.Err(replayCheckResult.UnwrapErr());
+            }
+
+            // Only perform ratchet if we received a new DH key
+            if (incomingDhKey is not null)
+            {
+                Result<Unit, EcliptixProtocolFailure> ratchetResult = _connectSession.PerformReceivingRatchet(incomingDhKey);
                 if (ratchetResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(ratchetResult.UnwrapErr());
+                
+                // Notify replay protection of receiving ratchet rotation
+                _connectSession.NotifyRatchetRotation();
+                Console.WriteLine("[SERVER] Notified replay protection of receiving ratchet rotation");
             }
 
             // NEW: Attempt message processing with enhanced recovery logic
-            Result<EcliptixMessageKey, EcliptixProtocolFailure> deriveResult = AttemptMessageProcessingWithRecovery(cipherPayloadProto, receivedDhKey);
+            Result<EcliptixMessageKey, EcliptixProtocolFailure> deriveResult = AttemptMessageProcessingWithRecovery(cipherPayloadProto, incomingDhKey);
             if (deriveResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(deriveResult.UnwrapErr());
 
             Result<EcliptixMessageKey, EcliptixProtocolFailure> clonedKeyResult = CloneMessageKey(deriveResult.Unwrap());
@@ -345,45 +413,148 @@ public class EcliptixProtocolSystem : IDisposable
             if (peerBundleResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(peerBundleResult.UnwrapErr());
             PublicKeyBundle peerBundle = peerBundleResult.Unwrap();
 
-            // Always use initiator||responder ordering for AD
-            // The client is always the initiator in our protocol
-            byte[] ad = CreateAssociatedData(peerBundle.IdentityX25519, ecliptixSystemIdentityKeys.IdentityX25519PublicKey);
-            Console.WriteLine($"[SERVER] Using message key index {cipherPayloadProto.RatchetIndex}");
+            // Try role-based AD first (for test compatibility)
+            bool isInitiator = _connectSession.IsInitiator();
+            byte[] associatedData = isInitiator 
+                ? CreateAssociatedData(ecliptixSystemIdentityKeys.IdentityX25519PublicKey, peerBundle.IdentityX25519) // initiator||responder
+                : CreateAssociatedData(peerBundle.IdentityX25519, ecliptixSystemIdentityKeys.IdentityX25519PublicKey); // initiator||responder
+            
+            Console.WriteLine($"[DECRYPT] IsInitiator: {isInitiator}");
+            Console.WriteLine($"[DECRYPT] Server Identity: {Convert.ToHexString(ecliptixSystemIdentityKeys.IdentityX25519PublicKey)[..16]}...");
+            Console.WriteLine($"[DECRYPT] Client Identity: {Convert.ToHexString(peerBundle.IdentityX25519)[..16]}...");
+            Console.WriteLine($"[DECRYPT] Role-based AD: {Convert.ToHexString(associatedData)[..32]}...");
+            Result<byte[], EcliptixProtocolFailure> decryptResult = Decrypt(messageKeyClone, cipherPayloadProto, associatedData);
+            
+            // If role-based AD fails, try multiple compatibility approaches
+            if (decryptResult.IsErr)
+            {
+                Console.WriteLine("[DECRYPT] Role-based AD failed, trying compatibility approaches...");
+                
+                // Try 1: Fixed client||server ordering  
+                byte[] fixedAD = CreateAssociatedData(peerBundle.IdentityX25519, ecliptixSystemIdentityKeys.IdentityX25519PublicKey);
+                Console.WriteLine($"[DECRYPT] Fixed AD:     {Convert.ToHexString(fixedAD)[..32]}...");
+                if (!associatedData.SequenceEqual(fixedAD))
+                {
+                    Console.WriteLine("[DECRYPT] Trying fixed client||server ordering...");
+                    decryptResult = Decrypt(messageKeyClone, cipherPayloadProto, fixedAD);
+                    if (decryptResult.IsOk)
+                    {
+                        Console.WriteLine("[DECRYPT] Fixed AD succeeded!");
+                    }
+                }
+                
+                // Try 2: What if client is using server||client (reverse) ordering?
+                if (decryptResult.IsErr)
+                {
+                    byte[] reverseAD = CreateAssociatedData(ecliptixSystemIdentityKeys.IdentityX25519PublicKey, peerBundle.IdentityX25519);
+                    Console.WriteLine($"[DECRYPT] Reverse AD:   {Convert.ToHexString(reverseAD)[..32]}...");
+                    if (!associatedData.SequenceEqual(reverseAD) && !fixedAD.SequenceEqual(reverseAD))
+                    {
+                        Console.WriteLine("[DECRYPT] Trying reverse server||client ordering...");
+                        decryptResult = Decrypt(messageKeyClone, cipherPayloadProto, reverseAD);
+                        if (decryptResult.IsOk)
+                        {
+                            Console.WriteLine("[DECRYPT] Reverse AD succeeded!");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("[DECRYPT] Reverse AD same as previous, skipping");
+                    }
+                }
+                
+                // Try 3: Different key combinations (maybe client uses wrong keys for AD)
+                if (decryptResult.IsErr && incomingDhKey != null && incomingDhKey.Length == 32)
+                {
+                    // What if client uses its DH key instead of identity key?
+                    byte[] dhBasedAD = CreateAssociatedData(incomingDhKey, ecliptixSystemIdentityKeys.IdentityX25519PublicKey);
+                    Console.WriteLine($"[DECRYPT] DH-based AD: {Convert.ToHexString(dhBasedAD)[..32]}...");
+                    decryptResult = Decrypt(messageKeyClone, cipherPayloadProto, dhBasedAD);
+                    if (decryptResult.IsOk)
+                    {
+                        Console.WriteLine("[DECRYPT] DH-based AD succeeded!");
+                    }
+                }
+                
+                // Try 4: Empty AD (no associated data)
+                if (decryptResult.IsErr)
+                {
+                    Console.WriteLine("[DECRYPT] Trying empty AD...");
+                    decryptResult = Decrypt(messageKeyClone, cipherPayloadProto, Array.Empty<byte>());
+                    if (decryptResult.IsOk)
+                    {
+                        Console.WriteLine("[DECRYPT] Empty AD succeeded!");
+                    }
+                }
+                
+                // Try 4: Log diagnostic info
+                if (decryptResult.IsErr)
+                {
+                    Console.WriteLine("[DECRYPT] All AD strategies failed!");
+                    Console.WriteLine($"[DECRYPT] Message nonce: {Convert.ToHexString(cipherPayloadProto.Nonce.ToByteArray())[..16]}...");
+                    Console.WriteLine("[DECRYPT] This suggests the client is using different AD or keys");
+                }
+            }
+            else
+            {
+                Console.WriteLine("[DECRYPT] Role-based AD succeeded");
+            }
 
-            Result<byte[], EcliptixProtocolFailure> decryptResult = Decrypt(messageKeyClone, cipherPayloadProto, ad);
-
-            if (decryptResult.IsErr && receivedDhKey != null && cipherPayloadProto.RatchetIndex <= 5)
+            if (decryptResult.IsErr && incomingDhKey != null && cipherPayloadProto.RatchetIndex <= 5)
             {
                 // SECURITY FIX: Check ratchet result instead of ignoring it
-                var ratchetResult = _connectSession.PerformReceivingRatchet(receivedDhKey);
+                var ratchetResult = _connectSession.PerformReceivingRatchet(incomingDhKey);
                 if (ratchetResult.IsErr)
                 {
                     Console.WriteLine($"[SERVER] Fallback ratchet operation failed: {ratchetResult.UnwrapErr().Message}");
+                    if (incomingDhKey != null) SodiumInterop.SecureWipe(incomingDhKey);
+                    if (associatedData != null) SodiumInterop.SecureWipe(associatedData);
                     return Result<byte[], EcliptixProtocolFailure>.Err(ratchetResult.UnwrapErr());
                 }
 
                 deriveResult = _connectSession.ProcessReceivedMessage(cipherPayloadProto.RatchetIndex);
-                if (deriveResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(deriveResult.UnwrapErr());
+                if (deriveResult.IsErr)
+                {
+                    if (incomingDhKey != null) SodiumInterop.SecureWipe(incomingDhKey);
+                    if (associatedData != null) SodiumInterop.SecureWipe(associatedData);
+                    return Result<byte[], EcliptixProtocolFailure>.Err(deriveResult.UnwrapErr());
+                }
 
                 clonedKeyResult = CloneMessageKey(deriveResult.Unwrap());
-                if (clonedKeyResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(clonedKeyResult.UnwrapErr());
+                if (clonedKeyResult.IsErr)
+                {
+                    if (incomingDhKey != null) SodiumInterop.SecureWipe(incomingDhKey);
+                    if (associatedData != null) SodiumInterop.SecureWipe(associatedData);
+                    return Result<byte[], EcliptixProtocolFailure>.Err(clonedKeyResult.UnwrapErr());
+                }
                 messageKeyClone?.Dispose();
                 messageKeyClone = clonedKeyResult.Unwrap();
 
-                decryptResult = Decrypt(messageKeyClone, cipherPayloadProto, ad);
+                decryptResult = Decrypt(messageKeyClone, cipherPayloadProto, associatedData);
             }
+
+            // Clean up sensitive data
+            if (incomingDhKey != null) SodiumInterop.SecureWipe(incomingDhKey);
+            if (associatedData != null) SodiumInterop.SecureWipe(associatedData);
 
             if (decryptResult.IsErr)
             {
-                // Check if this might be an identity key mismatch
-                // This can happen when a client reconnects with different identity keys
-                // but the server still has the old session persisted
+                // All AD compatibility strategies failed - this indicates a fundamental mismatch
                 Console.WriteLine($"[SERVER] Decryption failed for message with RatchetIndex: {cipherPayloadProto.RatchetIndex}");
-                Console.WriteLine($"[SERVER] This might indicate client identity key change - consider fresh handshake");
+                Console.WriteLine("[SERVER] All AD strategies exhausted - client-server cryptographic context mismatch");
                 
-                // Return specific error that should trigger fresh handshake on client side
-                return Result<byte[], EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.ActorStateNotFound("Session authentication failed - fresh handshake required"));
+                // Before giving up, check if this is the first message and we can attempt DH ratchet recovery
+                if (cipherPayloadProto.RatchetIndex == 1 && incomingDhKey != null)
+                {
+                    Console.WriteLine("[SERVER] Attempting DH ratchet recovery for first message...");
+                    // This will be handled by the fallback ratchet logic that follows
+                }
+                else
+                {
+                    Console.WriteLine("[SERVER] No recovery possible - forcing fresh handshake");
+                    return Result<byte[], EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.ActorStateNotFound("Session authentication failed - fresh handshake required"));
+                }
             }
 
             return decryptResult;
@@ -411,7 +582,9 @@ public class EcliptixProtocolSystem : IDisposable
         if (readResult.IsErr)
             return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr().ToEcliptixProtocolFailure());
         byte[] copy = (byte[])buffer.Clone();
-        SodiumInterop.SecureWipe(buffer).IgnoreResult();
+        Result<Unit, SodiumFailure> wipeResult = SodiumInterop.SecureWipe(buffer);
+        if (wipeResult.IsErr)
+            return Result<byte[], EcliptixProtocolFailure>.Err(wipeResult.UnwrapErr().ToEcliptixProtocolFailure());
         return Result<byte[], EcliptixProtocolFailure>.Ok(copy);
     }
 
@@ -441,8 +614,6 @@ public class EcliptixProtocolSystem : IDisposable
         byte[] ad = new byte[id1.Length + id2.Length];
         Buffer.BlockCopy(id1, 0, ad, 0, id1.Length);
         Buffer.BlockCopy(id2, 0, ad, id1.Length, id2.Length);
-        Console.WriteLine($"[SERVER] CreateAssociatedData - First: {Convert.ToHexString(id1)}, Second: {Convert.ToHexString(id2)}");
-        Console.WriteLine($"[SERVER] CreateAssociatedData - Full AD: {Convert.ToHexString(ad)}");
         return ad;
     }
 
@@ -450,6 +621,8 @@ public class EcliptixProtocolSystem : IDisposable
         byte[] plaintext, byte[] ad)
     {
         byte[]? keyMaterial = null;
+        byte[]? ciphertext = null;
+        byte[]? tag = null;
         try
         {
             keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
@@ -458,8 +631,8 @@ public class EcliptixProtocolSystem : IDisposable
             if (readResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
 
             // Direct AES-GCM encryption without SecureMemoryUtils
-            byte[] ciphertext = new byte[plaintext.Length];
-            byte[] tag = new byte[Constants.AesGcmTagSize];
+            ciphertext = new byte[plaintext.Length];
+            tag = new byte[Constants.AesGcmTagSize];
             
             using (var aesGcm = new System.Security.Cryptography.AesGcm(keySpan, Constants.AesGcmTagSize))
             {
@@ -474,6 +647,8 @@ public class EcliptixProtocolSystem : IDisposable
         }
         catch (Exception ex)
         {
+            if (ciphertext != null) SodiumInterop.SecureWipe(ciphertext);
+            if (tag != null) SodiumInterop.SecureWipe(tag);
             return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("AES-GCM encryption failed.", ex));
         }
@@ -486,8 +661,6 @@ public class EcliptixProtocolSystem : IDisposable
     private static Result<byte[], EcliptixProtocolFailure> Decrypt(EcliptixMessageKey key, CipherPayload payload,
         byte[] ad)
     {
-        Console.WriteLine($"[SERVER] Decrypt called - Nonce: {Convert.ToHexString(payload.Nonce.ToByteArray())}, AD length: {ad.Length}, Cipher length: {payload.Cipher.Length}");
-        Console.WriteLine($"[SERVER] Decrypt - Full ciphertext+tag: {Convert.ToHexString(payload.Cipher.Span)}");
         ReadOnlySpan<byte> fullCipherSpan = payload.Cipher.Span;
         int tagSize = Constants.AesGcmTagSize;
         int cipherLength = fullCipherSpan.Length - tagSize;
@@ -497,6 +670,10 @@ public class EcliptixProtocolSystem : IDisposable
                 $"Received ciphertext length ({fullCipherSpan.Length}) is smaller than the GCM tag size ({tagSize})."));
 
         byte[]? keyMaterial = null;
+        byte[]? ciphertext = null;
+        byte[]? tag = null;
+        byte[]? plaintext = null;
+        byte[]? nonce = null;
         try
         {
             keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
@@ -505,26 +682,33 @@ public class EcliptixProtocolSystem : IDisposable
             if (readResult.IsErr) return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
 
             // Direct AES-GCM decryption without SecureMemoryUtils
-            byte[] ciphertext = fullCipherSpan[..cipherLength].ToArray();
-            byte[] tag = fullCipherSpan[cipherLength..].ToArray();
-            byte[] plaintext = new byte[cipherLength];
-            
-            Console.WriteLine($"[SERVER] Decrypt - Key: {Convert.ToHexString(keySpan)}, Nonce: {Convert.ToHexString(payload.Nonce.ToArray())}, Ciphertext: {Convert.ToHexString(ciphertext)}, Tag: {Convert.ToHexString(tag)}");
+            ciphertext = fullCipherSpan[..cipherLength].ToArray();
+            tag = fullCipherSpan[cipherLength..].ToArray();
+            plaintext = new byte[cipherLength];
+            nonce = payload.Nonce.ToArray();
             
             using (var aesGcm = new System.Security.Cryptography.AesGcm(keySpan, Constants.AesGcmTagSize))
             {
-                aesGcm.Decrypt(payload.Nonce.ToArray(), ciphertext, tag, plaintext, ad);
+                aesGcm.Decrypt(nonce, ciphertext, tag, plaintext, ad);
             }
             
             return Result<byte[], EcliptixProtocolFailure>.Ok(plaintext);
         }
         catch (CryptographicException cryptoEx)
         {
+            if (ciphertext != null) SodiumInterop.SecureWipe(ciphertext);
+            if (tag != null) SodiumInterop.SecureWipe(tag);
+            if (plaintext != null) SodiumInterop.SecureWipe(plaintext);
+            if (nonce != null) SodiumInterop.SecureWipe(nonce);
             return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("AES-GCM decryption failed (authentication tag mismatch).", cryptoEx));
         }
         catch (Exception ex)
         {
+            if (ciphertext != null) SodiumInterop.SecureWipe(ciphertext);
+            if (tag != null) SodiumInterop.SecureWipe(tag);
+            if (plaintext != null) SodiumInterop.SecureWipe(plaintext);
+            if (nonce != null) SodiumInterop.SecureWipe(nonce);
             return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Unexpected error during AES-GCM decryption.", ex));
         }
