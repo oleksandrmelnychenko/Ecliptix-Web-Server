@@ -39,14 +39,30 @@ public static class OpaqueCryptoUtilities
         if (ikm.IsEmpty) return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.InvalidInput());
 
         HMac hmac = new(new Sha256Digest());
-        ReadOnlySpan<byte> effectiveSalt = salt.IsEmpty ? stackalloc byte[hmac.GetMacSize()] : salt;
+        byte[] saltBytes;
+        
+        if (salt.IsEmpty)
+        {
+            saltBytes = new byte[hmac.GetMacSize()];
+        }
+        else
+        {
+            saltBytes = salt.ToArray();
+        }
 
         try
         {
-            hmac.Init(new KeyParameter(effectiveSalt.ToArray()));
-            hmac.BlockUpdate(ikm.ToArray(), 0, ikm.Length);
+            hmac.Init(new KeyParameter(saltBytes));
+            
+            byte[] ikmBytes = ikm.ToArray();
+            hmac.BlockUpdate(ikmBytes, 0, ikm.Length);
+            
             byte[] prk = new byte[hmac.GetMacSize()];
             hmac.DoFinal(prk, 0);
+            
+            CryptographicOperations.ZeroMemory(saltBytes);
+            CryptographicOperations.ZeroMemory(ikmBytes);
+            
             return Result<byte[], OpaqueFailure>.Ok(prk);
         }
         catch (Exception ex)
@@ -55,21 +71,40 @@ public static class OpaqueCryptoUtilities
         }
     }
 
-    public static byte[] HkdfExpand(byte[] prk, ReadOnlySpan<byte> info, int outputLength)
+    public static byte[] HkdfExpand(ReadOnlySpan<byte> prk, ReadOnlySpan<byte> info, int outputLength)
     {
         HkdfBytesGenerator hkdf = new(new Sha256Digest());
-        hkdf.Init(HkdfParameters.SkipExtractParameters(prk, info.ToArray()));
+        
+        byte[] prkBytes = prk.ToArray();
+        byte[] infoBytes = info.ToArray();
+        
+        hkdf.Init(HkdfParameters.SkipExtractParameters(prkBytes, infoBytes));
         byte[] okm = new byte[outputLength];
         hkdf.GenerateBytes(okm, 0, outputLength);
+        
+        CryptographicOperations.ZeroMemory(prkBytes);
+        CryptographicOperations.ZeroMemory(infoBytes);
+        
         return okm;
     }
 
-    public static byte[] DeriveKey(byte[] ikm, byte[]? salt, ReadOnlySpan<byte> info, int outputLength)
+    public static byte[] DeriveKey(ReadOnlySpan<byte> ikm, ReadOnlySpan<byte> salt, ReadOnlySpan<byte> info, int outputLength)
     {
         HkdfBytesGenerator hkdf = new(new Sha256Digest());
-        hkdf.Init(new HkdfParameters(ikm, salt, info.ToArray()));
+        
+        byte[] ikmBytes = ikm.ToArray();
+        byte[] infoBytes = info.ToArray();
+        byte[]? saltBytes = salt.IsEmpty ? null : salt.ToArray();
+        
+        hkdf.Init(new HkdfParameters(ikmBytes, saltBytes, infoBytes));
         byte[] okm = new byte[outputLength];
         hkdf.GenerateBytes(okm, 0, outputLength);
+        
+        CryptographicOperations.ZeroMemory(ikmBytes);
+        CryptographicOperations.ZeroMemory(infoBytes);
+        if (saltBytes != null)
+            CryptographicOperations.ZeroMemory(saltBytes);
+        
         return okm;
     }
 
@@ -80,13 +115,20 @@ public static class OpaqueCryptoUtilities
 
         try
         {
-            byte[] saltArray = new byte[Pbkdf2SaltLength];
+            byte[] saltBytes = new byte[Pbkdf2SaltLength];
+            byte[] oprfBytes = oprfOutput.ToArray();
+            
             using Rfc2898DeriveBytes pbkdf2 = new(
-                oprfOutput.ToArray(),
-                saltArray,
+                oprfBytes,
+                saltBytes,
                 Pbkdf2Iterations,
                 HashAlgorithmName.SHA256);
+                
             byte[] stretched = pbkdf2.GetBytes(HashLength);
+            
+            CryptographicOperations.ZeroMemory(saltBytes);
+            CryptographicOperations.ZeroMemory(oprfBytes);
+            
             return Result<byte[], OpaqueFailure>.Ok(stretched);
         }
         catch (Exception ex)
@@ -175,20 +217,37 @@ public static class OpaqueCryptoUtilities
         try
         {
             IBufferedCipher cipher = CipherUtilities.GetCipher("AES/GCM/NoPadding");
-            byte[] nonce = new byte[AesGcmNonceLengthBytes];
+            Span<byte> nonce = stackalloc byte[AesGcmNonceLengthBytes];
             SecureRandomInstance.NextBytes(nonce);
 
-            byte[]? associatedDataArray = associatedData.IsEmpty ? null : associatedData.ToArray();
-            AeadParameters cipherParams = new(new KeyParameter(key.ToArray()), AesGcmTagLengthBits, nonce, associatedDataArray);
+            Span<byte> keyBuffer = stackalloc byte[key.Length];
+            key.CopyTo(keyBuffer);
+            
+            byte[]? associatedDataArray = null;
+            if (!associatedData.IsEmpty)
+            {
+                associatedDataArray = associatedData.ToArray();
+            }
+            
+            AeadParameters cipherParams = new(new KeyParameter(keyBuffer.ToArray()), AesGcmTagLengthBits, nonce.ToArray(), associatedDataArray);
             cipher.Init(true, cipherParams);
 
             int outputSize = cipher.GetOutputSize(plaintext.Length);
             byte[] result = new byte[AesGcmNonceLengthBytes + outputSize];
 
-            nonce.CopyTo(result, 0);
+            nonce.CopyTo(result.AsSpan(0, AesGcmNonceLengthBytes));
 
-            int len = cipher.ProcessBytes(plaintext.ToArray(), 0, plaintext.Length, result, AesGcmNonceLengthBytes);
+            byte[] plaintextBuffer = plaintext.ToArray();
+            plaintext.CopyTo(plaintextBuffer);
+            
+            int len = cipher.ProcessBytes(plaintextBuffer, 0, plaintext.Length, result, AesGcmNonceLengthBytes);
             cipher.DoFinal(result, AesGcmNonceLengthBytes + len);
+
+            CryptographicOperations.ZeroMemory(nonce.ToArray());
+            CryptographicOperations.ZeroMemory(keyBuffer.ToArray());
+            CryptographicOperations.ZeroMemory(plaintextBuffer);
+            if (associatedDataArray != null)
+                CryptographicOperations.ZeroMemory(associatedDataArray);
 
             return Result<byte[], OpaqueFailure>.Ok(result);
         }
@@ -209,11 +268,34 @@ public static class OpaqueCryptoUtilities
         try
         {
             IBufferedCipher cipher = CipherUtilities.GetCipher("AES/GCM/NoPadding");
-            byte[]? associatedDataArray = associatedData.IsEmpty ? null : associatedData.ToArray();
-            AeadParameters cipherParams = new(new KeyParameter(key.ToArray()), AesGcmTagLengthBits, nonce.ToArray(), associatedDataArray);
+            
+            Span<byte> keyBuffer = stackalloc byte[key.Length];
+            key.CopyTo(keyBuffer);
+            
+            Span<byte> nonceBuffer = stackalloc byte[nonce.Length];
+            nonce.CopyTo(nonceBuffer);
+            
+            byte[]? associatedDataArray = null;
+            if (!associatedData.IsEmpty)
+            {
+                associatedDataArray = associatedData.ToArray();
+            }
+            
+            AeadParameters cipherParams = new(new KeyParameter(keyBuffer.ToArray()), AesGcmTagLengthBits, nonceBuffer.ToArray(), associatedDataArray);
             cipher.Init(false, cipherParams);
 
-            return Result<byte[], OpaqueFailure>.Ok(cipher.DoFinal(ciphertext.ToArray()));
+            byte[] ciphertextBuffer = ciphertext.ToArray();
+            ciphertext.CopyTo(ciphertextBuffer);
+            
+            byte[] result = cipher.DoFinal(ciphertextBuffer);
+            
+            CryptographicOperations.ZeroMemory(keyBuffer.ToArray());
+            CryptographicOperations.ZeroMemory(nonceBuffer.ToArray());
+            CryptographicOperations.ZeroMemory(ciphertextBuffer);
+            if (associatedDataArray != null)
+                CryptographicOperations.ZeroMemory(associatedDataArray);
+            
+            return Result<byte[], OpaqueFailure>.Ok(result);
         }
         catch (InvalidCipherTextException ex)
         {
@@ -227,10 +309,10 @@ public static class OpaqueCryptoUtilities
     {
         try
         {
-            byte[] nonce = new byte[NonceLength];
+            Span<byte> nonce = stackalloc byte[NonceLength];
             RandomNumberGenerator.Fill(nonce);
             
-            byte[] pad = HkdfExpand(maskingKey.ToArray(), nonce, response.Length);
+            byte[] pad = HkdfExpand(maskingKey, nonce, response.Length);
             
             byte[] masked = new byte[response.Length];
             for (int i = 0; i < response.Length; i++)
@@ -239,10 +321,12 @@ public static class OpaqueCryptoUtilities
             }
             
             byte[] result = new byte[NonceLength + response.Length];
-            nonce.CopyTo(result, 0);
-            masked.CopyTo(result.AsSpan(NonceLength..));
+            nonce.CopyTo(result.AsSpan(0, NonceLength));
+            masked.CopyTo(result.AsSpan(NonceLength));
             
             CryptographicOperations.ZeroMemory(pad);
+            CryptographicOperations.ZeroMemory(nonce.ToArray());
+            CryptographicOperations.ZeroMemory(masked);
             
             return Result<byte[], OpaqueFailure>.Ok(result);
         }

@@ -19,20 +19,25 @@ public record MembershipOpaqueQueryRecord(string PhoneNumber, byte[] Registratio
 public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtocolService
 {
     private readonly BigInteger _serverOprfKey = new(1,
-        OpaqueCryptoUtilities.DeriveKey(secretKeySeed, null, OprfKeyInfo,
+        OpaqueCryptoUtilities.DeriveKey(secretKeySeed.AsSpan(), ReadOnlySpan<byte>.Empty, OprfKeyInfo,
             DefaultKeyLength));
 
     private readonly byte[] _serverTokenEncryptionKey =
-        OpaqueCryptoUtilities.DeriveKey(secretKeySeed, null, TokenKeyInfo, DefaultKeyLength);
+        OpaqueCryptoUtilities.DeriveKey(secretKeySeed.AsSpan(), ReadOnlySpan<byte>.Empty, TokenKeyInfo, DefaultKeyLength);
 
     private readonly AsymmetricCipherKeyPair _serverStaticKeyPair = OpaqueCryptoUtilities.GenerateKeyPairFromSeed(
-        OpaqueCryptoUtilities.DeriveKey(secretKeySeed, null, ServerStaticKeyInfo, DefaultKeyLength));
+        OpaqueCryptoUtilities.DeriveKey(secretKeySeed.AsSpan(), ReadOnlySpan<byte>.Empty, ServerStaticKeyInfo, DefaultKeyLength));
 
-    public byte[] ProcessOprfRequest(byte[] oprfRequest) => ProcessOprfRequest(oprfRequest.AsSpan());
+    public byte[] ProcessOprfRequest(byte[] oprfRequest)
+    {
+        return ProcessOprfRequest(oprfRequest.AsSpan());
+    }
 
     public byte[] ProcessOprfRequest(ReadOnlySpan<byte> oprfRequest)
     {
-        ECPoint requestPoint = OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(oprfRequest.ToArray());
+        Span<byte> requestBuffer = stackalloc byte[oprfRequest.Length];
+        oprfRequest.CopyTo(requestBuffer);
+        ECPoint requestPoint = OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(requestBuffer.ToArray());
 
         Result<Unit, OpaqueFailure> validationResult = OpaqueCryptoUtilities.ValidatePoint(requestPoint);
         if (validationResult.IsErr)
@@ -69,8 +74,10 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         }
     }
 
-    public byte[] GetPublicKey() =>
-        ((ECPublicKeyParameters)_serverStaticKeyPair.Public).Q.GetEncoded(CryptographicFlags.CompressedPointEncoding);
+    public byte[] GetPublicKey()
+    {
+        return ((ECPublicKeyParameters)_serverStaticKeyPair.Public).Q.GetEncoded(CryptographicFlags.CompressedPointEncoding);
+    }
 
     public Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(OpaqueSignInInitRequest request,
         MembershipOpaqueQueryRecord queryRecord)
@@ -120,7 +127,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             byte[] stretchedOprfKey = stretchResult.Unwrap();
 
             byte[] maskingKey =
-                OpaqueCryptoUtilities.DeriveKey(stretchedOprfKey, null, MaskingKeyInfo, DefaultKeyLength);
+                OpaqueCryptoUtilities.DeriveKey(stretchedOprfKey.AsSpan(), ReadOnlySpan<byte>.Empty, MaskingKeyInfo, DefaultKeyLength);
 
             Result<byte[], OpaqueFailure> maskOprfResult = OpaqueCryptoUtilities.MaskResponse(oprfResponse, maskingKey);
             if (maskOprfResult.IsErr)
@@ -341,7 +348,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             byte[] stretchedOprfKey = stretchResult.Unwrap();
 
             byte[] maskingKey =
-                OpaqueCryptoUtilities.DeriveKey(stretchedOprfKey, null, MaskingKeyInfo, DefaultKeyLength);
+                OpaqueCryptoUtilities.DeriveKey(stretchedOprfKey.AsSpan(), ReadOnlySpan<byte>.Empty, MaskingKeyInfo, DefaultKeyLength);
 
             Result<byte[], OpaqueFailure> maskOprfResult =
                 OpaqueCryptoUtilities.MaskResponse(currentPasswordOprfResponse, maskingKey);

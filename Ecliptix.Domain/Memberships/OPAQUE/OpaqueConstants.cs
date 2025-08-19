@@ -2,16 +2,16 @@ namespace Ecliptix.Domain.Memberships.OPAQUE;
 
 public static class OpaqueConstants
 {
-    public static readonly byte[] OprfKeyInfo = "Ecliptix-OPAQUE-OPRFKey"u8.ToArray();
-    public static readonly byte[] TokenKeyInfo = "Ecliptix-OPAQUE-TokenKey"u8.ToArray();
-    public static readonly byte[] ServerStaticKeyInfo = "Ecliptix-OPAQUE-ServerStaticKey"u8.ToArray();
-    public static readonly byte[] CredentialKeyInfo = "Ecliptix-OPAQUE-CredentialKey"u8.ToArray();
-    public static readonly byte[] AkeSalt = "OPAQUE-AKE-Salt"u8.ToArray();
-    public static readonly byte[] SessionKeyInfo = "session_key"u8.ToArray();
-    public static readonly byte[] ClientMacKeyInfo = "client_mac_key"u8.ToArray();
-    public static readonly byte[] ServerMacKeyInfo = "server_mac_key"u8.ToArray();
+    public static ReadOnlySpan<byte> OprfKeyInfo => "Ecliptix-OPAQUE-OPRFKey"u8;
+    public static ReadOnlySpan<byte> TokenKeyInfo => "Ecliptix-OPAQUE-TokenKey"u8;
+    public static ReadOnlySpan<byte> ServerStaticKeyInfo => "Ecliptix-OPAQUE-ServerStaticKey"u8;
+    public static ReadOnlySpan<byte> CredentialKeyInfo => "Ecliptix-OPAQUE-CredentialKey"u8;
+    public static ReadOnlySpan<byte> AkeSalt => "OPAQUE-AKE-Salt"u8;
+    public static ReadOnlySpan<byte> SessionKeyInfo => "session_key"u8;
+    public static ReadOnlySpan<byte> ClientMacKeyInfo => "client_mac_key"u8;
+    public static ReadOnlySpan<byte> ServerMacKeyInfo => "server_mac_key"u8;
 
-    public static readonly byte[] ProtocolVersion = "Ecliptix-OPAQUE-v1"u8.ToArray();
+    public static ReadOnlySpan<byte> ProtocolVersion => "Ecliptix-OPAQUE-v1"u8;
 
     public const int CompressedPublicKeyLength = 33;
     public const int DefaultKeyLength = 32;
@@ -29,15 +29,15 @@ public static class OpaqueConstants
     public const int Argon2idTimeCost = 3;
     public const int Argon2idParallelism = 1;
 
-    public static readonly byte[] MaskingKeyInfo = "MaskingKey"u8.ToArray();
-    public static readonly byte[] ExportKeyInfo = "ExportKey"u8.ToArray();
-    public static readonly byte[] AuthKeyInfo = "AuthKey"u8.ToArray();
-    public static readonly byte[] PrivateKeyInfo = "PrivateKey"u8.ToArray();
-    public static readonly byte[] CredentialResponsePadInfo = "CredentialResponsePad"u8.ToArray();
-    public static readonly byte[] HandshakeSecretInfo = "HandshakeSecret"u8.ToArray();
-    public static readonly byte[] PasswordChangeKeyInfo = "PasswordChangeKey"u8.ToArray();
-    public static readonly byte[] RecoveryTokenKeyInfo = "RecoveryTokenKey"u8.ToArray();
-    public static readonly byte[] SessionTokenKeyInfo = "SessionTokenKey"u8.ToArray();
+    public static ReadOnlySpan<byte> MaskingKeyInfo => "MaskingKey"u8;
+    public static ReadOnlySpan<byte> ExportKeyInfo => "ExportKey"u8;
+    public static ReadOnlySpan<byte> AuthKeyInfo => "AuthKey"u8;
+    public static ReadOnlySpan<byte> PrivateKeyInfo => "PrivateKey"u8;
+    public static ReadOnlySpan<byte> CredentialResponsePadInfo => "CredentialResponsePad"u8;
+    public static ReadOnlySpan<byte> HandshakeSecretInfo => "HandshakeSecret"u8;
+    public static ReadOnlySpan<byte> PasswordChangeKeyInfo => "PasswordChangeKey"u8;
+    public static ReadOnlySpan<byte> RecoveryTokenKeyInfo => "RecoveryTokenKey"u8;
+    public static ReadOnlySpan<byte> SessionTokenKeyInfo => "SessionTokenKey"u8;
 
     public const string DefaultServerIdentity = "server.ecliptix.com";
     public const string OpaqueVersion = "OPAQUE-3DH";
@@ -115,6 +115,6 @@ public static class OpaqueConstants
     
     public static class HkdfInfoStrings
     {
-        public static readonly byte[] OpaqueSalt = "OPAQUE-Salt"u8.ToArray();
+        public static ReadOnlySpan<byte> OpaqueSalt => "OPAQUE-Salt"u8;
     }
 }

@@ -362,9 +362,11 @@ public class EcliptixProtocolSystem : IDisposable
                 return Result<byte[], EcliptixProtocolFailure>.Err(validationResult.UnwrapErr());
             }
 
-            byte[]? incomingDhKey = cipherPayloadProto.DhPublicKey.Length > 0
-                ? cipherPayloadProto.DhPublicKey.ToByteArray()
-                : null;
+            byte[]? incomingDhKey = null;
+            if (cipherPayloadProto.DhPublicKey.Length > 0)
+            {
+                incomingDhKey = cipherPayloadProto.DhPublicKey.ToByteArray();
+            }
 
             if (incomingDhKey != null)
             {
@@ -408,9 +410,9 @@ public class EcliptixProtocolSystem : IDisposable
             bool isInitiator = _connectSession.IsInitiator();
             byte[] associatedData = isInitiator
                 ? CreateAssociatedData(ecliptixSystemIdentityKeys.IdentityX25519PublicKey,
-                    peerBundle.IdentityX25519) // initiator||responder
+                    peerBundle.IdentityX25519) 
                 : CreateAssociatedData(peerBundle.IdentityX25519,
-                    ecliptixSystemIdentityKeys.IdentityX25519PublicKey); // initiator||responder
+                    ecliptixSystemIdentityKeys.IdentityX25519PublicKey);
 
             Console.WriteLine($"[DECRYPT] IsInitiator: {isInitiator}");
             Console.WriteLine(

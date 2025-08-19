@@ -89,7 +89,15 @@ public sealed class EcliptixProtocolConnection : IDisposable
         // If the high 32 bits are used (value > uint.MaxValue), reset to avoid issues
         _nonceCounter = (long)proto.NonceCounter;
         _peerBundle = PublicKeyBundle.FromProtobufExchange(proto.PeerBundle).Unwrap();
-        _peerDhPublicKey = proto.PeerDhPublicKey.IsEmpty ? null : proto.PeerDhPublicKey.ToByteArray();
+        if (proto.PeerDhPublicKey.IsEmpty)
+        {
+            _peerDhPublicKey = null;
+        }
+        else
+        {
+            byte[] dhKeyBytes = proto.PeerDhPublicKey.ToByteArray();
+            _peerDhPublicKey = dhKeyBytes;
+        }
         _isFirstReceivingRatchet = proto.IsFirstReceivingRatchet;
         _rootKeyHandle = rootKeyHandle;
         _sendingStep = sendingStep;
@@ -239,7 +247,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
             if (rootKeyResult.IsErr)
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(rootKeyResult.UnwrapErr());
             rootKeyHandle = rootKeyResult.Unwrap();
-            Result<Unit, EcliptixProtocolFailure> writeResult = rootKeyHandle.Write(proto.RootKey.ToByteArray()).MapSodiumFailure();
+            byte[] rootKeyBytes = proto.RootKey.ToByteArray();
+            Result<Unit, EcliptixProtocolFailure> writeResult = rootKeyHandle.Write(rootKeyBytes).MapSodiumFailure();
             if (writeResult.IsErr)
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr());
 
