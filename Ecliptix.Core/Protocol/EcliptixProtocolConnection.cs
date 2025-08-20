@@ -484,6 +484,21 @@ public sealed class EcliptixProtocolConnection : IDisposable
             var receivingStepResult = EnsureReceivingStepInitialized();
             if (receivingStepResult.IsErr) return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(receivingStepResult.UnwrapErr());
 
+            // Check for message gaps and log for future recovery implementation  
+            var currentIndexResult = _receivingStep!.GetCurrentIndex();
+            if (currentIndexResult.IsOk)
+            {
+                uint currentIndex = currentIndexResult.Unwrap();
+                if (receivedIndex > currentIndex + 1)
+                {
+                    uint gapSize = receivedIndex - currentIndex - 1;
+                    Console.WriteLine($"[SERVER] Detected message gap: expecting {currentIndex + 1}, got {receivedIndex} (gap of {gapSize} messages)");
+                    
+                    // Future: Store skipped keys when chain key access is available
+                    // For now, we rely on DH ratchet recovery which is already implemented above
+                }
+            }
+
             var derivedKeyResult = _receivingStep!.GetOrDeriveKeyFor(receivedIndex);
             if (derivedKeyResult.IsErr) return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(derivedKeyResult.UnwrapErr());
 
@@ -591,6 +606,13 @@ public sealed class EcliptixProtocolConnection : IDisposable
     {
         return _profiler.GetMetrics();
     }
+
+    public Result<Option<EcliptixMessageKey>, EcliptixProtocolFailure> TryRecoverMessageKey(uint messageIndex)
+    {
+        return _ratchetRecovery.TryRecoverMessageKey(messageIndex);
+    }
+
+    public uint ConnectId => _id;
 
     public PerformanceProfiler GetProfiler()
     {

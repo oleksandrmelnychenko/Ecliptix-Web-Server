@@ -1,12 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using Akka.Actor;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Logging;
 
-namespace Ecliptix.Core.Protocol.Configuration;
+namespace Ecliptix.Core.Protocol.Monitoring;
 
 /// <summary>
 /// Health check for protocol system and DH ratchet monitoring

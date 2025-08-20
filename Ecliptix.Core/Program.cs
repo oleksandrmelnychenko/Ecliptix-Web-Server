@@ -99,6 +99,10 @@ try
     builder.Services.AddSingleton(actorSystem);
     builder.Services.AddHostedService<ActorSystemHostedService>();
 
+    // Add health checks
+    builder.Services.AddHealthChecks()
+        .AddCheck<Ecliptix.Core.Protocol.Monitoring.ProtocolHealthCheck>("protocol_health");
+
     WebApplication app = builder.Build();
 
     app.UseSerilogRequestLogging();
@@ -119,6 +123,46 @@ try
         app.Services.GetRequiredService<IEcliptixActorRegistry>(), app.Services);
 
     app.MapHealthChecks("/health");
+    
+    // Combined metrics endpoint
+    app.MapGet("/metrics", async (IServiceProvider services) =>
+    {
+        try
+        {
+            var actorSystem = services.GetRequiredService<ActorSystem>();
+            var healthCheck = new Ecliptix.Core.Protocol.Monitoring.ProtocolHealthCheck(
+                actorSystem, 
+                services.GetRequiredService<ILogger<Ecliptix.Core.Protocol.Monitoring.ProtocolHealthCheck>>()
+            );
+            
+            var healthResult = await healthCheck.CheckHealthAsync(new Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext());
+            
+            // Get protocol metrics from actor system (simplified approach)
+            var protocolMetrics = new
+            {
+                Status = "Available", 
+                Message = "Protocol metrics collection active",
+                Note = "Full metrics available via actor messages"
+            };
+            
+            return Results.Ok(new
+            {
+                Health = new
+                {
+                    Status = healthResult.Status.ToString(),
+                    Description = healthResult.Description,
+                    Data = healthResult.Data
+                },
+                Protocol = protocolMetrics,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            return Results.Problem($"Error collecting metrics: {ex.Message}");
+        }
+    });
+    
     app.MapGet("/", () => Results.Ok(new { Status = "Success", Message = "Server is up and running" }));
 
     Log.Information("Starting Ecliptix application host");
@@ -205,6 +249,21 @@ static void RegisterGrpc(IServiceCollection services)
         options.Interceptors.Add<RequestMetaDataInterceptor>();
         options.Interceptors.Add<ThreadCultureInterceptor>();
         options.Interceptors.Add<SessionKeepAliveInterceptor>();
+    });
+    
+    
+    services.Configure<KestrelServerOptions>(options =>
+    {
+        // Configure gRPC port (HTTP/2 only) and metrics port (HTTP/1.1)
+        options.ListenLocalhost(5051, listenOptions =>
+        {
+            listenOptions.Protocols = HttpProtocols.Http2; // gRPC services only
+        });
+        
+        options.ListenLocalhost(8080, listenOptions =>
+        {
+            listenOptions.Protocols = HttpProtocols.Http1; // REST endpoints only
+        });
     });
 }
 

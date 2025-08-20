@@ -651,6 +651,7 @@ public class EcliptixProtocolSystem : IDisposable
             {
                 Console.WriteLine($"[SERVER] Message validation failed: {validationResult.UnwrapErr().Message}");
                 _metricsCollector.RecordError();
+                Monitoring.ProtocolHealthCheck.RecordConnectionState(_connectSession?.ConnectId ?? 0, false, true);
                 return Result<byte[], EcliptixProtocolFailure>.Err(validationResult.UnwrapErr());
             }
 
@@ -675,6 +676,7 @@ public class EcliptixProtocolSystem : IDisposable
             {
                 Console.WriteLine($"[SERVER] Replay protection check failed: {replayCheckResult.UnwrapErr().Message}");
                 _metricsCollector.RecordError();
+                Monitoring.ProtocolHealthCheck.RecordConnectionState(_connectSession?.ConnectId ?? 0, false, true);
                 return Result<byte[], EcliptixProtocolFailure>.Err(replayCheckResult.UnwrapErr());
             }
 
@@ -685,11 +687,13 @@ public class EcliptixProtocolSystem : IDisposable
                 if (ratchetResult.IsErr)
                 {
                     _metricsCollector.RecordError();
+                    Monitoring.ProtocolHealthCheck.RecordDhRatchet(_connectSession?.ConnectId ?? 0, false);
                     return Result<byte[], EcliptixProtocolFailure>.Err(ratchetResult.UnwrapErr());
                 }
 
                 connection.NotifyRatchetRotation();
                 _metricsCollector.RecordRatchetRotation();
+                Monitoring.ProtocolHealthCheck.RecordDhRatchet(_connectSession?.ConnectId ?? 0, true);
                 Console.WriteLine("[SERVER] Notified replay protection of receiving ratchet rotation");
             }
 
@@ -739,6 +743,7 @@ public class EcliptixProtocolSystem : IDisposable
             {
                 Console.WriteLine("[DECRYPT] Decryption failed - this indicates a protocol state mismatch");
                 _metricsCollector.RecordError();
+                Monitoring.ProtocolHealthCheck.RecordConnectionState(_connectSession?.ConnectId ?? 0, false, true);
                 return decryptResult;
             }
             else
@@ -746,6 +751,7 @@ public class EcliptixProtocolSystem : IDisposable
                 Console.WriteLine("[DECRYPT] Decryption succeeded");
                 _metricsCollector.RecordInboundMessage(stopwatch.Elapsed.TotalMilliseconds);
                 _metricsCollector.RecordDecryption();
+                Monitoring.ProtocolHealthCheck.RecordConnectionState(_connectSession?.ConnectId ?? 0, true, false);
             }
 
 
@@ -962,7 +968,19 @@ public class EcliptixProtocolSystem : IDisposable
             }
         }
 
-        Console.WriteLine("[SERVER] Message gap recovery strategies are limited for security reasons");
+        Console.WriteLine("[SERVER] Attempting RatchetRecovery for out-of-order message");
+        
+        // Try to recover using stored skipped message keys
+        var recoveryResult = connection.TryRecoverMessageKey(payload.RatchetIndex);
+        if (recoveryResult.IsOk)
+        {
+            var optionResult = recoveryResult.Unwrap();
+            if (optionResult.HasValue)
+            {
+                Console.WriteLine($"[SERVER] Successfully recovered message key for index {payload.RatchetIndex}");
+                return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(optionResult.Value!);
+            }
+        }
 
         Console.WriteLine("[SERVER] All message recovery strategies failed");
         return normalResult;
