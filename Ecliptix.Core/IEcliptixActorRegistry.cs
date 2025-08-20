@@ -4,6 +4,7 @@ namespace Ecliptix.Core;
 
 public interface IEcliptixActorRegistry
 {
-    void Register<TActor>(IActorRef actorRef) where TActor : ActorBase;
-    IActorRef Get<TActor>() where TActor : ActorBase;
+    void Register(int actorId, IActorRef actorRef);
+    
+    IActorRef Get(int actorId);
 }

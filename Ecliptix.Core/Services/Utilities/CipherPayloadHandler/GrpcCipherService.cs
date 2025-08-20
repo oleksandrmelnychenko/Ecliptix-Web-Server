@@ -11,7 +11,7 @@ namespace Ecliptix.Core.Services.Utilities.CipherPayloadHandler;
 public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcCipherService
     where T : ActorBase
 {
-    private readonly IActorRef _protocolActor = actorRegistry.Get<T>();
+    private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
 
     public async Task<Result<CipherPayload, FailureBase>> EncryptPayload(byte[] payload, uint connectId,
         ServerCallContext context)

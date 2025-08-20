@@ -18,7 +18,7 @@ public abstract class VerificationFlowServicesBase(
     IGrpcCipherService grpcCipherService)
     : AuthVerificationServices.AuthVerificationServicesBase
 {
-    protected readonly IActorRef VerificationFlowManagerActor = actorRegistry.Get<VerificationFlowManagerActor>();
+    protected readonly IActorRef VerificationFlowManagerActor = actorRegistry.Get(ActorIds.VerificationFlowManagerActor);
 
     protected readonly IGrpcCipherService GrpcCipherService = grpcCipherService;
     protected string CultureName { get; private set; } = CultureInfo.CurrentCulture.Name;

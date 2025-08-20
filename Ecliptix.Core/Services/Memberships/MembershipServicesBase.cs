@@ -16,7 +16,7 @@ public abstract class MembershipServicesBase(
     IGrpcCipherService grpcCipherService
     ) : Protobuf.Membership.MembershipServices.MembershipServicesBase
 {
-    protected readonly IActorRef MembershipActor = actorRegistry.Get<MembershipActor>();
+    protected readonly IActorRef MembershipActor = actorRegistry.Get(ActorIds.MembershipActor);
 
     protected readonly IGrpcCipherService GrpcCipherService = grpcCipherService;
     protected string CultureName { get; private set; } = CultureInfo.CurrentCulture.Name;

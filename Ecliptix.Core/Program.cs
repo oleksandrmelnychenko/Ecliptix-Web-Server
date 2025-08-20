@@ -67,7 +67,7 @@ try
         return new TwilioSmsProvider(twilioSettings);
     });
 
-    builder.Services.AddSingleton<IEcliptixActorRegistry, AotActorRegistry>();
+    builder.Services.AddSingleton<IEcliptixActorRegistry, ActorRegistry>();
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService<EcliptixProtocolSystemActor>>();
@@ -307,13 +307,12 @@ static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, 
             snsProvider, localizationProvider),
         "VerificationFlowManagerActor");
 
-    AotActorRegistry aotRegistry = (AotActorRegistry)registry;
-    aotRegistry.Register(ActorIds.EcliptixProtocolSystemActor, protocolSystemActor);
-    aotRegistry.Register(ActorIds.AppDevicePersistorActor, appDevicePersistor);
-    aotRegistry.Register(ActorIds.VerificationFlowPersistorActor, verificationFlowPersistorActor);
-    aotRegistry.Register(ActorIds.VerificationFlowManagerActor, verificationFlowManagerActor);
-    aotRegistry.Register(ActorIds.MembershipPersistorActor, membershipPersistorActor);
-    aotRegistry.Register(ActorIds.MembershipActor, membershipActor);
+    registry.Register(ActorIds.EcliptixProtocolSystemActor, protocolSystemActor);
+    registry.Register(ActorIds.AppDevicePersistorActor, appDevicePersistor);
+    registry.Register(ActorIds.VerificationFlowPersistorActor, verificationFlowPersistorActor);
+    registry.Register(ActorIds.VerificationFlowManagerActor, verificationFlowManagerActor);
+    registry.Register(ActorIds.MembershipPersistorActor, membershipPersistorActor);
+    registry.Register(ActorIds.MembershipActor, membershipActor);
 
     logger.LogInformation("Registered top-level actors: {ProtocolActorPath}, {PersistorActorPath}",
         protocolSystemActor.Path, appDevicePersistor.Path);

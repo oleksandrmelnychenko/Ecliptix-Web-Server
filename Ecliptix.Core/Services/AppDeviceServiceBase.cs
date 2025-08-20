@@ -17,8 +17,8 @@ public abstract class AppDeviceServiceBase(
     IGrpcCipherService grpcCipherService)
     : AppDeviceServiceActions.AppDeviceServiceActionsBase
 {
-    protected readonly IActorRef AppDevicePersistorActor = actorRegistry.Get<AppDevicePersistorActor>();
-    protected readonly IActorRef ProtocolActor = actorRegistry.Get<EcliptixProtocolSystemActor>();
+    protected readonly IActorRef AppDevicePersistorActor = actorRegistry.Get(ActorIds.AppDevicePersistorActor);
+    protected readonly IActorRef ProtocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
 
     protected static async Task<TResponse> ExecutePlainRequest<TRequest, TResponse>(
         TRequest request,
