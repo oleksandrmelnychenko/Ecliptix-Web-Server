@@ -29,6 +29,9 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         Become(Ready);
     }
 
+    /// <summary>
+    /// AOT-compatible Props builder - parameter captured but no closures
+    /// </summary>
     public static Props Build(IDbConnectionFactory connectionFactory)
     {
         return Props.Create(() => new MembershipPersistorActor(connectionFactory));

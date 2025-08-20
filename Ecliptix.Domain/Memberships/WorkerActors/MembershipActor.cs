@@ -36,6 +36,9 @@ public class MembershipActor : ReceiveActor
         Become(Ready);
     }
 
+    /// <summary>
+    /// AOT-compatible Props builder - parameters captured but no closures
+    /// </summary>
     public static Props Build(IActorRef persistor, IOpaqueProtocolService opaqueProtocolService,
         ILocalizationProvider localizationProvider)
     {

@@ -122,6 +122,7 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
     public static Props Build()
     {
+        // AOT-compatible lambda - no closures captured
         return Props.Create(() => new EcliptixProtocolSystemActor());
     }
 }

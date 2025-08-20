@@ -3,82 +3,67 @@ using Serilog;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Text.Json;
+using Ecliptix.Core.Json;
+using Ecliptix.Core.Middleware.Models;
 
 namespace Ecliptix.Core.Middleware;
 
-public class IpThrottlingMiddleware
+public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cache)
 {
-    private readonly RequestDelegate _next;
-    private readonly IDistributedCache _cache;
-    private static readonly ConcurrentDictionary<string, ThrottleInfo> _throttleData = new();
+    private static readonly ConcurrentDictionary<string, ThrottleInfo> ThrottleData = new();
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(5);
     private static DateTime _lastCleanup = DateTime.UtcNow;
 
-    // Configuration
     private const int MaxRequestsPerMinute = 60;
     private const int MaxFailuresBeforeBlock = 5;
     private const int BlockDurationMinutes = 15;
 
-    public IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cache)
-    {
-        _next = next;
-        _cache = cache;
-    }
-
     public async Task InvokeAsync(HttpContext context)
     {
-        var clientIp = GetClientIpAddress(context);
-        
-        // Perform periodic cleanup
+        string clientIp = GetClientIpAddress(context);
+
         PerformCleanupIfNeeded();
 
-        // Check if IP is blocked
         if (await IsIpBlocked(clientIp))
         {
             await HandleBlockedRequest(context, clientIp);
             return;
         }
 
-        // Check rate limiting
-        if (!await CheckRateLimit(clientIp))
+        if (!CheckRateLimit(clientIp))
         {
             await HandleRateLimitExceeded(context, clientIp);
             return;
         }
 
-        var originalStatusCode = context.Response.StatusCode;
-        
         try
         {
-            await _next(context);
-            
-            // Track successful requests
-            await TrackRequest(clientIp, success: context.Response.StatusCode < 400);
+            await next(context);
+
+            TrackRequest(clientIp, success: context.Response.StatusCode < 400);
         }
         catch (Exception)
         {
-            // Track failed requests
-            await TrackRequest(clientIp, success: false);
+            TrackRequest(clientIp, success: false);
             throw;
         }
     }
 
     private static string GetClientIpAddress(HttpContext context)
     {
-        // Check for forwarded IP headers first
-        var forwardedFor = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        string? forwardedFor = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
         if (!string.IsNullOrEmpty(forwardedFor))
         {
-            var ips = forwardedFor.Split(',', StringSplitOptions.RemoveEmptyEntries);
+            string[] ips = forwardedFor.Split(',', StringSplitOptions.RemoveEmptyEntries);
             if (ips.Length > 0)
             {
-                var firstIp = ips[0].Trim();
+                string firstIp = ips[0].Trim();
                 if (IPAddress.TryParse(firstIp, out _))
                     return firstIp;
             }
         }
 
-        var realIp = context.Request.Headers["X-Real-IP"].FirstOrDefault();
+        string? realIp = context.Request.Headers["X-Real-IP"].FirstOrDefault();
         if (!string.IsNullOrEmpty(realIp) && IPAddress.TryParse(realIp, out _))
             return realIp;
 
@@ -87,60 +72,53 @@ public class IpThrottlingMiddleware
 
     private async Task<bool> IsIpBlocked(string clientIp)
     {
-        var key = $"blocked_ip:{clientIp}";
-        var blockedData = await _cache.GetStringAsync(key);
-        
-        if (blockedData != null)
+        string key = $"blocked_ip:{clientIp}";
+        string? blockedData = await cache.GetStringAsync(key);
+
+        if (blockedData == null) return false;
+        BlockInfo? blockInfo = JsonSerializer.Deserialize(blockedData, AppJsonSerializerContext.Default.BlockInfo);
+        if (blockInfo?.ExpiresAt > DateTime.UtcNow)
         {
-            var blockInfo = JsonSerializer.Deserialize<BlockInfo>(blockedData);
-            if (blockInfo?.ExpiresAt > DateTime.UtcNow)
-            {
-                return true;
-            }
-            else
-            {
-                // Block expired, remove it
-                await _cache.RemoveAsync(key);
-            }
+            return true;
         }
+
+        await cache.RemoveAsync(key);
 
         return false;
     }
 
-    private async Task<bool> CheckRateLimit(string clientIp)
+    private static bool CheckRateLimit(string clientIp)
     {
-        var throttleInfo = _throttleData.GetOrAdd(clientIp, _ => new ThrottleInfo());
-        
+        ThrottleInfo throttleInfo = ThrottleData.GetOrAdd(clientIp, _ => new ThrottleInfo());
+
         lock (throttleInfo)
         {
-            var now = DateTime.UtcNow;
-            
-            // Reset counter if window has passed
+            DateTime now = DateTime.UtcNow;
+
             if (now - throttleInfo.WindowStart >= TimeSpan.FromMinutes(1))
             {
                 throttleInfo.RequestCount = 0;
                 throttleInfo.WindowStart = now;
             }
-            
+
             throttleInfo.RequestCount++;
             throttleInfo.LastRequest = now;
-            
+
             return throttleInfo.RequestCount <= MaxRequestsPerMinute;
         }
     }
 
-    private async Task TrackRequest(string clientIp, bool success)
+    private void TrackRequest(string clientIp, bool success)
     {
         if (!success)
         {
-            var throttleInfo = _throttleData.GetOrAdd(clientIp, _ => new ThrottleInfo());
-            
+            ThrottleInfo throttleInfo = ThrottleData.GetOrAdd(clientIp, _ => new ThrottleInfo());
+
             lock (throttleInfo)
             {
                 throttleInfo.FailureCount++;
                 throttleInfo.LastFailure = DateTime.UtcNow;
-                
-                // Block IP if too many failures
+
                 if (throttleInfo.FailureCount >= MaxFailuresBeforeBlock)
                 {
                     _ = Task.Run(async () => await BlockIp(clientIp, BlockDurationMinutes));
@@ -149,20 +127,17 @@ public class IpThrottlingMiddleware
         }
         else
         {
-            // Reset failure count on successful request
-            if (_throttleData.TryGetValue(clientIp, out var throttleInfo))
+            if (!ThrottleData.TryGetValue(clientIp, out var throttleInfo)) return;
+            lock (throttleInfo)
             {
-                lock (throttleInfo)
-                {
-                    throttleInfo.FailureCount = Math.Max(0, throttleInfo.FailureCount - 1);
-                }
+                throttleInfo.FailureCount = Math.Max(0, throttleInfo.FailureCount - 1);
             }
         }
     }
 
     private async Task BlockIp(string clientIp, int durationMinutes)
     {
-        var blockInfo = new BlockInfo
+        BlockInfo blockInfo = new()
         {
             IpAddress = clientIp,
             BlockedAt = DateTime.UtcNow,
@@ -170,16 +145,16 @@ public class IpThrottlingMiddleware
             Reason = "Too many failed requests"
         };
 
-        var key = $"blocked_ip:{clientIp}";
-        var serializedData = JsonSerializer.Serialize(blockInfo);
-        var options = new DistributedCacheEntryOptions
+        string key = $"blocked_ip:{clientIp}";
+        string serializedData = JsonSerializer.Serialize(blockInfo, AppJsonSerializerContext.Default.BlockInfo);
+        DistributedCacheEntryOptions options = new()
         {
             AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(durationMinutes)
         };
 
-        await _cache.SetStringAsync(key, serializedData, options);
-        
-        Log.Warning("IP address {IpAddress} blocked for {Duration} minutes due to {Reason}", 
+        await cache.SetStringAsync(key, serializedData, options);
+
+        Log.Warning("IP address {IpAddress} blocked for {Duration} minutes due to {Reason}",
             clientIp, durationMinutes, blockInfo.Reason);
     }
 
@@ -187,63 +162,45 @@ public class IpThrottlingMiddleware
     {
         context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         context.Response.Headers["Retry-After"] = "900"; // 15 minutes
-        
+
         Log.Warning("Blocked request from {IpAddress}", clientIp);
-        
+
         await context.Response.WriteAsync("IP address temporarily blocked due to suspicious activity");
     }
 
-    private async Task HandleRateLimitExceeded(HttpContext context, string clientIp)
+    private static async Task HandleRateLimitExceeded(HttpContext context, string clientIp)
     {
         context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         context.Response.Headers["Retry-After"] = "60"; // 1 minute
-        
+
         Log.Information("Rate limit exceeded for {IpAddress}", clientIp);
-        
+
         await context.Response.WriteAsync("Rate limit exceeded. Please try again later.");
     }
 
     private static void PerformCleanupIfNeeded()
     {
-        var now = DateTime.UtcNow;
+        DateTime now = DateTime.UtcNow;
         if (now - _lastCleanup < CleanupInterval)
             return;
 
         _lastCleanup = now;
-        
-        // Cleanup old throttle data
-        var cutoff = now.AddMinutes(-30);
-        var toRemove = _throttleData
+
+        DateTime cutoff = now.AddMinutes(-30);
+        List<string> toRemove = ThrottleData
             .Where(kvp => kvp.Value.LastRequest < cutoff)
             .Select(kvp => kvp.Key)
             .Take(1000)
             .ToList();
 
-        foreach (var key in toRemove)
+        foreach (string key in toRemove)
         {
-            _throttleData.TryRemove(key, out _);
+            ThrottleData.TryRemove(key, out _);
         }
 
         if (toRemove.Count > 0)
         {
             Log.Debug("Cleaned up {Count} old throttle entries", toRemove.Count);
         }
-    }
-
-    private class ThrottleInfo
-    {
-        public int RequestCount { get; set; }
-        public int FailureCount { get; set; }
-        public DateTime WindowStart { get; set; } = DateTime.UtcNow;
-        public DateTime LastRequest { get; set; } = DateTime.UtcNow;
-        public DateTime LastFailure { get; set; }
-    }
-
-    private class BlockInfo
-    {
-        public string IpAddress { get; set; } = string.Empty;
-        public DateTime BlockedAt { get; set; }
-        public DateTime ExpiresAt { get; set; }
-        public string Reason { get; set; } = string.Empty;
     }
 }

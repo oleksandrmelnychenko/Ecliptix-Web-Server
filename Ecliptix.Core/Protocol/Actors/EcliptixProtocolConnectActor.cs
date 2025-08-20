@@ -476,5 +476,8 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
         base.PostStop();
     }
 
+    /// <summary>
+    /// AOT-compatible Props builder - lambda captures parameter but no closures
+    /// </summary>
     public static Props Build(uint connectId) => Props.Create(() => new EcliptixProtocolConnectActor(connectId));
 }

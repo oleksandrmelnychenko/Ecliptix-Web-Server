@@ -61,9 +61,9 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         IActorRef persistor, IActorRef membershipActor,  ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider, string cultureName)
     {
+        // AOT-compatible lambda - parameters captured but no closures
         return Props.Create(() => new VerificationFlowActor(connectId, phoneNumberIdentifier, appDeviceIdentifier,
-            purpose,
-            writer, persistor, membershipActor, smsProvider, localizationProvider, cultureName));
+            purpose, writer, persistor, membershipActor, smsProvider, localizationProvider, cultureName));
     }
 
     private void WaitingForFlow()

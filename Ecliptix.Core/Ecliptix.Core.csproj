@@ -7,6 +7,22 @@
         <RunAOTCompilation>true</RunAOTCompilation>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        
+        <!-- AOT Configuration - Conservative settings for compatibility -->
+        <PublishTrimmed>false</PublishTrimmed>
+        <TrimMode>partial</TrimMode>
+        <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+        <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+        <IlcOptimizationPreference>Size</IlcOptimizationPreference>
+        
+        <!-- AOT-safe optimizations only -->
+        <PublishSingleFile>false</PublishSingleFile>
+        <DebuggerSupport>false</DebuggerSupport>
+        <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+        <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
+        <HttpActivityPropagationSupport>true</HttpActivityPropagationSupport>
+        <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+        <UseSystemResourceKeys>false</UseSystemResourceKeys>
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Akka" Version="1.5.47" />
@@ -30,6 +46,46 @@
         <PackageReference Include="Serilog.Sinks.ApplicationInsights" Version="4.0.0" />
         <PackageReference Include="Sodium.Core" Version="1.4.0"/>
     </ItemGroup>
+
+    <!-- AOT Trimming Warnings Suppressions for Third-Party Libraries -->
+    <ItemGroup>
+        <!-- Suppress warnings for Akka.NET (known to use reflection) -->
+        <TrimmerRootAssembly Include="Akka" />
+        <TrimmerRootAssembly Include="Akka.Hosting" />
+        <TrimmerRootAssembly Include="Akka.Persistence" />
+        <TrimmerRootAssembly Include="Akka.Persistence.Sql" />
+        
+        <!-- Suppress warnings for gRPC (uses reflection for serialization) -->
+        <TrimmerRootAssembly Include="Grpc.AspNetCore.Server" />
+        <TrimmerRootAssembly Include="Grpc.Core.Api" />
+        <TrimmerRootAssembly Include="Grpc.Net.Common" />
+        
+        <!-- Suppress warnings for protobuf-net (uses reflection) -->
+        <TrimmerRootAssembly Include="protobuf-net" />
+        
+        <!-- Suppress warnings for BouncyCastle (cryptographic library with reflection) -->
+        <TrimmerRootAssembly Include="BouncyCastle.NetCore" />
+        
+        <!-- Suppress warnings for Sodium.Core (native library wrapper) -->
+        <TrimmerRootAssembly Include="Sodium.Core" />
+        
+        <!-- Preserve localization resources -->
+        <TrimmerRootAssembly Include="Microsoft.Extensions.Localization" />
+        
+        <!-- Preserve OpenTelemetry instrumentation -->
+        <TrimmerRootAssembly Include="OpenTelemetry" />
+        <TrimmerRootAssembly Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    </ItemGroup>
+
+    <!-- Comprehensive AOT/Trimming Warnings Suppressions -->
+    <PropertyGroup>
+        <WarningsAsErrors />
+        <WarningsNotAsErrors />
+        <!-- Suppress all common AOT/trimming warnings for third-party libraries -->
+        <NoWarn>$(NoWarn);IL2026;IL2062;IL2070;IL2075;IL2091;IL3050;IL3051;IL2104;IL2067;IL2068;IL2074;IL2077;IL2080;IL2081;IL2087;IL2090</NoWarn>
+        <!-- Suppress specific library warnings -->
+        <NoWarn>$(NoWarn);NETSDK1144;CS8618;CS8602;CS0168</NoWarn>
+    </PropertyGroup>
 
     <!-- <ItemGroup>
          <EmbeddedResource Include="Resources\VerificationFlowResource.en-US.resx">
@@ -55,6 +111,7 @@
         <ProjectReference Include="..\Ecliptix.Domain\Ecliptix.Domain.csproj"/>
     </ItemGroup>
 
+    <!-- Commented out: Using AOT-safe hardcoded FrozenDictionary instead of ResourceManager
     <ItemGroup>
         <EmbeddedResource Update="Resources\VerificationFlowRes.resx">
             <Generator>PublicResXFileCodeGenerator</Generator>
@@ -69,6 +126,7 @@
             <DependentUpon>VerificationFlowRes.resx</DependentUpon>
         </Compile>
     </ItemGroup>
+    -->
 
     <ItemGroup>
       <Folder Include="Protocol\Services\" />

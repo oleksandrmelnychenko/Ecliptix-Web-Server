@@ -4,6 +4,7 @@ using Akka.Actor;
 using Akka.Configuration;
 using Ecliptix.Core;
 using Ecliptix.Core.Interceptors;
+using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Resources;
@@ -26,6 +27,9 @@ using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Context;
 using System.Threading.RateLimiting;
+using Ecliptix.Core.Protocol.Monitoring;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using HealthStatus = Ecliptix.Core.Json.HealthStatus;
 
 const string systemActorName = "EcliptixProtocolSystemActor";
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -63,7 +67,7 @@ try
         return new TwilioSmsProvider(twilioSettings);
     });
 
-    builder.Services.AddSingleton<IEcliptixActorRegistry, ActorRegistry>();
+    builder.Services.AddSingleton<IEcliptixActorRegistry, AotActorRegistry>();
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService<EcliptixProtocolSystemActor>>();
@@ -124,42 +128,37 @@ try
 
     app.MapHealthChecks("/health");
     
-    // Combined metrics endpoint
     app.MapGet("/metrics", async (IServiceProvider services) =>
     {
         try
         {
-            var actorSystem = services.GetRequiredService<ActorSystem>();
-            var healthCheck = new Ecliptix.Core.Protocol.Monitoring.ProtocolHealthCheck(
+            ActorSystem actorSystem = services.GetRequiredService<ActorSystem>();
+            ProtocolHealthCheck healthCheck = new(
                 actorSystem, 
-                services.GetRequiredService<ILogger<Ecliptix.Core.Protocol.Monitoring.ProtocolHealthCheck>>()
+                services.GetRequiredService<ILogger<ProtocolHealthCheck>>()
             );
             
-            var healthResult = await healthCheck.CheckHealthAsync(new Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext());
+            HealthCheckResult healthResult = await healthCheck.CheckHealthAsync(new HealthCheckContext());
+            HealthMetricsResponse response = new(
+                new HealthStatus(
+                    healthResult.Status.ToString(),
+                    healthResult.Description,
+                    healthResult.Data?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+                ),
+                new ProtocolMetrics(
+                    "Available",
+                    "Protocol metrics collection active",
+                    "Full metrics available via actor messages"
+                ),
+                DateTime.UtcNow
+            );
             
-            // Get protocol metrics from actor system (simplified approach)
-            var protocolMetrics = new
-            {
-                Status = "Available", 
-                Message = "Protocol metrics collection active",
-                Note = "Full metrics available via actor messages"
-            };
-            
-            return Results.Ok(new
-            {
-                Health = new
-                {
-                    Status = healthResult.Status.ToString(),
-                    Description = healthResult.Description,
-                    Data = healthResult.Data
-                },
-                Protocol = protocolMetrics,
-                Timestamp = DateTime.UtcNow
-            });
+            return Results.Json(response, AppJsonSerializerContext.Default.HealthMetricsResponse);
         }
         catch (Exception ex)
         {
-            return Results.Problem($"Error collecting metrics: {ex.Message}");
+            ErrorResponse errorResponse = new(ex.Message);
+            return Results.Json(errorResponse, AppJsonSerializerContext.Default.ErrorResponse);
         }
     });
     
@@ -201,7 +200,7 @@ static void RegisterSecurity(IServiceCollection services)
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
             RateLimitPartition.GetSlidingWindowLimiter(
                 partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                factory: partition => new SlidingWindowRateLimiterOptions
+                factory: _ => new SlidingWindowRateLimiterOptions
                 {
                     PermitLimit = 100,
                     Window = TimeSpan.FromMinutes(1),
@@ -251,10 +250,8 @@ static void RegisterGrpc(IServiceCollection services)
         options.Interceptors.Add<SessionKeepAliveInterceptor>();
     });
     
-    
     services.Configure<KestrelServerOptions>(options =>
     {
-        // Configure gRPC port (HTTP/2 only) and metrics port (HTTP/1.1)
         options.ListenLocalhost(5051, listenOptions =>
         {
             listenOptions.Protocols = HttpProtocols.Http2; // gRPC services only
@@ -310,12 +307,13 @@ static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, 
             snsProvider, localizationProvider),
         "VerificationFlowManagerActor");
 
-    registry.Register<EcliptixProtocolSystemActor>(protocolSystemActor);
-    registry.Register<AppDevicePersistorActor>(appDevicePersistor);
-    registry.Register<VerificationFlowPersistorActor>(verificationFlowPersistorActor);
-    registry.Register<VerificationFlowManagerActor>(verificationFlowManagerActor);
-    registry.Register<MembershipPersistorActor>(membershipPersistorActor);
-    registry.Register<MembershipActor>(membershipActor);
+    AotActorRegistry aotRegistry = (AotActorRegistry)registry;
+    aotRegistry.Register(ActorIds.EcliptixProtocolSystemActor, protocolSystemActor);
+    aotRegistry.Register(ActorIds.AppDevicePersistorActor, appDevicePersistor);
+    aotRegistry.Register(ActorIds.VerificationFlowPersistorActor, verificationFlowPersistorActor);
+    aotRegistry.Register(ActorIds.VerificationFlowManagerActor, verificationFlowManagerActor);
+    aotRegistry.Register(ActorIds.MembershipPersistorActor, membershipPersistorActor);
+    aotRegistry.Register(ActorIds.MembershipActor, membershipActor);
 
     logger.LogInformation("Registered top-level actors: {ProtocolActorPath}, {PersistorActorPath}",
         protocolSystemActor.Path, appDevicePersistor.Path);
