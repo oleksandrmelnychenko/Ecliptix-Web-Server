@@ -43,6 +43,9 @@
      </ItemGroup>-->
 
     <ItemGroup>
+        <Content Include="..\.dockerignore">
+          <Link>.dockerignore</Link>
+        </Content>
         <Content Include="akka.conf">
             <CopyToPublishDirectory>Always</CopyToPublishDirectory>
         </Content>
