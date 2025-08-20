@@ -16,6 +16,7 @@ public static class VerificationFlowMessageKeys
     public const string AuthenticationCodeIs = "authentication_code_is";
 
     public const string PhoneNumberInvalid = "phone_invalid";
+    public const string SmsSendFailed = "sms_send_failed";
     
     public const string InvalidOpaque = "invalid_opaque";
 

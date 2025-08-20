@@ -77,7 +77,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 {
                     string message = _localizationProvider.Localize(verificationFlowFailure.Message, _cultureName);
 
-                    await _writer.WriteAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                    await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
                         new VerificationCountdownUpdate
                         {
                             SecondsRemaining = 0,
@@ -168,7 +168,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         CreateMembershipActorEvent createEvent = new(_connectId, _verificationFlow.Value!.UniqueIdentifier,
             _activeOtp!.UniqueIdentifier, Membership.Types.CreationStatus.OtpVerified);
         Result<MembershipQueryRecord, VerificationFlowFailure> result =
-            await _membershipActor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(createEvent);
+            await _membershipActor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(createEvent, TimeSpan.FromSeconds(10));
 
         result.Switch(
             membership => Sender.Tell(CreateSuccessResponse(membership)),
@@ -196,7 +196,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         Result<string, VerificationFlowFailure> checkResult =
             await _persistor.Ask<Result<string, VerificationFlowFailure>>(
-                new RequestResendOtpActorEvent(_verificationFlow.Value!.UniqueIdentifier));
+                new RequestResendOtpActorEvent(_verificationFlow.Value!.UniqueIdentifier), TimeSpan.FromSeconds(15));
         if (checkResult.IsErr)
         {
             CompleteWithError(checkResult.UnwrapErr());
@@ -219,7 +219,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                     VerificationFlowMessageKeys.OtpMaxAttemptsReached, actorEvent.CultureName);
                 break;
             case VerificationFlowMessageKeys.ResendCooldown:
-                await _writer.WriteAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
                     new VerificationCountdownUpdate
                     {
                         SecondsRemaining = 0,
@@ -261,7 +261,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         }
 
         --_activeOtpRemainingSeconds;
-        await _writer.WriteAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+        await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
             new VerificationCountdownUpdate
             {
                 SecondsRemaining = _activeOtpRemainingSeconds,
@@ -299,16 +299,45 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             _localizationProvider.Localize(VerificationFlowMessageKeys.AuthenticationCodeIs, cultureName);
         StringBuilder messageBuilder = new(localizedString + ": " + plainOtp);
 
-        var smsResult =
-            await _smsProvider.SendOtpAsync(phoneNumberQueryRecord.PhoneNumber, messageBuilder.ToString());
+        // Retry SMS sending with exponential backoff (max 3 attempts)
+        const int maxSmsRetries = 3;
+        int smsAttempt = 0;
+        SmsDeliveryResult? smsResult = null;
+        
+        while (smsAttempt < maxSmsRetries)
+        {
+            smsAttempt++;
+            smsResult = await _smsProvider.SendOtpAsync(phoneNumberQueryRecord.PhoneNumber, messageBuilder.ToString());
+            
+            if (smsResult.IsSuccess)
+            {
+                Log.Debug("SMS sent successfully on attempt {Attempt} for ConnectId {ConnectId}", 
+                    smsAttempt, _connectId);
+                break;
+            }
+            
+            Log.Warning("SMS sending failed on attempt {Attempt}/{MaxAttempts} for ConnectId {ConnectId}, Status: {Status}, Error: {ErrorMessage}",
+                smsAttempt, maxSmsRetries, _connectId, smsResult.Status, smsResult.ErrorMessage);
+            
+            // Don't wait after the last attempt
+            if (smsAttempt < maxSmsRetries)
+            {
+                int delayMs = (int)Math.Pow(2, smsAttempt - 1) * 1000; // 1s, 2s, 4s
+                await Task.Delay(delayMs);
+            }
+        }
 
-       // if (smsResult.IsErr) return Result<Unit, VerificationFlowFailure>.Err(smsResult.UnwrapErr());
+        if (smsResult?.IsSuccess != true)
+        {
+            return Result<Unit, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.SmsSendFailed($"Failed to send SMS after {maxSmsRetries} attempts: {smsResult?.ErrorMessage}"));
+        }
 
         _activeOtp = otp;
 
         Result<CreateOtpResult, VerificationFlowFailure> createResult =
             await _persistor.Ask<Result<CreateOtpResult, VerificationFlowFailure>>(
-                new CreateOtpActorEvent(otpRecord));
+                new CreateOtpActorEvent(otpRecord), TimeSpan.FromSeconds(20));
 
         if (createResult.IsErr) return Result<Unit, VerificationFlowFailure>.Err(createResult.UnwrapErr());
 
@@ -324,7 +353,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
     private async Task NotifyAlreadyVerified()
     {
-        await _writer.WriteAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+        await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
             new VerificationCountdownUpdate
             {
                 SecondsRemaining = 0,
@@ -357,7 +386,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         await _persistor.Ask<Result<int, VerificationFlowFailure>>(
             new UpdateVerificationFlowStatusActorEvent(_verificationFlow.Value!.UniqueIdentifier, status));
 
-        await _writer.WriteAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+        await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
             new VerificationCountdownUpdate
             {
                 SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
@@ -420,6 +449,36 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     {
         _persistor.Tell(new ExpireAssociatedOtpActorEvent(_verificationFlow.Value!.UniqueIdentifier));
     }
+    
+    /// <summary>
+    /// Safely writes to channel with timeout to prevent actor blocking
+    /// </summary>
+    private async Task<bool> SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure> update)
+    {
+        try
+        {
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await _writer.WriteAsync(update, timeoutCts.Token);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            // Channel is closed - this is expected during shutdown
+            Log.Debug("Channel is closed for ConnectId {ConnectId}, cannot write update", _connectId);
+            return false;
+        }
+        catch (OperationCanceledException)
+        {
+            // Timeout occurred - consumer is too slow
+            Log.Warning("Channel write timeout for ConnectId {ConnectId}, consumer may be slow", _connectId);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Unexpected error writing to channel for ConnectId {ConnectId}", _connectId);
+            return false;
+        }
+    }
     private void PrepareForTermination()
     {
         CancelTimers();
@@ -427,5 +486,27 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         ExpireAssociatedOtp();
         Log.Information("Expired associated OTP for FlowUniqueId {FlowUniqueId}", _verificationFlow.Value!.UniqueIdentifier);
         Log.Information("VerificationFlowActor for ConnectId {ConnectId} is preparing for termination", _connectId);
+    }
+    
+    protected override void PostStop()
+    {
+        try
+        {
+            // Ensure cleanup happens even on unexpected termination
+            PrepareForTermination();
+            
+            // Complete the channel writer to signal end of stream
+            _writer?.TryComplete();
+            
+            Log.Information("VerificationFlowActor for ConnectId {ConnectId} stopped and resources cleaned up", _connectId);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Error during PostStop cleanup for ConnectId {ConnectId}", _connectId);
+        }
+        finally
+        {
+            base.PostStop();
+        }
     }
 }

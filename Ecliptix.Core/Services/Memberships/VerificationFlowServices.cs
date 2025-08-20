@@ -29,8 +29,15 @@ public class VerificationFlowServices(
                 request, context,
                 async (initiateRequest, connectId, ct) =>
                 {
+                    // Use bounded channel to prevent memory issues if consumer is slow
+                    var channelOptions = new BoundedChannelOptions(100)
+                    {
+                        FullMode = BoundedChannelFullMode.Wait,
+                        SingleReader = true,
+                        SingleWriter = false
+                    };
                     Channel<Result<VerificationCountdownUpdate, VerificationFlowFailure>> channel =
-                        Channel.CreateUnbounded<Result<VerificationCountdownUpdate, VerificationFlowFailure>>();
+                        Channel.CreateBounded<Result<VerificationCountdownUpdate, VerificationFlowFailure>>(channelOptions);
                     Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context);
 
                     context.CancellationToken.Register(() => StopVerificationFlowActor(context, connectId));

@@ -1,5 +1,6 @@
 using Akka.Actor;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Serilog;
 
 namespace Ecliptix.Core.Protocol.Monitoring;
 
@@ -9,7 +10,6 @@ namespace Ecliptix.Core.Protocol.Monitoring;
 public class ProtocolHealthCheck : IHealthCheck
 {
     private readonly ActorSystem _actorSystem;
-    private readonly ILogger<ProtocolHealthCheck> _logger;
     
     // Metrics tracked
     private static long _totalDhRatchets;
@@ -17,12 +17,9 @@ public class ProtocolHealthCheck : IHealthCheck
     private static DateTime _lastDhRatchet = DateTime.MinValue;
     private static readonly Dictionary<uint, ConnectionHealth> _connectionHealth = new();
     
-    public ProtocolHealthCheck(
-        ActorSystem actorSystem,
-        ILogger<ProtocolHealthCheck> logger)
+    public ProtocolHealthCheck(ActorSystem actorSystem)
     {
         _actorSystem = actorSystem;
-        _logger = logger;
     }
 
     public async Task<HealthCheckResult> CheckHealthAsync(
@@ -99,7 +96,7 @@ public class ProtocolHealthCheck : IHealthCheck
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Health check failed");
+            Log.Error(ex, "Health check failed");
             return HealthCheckResult.Unhealthy("Health check exception", ex);
         }
     }

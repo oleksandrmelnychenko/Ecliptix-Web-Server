@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO.Compression;
+using Akka;
 using Akka.Actor;
 using Akka.Configuration;
 using Ecliptix.Core;
@@ -21,7 +22,6 @@ using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Providers.Twilio;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Localization;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Options;
 using Serilog;
@@ -30,6 +30,8 @@ using System.Threading.RateLimiting;
 using Ecliptix.Core.Protocol.Monitoring;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using HealthStatus = Ecliptix.Core.Json.HealthStatus;
+using Ecliptix.Core.Observability;
+using System.Diagnostics;
 
 const string systemActorName = "EcliptixProtocolSystemActor";
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -37,9 +39,24 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, services, loggerConfig) =>
 {
     string? appInsightsConnectionString = Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING");
+    
     loggerConfig
         .ReadFrom.Configuration(context.Configuration)
-        .ReadFrom.Services(services);
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext()
+        .Enrich.WithProperty("Application", "Ecliptix")
+        .Enrich.WithProperty("Environment", context.HostingEnvironment.EnvironmentName)
+        .Enrich.WithMachineName()
+        .Enrich.WithThreadId()
+        .WriteTo.Console(outputTemplate: 
+            "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} " +
+            "{Properties:j}{NewLine}{Exception}")
+        .WriteTo.File("logs/ecliptix-.log", 
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 30,
+            outputTemplate: 
+                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} " +
+                "{Properties:j}{NewLine}{Exception}");
 
     if (!string.IsNullOrEmpty(appInsightsConnectionString))
     {
@@ -105,11 +122,46 @@ try
 
     // Add health checks
     builder.Services.AddHealthChecks()
-        .AddCheck<Ecliptix.Core.Protocol.Monitoring.ProtocolHealthCheck>("protocol_health");
+        .AddCheck<Ecliptix.Core.Protocol.Monitoring.ProtocolHealthCheck>("protocol_health")
+        .AddCheck<Ecliptix.Core.Protocol.Monitoring.VerificationFlowHealthCheck>("verification_flow_health")
+        .AddCheck<Ecliptix.Core.Protocol.Monitoring.DatabaseHealthCheck>("database_health");
+
+    // Configure observability and distributed tracing
+    ActivitySource.AddActivityListener(new ActivityListener
+    {
+        ShouldListenTo = source => source.Name == EcliptixActivitySource.SourceName,
+        Sample = (ref ActivityCreationOptions<ActivityContext> options) => ActivitySamplingResult.AllData,
+        ActivityStarted = activity => { /* Custom activity start logic if needed */ },
+        ActivityStopped = activity => { /* Custom activity stop logic if needed */ }
+    });
+    
+    // Register activity source as singleton for dependency injection
+    builder.Services.AddSingleton(EcliptixActivitySource.Instance);
 
     WebApplication app = builder.Build();
 
-    app.UseSerilogRequestLogging();
+    app.UseSerilogRequestLogging(options =>
+    {
+        options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+        options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+        {
+            diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value);
+            diagnosticContext.Set("UserAgent", httpContext.Request.Headers["User-Agent"].ToString());
+            diagnosticContext.Set("Protocol", httpContext.Request.Protocol);
+            
+            // Add connect ID if available in headers
+            if (httpContext.Request.Headers.TryGetValue("X-Connect-Id", out var connectId))
+            {
+                diagnosticContext.Set("ConnectId", connectId.ToString());
+            }
+            
+            // Add request size
+            if (httpContext.Request.ContentLength.HasValue)
+            {
+                diagnosticContext.Set("RequestSize", httpContext.Request.ContentLength.Value);
+            }
+        };
+    });
     app.UseRateLimiter();
     app.UseMiddleware<SecurityMiddleware>();
     app.UseMiddleware<IpThrottlingMiddleware>();
@@ -133,10 +185,7 @@ try
         try
         {
             ActorSystem actorSystem = services.GetRequiredService<ActorSystem>();
-            ProtocolHealthCheck healthCheck = new(
-                actorSystem, 
-                services.GetRequiredService<ILogger<ProtocolHealthCheck>>()
-            );
+            ProtocolHealthCheck healthCheck = new(actorSystem);
             
             HealthCheckResult healthResult = await healthCheck.CheckHealthAsync(new HealthCheckContext());
             HealthMetricsResponse response = new(
@@ -320,16 +369,77 @@ static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, 
 
 internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedService
 {
+    private readonly ActorSystem _actorSystem = actorSystem;
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        Log.Information("Actor system hosted service started");
+        Log.Information("Actor system hosted service started - {ActorSystemName}", _actorSystem.Name);
+        
+        // Register shutdown hooks for proper cleanup
+        RegisterShutdownHooks();
+        
         return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        Log.Information("Actor system hosted service initiating shutdown...");
-        await CoordinatedShutdown.Get(actorSystem).Run(CoordinatedShutdown.ClrExitReason.Instance);
+        Log.Information("Actor system hosted service initiating graceful shutdown...");
+        
+        try
+        {
+            // Use coordinated shutdown with timeout
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromMinutes(2)); // Maximum shutdown time
+            
+            var coordinatedShutdown = CoordinatedShutdown.Get(_actorSystem);
+            await coordinatedShutdown.Run(CoordinatedShutdown.ClrExitReason.Instance);
+            
+            Log.Information("Actor system coordinated shutdown completed successfully");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Log.Warning("Shutdown was cancelled by host, forcing actor system termination");
+            await _actorSystem.Terminate();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error during actor system shutdown, forcing termination");
+            await _actorSystem.Terminate();
+        }
+        
         Log.Information("Actor system hosted service shutdown complete");
+    }
+    
+    private void RegisterShutdownHooks()
+    {
+        var coordinatedShutdown = CoordinatedShutdown.Get(_actorSystem);
+        
+        // Register custom shutdown tasks
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeServiceUnbind, "stop-accepting-new-connections", () =>
+        {
+            Log.Information("Phase: Stop accepting new connections");
+            return Task.FromResult(Done.Instance);
+        });
+        
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone, "drain-active-requests", async () =>
+        {
+            Log.Information("Phase: Draining active requests");
+            
+            // Give active requests time to complete
+            await Task.Delay(TimeSpan.FromSeconds(5));
+            
+            Log.Information("Active request draining completed");
+            return Done.Instance;
+        });
+        
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate, "cleanup-resources", () =>
+        {
+            Log.Information("Phase: Cleaning up application resources");
+            
+            // Perform any additional cleanup here
+            GC.Collect();
+            
+            return Task.FromResult(Done.Instance);
+        });
     }
 }

@@ -120,6 +120,64 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         return Result<IActorRef, EcliptixProtocolFailure>.Ok(connectActor);
     }
 
+    protected override SupervisorStrategy SupervisorStrategy()
+    {
+        return new OneForOneStrategy(
+            maxNrOfRetries: 3,
+            withinTimeRange: TimeSpan.FromMinutes(5),
+            decider: Decider.From(ChildFailureDecider));
+    }
+
+    private static Directive ChildFailureDecider(Exception ex)
+    {
+        switch (ex)
+        {
+            case ActorInitializationException initEx:
+                Log.Error(initEx, "Protocol connect actor failed during initialization. Stopping to prevent further issues");
+                return Directive.Stop;
+
+            case TimeoutException timeoutEx:
+                Log.Warning(timeoutEx, "Protocol connect actor encountered timeout. Restarting");
+                return Directive.Restart;
+
+            case UnauthorizedAccessException unauthorizedEx:
+                Log.Error(unauthorizedEx, "Protocol connect actor encountered authorization failure. Stopping");
+                return Directive.Stop;
+
+            case ArgumentException argEx:
+                Log.Error(argEx, "Protocol connect actor failed with invalid arguments. Stopping to prevent repeated failures");
+                return Directive.Stop;
+
+            case InvalidOperationException invalidOpEx when invalidOpEx.Message.Contains("cryptographic"):
+                Log.Error(invalidOpEx, "Protocol connect actor encountered cryptographic error. Restarting");
+                return Directive.Restart;
+
+            case InvalidOperationException invalidOpEx:
+                Log.Warning(invalidOpEx, "Protocol connect actor encountered invalid operation. Restarting");
+                return Directive.Restart;
+
+            case IOException ioEx:
+                Log.Warning(ioEx, "Protocol connect actor encountered IO error. Restarting");
+                return Directive.Restart;
+
+            case System.Net.NetworkInformation.NetworkInformationException netEx:
+                Log.Warning(netEx, "Protocol connect actor encountered network error. Restarting");
+                return Directive.Restart;
+
+            case OutOfMemoryException memEx:
+                Log.Error(memEx, "Protocol connect actor out of memory. Escalating to parent");
+                return Directive.Escalate;
+
+            case StackOverflowException stackEx:
+                Log.Error(stackEx, "Protocol connect actor stack overflow. Escalating to parent");
+                return Directive.Escalate;
+
+            default:
+                Log.Error(ex, "Protocol connect actor encountered unhandled exception of type {ExceptionType}. Stopping to prevent cascading failures", ex.GetType().Name);
+                return Directive.Stop;
+        }
+    }
+
     public static Props Build()
     {
         // AOT-compatible lambda - no closures captured

@@ -42,7 +42,7 @@ public class VerificationFlowManagerActor : ReceiveActor
         Receive<Terminated>(HandleTerminated);
         Receive<EnsurePhoneNumberActorEvent>(actorEvent => _persistor.Forward(actorEvent));
         Receive<VerifyPhoneForSecretKeyRecoveryActorEvent>(actorEvent => _persistor.Forward(actorEvent));
-        Receive<FlowCompletedGracefullyActorEvent>(actorEvent => _flowWriters.Remove(actorEvent.ActorRef));
+        Receive<FlowCompletedGracefullyActorEvent>(HandleFlowCompletedGracefully);
     }
 
     private void HandleInitiateFlow(InitiateVerificationFlowActorEvent actorEvent)
@@ -99,6 +99,28 @@ public class VerificationFlowManagerActor : ReceiveActor
                 VerificationFlowFailure.NotFound()));
     }
 
+    private void HandleFlowCompletedGracefully(FlowCompletedGracefullyActorEvent actorEvent)
+    {
+        IActorRef completedActor = actorEvent.ActorRef;
+        if (_flowWriters.TryGetValue(completedActor,
+                out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? writer))
+        {
+            Log.Debug("Verification flow completed gracefully for actor {ActorPath}", completedActor.Path);
+            
+            bool completeSuccess = writer.TryComplete();
+            if (!completeSuccess)
+            {
+                Log.Warning("Failed to complete channel for gracefully terminated actor {ActorPath}", completedActor.Path);
+            }
+
+            _flowWriters.Remove(completedActor);
+        }
+        else
+        {
+            Log.Debug("Received FlowCompletedGracefullyActorEvent for untracked actor: {ActorPath}", completedActor.Path);
+        }
+    }
+
     private void HandleTerminated(Terminated terminatedMessage)
     {
         IActorRef deadActor = terminatedMessage.ActorRef;
@@ -123,12 +145,12 @@ public class VerificationFlowManagerActor : ReceiveActor
                         "Failed to write error to channel for actor {ActorPath}. Channel may be completed or faulted",
                         deadActor.Path);
                 }
-
-                bool completeSuccess = writer.TryComplete();
-                if (!completeSuccess)
-                {
-                    Log.Warning("Failed to complete channel for actor {ActorPath}", deadActor.Path);
-                }
+            }
+            
+            bool completeSuccess = writer.TryComplete();
+            if (!completeSuccess)
+            {
+                Log.Warning("Failed to complete channel for terminated actor {ActorPath}", deadActor.Path);
             }
 
             _flowWriters.Remove(deadActor);

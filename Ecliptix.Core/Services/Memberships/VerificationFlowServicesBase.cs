@@ -30,14 +30,14 @@ public abstract class VerificationFlowServicesBase(
             ActorSystem actorSystem = context.GetHttpContext().RequestServices.GetRequiredService<ActorSystem>();
 
             string actorName = $"flow-{connectId}";
-            string actorPath = $"/membership/{nameof(VerificationFlowManagerActor)}/{actorName}";
+            string actorPath = $"/user/{nameof(VerificationFlowManagerActor)}/{actorName}";
 
             ActorSelection? actorSelection = actorSystem.ActorSelection(actorPath);
             
             actorSelection.Tell(new PrepareForTerminationMessage());
 
             Log.Information(
-                "Client for ConnectId {ConnectId} disconnected. Sent PoisonPill to actor selection [{ActorPath}]",
+                "Client for ConnectId {ConnectId} disconnected. Sent PrepareForTerminationMessage to actor selection [{ActorPath}]",
                 connectId, actorPath);
         }
         catch (Exception ex)

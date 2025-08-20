@@ -91,6 +91,13 @@ public sealed record VerificationFlowFailure(
             details ?? VerificationFlowMessageKeys.PhoneNumberInvalid, innerException);
     }
 
+    public static VerificationFlowFailure
+        SmsSendFailed(string? details = null, Exception? innerException = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.SmsSendFailed,
+            details ?? VerificationFlowMessageKeys.SmsSendFailed, innerException);
+    }
+
     public static VerificationFlowFailure PersistorAccess(string? details = null, Exception? innerException = null)
     {
         return new VerificationFlowFailure(VerificationFlowFailureType.PersistorAccess,
