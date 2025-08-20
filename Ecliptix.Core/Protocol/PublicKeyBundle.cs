@@ -7,10 +7,10 @@ public record OneTimePreKeyRecord(uint PreKeyId, byte[] PublicKey)
 {
     public static Result<OneTimePreKeyRecord, EcliptixProtocolFailure> Create(uint preKeyId, byte[] publicKey)
     {
-        if (publicKey.Length != Constants.Ed25519KeySize)
+        if (publicKey.Length != Constants.X25519KeySize)
             return Result<OneTimePreKeyRecord, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Decode(
-                    $"One-time prekey public key must be {Constants.Ed25519KeySize} bytes."));
+                    $"One-time prekey public key must be {Constants.X25519KeySize} bytes."));
 
         return Result<OneTimePreKeyRecord, EcliptixProtocolFailure>.Ok(new OneTimePreKeyRecord(preKeyId, publicKey));
     }
@@ -41,20 +41,20 @@ public record PublicKeyBundle(
     {
         Protobuf.PubKeyExchange.PublicKeyBundle proto = new()
         {
-            IdentityPublicKey = ByteString.CopyFrom(IdentityEd25519),
-            IdentityX25519PublicKey = ByteString.CopyFrom(IdentityX25519),
+            IdentityPublicKey = ByteString.CopyFrom(IdentityEd25519.AsSpan()),
+            IdentityX25519PublicKey = ByteString.CopyFrom(IdentityX25519.AsSpan()),
             SignedPreKeyId = SignedPreKeyId,
-            SignedPreKeyPublicKey = ByteString.CopyFrom(SignedPreKeyPublic),
-            SignedPreKeySignature = ByteString.CopyFrom(SignedPreKeySignature)
+            SignedPreKeyPublicKey = ByteString.CopyFrom(SignedPreKeyPublic.AsSpan()),
+            SignedPreKeySignature = ByteString.CopyFrom(SignedPreKeySignature.AsSpan())
         };
 
-        if (EphemeralX25519 != null) proto.EphemeralX25519PublicKey = ByteString.CopyFrom(EphemeralX25519);
+        if (EphemeralX25519 != null) proto.EphemeralX25519PublicKey = ByteString.CopyFrom(EphemeralX25519.AsSpan());
 
         foreach (OneTimePreKeyRecord opkRecord in OneTimePreKeys)
             proto.OneTimePreKeys.Add(new Protobuf.PubKeyExchange.PublicKeyBundle.Types.OneTimePreKey
             {
                 PreKeyId = opkRecord.PreKeyId,
-                PublicKey = ByteString.CopyFrom(opkRecord.PublicKey)
+                PublicKey = ByteString.CopyFrom(opkRecord.PublicKey.AsSpan())
             });
 
         return proto;
@@ -67,65 +67,85 @@ public record PublicKeyBundle(
             return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("Input Protobuf bundle cannot be null."));
 
-        return Result<PublicKeyBundle, EcliptixProtocolFailure>.Try(
-            () =>
+        try
+        {
+            SecureByteStringInterop.SecureCopyWithCleanup(proto.IdentityPublicKey, out byte[] identityEd25519);
+            SecureByteStringInterop.SecureCopyWithCleanup(proto.IdentityX25519PublicKey, out byte[] identityX25519);
+            SecureByteStringInterop.SecureCopyWithCleanup(proto.SignedPreKeyPublicKey, out byte[] signedPreKeyPublic);
+            SecureByteStringInterop.SecureCopyWithCleanup(proto.SignedPreKeySignature, out byte[] signedPreKeySignature);
+
+            if (identityEd25519.Length != Constants.Ed25519KeySize)
+                return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Decode($"IdentityEd25519 key must be {Constants.Ed25519KeySize} bytes."));
+            
+            if (identityX25519.Length != Constants.X25519KeySize)
+                return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Decode($"IdentityX25519 key must be {Constants.X25519KeySize} bytes."));
+
+            Result<Unit, EcliptixProtocolFailure> identityX25519ValidationResult = DhValidator.ValidateX25519PublicKey(identityX25519);
+            if (identityX25519ValidationResult.IsErr)
+                return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(identityX25519ValidationResult.UnwrapErr());
+
+            if (signedPreKeyPublic.Length != Constants.X25519KeySize)
+                return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Decode($"SignedPreKeyPublic key must be {Constants.X25519KeySize} bytes."));
+
+            Result<Unit, EcliptixProtocolFailure> signedPreKeyValidationResult = DhValidator.ValidateX25519PublicKey(signedPreKeyPublic);
+            if (signedPreKeyValidationResult.IsErr)
+                return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(signedPreKeyValidationResult.UnwrapErr());
+
+            if (signedPreKeySignature.Length != Constants.Ed25519SignatureSize)
+                return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Decode($"SignedPreKeySignature must be {Constants.Ed25519SignatureSize} bytes."));
+
+            byte[]? ephemeralX25519 = null;
+            if (!proto.EphemeralX25519PublicKey.IsEmpty)
             {
-                byte[] identityEd25519 = proto.IdentityPublicKey.ToByteArray();
-                byte[] identityX25519 = proto.IdentityX25519PublicKey.ToByteArray();
-                byte[] signedPreKeyPublic = proto.SignedPreKeyPublicKey.ToByteArray();
-                byte[] signedPreKeySignature = proto.SignedPreKeySignature.ToByteArray();
+                SecureByteStringInterop.SecureCopyWithCleanup(proto.EphemeralX25519PublicKey, out ephemeralX25519);
+                if (ephemeralX25519.Length != Constants.X25519KeySize)
+                    return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.Decode($"EphemeralX25519 key must be {Constants.X25519KeySize} bytes if present."));
 
-                if (identityEd25519.Length != Constants.Ed25519KeySize)
-                    throw new ArgumentException($"IdentityEd25519 key must be {Constants.Ed25519KeySize} bytes.");
-                if (identityX25519.Length != Constants.X25519KeySize)
-                    throw new ArgumentException($"IdentityX25519 key must be {Constants.X25519KeySize} bytes.");
-                if (signedPreKeyPublic.Length != Constants.X25519KeySize)
-                    throw new ArgumentException($"SignedPreKeyPublic key must be {Constants.X25519KeySize} bytes.");
-                if (signedPreKeySignature.Length != Constants.Ed25519SignatureSize)
-                    throw new ArgumentException(
-                        $"SignedPreKeySignature must be {Constants.Ed25519SignatureSize} bytes.");
-
-                byte[]? ephemeralX25519 = proto.EphemeralX25519PublicKey.IsEmpty
-                    ? null
-                    : proto.EphemeralX25519PublicKey.ToByteArray();
-                if (ephemeralX25519 != null && ephemeralX25519.Length != Constants.X25519KeySize)
-                    throw new ArgumentException(
-                        $"EphemeralX25519 key must be {Constants.X25519KeySize} bytes if present.");
-
-                List<OneTimePreKeyRecord> opkRecords = new(proto.OneTimePreKeys.Count);
-                foreach (Protobuf.PubKeyExchange.PublicKeyBundle.Types.OneTimePreKey? pOpk in proto.OneTimePreKeys)
-                {
-                    byte[] opkPublicKey = pOpk.PublicKey.ToByteArray();
-                    Result<OneTimePreKeyRecord, EcliptixProtocolFailure> opkResult =
-                        OneTimePreKeyRecord.Create(pOpk.PreKeyId, opkPublicKey);
-                    if (opkResult.IsErr)
-                        throw new ArgumentException(
-                            $"Invalid OneTimePreKey (ID: {pOpk.PreKeyId}): {opkResult.UnwrapErr().Message}");
-
-                    opkRecords.Add(opkResult.Unwrap());
-                }
-
-                InternalBundleData internalData = new()
-                {
-                    IdentityEd25519 = identityEd25519,
-                    IdentityX25519 = identityX25519,
-                    SignedPreKeyId = proto.SignedPreKeyId,
-                    SignedPreKeyPublic = signedPreKeyPublic,
-                    SignedPreKeySignature = signedPreKeySignature,
-                    OneTimePreKeys = opkRecords,
-                    EphemeralX25519 = ephemeralX25519
-                };
-                return new PublicKeyBundle(internalData);
-            },
-            ex => ex switch
-            {
-                ArgumentException argEx => EcliptixProtocolFailure.Decode(
-                    $"Failed to create LocalPublicKeyBundle from Protobuf due to invalid data: {argEx.Message}", argEx),
-                _ => EcliptixProtocolFailure.Decode(
-                    $"Unexpected error creating LocalPublicKeyBundle from Protobuf: {ex.Message}",
-                    ex)
+                Result<Unit, EcliptixProtocolFailure> ephemeralValidationResult = DhValidator.ValidateX25519PublicKey(ephemeralX25519);
+                if (ephemeralValidationResult.IsErr)
+                    return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(ephemeralValidationResult.UnwrapErr());
             }
-        );
+
+            List<OneTimePreKeyRecord> opkRecords = new(proto.OneTimePreKeys.Count);
+            foreach (Protobuf.PubKeyExchange.PublicKeyBundle.Types.OneTimePreKey? pOpk in proto.OneTimePreKeys)
+            {
+                SecureByteStringInterop.SecureCopyWithCleanup(pOpk.PublicKey, out byte[] opkPublicKey);
+                Result<OneTimePreKeyRecord, EcliptixProtocolFailure> opkResult = OneTimePreKeyRecord.Create(pOpk.PreKeyId, opkPublicKey);
+                if (opkResult.IsErr)
+                    return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(opkResult.UnwrapErr());
+
+                opkRecords.Add(opkResult.Unwrap());
+            }
+
+            InternalBundleData internalData = new()
+            {
+                IdentityEd25519 = identityEd25519,
+                IdentityX25519 = identityX25519,
+                SignedPreKeyId = proto.SignedPreKeyId,
+                SignedPreKeyPublic = signedPreKeyPublic,
+                SignedPreKeySignature = signedPreKeySignature,
+                OneTimePreKeys = opkRecords,
+                EphemeralX25519 = ephemeralX25519
+            };
+            return Result<PublicKeyBundle, EcliptixProtocolFailure>.Ok(new PublicKeyBundle(internalData));
+        }
+        catch (ArgumentException argEx)
+        {
+            return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Decode(
+                    $"Failed to create PublicKeyBundle from Protobuf due to invalid data: {argEx.Message}", argEx));
+        }
+        catch (Exception ex)
+        {
+            return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Decode(
+                    $"Unexpected error creating PublicKeyBundle from Protobuf: {ex.Message}", ex));
+        }
     }
 
     private readonly struct InternalBundleData

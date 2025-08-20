@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
@@ -55,9 +56,17 @@ public sealed class EcliptixProtocolChainStep : IDisposable
     public static Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> FromProtoState(ChainStepType stepType,
         ChainStepState proto)
     {
-        byte[] chainKeyBytes = proto.ChainKey.ToByteArray();
-        byte[]? dhPrivKeyBytes = proto.DhPrivateKey.IsEmpty ? null : proto.DhPrivateKey.ToByteArray();
-        byte[]? dhPubKeyBytes = proto.DhPublicKey.IsEmpty ? null : proto.DhPublicKey.ToByteArray();
+        SecureByteStringInterop.SecureCopyWithCleanup(proto.ChainKey, out byte[] chainKeyBytes);
+        byte[]? dhPrivKeyBytes = null;
+        if (!proto.DhPrivateKey.IsEmpty)
+        {
+            SecureByteStringInterop.SecureCopyWithCleanup(proto.DhPrivateKey, out dhPrivKeyBytes);
+        }
+        byte[]? dhPubKeyBytes = null;
+        if (!proto.DhPublicKey.IsEmpty)
+        {
+            SecureByteStringInterop.SecureCopyWithCleanup(proto.DhPublicKey, out dhPubKeyBytes);
+        }
 
         if (Log.IsEnabled(LogEventLevel.Debug))
         {
@@ -133,18 +142,15 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
         uint currentIndex = currentIndexResult.Unwrap();
 
-        if (targetIndex < currentIndex)
-        {
-            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.InvalidInput(
-                $"[{_stepType}] Requested index {targetIndex} is not future (current: {currentIndex}) and not cached."));
-        }
+        if (targetIndex <= currentIndex)
+            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput(
+                    $"[{_stepType}] Requested index {targetIndex} is not future (current: {currentIndex}) and not cached."));
 
         byte[]? chainKeyBytes = null;
         try
         {
             chainKeyBytes = _chainKeyHandle.ReadBytes(Constants.X25519KeySize).Unwrap();
-            Console.WriteLine($"[SERVER] Starting key derivation for {_stepType} from index {currentIndex + 1} to {targetIndex}");
-            Console.WriteLine($"[SERVER] Initial chain key: {Convert.ToHexString(chainKeyBytes)}");
 
             Span<byte> currentChainKey = stackalloc byte[Constants.X25519KeySize];
             chainKeyBytes.CopyTo(currentChainKey);
@@ -156,6 +162,8 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             {
                 try
                 {
+                    Console.WriteLine($"[SERVER] [{_stepType}] Deriving message key for index {idx} from chain key: {Convert.ToHexString(currentChainKey[0..8])}...");
+                    Console.WriteLine($"[SERVER] [{_stepType}] Using MsgInfo: {Convert.ToHexString(Constants.MsgInfo)}");
                     System.Security.Cryptography.HKDF.DeriveKey(
                         System.Security.Cryptography.HashAlgorithmName.SHA256,
                         ikm: currentChainKey,
@@ -163,7 +171,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                         salt: null,
                         info: Constants.MsgInfo
                     );
-                    Console.WriteLine($"[SERVER] Derived message key for {_stepType} index {idx}: {Convert.ToHexString(msgKey)}");
+                    Console.WriteLine($"[SERVER] [{_stepType}] Derived message key for index {idx}: {Convert.ToHexString(msgKey[0..8])}...");
 
                     System.Security.Cryptography.HKDF.DeriveKey(
                         System.Security.Cryptography.HashAlgorithmName.SHA256,
@@ -172,7 +180,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                         salt: null,
                         info: Constants.ChainInfo
                     );
-                    Console.WriteLine($"[SERVER] Next chain key for {_stepType}: {Convert.ToHexString(nextChainKey)}");
                 }
                 catch (Exception ex)
                 {
@@ -302,19 +309,19 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             ChainStepState proto = new()
             {
                 CurrentIndex = _currentIndex,
-                ChainKey = ByteString.CopyFrom(chainKey),
+                ChainKey = ByteString.CopyFrom(chainKey.AsSpan()),
             };
 
-            if (dhPrivKey != null) proto.DhPrivateKey = ByteString.CopyFrom(dhPrivKey);
-            if (_dhPublicKey != null) proto.DhPublicKey = ByteString.CopyFrom(_dhPublicKey);
+            if (dhPrivKey != null) proto.DhPrivateKey = ByteString.CopyFrom(dhPrivKey.AsSpan());
+            if (_dhPublicKey != null) proto.DhPublicKey = ByteString.CopyFrom(_dhPublicKey.AsSpan());
 
             foreach (KeyValuePair<uint, EcliptixMessageKey> kvp in _messageKeys)
             {
                 byte[]? keyMaterial = null;
                 try
                 {
-                    keyMaterial = new byte[Constants.X25519KeySize];
-                    Result<Unit, EcliptixProtocolFailure> readResult = kvp.Value.ReadKeyMaterial(keyMaterial);
+                    keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
+                    Result<Unit, EcliptixProtocolFailure> readResult = kvp.Value.ReadKeyMaterial(keyMaterial.AsSpan(0, Constants.AesKeySize));
                     if (readResult.IsErr)
                     {
                         continue;
@@ -323,12 +330,15 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                     proto.CachedMessageKeys.Add(new CachedMessageKey
                     {
                         Index = kvp.Key,
-                        KeyMaterial = ByteString.CopyFrom(keyMaterial)
+                        KeyMaterial = ByteString.CopyFrom(keyMaterial.AsSpan(0, Constants.AesKeySize))
                     });
                 }
                 finally
                 {
-                    if (keyMaterial != null) SodiumInterop.SecureWipe(keyMaterial).IgnoreResult();
+                    if (keyMaterial != null)
+                    {
+                        ArrayPool<byte>.Shared.Return(keyMaterial, clearArray: true);
+                    }
                 }
             }
 

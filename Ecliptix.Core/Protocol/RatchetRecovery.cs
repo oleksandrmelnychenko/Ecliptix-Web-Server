@@ -1,3 +1,4 @@
+using System.Buffers;
 using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Core.Protocol;
@@ -79,22 +80,22 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
         return Result<Unit, EcliptixProtocolFailure>.Try(
             () =>
             {
-                byte[] newChainKey = new byte[Constants.X25519KeySize];
+                byte[] newChainKey = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
                 try
                 {
                     System.Security.Cryptography.HKDF.DeriveKey(
                         System.Security.Cryptography.HashAlgorithmName.SHA256,
                         ikm: chainKey,
-                        output: newChainKey,
+                        output: newChainKey.AsSpan(0, Constants.X25519KeySize),
                         salt: null,
                         info: Constants.ChainInfo
                     );
                     
-                    newChainKey.CopyTo(chainKey, 0);
+                    newChainKey.AsSpan(0, Constants.X25519KeySize).CopyTo(chainKey);
                 }
                 finally
                 {
-                    SodiumInterop.SecureWipe(newChainKey);
+                    ArrayPool<byte>.Shared.Return(newChainKey, clearArray: true);
                 }
             },
             ex => EcliptixProtocolFailure.DeriveKey("Failed to advance chain key using HKDF", ex)

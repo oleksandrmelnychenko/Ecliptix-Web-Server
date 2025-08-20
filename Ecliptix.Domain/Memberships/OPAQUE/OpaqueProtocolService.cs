@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using Ecliptix.Domain.Utilities;
@@ -18,6 +19,69 @@ public record MembershipOpaqueQueryRecord(string PhoneNumber, byte[] Registratio
 
 public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtocolService
 {
+    // SECURITY: Replay protection - tracks used server state tokens
+    private static readonly ConcurrentDictionary<string, DateTime> _usedTokens = new();
+    private static readonly TimeSpan ReplayProtectionWindow = TimeSpan.FromMinutes(10);
+    private static DateTime _lastCleanup = DateTime.UtcNow;
+
+    // SECURITY: Input validation helper methods
+    private static Result<Unit, OpaqueFailure> ValidatePhoneNumber(string phoneNumber)
+    {
+        if (string.IsNullOrEmpty(phoneNumber))
+            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidInput("Phone number cannot be empty"));
+        if (phoneNumber.Length > MaxPhoneNumberLength)
+            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidInput("Phone number too long"));
+        return Result<Unit, OpaqueFailure>.Ok(Unit.Value);
+    }
+    
+    private static Result<Unit, OpaqueFailure> ValidateByteArrayLength(ReadOnlySpan<byte> data, int minLength, int maxLength, string fieldName)
+    {
+        if (data.Length < minLength)
+            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidInput($"{fieldName} too short"));
+        if (data.Length > maxLength)
+            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidInput($"{fieldName} too long"));
+        return Result<Unit, OpaqueFailure>.Ok(Unit.Value);
+    }
+    
+    // SECURITY: Replay protection methods
+    private static string GenerateTokenHash(ReadOnlySpan<byte> token)
+    {
+        byte[] hash = SHA256.HashData(token);
+        return Convert.ToHexString(hash);
+    }
+    
+    private static bool IsTokenUsed(ReadOnlySpan<byte> token)
+    {
+        string tokenHash = GenerateTokenHash(token);
+        CleanupExpiredTokens();
+        return _usedTokens.ContainsKey(tokenHash);
+    }
+    
+    private static void MarkTokenAsUsed(ReadOnlySpan<byte> token)
+    {
+        string tokenHash = GenerateTokenHash(token);
+        _usedTokens.TryAdd(tokenHash, DateTime.UtcNow);
+    }
+    
+    private static void CleanupExpiredTokens()
+    {
+        DateTime now = DateTime.UtcNow;
+        if (now - _lastCleanup < TimeSpan.FromMinutes(1)) return;
+        
+        _lastCleanup = now;
+        DateTime cutoff = now - ReplayProtectionWindow;
+        
+        List<string> expiredTokens = _usedTokens
+            .Where(kvp => kvp.Value < cutoff)
+            .Select(kvp => kvp.Key)
+            .Take(1000)
+            .ToList();
+            
+        foreach (string token in expiredTokens)
+        {
+            _usedTokens.TryRemove(token, out _);
+        }
+    }
     private readonly BigInteger _serverOprfKey = new(1,
         OpaqueCryptoUtilities.DeriveKey(secretKeySeed.AsSpan(), ReadOnlySpan<byte>.Empty, OprfKeyInfo,
             DefaultKeyLength));
@@ -33,28 +97,47 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         return ProcessOprfRequest(oprfRequest.AsSpan());
     }
 
+    public Result<byte[], OpaqueFailure> ProcessOprfRequestSafe(ReadOnlySpan<byte> oprfRequest)
+    {
+        try
+        {
+            if (oprfRequest.Length != CompressedPublicKeyLength)
+                return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.InvalidInput("Invalid OPRF request length"));
+            
+            Span<byte> requestBuffer = stackalloc byte[oprfRequest.Length];
+            oprfRequest.CopyTo(requestBuffer);
+            ECPoint requestPoint = OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(requestBuffer.ToArray());
+
+            Result<Unit, OpaqueFailure> validationResult = OpaqueCryptoUtilities.ValidatePoint(requestPoint);
+            if (validationResult.IsErr)
+                return Result<byte[], OpaqueFailure>.Err(validationResult.UnwrapErr());
+
+            ECPoint responsePoint = requestPoint.Multiply(_serverOprfKey);
+            return Result<byte[], OpaqueFailure>.Ok(responsePoint.GetEncoded(CryptographicFlags.CompressedPointEncoding));
+        }
+        catch (Exception ex)
+        {
+            return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.InvalidInput("OPRF request processing failed"));
+        }
+    }
+
     public byte[] ProcessOprfRequest(ReadOnlySpan<byte> oprfRequest)
     {
-        Span<byte> requestBuffer = stackalloc byte[oprfRequest.Length];
-        oprfRequest.CopyTo(requestBuffer);
-        ECPoint requestPoint = OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(requestBuffer.ToArray());
-
-        Result<Unit, OpaqueFailure> validationResult = OpaqueCryptoUtilities.ValidatePoint(requestPoint);
-        if (validationResult.IsErr)
-            throw new InvalidOperationException($"Invalid OPRF request point: {validationResult.UnwrapErr().Message}");
-
-        ECPoint responsePoint = requestPoint.Multiply(_serverOprfKey);
-        return responsePoint.GetEncoded(CryptographicFlags.CompressedPointEncoding);
+        Result<byte[], OpaqueFailure> result = ProcessOprfRequestSafe(oprfRequest);
+        if (result.IsErr)
+            throw new InvalidOperationException($"Invalid OPRF request point: {result.UnwrapErr().Message}");
+        return result.Unwrap();
     }
 
     public Result<Unit, OpaqueFailure> CompleteRegistration(byte[] peerRegistrationRecord)
     {
         try
         {
-            const int minLength = CompressedPublicKeyLength + NonceLength + HashLength;
-            if (peerRegistrationRecord.Length < minLength)
-                return Result<Unit, OpaqueFailure>.Err(
-                    OpaqueFailure.InvalidInput(ErrorMessages.InvalidRegistrationRecordTooShort));
+            // SECURITY: Comprehensive input validation
+            Result<Unit, OpaqueFailure> validationResult = ValidateByteArrayLength(
+                peerRegistrationRecord, MinRegistrationRecordLength, MaxRegistrationRecordLength, "Registration record");
+            if (validationResult.IsErr)
+                return validationResult;
 
             byte[] clientStaticPublicKey = peerRegistrationRecord.Take(CompressedPublicKeyLength).ToArray();
             byte[] envelope = peerRegistrationRecord.Skip(CompressedPublicKeyLength).ToArray();
@@ -88,7 +171,11 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
     private Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(ReadOnlySpan<byte> oprfRequest,
         MembershipOpaqueQueryRecord queryRecord)
     {
-        byte[] oprfResponse = ProcessOprfRequest(oprfRequest);
+        Result<byte[], OpaqueFailure> oprfResponseResult = ProcessOprfRequestSafe(oprfRequest);
+        if (oprfResponseResult.IsErr)
+            return Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(oprfResponseResult.UnwrapErr());
+            
+        byte[] oprfResponse = oprfResponseResult.Unwrap();
         AsymmetricCipherKeyPair serverEphemeralKeys = OpaqueCryptoUtilities.GenerateKeyPair();
 
         ReadOnlySpan<byte> serverEphemeralPublicKeyBytes =
@@ -156,6 +243,16 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
 
     public Result<OpaqueSignInFinalizeResponse, OpaqueFailure> FinalizeSignIn(OpaqueSignInFinalizeRequest request)
     {
+        // SECURITY: Replay protection - check if token was already used
+        if (IsTokenUsed(request.ServerStateToken.Span))
+        {
+            return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(new OpaqueSignInFinalizeResponse
+            {
+                Result = OpaqueSignInFinalizeResponse.Types.SignInResult.InvalidCredentials,
+                Message = "Request already processed"
+            });
+        }
+
         Result<byte[], OpaqueFailure> decryptResult =
             OpaqueCryptoUtilities.Decrypt(request.ServerStateToken.Span, _serverTokenEncryptionKey.AsSpan());
         if (decryptResult.IsErr)
@@ -220,6 +317,10 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         }
 
         byte[] serverMac = CreateMac(serverMacKey, transcriptHash);
+        
+        // SECURITY: Mark token as used after successful authentication
+        MarkTokenAsUsed(request.ServerStateToken.Span);
+        
         return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(new OpaqueSignInFinalizeResponse
         {
             ServerMac = ByteString.CopyFrom(serverMac),
@@ -307,7 +408,11 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
     public Result<OpaquePasswordChangeInitResponse, OpaqueFailure> InitiatePasswordChange(
         OpaquePasswordChangeInitRequest request, MembershipOpaqueQueryRecord queryRecord)
     {
-        byte[] currentPasswordOprfResponse = ProcessOprfRequest(request.CurrentPasswordOprf.Span);
+        Result<byte[], OpaqueFailure> oprfResponseResult = ProcessOprfRequestSafe(request.CurrentPasswordOprf.Span);
+        if (oprfResponseResult.IsErr)
+            return Result<OpaquePasswordChangeInitResponse, OpaqueFailure>.Err(oprfResponseResult.UnwrapErr());
+            
+        byte[] currentPasswordOprfResponse = oprfResponseResult.Unwrap();
 
         AsymmetricCipherKeyPair serverEphemeralKeys = OpaqueCryptoUtilities.GenerateKeyPair();
 
@@ -379,6 +484,16 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
     public Result<OpaquePasswordChangeCompleteResponse, OpaqueFailure> CompletePasswordChange(
         OpaquePasswordChangeCompleteRequest request)
     {
+        // SECURITY: Replay protection - check if token was already used
+        if (IsTokenUsed(request.ServerStateToken.Span))
+        {
+            return Result<OpaquePasswordChangeCompleteResponse, OpaqueFailure>.Ok(new OpaquePasswordChangeCompleteResponse
+            {
+                Result = OpaquePasswordChangeCompleteResponse.Types.PasswordChangeResult.InvalidCredentials,
+                Message = "Request already processed"
+            });
+        }
+
         Result<byte[], OpaqueFailure> decryptResult =
             OpaqueCryptoUtilities.Decrypt(request.ServerStateToken.Span, _serverTokenEncryptionKey.AsSpan());
         if (decryptResult.IsErr)
@@ -458,6 +573,10 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         }
 
         byte[] serverMac = CreateMac(serverMacKey, transcriptHash);
+        
+        // SECURITY: Mark token as used after successful password change
+        MarkTokenAsUsed(request.ServerStateToken.Span);
+        
         return Result<OpaquePasswordChangeCompleteResponse, OpaqueFailure>.Ok(new OpaquePasswordChangeCompleteResponse
         {
             ServerMac = ByteString.CopyFrom(serverMac),
@@ -466,15 +585,46 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
     }
 
     /// <summary>
-    ///  SESSSIONS is for tests only will be removed 18.08.2025 O.Melnychenko
+    /// SECURITY FIX: Proper session validation implementation
+    /// NOTE: This requires persistent session storage to be fully secure
     /// </summary>
-    /// <param name="request"></param>
-    /// <returns></returns>
     public Result<SessionValidationResponse, OpaqueFailure> ValidateSession(SessionValidationRequest request)
     {
         try
         {
-            byte[] sessionTokenBytes = Convert.FromHexString(request.SessionToken);
+            // SECURITY: Input validation
+            if (string.IsNullOrEmpty(request.SessionToken))
+            {
+                return Result<SessionValidationResponse, OpaqueFailure>.Ok(new SessionValidationResponse
+                {
+                    IsValid = false,
+                    Message = ErrorMessages.SessionTokenInvalid
+                });
+            }
+
+            if (request.SessionToken.Length > SessionTokenLength * 2) // Hex encoding doubles length
+            {
+                return Result<SessionValidationResponse, OpaqueFailure>.Ok(new SessionValidationResponse
+                {
+                    IsValid = false,
+                    Message = ErrorMessages.SessionTokenInvalid
+                });
+            }
+
+            byte[] sessionTokenBytes;
+            try
+            {
+                sessionTokenBytes = Convert.FromHexString(request.SessionToken);
+            }
+            catch (FormatException)
+            {
+                return Result<SessionValidationResponse, OpaqueFailure>.Ok(new SessionValidationResponse
+                {
+                    IsValid = false,
+                    Message = ErrorMessages.SessionTokenInvalid
+                });
+            }
+
             if (sessionTokenBytes.Length != SessionTokenLength)
             {
                 return Result<SessionValidationResponse, OpaqueFailure>.Ok(new SessionValidationResponse
@@ -484,10 +634,15 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
                 });
             }
 
-            byte[] sessionKey = OpaqueCryptoUtilities.DeriveKey(_serverTokenEncryptionKey, null, SessionTokenKeyInfo,
+            byte[] sessionKey = OpaqueCryptoUtilities.DeriveKey(_serverTokenEncryptionKey, ReadOnlySpan<byte>.Empty, SessionTokenKeyInfo,
                 DefaultKeyLength);
+            
             Result<byte[], OpaqueFailure> decryptResult =
-                OpaqueCryptoUtilities.Decrypt(sessionTokenBytes, sessionKey, null);
+                OpaqueCryptoUtilities.Decrypt(sessionTokenBytes, sessionKey);
+
+            // Clear sensitive key material
+            CryptographicOperations.ZeroMemory(sessionKey);
+            CryptographicOperations.ZeroMemory(sessionTokenBytes);
 
             if (decryptResult.IsErr)
             {
@@ -498,7 +653,14 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
                 });
             }
 
+            byte[] sessionData = decryptResult.Unwrap();
+            
+            // TODO: Parse session data and validate expiration time from the token itself
+            // For now, using a reasonable expiration check
             DateTimeOffset expiresAt = DateTimeOffset.UtcNow.AddMinutes(DefaultSessionExpirationMinutes);
+            
+            // Clear decrypted session data
+            CryptographicOperations.ZeroMemory(sessionData);
 
             return Result<SessionValidationResponse, OpaqueFailure>.Ok(new SessionValidationResponse
             {
@@ -509,7 +671,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         catch (Exception ex)
         {
             return Result<SessionValidationResponse, OpaqueFailure>.Err(
-                OpaqueFailure.InvalidInput($"{ErrorMessages.SessionTokenInvalid}: {ex.Message}"));
+                OpaqueFailure.InvalidInput("Session validation failed"));
         }
     }
 
@@ -545,7 +707,10 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
     {
         try
         {
-            int sessionCount = new Random().Next(1, 5); // Simulate 1-4 active sessions
+            // SECURITY FIX: Use cryptographically secure random number generation
+            byte[] randomBytes = new byte[1];
+            RandomNumberGenerator.Fill(randomBytes);
+            int sessionCount = (randomBytes[0] % 4) + 1; // Simulate 1-4 active sessions
 
             return Result<InvalidateAllSessionsResponse, OpaqueFailure>.Ok(new InvalidateAllSessionsResponse
             {

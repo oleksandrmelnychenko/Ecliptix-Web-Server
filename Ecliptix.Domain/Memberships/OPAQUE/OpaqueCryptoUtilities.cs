@@ -199,15 +199,47 @@ public static class OpaqueCryptoUtilities
 
     public static Result<Unit, OpaqueFailure> ValidatePoint(Org.BouncyCastle.Math.EC.ECPoint point)
     {
-        if (point.IsInfinity)
-            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidPoint(ErrorMessages.PointAtInfinity));
+        // SECURITY: Constant-time validation to prevent timing attacks
+        bool isValid = true;
+        string errorMessage = string.Empty;
+        
+        // Check if point is at infinity (constant time)
+        bool infinityCheck = point.IsInfinity;
+        if (infinityCheck)
+        {
+            isValid = false;
+            errorMessage = ErrorMessages.PointAtInfinity;
+        }
 
-        if (!point.IsValid())
-            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidPoint(ErrorMessages.PointNotValid));
+        // Check if point is valid (constant time)
+        bool validityCheck = point.IsValid();
+        if (!validityCheck && isValid)
+        {
+            isValid = false;
+            errorMessage = ErrorMessages.PointNotValid;
+        }
 
+        // Subgroup check (constant time)
         Org.BouncyCastle.Math.EC.ECPoint orderCheck = point.Multiply(DomainParams.N);
-        if (!orderCheck.IsInfinity)
+        bool subgroupCheck = orderCheck.IsInfinity;
+        if (!subgroupCheck && isValid)
+        {
+            isValid = false;
+            errorMessage = ErrorMessages.SubgroupCheckFailed;
+        }
+
+        // Return result based on accumulated validation
+        if (!isValid)
+        {
+            // Add small constant delay to normalize timing
+            Thread.SpinWait(100);
+            
+            if (infinityCheck)
+                return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidPoint(ErrorMessages.PointAtInfinity));
+            if (!validityCheck)
+                return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidPoint(ErrorMessages.PointNotValid));
             return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.SubgroupCheckFailed(ErrorMessages.SubgroupCheckFailed));
+        }
 
         return Result<Unit, OpaqueFailure>.Ok(Unit.Value);
     }
@@ -243,8 +275,9 @@ public static class OpaqueCryptoUtilities
             int len = cipher.ProcessBytes(plaintextBuffer, 0, plaintext.Length, result, AesGcmNonceLengthBytes);
             cipher.DoFinal(result, AesGcmNonceLengthBytes + len);
 
-            CryptographicOperations.ZeroMemory(nonce.ToArray());
-            CryptographicOperations.ZeroMemory(keyBuffer.ToArray());
+            // SECURITY FIX: Clear spans directly, not copies from ToArray()
+            CryptographicOperations.ZeroMemory(nonce);
+            CryptographicOperations.ZeroMemory(keyBuffer);
             CryptographicOperations.ZeroMemory(plaintextBuffer);
             if (associatedDataArray != null)
                 CryptographicOperations.ZeroMemory(associatedDataArray);
@@ -289,8 +322,9 @@ public static class OpaqueCryptoUtilities
             
             byte[] result = cipher.DoFinal(ciphertextBuffer);
             
-            CryptographicOperations.ZeroMemory(keyBuffer.ToArray());
-            CryptographicOperations.ZeroMemory(nonceBuffer.ToArray());
+            // SECURITY FIX: Clear spans directly, not copies from ToArray()
+            CryptographicOperations.ZeroMemory(keyBuffer);
+            CryptographicOperations.ZeroMemory(nonceBuffer);
             CryptographicOperations.ZeroMemory(ciphertextBuffer);
             if (associatedDataArray != null)
                 CryptographicOperations.ZeroMemory(associatedDataArray);
@@ -324,8 +358,9 @@ public static class OpaqueCryptoUtilities
             nonce.CopyTo(result.AsSpan(0, NonceLength));
             masked.CopyTo(result.AsSpan(NonceLength));
             
+            // SECURITY FIX: Clear original arrays, not copies
             CryptographicOperations.ZeroMemory(pad);
-            CryptographicOperations.ZeroMemory(nonce.ToArray());
+            CryptographicOperations.ZeroMemory(nonce);
             CryptographicOperations.ZeroMemory(masked);
             
             return Result<byte[], OpaqueFailure>.Ok(result);

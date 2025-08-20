@@ -53,26 +53,15 @@ public class EcliptixProtocolSystemActor : ReceiveActor
     private async Task ProcessNewSessionRequest(BeginAppDeviceEphemeralConnectActorEvent actorEvent)
     {
         uint connectId = actorEvent.UniqueConnectId;
-        string actorName = $"connect-{connectId}";
-
-        IActorRef connectActor = Context.Child(actorName);
-
-        if (connectActor.IsNobody())
+        Result<IActorRef, EcliptixProtocolFailure> connectActorResult = GetOrCreateConnectActor(connectId);
+        
+        if (connectActorResult.IsErr)
         {
-            try
-            {
-                connectActor = Context.ActorOf(EcliptixProtocolConnectActor.Build(connectId), actorName);
-                Context.Watch(connectActor);
-            }
-            catch (Exception ex)
-            {
-                EcliptixProtocolFailure failure =
-                    EcliptixProtocolFailure.ActorNotCreated($"Failed to create actor for connectId: {connectId}", ex);
-                Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(failure));
-                return;
-            }
+            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(connectActorResult.UnwrapErr()));
+            return;
         }
 
+        IActorRef connectActor = connectActorResult.Unwrap();
         DeriveSharedSecretActorEvent deriveSharedSecretEvent = new(connectId, actorEvent.PubKeyExchange);
         Result<DeriveSharedSecretReply, EcliptixProtocolFailure> result =
             await connectActor.Ask<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>>(deriveSharedSecretEvent);
@@ -88,26 +77,47 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
         if (connectActor.IsNobody() && message.Payload is not KeepAlive)
         {
-            connectActor = Context.ActorOf(EcliptixProtocolConnectActor.Build(connectId), actorName);
-            Context.Watch(connectActor);
+            Result<IActorRef, EcliptixProtocolFailure> connectActorResult = GetOrCreateConnectActor(connectId);
+            if (connectActorResult.IsErr)
+            {
+                Sender.Tell(Result<object, EcliptixProtocolFailure>.Err(connectActorResult.UnwrapErr()));
+                return;
+            }
+            connectActor = connectActorResult.Unwrap();
+        }
 
-            object? result =
-                await connectActor.Ask(message.Payload);
-            Sender.Tell(result);
+        if (message.Payload is KeepAlive)
+        {
+            connectActor.Tell(message.Payload, ActorRefs.NoSender);
         }
         else
         {
-            if (message.Payload is KeepAlive)
+            object? result = await connectActor.Ask(message.Payload);
+            Sender.Tell(result);
+        }
+    }
+
+    private Result<IActorRef, EcliptixProtocolFailure> GetOrCreateConnectActor(uint connectId)
+    {
+        string actorName = $"connect-{connectId}";
+        IActorRef connectActor = Context.Child(actorName);
+
+        if (connectActor.IsNobody())
+        {
+            try
             {
-                connectActor.Tell(message.Payload, ActorRefs.NoSender);
+                connectActor = Context.ActorOf(EcliptixProtocolConnectActor.Build(connectId), actorName);
+                Context.Watch(connectActor);
+                return Result<IActorRef, EcliptixProtocolFailure>.Ok(connectActor);
             }
-            else
+            catch (Exception ex)
             {
-                object? result =
-                    await connectActor.Ask(message.Payload);
-                Sender.Tell(result);
+                return Result<IActorRef, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.ActorNotCreated($"Failed to create actor for connectId: {connectId}", ex));
             }
         }
+
+        return Result<IActorRef, EcliptixProtocolFailure>.Ok(connectActor);
     }
 
     public static Props Build()

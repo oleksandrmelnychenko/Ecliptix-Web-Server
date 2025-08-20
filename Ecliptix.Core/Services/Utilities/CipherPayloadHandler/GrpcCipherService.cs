@@ -25,10 +25,12 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
             await _protocolActor.Ask<Result<CipherPayload, EcliptixProtocolFailure>>(
                 encryptForwarder, context.CancellationToken);
 
-        return encryptResult.Match(
-            ok: Result<CipherPayload, FailureBase>.Ok,
-            err: Result<CipherPayload, FailureBase>.Err
-        );
+        if (encryptResult.IsErr)
+        {
+            return Result<CipherPayload, FailureBase>.Err(encryptResult.UnwrapErr());
+        }
+        
+        return Result<CipherPayload, FailureBase>.Ok(encryptResult.Unwrap());
     }
 
     public async Task<Result<byte[], FailureBase>> DecryptPayload(CipherPayload request, uint connectId,
@@ -43,10 +45,12 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
             await _protocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(decryptForwarder,
                 context.CancellationToken);
 
-        return decryptionResult.Match(
-            ok: Result<byte[], FailureBase>.Ok,
-            err: Result<byte[], FailureBase>.Err
-        );
+        if (decryptionResult.IsErr)
+        {
+            return Result<byte[], FailureBase>.Err(decryptionResult.UnwrapErr());
+        }
+        
+        return Result<byte[], FailureBase>.Ok(decryptionResult.Unwrap());
     }
 
     public async Task<CipherPayload> CreateSuccessResponse<T>(byte[] payload, uint connectId, ServerCallContext context)
@@ -66,8 +70,9 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
         ServerCallContext context) where T : IMessage<T>, new()
     {
         context.Status = failure.ToGrpcStatus();
+        byte[] emptyPayload = new T().ToByteArray();
         Result<CipherPayload, FailureBase> encryptResult =
-            await EncryptPayload(new T().ToByteArray(), connectId, context);
+            await EncryptPayload(emptyPayload, connectId, context);
         if (encryptResult.IsErr)
         {
             return new CipherPayload();
@@ -89,9 +94,12 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
         where TSuccess : IMessage<TSuccess>, new()
         where TFailure : FailureBase
     {
-        return await result.Match(
-            async response => await CreateSuccessResponse<TSuccess>(response.ToByteArray(), connectId, context),
-            async error => await CreateFailureResponse<TSuccess>(error, connectId, context)
-        );
+        if (result.IsErr)
+        {
+            return await CreateFailureResponse<TSuccess>(result.UnwrapErr(), connectId, context);
+        }
+        
+        byte[] responsePayload = result.Unwrap().ToByteArray();
+        return await CreateSuccessResponse<TSuccess>(responsePayload, connectId, context);
     }
 }

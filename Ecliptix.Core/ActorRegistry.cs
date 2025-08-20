@@ -14,9 +14,8 @@ public sealed class ActorRegistry : IEcliptixActorRegistry
 
     public IActorRef Get<TActor>() where TActor : ActorBase
     {
-        if (_actors.TryGetValue(typeof(TActor), out var actorRef))
-            return actorRef;
-
-        throw new InvalidOperationException($"Actor of type {typeof(TActor).Name} not registered.");
+        return _actors.TryGetValue(typeof(TActor), out IActorRef? actorRef)
+            ? actorRef
+            : throw new InvalidOperationException($"Actor of type {typeof(TActor).Name} not registered.");
     }
 }

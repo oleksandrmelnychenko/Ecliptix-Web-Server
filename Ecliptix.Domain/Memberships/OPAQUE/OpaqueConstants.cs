@@ -50,6 +50,12 @@ public static class OpaqueConstants
     public const int DefaultSessionExpirationMinutes = 60;
     public const int DefaultRecoveryExpirationMinutes = 15;
     
+    // Security Validation Constants
+    public const int MaxInputLength = 16384; // 16KB max input size
+    public const int MaxPhoneNumberLength = 32;
+    public const int MaxRegistrationRecordLength = 256;
+    public const int MinRegistrationRecordLength = CompressedPublicKeyLength + NonceLength + HashLength;
+    
     public static class RfcCompliance
     {
         public const bool EnableMasking = true;

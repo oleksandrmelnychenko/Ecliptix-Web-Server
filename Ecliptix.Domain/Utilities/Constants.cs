@@ -47,4 +47,10 @@ public static class Constants
     public const int SnapshotInterval = 50;
     public const int SnapshotModulus = 10;
     public const int SnapshotMinuteMultiplier = 5;
+    
+    // Curve25519 validation constants
+    public const int Curve25519FieldElementSize = 32;
+    public const int Field256WordCount = 8;
+    public const int WordSize = 4;
+    public const uint FieldElementMask = 0x7FFFFFFF;
 }

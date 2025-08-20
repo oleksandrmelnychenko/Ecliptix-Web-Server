@@ -311,7 +311,15 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
                         Persist(_state, _ => { });
                     }
 
-                    Sender.Tell(existingReplyResult.Map(reply => new DeriveSharedSecretReply(reply)));
+                    if (existingReplyResult.IsOk)
+                    {
+                        PubKeyExchange pubKeyReply = existingReplyResult.Unwrap();
+                        Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(new DeriveSharedSecretReply(pubKeyReply)));
+                    }
+                    else
+                    {
+                        Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(existingReplyResult.UnwrapErr()));
+                    }
                 }
                 else
                 {
@@ -429,12 +437,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor
             originalSender.Tell(Result<byte[], EcliptixProtocolFailure>.Ok(plaintext));
             MaybeSaveSnapshot();
         });
-    }
-
-    private bool IsSessionReady(out EcliptixSessionState currentState)
-    {
-        currentState = _state!;
-        return _state != null;
     }
 
     private void MaybeSaveSnapshot()

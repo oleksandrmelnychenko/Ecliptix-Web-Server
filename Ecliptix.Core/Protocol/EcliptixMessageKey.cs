@@ -1,3 +1,4 @@
+using System.Buffers;
 using Ecliptix.Core.Protocol.Failures;
 using Ecliptix.Domain.Utilities;
 
@@ -26,18 +27,21 @@ public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessage
     public bool Equals(EcliptixMessageKey? other)
     {
         if (other is null) return false;
-        return Index == other.Index;
+        return
+            Index == other.Index &&
+            _disposed ==
+            other._disposed;
     }
 
     public static Result<EcliptixMessageKey, EcliptixProtocolFailure> New(uint index, ReadOnlySpan<byte> keyMaterial)
     {
-        if (keyMaterial.Length != Constants.X25519KeySize)
+        if (keyMaterial.Length != Constants.AesKeySize)
             return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput(
-                    $"Key material must be exactly {Constants.X25519KeySize} bytes long, but was {keyMaterial.Length}."));
+                    $"Key material must be exactly {Constants.AesKeySize} bytes long, but was {keyMaterial.Length}."));
 
         Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> allocateResult =
-            SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize).MapSodiumFailure();
+            SodiumSecureMemoryHandle.Allocate(Constants.AesKeySize).MapSodiumFailure();
         if (allocateResult.IsErr)
             return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(allocateResult.UnwrapErr());
 
@@ -61,12 +65,12 @@ public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessage
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixMessageKey)));
 
-        if (destination.Length < Constants.X25519KeySize)
+        if (destination.Length < Constants.AesKeySize)
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.BufferTooSmall(
-                    $"Destination buffer must be at least {Constants.X25519KeySize} bytes, but was {destination.Length}."));
+                    $"Destination buffer must be at least {Constants.AesKeySize} bytes, but was {destination.Length}."));
 
-        return _keyHandle.Read(destination[..Constants.X25519KeySize]).MapSodiumFailure();
+        return _keyHandle.Read(destination[..Constants.AesKeySize]).MapSodiumFailure();
     }
 
     public static Result<EcliptixMessageKey, EcliptixProtocolFailure> DeriveFromChainKey(byte[] chainKey, uint messageIndex)
@@ -77,23 +81,23 @@ public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessage
 
         try
         {
-            byte[] messageKeyBytes = new byte[Constants.AesKeySize];
+            byte[] messageKeyBytes = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
             try
             {
                 // Use HKDF to match client implementation
                 System.Security.Cryptography.HKDF.DeriveKey(
                     System.Security.Cryptography.HashAlgorithmName.SHA256,
                     ikm: chainKey,
-                    output: messageKeyBytes,
+                    output: messageKeyBytes.AsSpan(0, Constants.AesKeySize),
                     salt: null,
                     info: Constants.MsgInfo
                 );
 
-                return New(messageIndex, messageKeyBytes);
+                return New(messageIndex, messageKeyBytes.AsSpan(0, Constants.AesKeySize));
             }
             finally
             {
-                SodiumInterop.SecureWipe(messageKeyBytes);
+                ArrayPool<byte>.Shared.Return(messageKeyBytes, clearArray: true);
             }
         }
         catch (Exception ex)

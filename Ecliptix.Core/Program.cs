@@ -4,6 +4,7 @@ using Akka.Actor;
 using Akka.Configuration;
 using Ecliptix.Core;
 using Ecliptix.Core.Interceptors;
+using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Protocol.Actors;
 using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
@@ -19,20 +20,23 @@ using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Providers.Twilio;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Localization;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Context;
+using System.Threading.RateLimiting;
 
 const string systemActorName = "EcliptixProtocolSystemActor";
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((context, services, loggerConfig) => 
+builder.Host.UseSerilog((context, services, loggerConfig) =>
 {
     string? appInsightsConnectionString = Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING");
     loggerConfig
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services);
-        
+
     if (!string.IsNullOrEmpty(appInsightsConnectionString))
     {
         loggerConfig.WriteTo.ApplicationInsights(
@@ -45,11 +49,13 @@ try
 {
     builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
     builder.Services.AddSingleton<SessionKeepAliveInterceptor>();
+    builder.Services.AddSingleton<SecurityInterceptor>();
 
+    RegisterSecurity(builder.Services);
     RegisterLocalization(builder.Services);
     RegisterValidators(builder.Services);
     RegisterGrpc(builder.Services);
-  
+
     builder.Services.Configure<TwilioSettings>(builder.Configuration.GetSection("TwilioSettings"));
     builder.Services.AddSingleton<ISmsProvider>(serviceProvider =>
     {
@@ -62,7 +68,7 @@ try
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService<EcliptixProtocolSystemActor>>();
     builder.Services.AddSingleton<IOpaqueProtocolService>(sp =>
-    { 
+    {
         IConfiguration config = sp.GetRequiredService<IConfiguration>();
         string? secretKeySeedBase64 = config["OpaqueProtocol:SecretKeySeed"];
 
@@ -96,6 +102,9 @@ try
     WebApplication app = builder.Build();
 
     app.UseSerilogRequestLogging();
+    app.UseRateLimiter();
+    app.UseMiddleware<SecurityMiddleware>();
+    app.UseMiddleware<IpThrottlingMiddleware>();
     app.UseRequestLocalization();
     app.UseRouting();
     app.UseResponseCompression();
@@ -106,8 +115,10 @@ try
     app.MapGrpcService<VerificationFlowServices>();
     app.MapGrpcService<MembershipServices>();
 
-    RegisterActors(app.Services.GetRequiredService<ActorSystem>(), app.Services.GetRequiredService<IEcliptixActorRegistry>(), app.Services);
+    RegisterActors(app.Services.GetRequiredService<ActorSystem>(),
+        app.Services.GetRequiredService<IEcliptixActorRegistry>(), app.Services);
 
+    app.MapHealthChecks("/health");
     app.MapGet("/", () => Results.Ok(new { Status = "Success", Message = "Server is up and running" }));
 
     Log.Information("Starting Ecliptix application host");
@@ -139,6 +150,44 @@ static void RegisterLocalization(IServiceCollection services)
     });
 }
 
+static void RegisterSecurity(IServiceCollection services)
+{
+    services.AddRateLimiter(options =>
+    {
+        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+            RateLimitPartition.GetSlidingWindowLimiter(
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                factory: partition => new SlidingWindowRateLimiterOptions
+                {
+                    PermitLimit = 100,
+                    Window = TimeSpan.FromMinutes(1),
+                    SegmentsPerWindow = 4,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 10
+                }));
+
+        options.OnRejected = (context, _) =>
+        {
+            context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            Log.Warning("Rate limit exceeded for {IpAddress}",
+                context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+            return ValueTask.CompletedTask;
+        };
+    });
+
+    services.Configure<KestrelServerOptions>(options =>
+    {
+        options.Limits.MaxRequestBodySize = 10 * 1024 * 1024;
+        options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(30);
+        options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(2);
+        options.Limits.MaxConcurrentConnections = 1000;
+        options.Limits.MaxConcurrentUpgradedConnections = 1000;
+    });
+
+    services.AddDistributedMemoryCache();
+    services.AddHealthChecks();
+}
+
 static void RegisterValidators(IServiceCollection services)
 {
     services.AddResponseCompression();
@@ -151,6 +200,7 @@ static void RegisterGrpc(IServiceCollection services)
         options.ResponseCompressionLevel = CompressionLevel.Fastest;
         options.ResponseCompressionAlgorithm = "gzip";
         options.EnableDetailedErrors = true;
+        options.Interceptors.Add<SecurityInterceptor>();
         options.Interceptors.Add<FailureHandlingInterceptor>();
         options.Interceptors.Add<RequestMetaDataInterceptor>();
         options.Interceptors.Add<ThreadCultureInterceptor>();
@@ -210,7 +260,6 @@ static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, 
 
     logger.LogInformation("Registered top-level actors: {ProtocolActorPath}, {PersistorActorPath}",
         protocolSystemActor.Path, appDevicePersistor.Path);
-
 }
 
 internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedService

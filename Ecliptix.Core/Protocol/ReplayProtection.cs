@@ -41,7 +41,7 @@ public sealed class ReplayProtection : IDisposable
     }
 
     public Result<Unit, EcliptixProtocolFailure> CheckAndRecordMessage(
-        byte[] nonce,
+        ReadOnlySpan<byte> nonce,
         ulong messageIndex,
         ulong chainIndex = 0)
     {
@@ -49,9 +49,9 @@ public sealed class ReplayProtection : IDisposable
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(ReplayProtection)));
 
-        if (nonce == null || nonce.Length == 0)
+        if (nonce.Length == 0)
             return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Nonce cannot be null or empty"));
+                EcliptixProtocolFailure.InvalidInput("Nonce cannot be empty"));
 
         lock (_lock)
         {
@@ -139,7 +139,6 @@ public sealed class ReplayProtection : IDisposable
         lock (_lock)
         {
             _messageWindows.Clear();
-            Console.WriteLine("[REPLAY] Cleared message windows due to ratchet rotation");
         }
     }
 }
