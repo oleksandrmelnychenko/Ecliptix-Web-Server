@@ -23,10 +23,9 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
     private byte[]? _ephemeralX25519PublicKey;
     private List<OneTimePreKeyLocal> _oneTimePreKeysInternal;
     
-    // State caching for performance optimization  
     private volatile IdentityKeysState? _cachedProtoState;
     private volatile int _lastOpkCount = -1;
-    private readonly object _cacheUpdateLock = new();
+    private readonly Lock _cacheUpdateLock = new();
 
     private EcliptixSystemIdentityKeys(
         SodiumSecureMemoryHandle edSk, byte[] edPk,
@@ -198,46 +197,54 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
         try
         {
-            byte[] edSkBytes = proto.Ed25519SecretKey.ToByteArray();
-            if (edSkBytes.Length != Constants.Ed25519SecretKeySize)
+            ReadOnlySpan<byte> edSkSpan = proto.Ed25519SecretKey.Span;
+            if (edSkSpan.Length != Constants.Ed25519SecretKeySize)
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.InvalidInput("Invalid Ed25519 secret key length."));
-            edSkHandle = SodiumSecureMemoryHandle.Allocate(edSkBytes.Length).Unwrap();
-            edSkHandle.Write(edSkBytes).Unwrap();
+            edSkHandle = SodiumSecureMemoryHandle.Allocate(edSkSpan.Length).Unwrap();
+            edSkHandle.Write(edSkSpan).Unwrap();
 
-            byte[] idSkBytes = proto.IdentityX25519SecretKey.ToByteArray();
-            if (idSkBytes.Length != Constants.X25519PrivateKeySize)
+            ReadOnlySpan<byte> idSkSpan = proto.IdentityX25519SecretKey.Span;
+            if (idSkSpan.Length != Constants.X25519PrivateKeySize)
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.InvalidInput("Invalid X25519 identity secret key length."));
-            idXSkHandle = SodiumSecureMemoryHandle.Allocate(idSkBytes.Length).Unwrap();
-            idXSkHandle.Write(idSkBytes).Unwrap();
+            idXSkHandle = SodiumSecureMemoryHandle.Allocate(idSkSpan.Length).Unwrap();
+            idXSkHandle.Write(idSkSpan).Unwrap();
 
-            byte[] spkSkBytes = proto.SignedPreKeySecret.ToByteArray();
-            if (spkSkBytes.Length != Constants.X25519PrivateKeySize)
+            ReadOnlySpan<byte> spkSkSpan = proto.SignedPreKeySecret.Span;
+            if (spkSkSpan.Length != Constants.X25519PrivateKeySize)
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.InvalidInput("Invalid signed prekey secret key length."));
-            spkSkHandle = SodiumSecureMemoryHandle.Allocate(spkSkBytes.Length).Unwrap();
-            spkSkHandle.Write(spkSkBytes).Unwrap();
+            spkSkHandle = SodiumSecureMemoryHandle.Allocate(spkSkSpan.Length).Unwrap();
+            spkSkHandle.Write(spkSkSpan).Unwrap();
 
-            byte[] edPk = proto.Ed25519PublicKey.ToByteArray();
-            if (edPk.Length != Constants.Ed25519PublicKeySize)
+            ReadOnlySpan<byte> edPkSpan = proto.Ed25519PublicKey.Span;
+            if (edPkSpan.Length != Constants.Ed25519PublicKeySize)
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.InvalidInput("Invalid Ed25519 public key length."));
+            byte[] edPk = new byte[edPkSpan.Length];
+            edPkSpan.CopyTo(edPk);
 
-            byte[] idXPk = proto.IdentityX25519PublicKey.ToByteArray();
-            if (idXPk.Length != Constants.X25519PublicKeySize)
+            ReadOnlySpan<byte> idXPkSpan = proto.IdentityX25519PublicKey.Span;
+            if (idXPkSpan.Length != Constants.X25519PublicKeySize)
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.InvalidInput("Invalid X25519 identity public key length."));
+            byte[] idXPk = new byte[idXPkSpan.Length];
+            idXPkSpan.CopyTo(idXPk);
 
-            byte[] spkPk = proto.SignedPreKeyPublic.ToByteArray();
-            if (spkPk.Length != Constants.X25519PublicKeySize)
+            ReadOnlySpan<byte> spkPkSpan = proto.SignedPreKeyPublic.Span;
+            if (spkPkSpan.Length != Constants.X25519PublicKeySize)
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.InvalidInput("Invalid signed prekey public key length."));
+            byte[] spkPk = new byte[spkPkSpan.Length];
+            spkPkSpan.CopyTo(spkPk);
 
-            byte[] spkSig = proto.SignedPreKeySignature.ToByteArray();
-            if (spkSig.Length != Constants.Ed25519SignatureSize)
+            ReadOnlySpan<byte> spkSigSpan = proto.SignedPreKeySignature.Span;
+            if (spkSigSpan.Length != Constants.Ed25519SignatureSize)
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.InvalidInput("Invalid signed prekey signature length."));
+            byte[] spkSig = new byte[spkSigSpan.Length];
+            spkSigSpan.CopyTo(spkSig);
 
             opks = [];
             if (proto.OneTimePreKeys != null)
@@ -254,21 +261,23 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                             EcliptixProtocolFailure.InvalidInput(
                                 $"OPK public key is null or empty for ID {opkProto?.PreKeyId}."));
 
-                    byte[] opkSkBytes = opkProto.PrivateKey.ToByteArray();
-                    if (opkSkBytes.Length != Constants.X25519PrivateKeySize)
+                    ReadOnlySpan<byte> opkSkSpan = opkProto.PrivateKey.Span;
+                    if (opkSkSpan.Length != Constants.X25519PrivateKeySize)
                         return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
                             EcliptixProtocolFailure.InvalidInput(
                                 $"Invalid OPK secret key length for ID {opkProto.PreKeyId}."));
 
-                    byte[] opkPkBytes = opkProto.PublicKey.ToByteArray();
-                if (opkPkBytes.Length != Constants.X25519PublicKeySize)
+                    ReadOnlySpan<byte> opkPkSpan = opkProto.PublicKey.Span;
+                if (opkPkSpan.Length != Constants.X25519PublicKeySize)
                     return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
                         EcliptixProtocolFailure.InvalidInput(
                             $"Invalid OPK public key length for ID {opkProto.PreKeyId}."));
 
-                SodiumSecureMemoryHandle skHandle = SodiumSecureMemoryHandle.Allocate(opkSkBytes.Length).Unwrap();
-                skHandle.Write(opkSkBytes).Unwrap();
+                SodiumSecureMemoryHandle skHandle = SodiumSecureMemoryHandle.Allocate(opkSkSpan.Length).Unwrap();
+                skHandle.Write(opkSkSpan).Unwrap();
 
+                    byte[] opkPkBytes = new byte[opkPkSpan.Length];
+                    opkPkSpan.CopyTo(opkPkBytes);
                     OneTimePreKeyLocal opk = OneTimePreKeyLocal.CreateFromParts(opkProto.PreKeyId, skHandle, opkPkBytes);
                     opks.Add(opk);
                 }
