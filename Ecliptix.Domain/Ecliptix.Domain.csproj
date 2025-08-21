@@ -35,18 +35,25 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Protobuf Include="Protobuf\AppDevice.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
-        <Protobuf Include="Protobuf\AppDeviceServiceActions.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
-        <Protobuf Include="Protobuf\CipherPayload.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
-        <Protobuf Include="Protobuf\PubKeyExchange.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
-        <Protobuf Include="Protobuf\Membership.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
-        <Protobuf Include="Protobuf\MembershipServices.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
-
-        <Protobuf Include="Protobuf\EcliptixProtocolState.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        <!-- Core proto files - minimal set to get building -->
+        <Protobuf Include="Protobuf\common\cipher_payload.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        <Protobuf Include="Protobuf\common\health_check.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        <Protobuf Include="Protobuf\protocol\key_exchange.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        <Protobuf Include="Protobuf\protocol\protocol_state.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        <Protobuf Include="Protobuf\protocol\key_materials.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
         
-        <Protobuf Include="Protobuf\HealthCheck.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
-        <Protobuf Include="Protobuf\KeyMaterials.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
-        <Protobuf Include="Protobuf\AuthVerification.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
-        <Protobuf Include="Protobuf\AuthenticationServices.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        <!-- Device proto files -->
+        <Protobuf Include="Protobuf\device\device_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        <Protobuf Include="Protobuf\device\device_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        
+        <!-- Authentication proto files -->
+        <Protobuf Include="Protobuf\authentication\verification_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        <Protobuf Include="Protobuf\authentication\auth_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        
+        <!-- Membership proto files -->
+        <Protobuf Include="Protobuf\membership\membership_core.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        <Protobuf Include="Protobuf\membership\opaque_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        <Protobuf Include="Protobuf\membership\session_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
+        <Protobuf Include="Protobuf\membership\membership_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
     </ItemGroup>
 </Project>

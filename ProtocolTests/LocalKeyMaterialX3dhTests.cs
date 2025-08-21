@@ -1,7 +1,8 @@
 using System.Collections.Concurrent;
 using System.Text;
 using Ecliptix.Core.Protocol;
-using Ecliptix.Protobuf.PubKeyExchange;
+using Ecliptix.Protobuf.Protocol;
+using Ecliptix.Core.Domain.Protocol;
 
 [TestClass]
 public class ShieldProDoubleRatchetTests

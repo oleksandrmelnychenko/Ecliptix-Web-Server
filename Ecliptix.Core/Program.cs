@@ -1,17 +1,19 @@
 using System.Globalization;
 using System.IO.Compression;
+using System.Text;
 using Akka;
 using Akka.Actor;
 using Akka.Configuration;
 using Ecliptix.Core;
+using Ecliptix.Core.Infrastructure.Grpc.Interceptors;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Core.Interceptors;
+using Ecliptix.Core.Api.Grpc.Base;
 using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware;
-using Ecliptix.Core.Protocol.Actors;
+using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Core.Resources;
-using Ecliptix.Core.Services;
-using Ecliptix.Core.Services.Memberships;
-using Ecliptix.Core.Services.Utilities.CipherPayloadHandler;
+using Microsoft.Extensions.ObjectPool;
 using Ecliptix.Domain;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.DbConnectionFactory;
@@ -27,11 +29,11 @@ using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Context;
 using System.Threading.RateLimiting;
-using Ecliptix.Core.Protocol.Monitoring;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using HealthStatus = Ecliptix.Core.Json.HealthStatus;
 using Ecliptix.Core.Observability;
 using System.Diagnostics;
+using Ecliptix.Core.Domain.Protocol.Monitoring;
 
 const string systemActorName = "EcliptixProtocolSystemActor";
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -88,6 +90,19 @@ try
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService<EcliptixProtocolSystemActor>>();
+    
+    // Register object pools for memory optimization
+    builder.Services.AddSingleton<ObjectPool<StringBuilder>>(sp =>
+    {
+        var provider = new DefaultObjectPoolProvider();
+        return provider.CreateStringBuilderPool();
+    });
+    
+    builder.Services.AddSingleton<ObjectPool<EncryptionContext>>(sp =>
+    {
+        var provider = new DefaultObjectPoolProvider();
+        return provider.Create<EncryptionContext>();
+    });
     builder.Services.AddSingleton<IOpaqueProtocolService>(sp =>
     {
         IConfiguration config = sp.GetRequiredService<IConfiguration>();
@@ -122,9 +137,9 @@ try
 
     // Add health checks
     builder.Services.AddHealthChecks()
-        .AddCheck<Ecliptix.Core.Protocol.Monitoring.ProtocolHealthCheck>("protocol_health")
-        .AddCheck<Ecliptix.Core.Protocol.Monitoring.VerificationFlowHealthCheck>("verification_flow_health")
-        .AddCheck<Ecliptix.Core.Protocol.Monitoring.DatabaseHealthCheck>("database_health");
+        .AddCheck<ProtocolHealthCheck>("protocol_health")
+        .AddCheck<VerificationFlowHealthCheck>("verification_flow_health")
+        .AddCheck<DatabaseHealthCheck>("database_health");
 
     // Configure observability and distributed tracing
     ActivitySource.AddActivityListener(new ActivityListener
@@ -145,7 +160,7 @@ try
         options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
         options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
         {
-            diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value);
+            diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value!);
             diagnosticContext.Set("UserAgent", httpContext.Request.Headers["User-Agent"].ToString());
             diagnosticContext.Set("Protocol", httpContext.Request.Protocol);
             
@@ -171,9 +186,9 @@ try
     app.UseDefaultFiles();
     app.UseStaticFiles();
 
-    app.MapGrpcService<AppDeviceServices>();
-    app.MapGrpcService<VerificationFlowServices>();
-    app.MapGrpcService<MembershipServices>();
+    // app.MapGrpcService<Api.Grpc.Services.Device.DeviceGrpcService>();
+    // app.MapGrpcService<VerificationFlowServices>();
+    // app.MapGrpcService<MembershipServices>();
 
     RegisterActors(app.Services.GetRequiredService<ActorSystem>(),
         app.Services.GetRequiredService<IEcliptixActorRegistry>(), app.Services);

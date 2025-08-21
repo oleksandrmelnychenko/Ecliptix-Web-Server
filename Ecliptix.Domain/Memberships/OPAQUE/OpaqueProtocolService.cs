@@ -115,7 +115,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             ECPoint responsePoint = requestPoint.Multiply(_serverOprfKey);
             return Result<byte[], OpaqueFailure>.Ok(responsePoint.GetEncoded(CryptographicFlags.CompressedPointEncoding));
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.InvalidInput("OPRF request processing failed"));
         }
@@ -668,7 +668,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
                 ExpiresAt = Timestamp.FromDateTimeOffset(expiresAt)
             });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return Result<SessionValidationResponse, OpaqueFailure>.Err(
                 OpaqueFailure.InvalidInput("Session validation failed"));

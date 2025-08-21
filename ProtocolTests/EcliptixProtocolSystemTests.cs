@@ -1,9 +1,10 @@
 using System.Security.Cryptography;
+using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Protocol;
 using Ecliptix.Domain.Utilities;
-using Ecliptix.Protobuf.PubKeyExchange;
+using Ecliptix.Protobuf.Protocol;
 using Google.Protobuf;
-using PublicKeyBundle = Ecliptix.Core.Protocol.PublicKeyBundle;
+using PublicKeyBundle = Ecliptix.Core.Domain.Protocol.PublicKeyBundle;
 
 namespace ProtocolTests;
 
@@ -157,8 +158,8 @@ public class EcliptixProtocolSystemTests : IDisposable
             };
             uint? opkIdUsedByAlice = bobBundleInternal.OneTimePreKeys.FirstOrDefault()?.PreKeyId;
 
-            Ecliptix.Protobuf.PubKeyExchange.PublicKeyBundle receivedAliceBundleProto =
-                Helpers.ParseFromBytes<Ecliptix.Protobuf.PubKeyExchange.PublicKeyBundle>(initialMessageToBob.Payload.ToByteArray());
+            Ecliptix.Protobuf.Protocol.PublicKeyBundle receivedAliceBundleProto =
+                Helpers.ParseFromBytes<Ecliptix.Protobuf.Protocol.PublicKeyBundle>(initialMessageToBob.Payload.ToByteArray());
             Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> bobDeriveResult = _bobKeys.CalculateSharedSecretAsRecipient(
                 receivedAliceBundleProto.IdentityX25519PublicKey.ToByteArray(),
                 receivedAliceBundleProto.EphemeralX25519PublicKey.ToByteArray(),

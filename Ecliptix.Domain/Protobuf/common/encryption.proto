@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package ecliptix.proto.common;
+option csharp_namespace = "Ecliptix.Protobuf.Common";
+
+// Cipher payload for encrypted communication
+message CipherPayload {
+  bytes cipher = 1;
+  bytes nonce = 2;
+  bytes additional_data = 3;
+}
+
+// Public key exchange types
+enum PubKeyExchangeType {
+  INITIAL_HANDSHAKE = 0;
+  DATA_CENTER_EPHEMERAL_CONNECT = 1;
+  DEVICE_TO_DEVICE = 2;
+}
+
+// Key materials
+message KeyMaterials {
+  bytes identity_public_key = 1;
+  bytes ephemeral_public_key = 2;
+  bytes one_time_pre_key = 3;
+  bytes signature = 4;
+}

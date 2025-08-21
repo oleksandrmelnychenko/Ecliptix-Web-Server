@@ -1,0 +1,12 @@
+syntax = "proto3";
+import "common/cipher_payload.proto";
+
+package ecliptix.proto.membership;
+option csharp_namespace = "Ecliptix.Protobuf.Membership";
+
+service AuthVerificationServices {
+  rpc InitiateVerification(ecliptix.proto.common.CipherPayload) returns (stream ecliptix.proto.common.CipherPayload);
+  rpc VerifyOtp(ecliptix.proto.common.CipherPayload) returns (ecliptix.proto.common.CipherPayload);
+  rpc ValidatePhoneNumber(ecliptix.proto.common.CipherPayload) returns (ecliptix.proto.common.CipherPayload);
+  rpc RecoverySecretKeyPhoneVerification(ecliptix.proto.common.CipherPayload) returns (ecliptix.proto.common.CipherPayload);
+}

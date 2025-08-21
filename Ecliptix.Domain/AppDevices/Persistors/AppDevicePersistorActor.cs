@@ -9,7 +9,7 @@ using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Memberships.OPAQUE;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Utilities;
-using Ecliptix.Protobuf.AppDevice;
+using Ecliptix.Protobuf.Device;
 using Google.Protobuf;
 
 namespace Ecliptix.Domain.AppDevices.Persistors;

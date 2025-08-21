@@ -1,4 +1,4 @@
-using Ecliptix.Protobuf.AppDevice;
+using Ecliptix.Protobuf.Device;
 
 namespace Ecliptix.Domain.AppDevices.Events;
 

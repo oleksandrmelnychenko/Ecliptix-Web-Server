@@ -1,0 +1,29 @@
+syntax = "proto3";
+import "protocol/key_exchange.proto";
+import "common/cipher_payload.proto";
+
+package ecliptix.proto.device;
+option csharp_namespace = "Ecliptix.Protobuf.Device";
+
+service DeviceService {
+  rpc RegisterDevice(ecliptix.proto.common.CipherPayload) returns (ecliptix.proto.common.CipherPayload);
+  rpc EstablishSecureChannel(ecliptix.proto.protocol.PubKeyExchange) returns (ecliptix.proto.protocol.PubKeyExchange);
+  rpc RestoreSecureChannel(RestoreChannelRequest) returns (RestoreChannelResponse);
+}
+
+message RestoreChannelRequest {
+  bytes session_token = 1;
+}
+
+message RestoreChannelResponse {
+  enum Status {
+    SESSION_RESTORED = 0;
+    SESSION_NOT_FOUND = 1;
+    SESSION_EXPIRED = 2;
+  }
+  
+  Status status = 1;
+  uint32 receiving_chain_length = 2;
+  uint32 sending_chain_length = 3;
+}
+  

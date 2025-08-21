@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using Akka.Actor;
-using Ecliptix.Core.Protocol.Actors;
+using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.WorkerActors;

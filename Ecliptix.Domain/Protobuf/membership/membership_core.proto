@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package ecliptix.proto.membership;
+option csharp_namespace = "Ecliptix.Protobuf.Membership";
+
+message Membership {
+  bytes unique_identifier = 1;
+
+  enum ActivityStatus {
+    ACTIVE = 0;
+    INACTIVE = 1;
+  }
+
+  enum CreationStatus {
+    OTP_VERIFIED = 0;
+    SECURE_KEY_SET = 1;
+    PASSPHRASE_SET = 2;
+  }
+
+  ActivityStatus status = 3;
+  optional CreationStatus creation_status = 4;
+}
