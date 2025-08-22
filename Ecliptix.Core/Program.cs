@@ -316,12 +316,12 @@ static void RegisterGrpc(IServiceCollection services)
     
     services.Configure<KestrelServerOptions>(options =>
     {
-        options.ListenLocalhost(5051, listenOptions =>
+        options.ListenAnyIP(5051, listenOptions =>
         {
             listenOptions.Protocols = HttpProtocols.Http2; // gRPC services only
         });
         
-        options.ListenLocalhost(8080, listenOptions =>
+        options.ListenAnyIP(8080, listenOptions =>
         {
             listenOptions.Protocols = HttpProtocols.Http1; // REST endpoints only
         });
