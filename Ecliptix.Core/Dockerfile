@@ -1,7 +1,6 @@
 ﻿FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
 USER $APP_UID
 WORKDIR /app
-ENV ASPNETCORE_URLS=http://+:8080
 ENV DOTNET_ENVIRONMENT=Deployment
 
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build

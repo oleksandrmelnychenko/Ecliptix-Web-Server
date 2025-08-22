@@ -7,7 +7,7 @@ pipeline {
         ECR_REPO = "ecliptix-memberships"
         IMAGE_TAG = "lts"
         CLUSTER_NAME = "ecliptix"
-        SERVICE_NAME = "ecliptix-memberships-service-x5n36z4n"
+        SERVICE_NAME = "ecliptix-memberships-service"
         TASK_DEFINITION = "ecliptix-memberships"
         AWS_CREDENTIALS = "aws-ecliptix"
     }
