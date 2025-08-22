@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'jenkins',
+                git branch: 'main',
                     url: 'git@github.com:oleksandrmelnychenko/Ecliptix-Web-Server.git',
                     credentialsId: 'ecliptix-memberships_github'
             }
