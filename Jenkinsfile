@@ -13,6 +13,14 @@ pipeline {
     }
 
     stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    url: 'git@github.com:oleksandrmelnychenko/Ecliptix-Web-Server.git',
+                    credentialsId: 'ecliptix-memberships_github'
+            }
+        }
+    
         stage('Build Docker Image') {
             steps {
                 sh "docker build -t ${ECR_REPO}:${IMAGE_TAG} -f Ecliptix.Core/Dockerfile ."
