@@ -18,7 +18,7 @@ pipeline {
             steps {
                 script {
                     def tag = env.BUILD_NUMBER ?: 'latest'
-                    docker.build("ecliptix-memberships:${tag}")
+                    sh "docker build -t ecliptix-memberships:${tag} -f ./Ecliptix.Core/Dockerfile ."
                 }
             }
         }
