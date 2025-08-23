@@ -230,30 +230,22 @@ public class TelemetryInterceptor : Interceptor, IDisposable
     }
 }
 
-internal class TelemetryServerStreamWriter<T> : IServerStreamWriter<T>
+internal class TelemetryServerStreamWriter<T>(IServerStreamWriter<T> inner, Activity? activity) : IServerStreamWriter<T>
 {
-    private readonly IServerStreamWriter<T> _inner;
-    private readonly Activity? _activity;
     private int _messagesSent = 0;
-
-    public TelemetryServerStreamWriter(IServerStreamWriter<T> inner, Activity? activity)
-    {
-        _inner = inner;
-        _activity = activity;
-    }
 
     public int MessagesSent => _messagesSent;
 
     public WriteOptions? WriteOptions
     {
-        get => _inner.WriteOptions;
-        set => _inner.WriteOptions = value;
+        get => inner.WriteOptions;
+        set => inner.WriteOptions = value;
     }
 
     public async Task WriteAsync(T message)
     {
-        await _inner.WriteAsync(message);
+        await inner.WriteAsync(message);
         Interlocked.Increment(ref _messagesSent);
-        _activity?.SetTag(InterceptorConstants.Tags.GrpcMessagesSent, _messagesSent);
+        activity?.SetTag(InterceptorConstants.Tags.GrpcMessagesSent, _messagesSent);
     }
 }

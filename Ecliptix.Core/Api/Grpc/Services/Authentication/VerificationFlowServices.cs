@@ -1,7 +1,6 @@
 using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
-using Microsoft.Extensions.Logging;
 using System.Globalization;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
@@ -190,8 +189,8 @@ public class VerificationFlowServices(
                         .Ask<Result<VerifyCodeResponse, VerificationFlowFailure>>(actorEvent, ct);
 
                 return verificationResult.Match(
-                    response => Result<VerifyCodeResponse, FailureBase>.Ok(response),
-                    failure => Result<VerifyCodeResponse, FailureBase>.Err(failure)
+                    Result<VerifyCodeResponse, FailureBase>.Ok,
+                    Result<VerifyCodeResponse, FailureBase>.Err
                 );
             });
 
