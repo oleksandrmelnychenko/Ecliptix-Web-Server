@@ -1,138 +1,126 @@
+using Akka.Actor;
+using Ecliptix.Core.Api.Grpc.Base;
+using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Domain.AppDevices.Events;
+using Ecliptix.Domain.AppDevices.Failures;
+using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Device;
 using Ecliptix.Protobuf.Protocol;
-using Google.Protobuf;
 using Grpc.Core;
+using GrpcStatus = Grpc.Core.Status;
+using GrpcStatusCode = Grpc.Core.StatusCode;
+using Serilog;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Device;
 
-/// <summary>
-/// High-performance device service implementation using optimized base classes.
-/// Handles device registration and secure channel management with memory pooling.
-/// </summary>
-public class DeviceGrpcService : DeviceService.DeviceServiceBase
+public class DeviceGrpcService(
+    IGrpcCipherService cipherService,
+    IEcliptixActorRegistry actorRegistry)
+    : DeviceService.DeviceServiceBase
 {
-    private readonly ILogger<DeviceGrpcService> _logger;
-    private readonly IEcliptixActorRegistry _actorRegistry;
-    
-    public DeviceGrpcService(
-        ILogger<DeviceGrpcService> logger,
-        IEcliptixActorRegistry actorRegistry)
+    private readonly EcliptixGrpcServiceBase _baseService = new(cipherService);
+    private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
+    private readonly IActorRef _appDevicePersistorActor = actorRegistry.Get(ActorIds.AppDevicePersistorActor);
+
+    public override async Task<CipherPayload> RegisterDevice(CipherPayload request, ServerCallContext context)
     {
-        _logger = logger;
-        _actorRegistry = actorRegistry;
+        return await _baseService.ExecuteEncryptedOperationAsync<AppDevice, AppDeviceRegisteredStateReply>(
+            request, context, async (appDevice, _, cancellationToken) =>
+            {
+                RegisterAppDeviceIfNotExistActorEvent registerEvent = new(appDevice);
+                Result<AppDeviceRegisteredStateReply, AppDeviceFailure> registerResult =
+                    await _appDevicePersistorActor.Ask<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>>(
+                        registerEvent, cancellationToken);
+
+                return registerResult.Match(
+                    response => Result<AppDeviceRegisteredStateReply, FailureBase>.Ok(response),
+                    failure => Result<AppDeviceRegisteredStateReply, FailureBase>.Err(failure)
+                );
+            });
     }
 
-    /// <summary>
-    /// Registers a device with encrypted communication
-    /// </summary>
-    public override Task<CipherPayload> RegisterDevice(
-        CipherPayload request, 
-        ServerCallContext context)
+    public override async Task<PubKeyExchange> EstablishSecureChannel(PubKeyExchange request, ServerCallContext context)
     {
-        var connectId = ServiceUtilities.ExtractConnectId(context);
-        
-        try
-        {
-            var appDevice = ServiceUtilities.ParseFromBytes<AppDevice>(request.Cipher.ToByteArray());
-            
-            _logger.LogDebug("Processing device registration for connect ID {ConnectId}", connectId);
-
-            // Create a simple success response for now
-            var response = new DeviceRegistrationResponse
-            {
-                Status = DeviceRegistrationResponse.Types.Status.NewRegistration
-            };
-
-            return Task.FromResult(new CipherPayload
-            {
-                Cipher = Google.Protobuf.ByteString.CopyFrom(response.ToByteArray())
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Device registration failed for connect ID {ConnectId}", connectId);
-            
-            var errorResponse = new DeviceRegistrationResponse
-            {
-                Status = DeviceRegistrationResponse.Types.Status.InternalError
-            };
-            
-            return Task.FromResult(new CipherPayload
-            {
-                Cipher = Google.Protobuf.ByteString.CopyFrom(errorResponse.ToByteArray())
-            });
-        }
-    }
-
-    /// <summary>
-    /// Establishes a secure channel for device communication
-    /// </summary>
-    public override Task<PubKeyExchange> EstablishSecureChannel(
-        PubKeyExchange request, 
-        ServerCallContext context)
-    {
-        var connectId = ServiceUtilities.ExtractConnectId(context);
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
 
         try
         {
-            _logger.LogDebug("Establishing secure channel for connect ID {ConnectId}, exchange type: {ExchangeType}",
-                connectId, request.OfType);
+            BeginAppDeviceEphemeralConnectActorEvent actorEvent = new(request, connectId);
 
-            // Create a simple response for now
-            var response = new PubKeyExchange
+            Result<DeriveSharedSecretReply, EcliptixProtocolFailure> reply =
+                await _protocolActor.Ask<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>>(
+                    actorEvent, context.CancellationToken);
+
+            if (reply.IsOk)
             {
-                State = PubKeyExchangeState.Complete,
-                OfType = request.OfType,
-                Payload = request.Payload // Echo back for now
-            };
-            
-            _logger.LogInformation("Secure channel established successfully for connect ID {ConnectId}", connectId);
-            return Task.FromResult(response);
+                return reply.Unwrap().PubKeyExchange;
+            }
+
+            EcliptixProtocolFailure failure = reply.UnwrapErr();
+            Log.Error("Failed to establish secure channel for connect ID {ConnectId}: {Message}",
+                connectId, failure.Message);
+
+            throw new RpcException(failure.ToGrpcStatus());
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not RpcException)
         {
-            _logger.LogError(ex, "Failed to establish secure channel for connect ID {ConnectId}", connectId);
-            
-            return Task.FromResult(new PubKeyExchange
-            {
-                State = PubKeyExchangeState.Failed,
-                OfType = request.OfType
-            });
+            Log.Error(ex, "Error in EstablishSecureChannel for connect ID {ConnectId}", connectId);
+            throw new RpcException(new GrpcStatus(GrpcStatusCode.Internal, "Internal server error"));
         }
     }
 
-    /// <summary>
-    /// Restores a previously established secure channel
-    /// </summary>
-    public override Task<RestoreChannelResponse> RestoreSecureChannel(
-        RestoreChannelRequest request, 
+    public override async Task<RestoreChannelResponse> RestoreSecureChannel(RestoreChannelRequest request,
         ServerCallContext context)
     {
-        var connectId = ServiceUtilities.ExtractConnectId(context);
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
 
         try
         {
-            _logger.LogDebug("Attempting to restore secure channel for connect ID {ConnectId}", connectId);
+            RestoreAppDeviceSecrecyChannelState restoreEvent = new();
+            ForwardToConnectActorEvent forwardEvent = new(connectId, restoreEvent);
 
-            // Simple implementation for now
-            var response = new RestoreChannelResponse
+            Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure> result =
+                await _protocolActor.Ask<Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>>(
+                    forwardEvent, context.CancellationToken);
+
+            if (result.IsOk)
             {
-                Status = RestoreChannelResponse.Types.Status.SessionRestored
-            };
-            
-            _logger.LogInformation("Secure channel restored successfully for connect ID {ConnectId}", connectId);
-            return Task.FromResult(response);
+                RestoreSecrecyChannelResponse protocolResponse = result.Unwrap();
+                if (protocolResponse.Status == RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound)
+                {
+                    return new RestoreChannelResponse
+                    {
+                        Status = RestoreChannelResponse.Types.Status.SessionNotFound,
+                    };
+                }
+            }
+
+            EcliptixProtocolFailure failure = result.UnwrapErr();
+
+            if (failure.FailureType == EcliptixProtocolFailureType.ActorRefNotFound ||
+                failure.FailureType == EcliptixProtocolFailureType.StateMissing ||
+                _protocolActor.IsNobody())
+            {
+                Log.Information("Session not found for connect ID {ConnectId}, returning not found status",
+                    connectId);
+                return new RestoreChannelResponse
+                {
+                    Status = RestoreChannelResponse.Types.Status.SessionNotFound
+                };
+            }
+
+            Log.Error("Failed to restore secure channel for connect ID {ConnectId}: {Message}",
+                connectId, failure.Message);
+
+            throw new RpcException(failure.ToGrpcStatus());
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not RpcException)
         {
-            _logger.LogError(ex, "Failed to restore secure channel for connect ID {ConnectId}", connectId);
-            
-            return Task.FromResult(new RestoreChannelResponse
-            {
-                Status = RestoreChannelResponse.Types.Status.SessionNotFound
-            });
+            Log.Error(ex, "Error in RestoreSecureChannel for connect ID {ConnectId}", connectId);
+            throw new RpcException(new GrpcStatus(GrpcStatusCode.Internal, "Internal server error"));
         }
     }
 }

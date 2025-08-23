@@ -34,6 +34,10 @@ using HealthStatus = Ecliptix.Core.Json.HealthStatus;
 using Ecliptix.Core.Observability;
 using System.Diagnostics;
 using Ecliptix.Core.Domain.Protocol.Monitoring;
+using Ecliptix.Core.Api.Grpc.Services.Authentication;
+using Ecliptix.Core.Api.Grpc.Services.Membership;
+using Ecliptix.Core.Api.Grpc.Services.Device;
+using Microsoft.Extensions.Primitives;
 
 const string systemActorName = "EcliptixProtocolSystemActor";
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -73,6 +77,11 @@ try
     builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
     builder.Services.AddSingleton<SessionKeepAliveInterceptor>();
     builder.Services.AddSingleton<SecurityInterceptor>();
+    builder.Services.AddSingleton<TelemetryInterceptor>();
+    builder.Services.AddSingleton<ConnectionMonitoringInterceptor>();
+    builder.Services.AddSingleton<FailureHandlingInterceptor>();
+    builder.Services.AddSingleton<RequestMetaDataInterceptor>();
+    builder.Services.AddSingleton<ThreadCultureInterceptor>();
 
     RegisterSecurity(builder.Services);
     RegisterLocalization(builder.Services);
@@ -91,16 +100,15 @@ try
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService<EcliptixProtocolSystemActor>>();
     
-    // Register object pools for memory optimization
-    builder.Services.AddSingleton<ObjectPool<StringBuilder>>(sp =>
+    builder.Services.AddSingleton<ObjectPool<StringBuilder>>(_ =>
     {
-        var provider = new DefaultObjectPoolProvider();
+        DefaultObjectPoolProvider provider = new();
         return provider.CreateStringBuilderPool();
     });
     
-    builder.Services.AddSingleton<ObjectPool<EncryptionContext>>(sp =>
+    builder.Services.AddSingleton<ObjectPool<EncryptionContext>>(_ =>
     {
-        var provider = new DefaultObjectPoolProvider();
+        DefaultObjectPoolProvider provider = new();
         return provider.Create<EncryptionContext>();
     });
     builder.Services.AddSingleton<IOpaqueProtocolService>(sp =>
@@ -135,24 +143,19 @@ try
     builder.Services.AddSingleton(actorSystem);
     builder.Services.AddHostedService<ActorSystemHostedService>();
 
-    // Add health checks
     builder.Services.AddHealthChecks()
         .AddCheck<ProtocolHealthCheck>("protocol_health")
         .AddCheck<VerificationFlowHealthCheck>("verification_flow_health")
         .AddCheck<DatabaseHealthCheck>("database_health");
 
-    // Configure observability and distributed tracing
     ActivitySource.AddActivityListener(new ActivityListener
     {
         ShouldListenTo = source => source.Name == EcliptixActivitySource.SourceName,
         Sample = (ref ActivityCreationOptions<ActivityContext> options) => ActivitySamplingResult.AllData,
-        ActivityStarted = activity => { /* Custom activity start logic if needed */ },
-        ActivityStopped = activity => { /* Custom activity stop logic if needed */ }
+        ActivityStarted = activity => {},
+        ActivityStopped = activity => { }
     });
     
-    // Register activity source as singleton for dependency injection
-    builder.Services.AddSingleton(EcliptixActivitySource.Instance);
-
     WebApplication app = builder.Build();
 
     app.UseSerilogRequestLogging(options =>
@@ -164,13 +167,11 @@ try
             diagnosticContext.Set("UserAgent", httpContext.Request.Headers["User-Agent"].ToString());
             diagnosticContext.Set("Protocol", httpContext.Request.Protocol);
             
-            // Add connect ID if available in headers
-            if (httpContext.Request.Headers.TryGetValue("X-Connect-Id", out var connectId))
+            if (httpContext.Request.Headers.TryGetValue("X-Connect-Id", out StringValues connectId))
             {
                 diagnosticContext.Set("ConnectId", connectId.ToString());
             }
             
-            // Add request size
             if (httpContext.Request.ContentLength.HasValue)
             {
                 diagnosticContext.Set("RequestSize", httpContext.Request.ContentLength.Value);
@@ -186,9 +187,9 @@ try
     app.UseDefaultFiles();
     app.UseStaticFiles();
 
-    // app.MapGrpcService<Api.Grpc.Services.Device.DeviceGrpcService>();
-    // app.MapGrpcService<VerificationFlowServices>();
-    // app.MapGrpcService<MembershipServices>();
+    app.MapGrpcService<DeviceGrpcService>();
+    app.MapGrpcService<VerificationFlowServices>();
+    app.MapGrpcService<MembershipServices>();
 
     RegisterActors(app.Services.GetRequiredService<ActorSystem>(),
         app.Services.GetRequiredService<IEcliptixActorRegistry>(), app.Services);
@@ -307,11 +308,19 @@ static void RegisterGrpc(IServiceCollection services)
         options.ResponseCompressionLevel = CompressionLevel.Fastest;
         options.ResponseCompressionAlgorithm = "gzip";
         options.EnableDetailedErrors = true;
+        // Interceptor order is critical for optimal performance:
+        // 1. Security first - rate limiting, DDoS protection
         options.Interceptors.Add<SecurityInterceptor>();
-        options.Interceptors.Add<FailureHandlingInterceptor>();
+        // 2. Extract metadata early - ConnectId needed by subsequent interceptors
         options.Interceptors.Add<RequestMetaDataInterceptor>();
-        options.Interceptors.Add<ThreadCultureInterceptor>();
+        // 3. Keep actor alive - fire-and-forget, zero latency overhead
         options.Interceptors.Add<SessionKeepAliveInterceptor>();
+        // 4. Telemetry - track all requests after infrastructure setup
+        options.Interceptors.Add<TelemetryInterceptor>();
+        // 5. Culture - set thread context for business logic
+        options.Interceptors.Add<ThreadCultureInterceptor>();
+        // 6. Error handling last - catch all errors from previous interceptors
+        options.Interceptors.Add<FailureHandlingInterceptor>();
     });
     
     services.Configure<KestrelServerOptions>(options =>

@@ -1,6 +1,8 @@
 using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
+using Microsoft.Extensions.Logging;
+using System.Globalization;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Domain.Memberships.ActorEvents;
@@ -11,6 +13,8 @@ using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
 using Google.Protobuf;
 using Grpc.Core;
+using Serilog;
+using Ecliptix.Domain.Memberships.WorkerActors;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Authentication;
 
@@ -18,19 +22,22 @@ public class VerificationFlowServices(
     IEcliptixActorRegistry actorRegistry,
     IPhoneNumberValidator phoneNumberValidator,
     IGrpcCipherService grpcCipherService)
-    : VerificationFlowServicesBase(actorRegistry, grpcCipherService)
+    : AuthVerificationServices.AuthVerificationServicesBase
 {
+    private readonly EcliptixGrpcServiceBase _baseService = new(grpcCipherService);
+    private readonly IActorRef _verificationFlowManagerActor = actorRegistry.Get(ActorIds.VerificationFlowManagerActor);
+    private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
+
     public override async Task InitiateVerification(
         CipherPayload request,
         IServerStreamWriter<CipherPayload> responseStream,
         ServerCallContext context)
     {
         Result<Unit, FailureBase> result =
-            await ExecuteWithDecryptionForStreaming<InitiateVerificationRequest, VerificationFlowFailure>(
+            await _baseService.ExecuteEncryptedStreamingOperationAsync<InitiateVerificationRequest, VerificationFlowFailure>(
                 request, context,
                 async (initiateRequest, connectId, ct) =>
                 {
-                    // Use bounded channel to prevent memory issues if consumer is slow
                     var channelOptions = new BoundedChannelOptions(100)
                     {
                         FullMode = BoundedChannelFullMode.Wait,
@@ -43,7 +50,7 @@ public class VerificationFlowServices(
 
                     context.CancellationToken.Register(() => StopVerificationFlowActor(context, connectId));
 
-                    Result<Unit, VerificationFlowFailure> initiationResult = await VerificationFlowManagerActor
+                    Result<Unit, VerificationFlowFailure> initiationResult = await _verificationFlowManagerActor
                         .Ask<Result<Unit, VerificationFlowFailure>>(
                             new InitiateVerificationFlowActorEvent(
                                 connectId,
@@ -52,7 +59,7 @@ public class VerificationFlowServices(
                                 initiateRequest.Purpose,
                                 initiateRequest.Type,
                                 channel.Writer,
-                                CultureName
+                                _cultureName
                             ), ct);
 
                     if (initiationResult.IsErr)
@@ -64,7 +71,7 @@ public class VerificationFlowServices(
 
         if (result.IsErr)
         {
-            CipherPayload payload = await GrpcCipherService.CreateFailureResponse(result.UnwrapErr(),
+            CipherPayload payload = await grpcCipherService.CreateFailureResponse(result.UnwrapErr(),
                 ServiceUtilities.ExtractConnectId(context), context);
             await responseStream.WriteAsync(payload);
         }
@@ -72,16 +79,15 @@ public class VerificationFlowServices(
 
 
     public override async Task<CipherPayload> ValidatePhoneNumber(CipherPayload request, ServerCallContext context) =>
-        await ExecuteWithDecryption<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(request, context,
+        await _baseService.ExecuteEncryptedOperationAsync<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(request, context,
             async (message, connectId, ct) =>
             {
                 Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
-                    phoneNumberValidator.ValidatePhoneNumber(message.PhoneNumber, CultureName);
+                    phoneNumberValidator.ValidatePhoneNumber(message.PhoneNumber, _cultureName);
 
                 if (validationResult.IsErr)
                 {
-                    return await GrpcCipherService.CreateFailureResponse(validationResult.UnwrapErr(), connectId,
-                        context);
+                    return Result<ValidatePhoneNumberResponse, FailureBase>.Err(validationResult.UnwrapErr());
                 }
 
                 PhoneNumberValidationResult phoneValidationResult = validationResult.Unwrap();
@@ -93,7 +99,7 @@ public class VerificationFlowServices(
                         phoneValidationResult.DetectedRegion,
                         Helpers.FromByteStringToGuid(message.AppDeviceIdentifier));
 
-                    Result<Guid, VerificationFlowFailure> ensurePhoneNumberResult = await VerificationFlowManagerActor
+                    Result<Guid, VerificationFlowFailure> ensurePhoneNumberResult = await _verificationFlowManagerActor
                         .Ask<Result<Guid, VerificationFlowFailure>>(ensurePhoneNumberEvent, ct);
 
                     ValidatePhoneNumberResponse response = ensurePhoneNumberResult.Match(
@@ -109,8 +115,7 @@ public class VerificationFlowServices(
                             Message = failure.Message
                         });
 
-                    return await GrpcCipherService.CreateSuccessResponse<ValidatePhoneNumberResponse>(
-                        response.ToByteArray(), connectId, context);
+                    return Result<ValidatePhoneNumberResponse, FailureBase>.Ok(response);
                 }
                 else
                 {
@@ -119,23 +124,21 @@ public class VerificationFlowServices(
                         Result = VerificationResult.InvalidPhone,
                         Message = phoneValidationResult.MessageKey
                     };
-                    return await GrpcCipherService.CreateSuccessResponse<ValidatePhoneNumberResponse>(
-                        response.ToByteArray(), connectId, context);
+                    return Result<ValidatePhoneNumberResponse, FailureBase>.Ok(response);
                 }
             });
 
 
     public override async Task<CipherPayload> RecoverySecretKeyPhoneVerification(CipherPayload request,
         ServerCallContext context) =>
-        await ExecuteWithDecryption<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(request, context,
+        await _baseService.ExecuteEncryptedOperationAsync<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(request, context,
             async (message, connectId, ct) =>
             {
                 Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
-                    phoneNumberValidator.ValidatePhoneNumber(message.PhoneNumber, CultureName);
+                    phoneNumberValidator.ValidatePhoneNumber(message.PhoneNumber, _cultureName);
                 if (validationResult.IsErr)
                 {
-                    return await GrpcCipherService.CreateFailureResponse(validationResult.UnwrapErr(), connectId,
-                        context);
+                    return Result<ValidatePhoneNumberResponse, FailureBase>.Err(validationResult.UnwrapErr());
                 }
 
                 PhoneNumberValidationResult phoneValidationResult = validationResult.Unwrap();
@@ -146,7 +149,7 @@ public class VerificationFlowServices(
                         phoneValidationResult.ParsedPhoneNumberE164!,
                         phoneValidationResult.DetectedRegion);
 
-                    Result<Guid, VerificationFlowFailure> verifyPhoneResult = await VerificationFlowManagerActor
+                    Result<Guid, VerificationFlowFailure> verifyPhoneResult = await _verificationFlowManagerActor
                         .Ask<Result<Guid, VerificationFlowFailure>>(verifyPhoneEvent, ct);
 
                     ValidatePhoneNumberResponse response = verifyPhoneResult.Match(
@@ -163,8 +166,7 @@ public class VerificationFlowServices(
                         }
                     );
 
-                    return await GrpcCipherService.CreateSuccessResponse<ValidatePhoneNumberResponse>(
-                        response.ToByteArray(), connectId, context);
+                    return Result<ValidatePhoneNumberResponse, FailureBase>.Ok(response);
                 }
                 else
                 {
@@ -173,22 +175,24 @@ public class VerificationFlowServices(
                         Result = VerificationResult.InvalidPhone,
                         Message = phoneValidationResult.MessageKey
                     };
-                    return await GrpcCipherService.CreateSuccessResponse<ValidatePhoneNumberResponse>(
-                        response.ToByteArray(), connectId, context);
+                    return Result<ValidatePhoneNumberResponse, FailureBase>.Ok(response);
                 }
             });
 
     public override async Task<CipherPayload> VerifyOtp(CipherPayload request, ServerCallContext context) =>
-        await ExecuteWithDecryption<VerifyCodeRequest, VerifyCodeRequest>(request, context,
+        await _baseService.ExecuteEncryptedOperationAsync<VerifyCodeRequest, VerifyCodeResponse>(request, context,
             async (message, connectId, ct) =>
             {
-                VerifyFlowActorEvent actorEvent = new(connectId, message.Code, CultureName);
+                VerifyFlowActorEvent actorEvent = new(connectId, message.Code, _cultureName);
 
                 Result<VerifyCodeResponse, VerificationFlowFailure> verificationResult =
-                    await VerificationFlowManagerActor
+                    await _verificationFlowManagerActor
                         .Ask<Result<VerifyCodeResponse, VerificationFlowFailure>>(actorEvent, ct);
 
-                return await GrpcCipherService.ProcessResult(verificationResult, connectId, context);
+                return verificationResult.Match(
+                    response => Result<VerifyCodeResponse, FailureBase>.Ok(response),
+                    failure => Result<VerifyCodeResponse, FailureBase>.Err(failure)
+                );
             });
 
     private async Task StreamCountdownUpdatesAsync(
@@ -203,15 +207,15 @@ public class VerificationFlowServices(
 
             if (updateResult.IsErr)
             {
-                payload = await GrpcCipherService.CreateFailureResponse(updateResult.UnwrapErr(), connectId, context);
+                payload = await grpcCipherService.CreateFailureResponse(updateResult.UnwrapErr(), connectId, context);
             }
             else
             {
                 Result<CipherPayload, FailureBase> encryptResult =
-                    await GrpcCipherService.EncryptPayload(updateResult.Unwrap().ToByteArray(), connectId, context);
+                    await grpcCipherService.EncryptPayload(updateResult.Unwrap().ToByteArray(), connectId, context);
                 if (encryptResult.IsErr)
                 {
-                    payload = await GrpcCipherService.CreateFailureResponse(encryptResult.UnwrapErr(), connectId,
+                    payload = await grpcCipherService.CreateFailureResponse(encryptResult.UnwrapErr(), connectId,
                         context);
                 }
                 else
@@ -221,6 +225,31 @@ public class VerificationFlowServices(
             }
 
             await responseStream.WriteAsync(payload);
+        }
+    }
+
+    private void StopVerificationFlowActor(ServerCallContext context, uint connectId)
+    {
+        try
+        {
+            ActorSystem actorSystem = context.GetHttpContext().RequestServices.GetRequiredService<ActorSystem>();
+
+            string actorName = $"flow-{connectId}";
+            string actorPath = $"/user/{nameof(VerificationFlowManagerActor)}/{actorName}";
+
+            ActorSelection? actorSelection = actorSystem.ActorSelection(actorPath);
+            
+            actorSelection.Tell(new PrepareForTerminationMessage());
+
+            Log.Information(
+                "Client for ConnectId {ConnectId} disconnected. Sent PrepareForTerminationMessage to actor selection [{ActorPath}]",
+                connectId, actorPath);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex,
+                "Failed to send stop signal to verification flow actor for ConnectId {ConnectId}",
+                connectId);
         }
     }
 }
