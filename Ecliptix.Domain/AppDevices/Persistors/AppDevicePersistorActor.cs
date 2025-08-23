@@ -95,9 +95,6 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
         return AppDeviceFailure.InternalError(ex: ex);
     }
 
-    /// <summary>
-    /// AOT-compatible Props builder - parameters captured but no closures
-    /// </summary>
     public static Props Build(IDbConnectionFactory connectionFactory, IOpaqueProtocolService opaqueProtocolService)
     {
         return Props.Create(() => new AppDevicePersistorActor(connectionFactory, opaqueProtocolService));

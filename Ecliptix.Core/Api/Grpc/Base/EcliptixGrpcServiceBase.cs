@@ -13,7 +13,6 @@ namespace Ecliptix.Core.Api.Grpc.Base;
 
 public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
 {
-    protected readonly IGrpcCipherService CipherService = cipherService;
     private static readonly ActivitySource ActivitySource = new("Ecliptix.GrpcServices");
 
     public async Task<CipherPayload> ExecuteEncryptedOperationAsync<TRequest, TResponse>(
@@ -140,7 +139,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         activity?.SetTag("connect_id", connectId);
         activity?.SetTag("payload_size", encryptedPayload.Cipher.Length);
 
-        Result<byte[], FailureBase> decryptResult = await CipherService.DecryptPayload(encryptedPayload, connectId, context);
+        Result<byte[], FailureBase> decryptResult = await cipherService.DecryptPayload(encryptedPayload, connectId, context);
         
         if (decryptResult.IsErr)
         {
@@ -179,7 +178,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         byte[]? responseBytes = response.ToByteArray();
         activity?.SetTag("response_size", responseBytes.Length);
 
-        Result<CipherPayload, FailureBase> encryptResult = await CipherService.EncryptPayload(responseBytes, connectId, context);
+        Result<CipherPayload, FailureBase> encryptResult = await cipherService.EncryptPayload(responseBytes, connectId, context);
         
         if (encryptResult.IsErr)
         {
@@ -207,7 +206,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
 
         context.Status = failure.ToGrpcStatus();
         
-        TResponse emptyResponse = new TResponse();
+        TResponse emptyResponse = new();
         return await EncryptResponseAsync(emptyResponse, connectId, context);
     }
 

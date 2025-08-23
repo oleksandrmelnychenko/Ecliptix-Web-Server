@@ -96,6 +96,13 @@ public class DeviceGrpcService(
                         Status = RestoreChannelResponse.Types.Status.SessionNotFound,
                     };
                 }
+
+                return new RestoreChannelResponse()
+                {
+                    Status = RestoreChannelResponse.Types.Status.SessionRestored,
+                    ReceivingChainLength = protocolResponse.ReceivingChainLength,
+                    SendingChainLength = protocolResponse.SendingChainLength
+                };
             }
 
             EcliptixProtocolFailure failure = result.UnwrapErr();

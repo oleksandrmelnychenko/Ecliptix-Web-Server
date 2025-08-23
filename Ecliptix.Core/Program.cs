@@ -105,12 +105,7 @@ try
         DefaultObjectPoolProvider provider = new();
         return provider.CreateStringBuilderPool();
     });
-    
-    builder.Services.AddSingleton<ObjectPool<EncryptionContext>>(_ =>
-    {
-        DefaultObjectPoolProvider provider = new();
-        return provider.Create<EncryptionContext>();
-    });
+  
     builder.Services.AddSingleton<IOpaqueProtocolService>(sp =>
     {
         IConfiguration config = sp.GetRequiredService<IConfiguration>();

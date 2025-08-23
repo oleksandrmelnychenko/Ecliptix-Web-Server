@@ -38,7 +38,7 @@ public class VerificationFlowServices(
                 request, context,
                 async (initiateRequest, connectId, ct) =>
                 {
-                    var channelOptions = new BoundedChannelOptions(100)
+                    BoundedChannelOptions channelOptions = new(100)
                     {
                         FullMode = BoundedChannelFullMode.Wait,
                         SingleReader = true,

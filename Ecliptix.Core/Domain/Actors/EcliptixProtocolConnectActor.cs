@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
@@ -8,7 +7,6 @@ using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.ProtocolState;
-using LanguageExt;
 using Unit = Ecliptix.Domain.Utilities.Unit;
 
 namespace Ecliptix.Core.Domain.Actors;
@@ -41,8 +39,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
     private EcliptixSessionState? _state;
     private EcliptixProtocolSystem? _liveSystem;
-    private int _recoveryRetryCount = 0;
-    private EcliptixSessionState? _lastKnownGoodState;
+    private int _recoveryRetryCount;
 
     private bool _savingFinalSnapshot;
     private bool _pendingMessageDeletion;
@@ -100,10 +97,10 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 AttemptSystemRecreation();
                 return true;
 
-            case ReceiveTimeout _:
+            case ReceiveTimeout:
                 SaveFinalSnapshot();
                 return true;
-            case ClientDisconnectedActorEvent _:
+            case ClientDisconnectedActorEvent:
                 SaveFinalSnapshot();
                 return true;
 
@@ -119,23 +116,19 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 DeleteSnapshots(new SnapshotSelectionCriteria(success.Metadata.SequenceNr - 1));
 
                 return true;
-            case SaveSnapshotFailure failure:
+            case SaveSnapshotFailure:
                 return true;
 
-            case DeleteMessagesSuccess success:
-                if (_savingFinalSnapshot && _pendingMessageDeletion)
-                {
-                    _pendingMessageDeletion = false;
-                    TryCompleteShutdown();
-                }
+            case DeleteMessagesSuccess:
+                if (!_savingFinalSnapshot || !_pendingMessageDeletion) return true;
+                _pendingMessageDeletion = false;
+                TryCompleteShutdown();
 
                 return true;
-            case DeleteSnapshotsSuccess success:
-                if (_savingFinalSnapshot && _pendingSnapshotDeletion)
-                {
-                    _pendingSnapshotDeletion = false;
-                    TryCompleteShutdown();
-                }
+            case DeleteSnapshotsSuccess:
+                if (!_savingFinalSnapshot || !_pendingSnapshotDeletion) return true;
+                _pendingSnapshotDeletion = false;
+                TryCompleteShutdown();
 
                 return true;
             default:
@@ -467,16 +460,12 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
     protected override void PostStop()
     {
-        // Cancel any active timers
         Timers.CancelAll();
         
         _liveSystem?.Dispose();
         base.PostStop();
     }
     
-    /// <summary>
-    /// Attempts to recreate the protocol system with retry logic and partial state preservation
-    /// </summary>
     private void AttemptSystemRecreation()
     {
         if (_state == null)
@@ -493,8 +482,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         if (systemResult.IsOk)
         {
             _liveSystem = systemResult.Unwrap();
-            _lastKnownGoodState = _state;
-            _recoveryRetryCount = 0; // Reset retry count on success
+            _recoveryRetryCount = 0;
             
             Context.GetLogger()
                 .Info($"[Recovery] Protocol system successfully recreated for connectId {connectId}");
@@ -502,7 +490,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         else
         {
             _recoveryRetryCount++;
-            var failure = systemResult.UnwrapErr();
+            EcliptixProtocolFailure failure = systemResult.UnwrapErr();
             
             Context.GetLogger()
                 .Warning($"[Recovery] Failed to recreate protocol system for connectId {connectId} (attempt {_recoveryRetryCount}/{MaxRecoveryRetries}): {failure.Message}");
@@ -521,23 +509,16 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             }
             else
             {
-                // Max retries exceeded - preserve partial state and continue with degraded functionality
                 Context.GetLogger()
                     .Error($"[Recovery] Max recovery retries exceeded for connectId {connectId}. Continuing with degraded functionality.");
                 
-                // Clean up any partial system state but preserve the session state for potential manual recovery
                 _liveSystem?.Dispose();
                 _liveSystem = null;
                 
-                // Save a recovery failure marker but preserve original state for debugging
-                // Note: Preserve the state as-is for potential manual recovery
                 SaveSnapshot(_state);
             }
         }
     }
 
-    /// <summary>
-    /// AOT-compatible Props builder - lambda captures parameter but no closures
-    /// </summary>
     public static Props Build(uint connectId) => Props.Create(() => new EcliptixProtocolConnectActor(connectId));
 }
