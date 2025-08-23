@@ -1,10 +1,12 @@
 using Ecliptix.Domain.Utilities;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
+using Ecliptix.Core.Infrastructure.Grpc.Constants;
+using Serilog;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 
-public class FailureHandlingInterceptor(ILogger<FailureHandlingInterceptor> logger) : Interceptor
+public class FailureHandlingInterceptor : Interceptor
 {
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
         TRequest request,
@@ -43,7 +45,7 @@ public class FailureHandlingInterceptor(ILogger<FailureHandlingInterceptor> logg
         switch (exception)
         {
             case GrpcFailureException ex:
-                logger.LogWarning(
+                Log.Warning(
                     ex,
                     "gRPC call {Method} terminated by a handled domain failure. Status: {StatusCode}. Details: {@LogPayload}",
                     context.Method,
@@ -53,15 +55,15 @@ public class FailureHandlingInterceptor(ILogger<FailureHandlingInterceptor> logg
                 return new RpcException(ex.GrpcStatus);
 
             case RpcException ex:
-                logger.LogWarning(ex,
+                Log.Warning(ex,
                     "gRPC call {Method} failed with a pre-existing RpcException. Status: {StatusCode}.",
                     context.Method, ex.Status.StatusCode);
                 return ex;
 
             default:
-                logger.LogError(exception, "An unhandled exception was thrown during gRPC call {Method}.",
+                Log.Error(exception, "An unhandled exception was thrown during gRPC call {Method}.",
                     context.Method);
-                Status status = new(StatusCode.Internal, "An unexpected internal server error occurred.");
+                Status status = new(StatusCode.Internal, InterceptorConstants.StatusMessages.UnexpectedInternalServerError);
                 return new RpcException(status, exception.Message);
         }
     }

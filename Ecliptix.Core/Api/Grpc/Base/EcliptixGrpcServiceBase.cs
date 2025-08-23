@@ -150,7 +150,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         try
         {
             byte[] decryptedBytes = decryptResult.Unwrap();
-            TRequest parsedRequest = new TRequest();
+            TRequest parsedRequest = new();
             parsedRequest.MergeFrom(decryptedBytes);
             
             activity?.SetTag("decrypt_success", true);

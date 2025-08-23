@@ -7,18 +7,10 @@ using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 
-public class SessionKeepAliveInterceptor : Interceptor
+public class SessionKeepAliveInterceptor(IEcliptixActorRegistry actorRegistry) : Interceptor
 {
-    // Use a Lazy<T> to resolve the actor reference only once, the first time it's needed.
-    // This is thread-safe and efficient.
-    private readonly Lazy<IActorRef> _protocolSystemActor;
+    private readonly Lazy<IActorRef> _protocolSystemActor = new(() => actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor));
 
-    // Inject the registry, which IS available in the DI container.
-    public SessionKeepAliveInterceptor(IEcliptixActorRegistry actorRegistry)
-    {
-        _protocolSystemActor = new Lazy<IActorRef>(() => actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor));
-    }
-    
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
         TRequest request,
         ServerCallContext context,

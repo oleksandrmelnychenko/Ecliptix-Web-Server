@@ -7,8 +7,6 @@ using Akka.Configuration;
 using Ecliptix.Core;
 using Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
-using Ecliptix.Core.Interceptors;
-using Ecliptix.Core.Api.Grpc.Base;
 using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Domain.Actors;
@@ -31,8 +29,6 @@ using Serilog.Context;
 using System.Threading.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using HealthStatus = Ecliptix.Core.Json.HealthStatus;
-using Ecliptix.Core.Observability;
-using System.Diagnostics;
 using Ecliptix.Core.Domain.Protocol.Monitoring;
 using Ecliptix.Core.Api.Grpc.Services.Authentication;
 using Ecliptix.Core.Api.Grpc.Services.Membership;
@@ -143,13 +139,6 @@ try
         .AddCheck<VerificationFlowHealthCheck>("verification_flow_health")
         .AddCheck<DatabaseHealthCheck>("database_health");
 
-    ActivitySource.AddActivityListener(new ActivityListener
-    {
-        ShouldListenTo = source => source.Name == EcliptixActivitySource.SourceName,
-        Sample = (ref ActivityCreationOptions<ActivityContext> options) => ActivitySamplingResult.AllData,
-        ActivityStarted = activity => {},
-        ActivityStopped = activity => { }
-    });
     
     WebApplication app = builder.Build();
 

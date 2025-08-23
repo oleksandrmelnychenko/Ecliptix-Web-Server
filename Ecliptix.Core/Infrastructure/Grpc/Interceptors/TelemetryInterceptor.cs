@@ -3,45 +3,41 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
-using Microsoft.Extensions.Logging;
 using Serilog;
+using Ecliptix.Core.Infrastructure.Grpc.Constants;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 
 public class TelemetryInterceptor : Interceptor, IDisposable
 {
-    private static readonly ActivitySource ActivitySource = new("Ecliptix.GrpcInterceptors");
+    private static readonly ActivitySource ActivitySource = new(InterceptorConstants.Telemetry.GrpcInterceptorsActivitySource);
     private static readonly ConcurrentDictionary<string, DateTime> LastLogTimes = new();
-    private static readonly TimeSpan LogThrottleInterval = TimeSpan.FromSeconds(10);
-    private static readonly Meter TelemetryMeter = new("Ecliptix.GrpcTelemetry");
+    private static readonly TimeSpan LogThrottleInterval = TimeSpan.FromSeconds(InterceptorConstants.Thresholds.LogThrottleIntervalSeconds);
+    private static readonly Meter TelemetryMeter = new(InterceptorConstants.Telemetry.GrpcTelemetryMeter);
     private static readonly Counter<int> RequestsTotal = TelemetryMeter.CreateCounter<int>(
-        "grpc_requests_total", 
-        description: "Total number of gRPC requests");
-
-    public TelemetryInterceptor()
-    {
-    }
+        InterceptorConstants.Metrics.GrpcRequestsTotal, 
+        description: InterceptorConstants.Metrics.GrpcRequestsTotalDescription);
 
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
         TRequest request,
         ServerCallContext context,
         UnaryServerMethod<TRequest, TResponse> continuation)
     {
-        using Activity activity = ActivitySource.StartActivity("GrpcUnaryCall");
+        using Activity activity = ActivitySource.StartActivity(InterceptorConstants.Activities.GrpcUnaryCall);
         Stopwatch stopwatch = Stopwatch.StartNew();
         
         string methodName = context.Method;
         string clientHash = GetClientIdentifierHash(context);
         string userAgent = SanitizeUserAgent(context.GetHttpContext().Request.Headers.UserAgent.ToString());
         
-        activity?.SetTag("grpc.method", methodName);
-        activity?.SetTag("grpc.client_hash", clientHash);
-        activity?.SetTag("grpc.user_agent", userAgent);
-        activity?.SetTag("grpc.request_size", EstimateRequestSize(request));
+        activity?.SetTag(InterceptorConstants.Tags.GrpcMethod, methodName);
+        activity?.SetTag(InterceptorConstants.Tags.GrpcClientHash, clientHash);
+        activity?.SetTag(InterceptorConstants.Tags.GrpcUserAgent, userAgent);
+        activity?.SetTag(InterceptorConstants.Tags.GrpcRequestSize, EstimateRequestSize(request));
 
         try
         {
-            LogRateLimited($"grpc_start_{methodName}", 
+            LogRateLimited($"{InterceptorConstants.LogPrefixes.GrpcStart}{methodName}", 
                 () => Log.Debug("Starting gRPC call {Method}", methodName));
 
             RequestsTotal.Add(1);
@@ -50,15 +46,15 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             stopwatch.Stop();
             long duration = stopwatch.ElapsedMilliseconds;
             
-            activity?.SetTag("grpc.status", "OK");
-            activity?.SetTag("grpc.duration_ms", duration);
-            activity?.SetTag("grpc.response_size", EstimateResponseSize(response));
+            activity?.SetTag(InterceptorConstants.Tags.GrpcStatus, InterceptorConstants.StatusMessages.Ok);
+            activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
+            activity?.SetTag(InterceptorConstants.Tags.GrpcResponseSize, EstimateResponseSize(response));
             
-            LogRateLimited($"grpc_success_{methodName}", 
+            LogRateLimited($"{InterceptorConstants.LogPrefixes.GrpcSuccess}{methodName}", 
                 () => Log.Information("Completed gRPC call {Method} in {Duration}ms - Status: OK", 
                     methodName, duration));
                 
-            if (duration > 5000)
+            if (duration > InterceptorConstants.Thresholds.SlowRequestThresholdMs)
             {
                 Log.Warning("Slow gRPC call detected: {Method} took {Duration}ms", 
                     methodName, duration);
@@ -71,9 +67,9 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             stopwatch.Stop();
             long duration = stopwatch.ElapsedMilliseconds;
             
-            activity?.SetTag("grpc.status", rpcEx.StatusCode.ToString());
-            activity?.SetTag("grpc.duration_ms", duration);
-            activity?.SetTag("grpc.error", true);
+            activity?.SetTag(InterceptorConstants.Tags.GrpcStatus, rpcEx.StatusCode.ToString());
+            activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
+            activity?.SetTag(InterceptorConstants.Tags.GrpcError, true);
             
             Log.Warning("gRPC call {Method} failed with {StatusCode} in {Duration}ms: {Message}", 
                 methodName, rpcEx.StatusCode, duration, rpcEx.Message);
@@ -85,9 +81,9 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             stopwatch.Stop();
             long duration = stopwatch.ElapsedMilliseconds;
             
-            activity?.SetTag("grpc.status", "INTERNAL");
-            activity?.SetTag("grpc.duration_ms", duration);
-            activity?.SetTag("grpc.error", true);
+            activity?.SetTag(InterceptorConstants.Tags.GrpcStatus, InterceptorConstants.StatusMessages.Internal);
+            activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
+            activity?.SetTag(InterceptorConstants.Tags.GrpcError, true);
             
             Log.Error(ex, "Unexpected error in gRPC call {Method} after {Duration}ms", 
                 methodName, duration);
@@ -102,16 +98,16 @@ public class TelemetryInterceptor : Interceptor, IDisposable
         ServerCallContext context,
         ServerStreamingServerMethod<TRequest, TResponse> continuation)
     {
-        using Activity activity = ActivitySource.StartActivity("GrpcServerStreamingCall");
+        using Activity activity = ActivitySource.StartActivity(InterceptorConstants.Activities.GrpcServerStreamingCall);
         Stopwatch stopwatch = Stopwatch.StartNew();
         
         string methodName = context.Method;
         string clientHash = GetClientIdentifierHash(context);
         
-        activity?.SetTag("grpc.method", methodName);
-        activity?.SetTag("grpc.client_hash", clientHash);
-        activity?.SetTag("grpc.streaming", true);
-        activity?.SetTag("grpc.request_size", EstimateRequestSize(request));
+        activity?.SetTag(InterceptorConstants.Tags.GrpcMethod, methodName);
+        activity?.SetTag(InterceptorConstants.Tags.GrpcClientHash, clientHash);
+        activity?.SetTag(InterceptorConstants.Tags.GrpcStreaming, true);
+        activity?.SetTag(InterceptorConstants.Tags.GrpcRequestSize, EstimateRequestSize(request));
 
         try
         {
@@ -124,9 +120,9 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             stopwatch.Stop();
             long duration = stopwatch.ElapsedMilliseconds;
             
-            activity?.SetTag("grpc.status", "OK");
-            activity?.SetTag("grpc.duration_ms", duration);
-            activity?.SetTag("grpc.messages_sent", wrappedStream.MessagesSent);
+            activity?.SetTag(InterceptorConstants.Tags.GrpcStatus, InterceptorConstants.StatusMessages.Ok);
+            activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
+            activity?.SetTag(InterceptorConstants.Tags.GrpcMessagesSent, wrappedStream.MessagesSent);
             
             Log.Information("Completed gRPC streaming call {Method} in {Duration}ms from client {ClientHash} - Messages: {Count}", 
                 methodName, duration, clientHash, wrappedStream.MessagesSent);
@@ -136,8 +132,8 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             stopwatch.Stop();
             long duration = stopwatch.ElapsedMilliseconds;
             
-            activity?.SetTag("grpc.error", true);
-            activity?.SetTag("grpc.duration_ms", duration);
+            activity?.SetTag(InterceptorConstants.Tags.GrpcError, true);
+            activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
             
             Log.Error(ex, "Error in gRPC streaming call {Method} after {Duration}ms from client {ClientHash}", 
                 methodName, duration, clientHash);
@@ -187,12 +183,12 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             LastLogTimes.AddOrUpdate(key, now, (_, _) => now);
             logAction();
             
-            if (LastLogTimes.Count > 1000)
+            if (LastLogTimes.Count > InterceptorConstants.Limits.MaxLogTimesCount)
             {
-                DateTime cutoff = now - TimeSpan.FromMinutes(5);
+                DateTime cutoff = now - TimeSpan.FromMinutes(InterceptorConstants.Thresholds.CacheCleanupIntervalMinutes);
                 List<string> toRemove = LastLogTimes
                     .Where(kvp => kvp.Value < cutoff)
-                    .Take(100)
+                    .Take(InterceptorConstants.Limits.CleanupBatchSize)
                     .Select(kvp => kvp.Key)
                     .ToList();
                     
@@ -208,7 +204,7 @@ public class TelemetryInterceptor : Interceptor, IDisposable
     {
         try
         {
-            string clientIp = context.GetHttpContext().Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            string clientIp = context.GetHttpContext().Connection.RemoteIpAddress?.ToString() ?? InterceptorConstants.Connections.Unknown;
             string userAgent = context.GetHttpContext().Request.Headers.UserAgent.ToString();
             string combined = $"{clientIp}:{userAgent}";
             
@@ -216,14 +212,14 @@ public class TelemetryInterceptor : Interceptor, IDisposable
         }
         catch
         {
-            return "unknown";
+            return InterceptorConstants.Connections.Unknown;
         }
     }
 
     private static string SanitizeUserAgent(string userAgent)
     {
-        if (string.IsNullOrEmpty(userAgent) || userAgent.Length > 200)
-            return "sanitized";
+        if (string.IsNullOrEmpty(userAgent) || userAgent.Length > InterceptorConstants.Limits.MaxUserAgentLength)
+            return InterceptorConstants.Connections.Sanitized;
             
         return userAgent.Split(' ')[0];
     }
@@ -258,6 +254,6 @@ internal class TelemetryServerStreamWriter<T> : IServerStreamWriter<T>
     {
         await _inner.WriteAsync(message);
         Interlocked.Increment(ref _messagesSent);
-        _activity?.SetTag("grpc.messages_sent", _messagesSent);
+        _activity?.SetTag(InterceptorConstants.Tags.GrpcMessagesSent, _messagesSent);
     }
 }

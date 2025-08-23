@@ -1,23 +1,24 @@
+using System.Collections.Concurrent;
+using Ecliptix.Core.Infrastructure.Grpc.Constants;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Microsoft.Extensions.Caching.Distributed;
 using Serilog;
-using System.Collections.Concurrent;
 
-namespace Ecliptix.Core.Interceptors;
+namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 
 public class SecurityInterceptor(IDistributedCache cache) : Interceptor
 {
     private readonly IDistributedCache _cache = cache;
     private static readonly ConcurrentDictionary<string, DateTime> LastRequestTimes = new();
-    private static readonly TimeSpan MinTimeBetweenRequests = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan MinTimeBetweenRequests = TimeSpan.FromMilliseconds(InterceptorConstants.Thresholds.MinTimeBetweenRequestsMs);
 
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
         TRequest request,
         ServerCallContext context,
         UnaryServerMethod<TRequest, TResponse> continuation)
     {
-        string clientIp = context.GetHttpContext().Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        string clientIp = context.GetHttpContext().Connection.RemoteIpAddress?.ToString() ?? InterceptorConstants.Connections.Unknown;
         string methodName = context.Method;
 
         try
@@ -25,36 +26,36 @@ public class SecurityInterceptor(IDistributedCache cache) : Interceptor
             if (!ValidateRequestTiming(clientIp))
             {
                 Log.Warning("Request timing validation failed for {ClientIp} on {Method}", clientIp, methodName);
-                throw new RpcException(new Status(StatusCode.ResourceExhausted, "Too many requests"));
+                throw new RpcException(new Status(StatusCode.ResourceExhausted, InterceptorConstants.StatusMessages.TooManyRequests));
             }
 
-            if (context.RequestHeaders.Any(h => h.Key.Contains("connectid", StringComparison.OrdinalIgnoreCase)))
+            if (context.RequestHeaders.Any(h => h.Key.Contains(InterceptorConstants.Headers.ConnectIdKey, StringComparison.OrdinalIgnoreCase)))
             {
                 if (!await ValidateConnectId(context))
                 {
                     Log.Warning("ConnectId validation failed for {ClientIp} on {Method}", clientIp, methodName);
-                    throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid connection identifier"));
+                    throw new RpcException(new Status(StatusCode.InvalidArgument, InterceptorConstants.StatusMessages.InvalidConnectionIdentifier));
                 }
             }
 
-            LogSecurityEvent(context, "REQUEST_PROCESSED");
+            LogSecurityEvent(context, InterceptorConstants.SecurityEvents.RequestProcessed);
 
             TResponse response = await continuation(request, context);
 
-            LogSecurityEvent(context, "REQUEST_COMPLETED");
+            LogSecurityEvent(context, InterceptorConstants.SecurityEvents.RequestCompleted);
 
             return response;
         }
         catch (RpcException)
         {
-            LogSecurityEvent(context, "REQUEST_FAILED");
+            LogSecurityEvent(context, InterceptorConstants.SecurityEvents.RequestFailed);
             throw;
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Unexpected error in security interceptor for {ClientIp} on {Method}", clientIp, methodName);
-            LogSecurityEvent(context, "REQUEST_ERROR");
-            throw new RpcException(new Status(StatusCode.Internal, "Internal server error"));
+            LogSecurityEvent(context, InterceptorConstants.SecurityEvents.RequestError);
+            throw new RpcException(new Status(StatusCode.Internal, InterceptorConstants.StatusMessages.InternalServerError));
         }
     }
 
@@ -72,13 +73,13 @@ public class SecurityInterceptor(IDistributedCache cache) : Interceptor
 
         LastRequestTimes.AddOrUpdate(clientIdentifier, now, (_, _) => now);
 
-        if (LastRequestTimes.Count > 10000)
+        if (LastRequestTimes.Count > InterceptorConstants.Limits.MaxLastRequestTimesCount)
         {
-            DateTime cutoff = now.AddMinutes(-5);
+            DateTime cutoff = now.AddMinutes(-InterceptorConstants.Thresholds.CacheCleanupIntervalMinutes);
             List<string> toRemove = LastRequestTimes
                 .Where(kvp => kvp.Value < cutoff)
                 .Select(kvp => kvp.Key)
-                .Take(1000)
+                .Take(InterceptorConstants.Limits.LargeCleanupBatchSize)
                 .ToList();
 
             foreach (string key in toRemove)
@@ -95,7 +96,7 @@ public class SecurityInterceptor(IDistributedCache cache) : Interceptor
         try
         {
             Metadata.Entry? connectIdHeader = context.RequestHeaders
-                .FirstOrDefault(h => h.Key.Contains("connectid", StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(h => h.Key.Contains(InterceptorConstants.Headers.ConnectIdKey, StringComparison.OrdinalIgnoreCase));
 
             if (connectIdHeader == null)
                 return Task.FromResult(true);
@@ -108,7 +109,7 @@ public class SecurityInterceptor(IDistributedCache cache) : Interceptor
                 return Task.FromResult(false);
             }
 
-            if (connectId is 0 or > uint.MaxValue - 1000)
+            if (connectId < InterceptorConstants.Limits.MinConnectId || connectId > InterceptorConstants.Limits.MaxConnectId)
             {
                 Log.Warning("ConnectId out of valid range: {ConnectId}", connectId);
                 return Task.FromResult(false);
@@ -125,7 +126,7 @@ public class SecurityInterceptor(IDistributedCache cache) : Interceptor
 
     private static void LogSecurityEvent(ServerCallContext context, string eventType)
     {
-        string clientIp = context.GetHttpContext().Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        string clientIp = context.GetHttpContext().Connection.RemoteIpAddress?.ToString() ?? InterceptorConstants.Connections.Unknown;
         string methodName = context.Method;
         string userAgent = context.GetHttpContext().Request.Headers.UserAgent.ToString();
 

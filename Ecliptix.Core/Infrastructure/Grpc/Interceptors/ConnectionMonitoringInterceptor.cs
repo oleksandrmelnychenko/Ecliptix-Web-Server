@@ -2,44 +2,37 @@ using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
-using Microsoft.Extensions.Logging;
+using Ecliptix.Core.Infrastructure.Grpc.Constants;
+using Serilog;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 
-/// <summary>
-/// Connection monitoring interceptor that tracks active connections, connection health,
-/// and provides connection statistics while integrating with existing actor lifecycle.
-/// </summary>
 public class ConnectionMonitoringInterceptor : Interceptor
 {
-    private readonly ILogger<ConnectionMonitoringInterceptor> _logger;
     private static readonly ConcurrentDictionary<uint, ConnectionInfo> ActiveConnections = new();
-    private static readonly Meter ConnectionMeter = new("Ecliptix.Connections");
+    private static readonly Meter ConnectionMeter = new(InterceptorConstants.Telemetry.ConnectionsMeter);
     
-    // Metrics
     private static readonly Counter<int> ConnectionsEstablished = ConnectionMeter.CreateCounter<int>(
-        "connections_established_total", 
-        description: "Total number of connections established");
+        InterceptorConstants.Metrics.ConnectionsEstablishedTotal, 
+        description: InterceptorConstants.Metrics.ConnectionsEstablishedTotalDescription);
         
     private static readonly Counter<int> ConnectionsClosed = ConnectionMeter.CreateCounter<int>(
-        "connections_closed_total", 
-        description: "Total number of connections closed");
+        InterceptorConstants.Metrics.ConnectionsClosedTotal, 
+        description: InterceptorConstants.Metrics.ConnectionsClosedTotalDescription);
         
     private static readonly Gauge<int> ActiveConnectionsCount = ConnectionMeter.CreateGauge<int>(
-        "active_connections_current", 
-        description: "Current number of active connections");
+        InterceptorConstants.Metrics.ActiveConnectionsCurrent, 
+        description: InterceptorConstants.Metrics.ActiveConnectionsCurrentDescription);
 
-    public ConnectionMonitoringInterceptor(ILogger<ConnectionMonitoringInterceptor> logger)
+    public ConnectionMonitoringInterceptor()
     {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         
-        // Update active connections gauge periodically
         _ = Task.Run(async () =>
         {
             while (true)
             {
                 ActiveConnectionsCount.Record(ActiveConnections.Count);
-                await Task.Delay(TimeSpan.FromSeconds(10));
+                await Task.Delay(TimeSpan.FromSeconds(InterceptorConstants.Thresholds.ConnectionMonitoringUpdateIntervalSeconds));
             }
         });
     }
@@ -49,21 +42,20 @@ public class ConnectionMonitoringInterceptor : Interceptor
         ServerCallContext context,
         UnaryServerMethod<TRequest, TResponse> continuation)
     {
-        var connectId = ExtractConnectId(context);
+        uint? connectId = ExtractConnectId(context);
         if (connectId.HasValue)
         {
             TrackConnection(connectId.Value, context);
             
-            // Set up cleanup on completion
             context.CancellationToken.Register(() => 
             {
-                CleanupConnection(connectId.Value, "Request cancelled");
+                CleanupConnection(connectId.Value, InterceptorConstants.Connections.CloseReasons.RequestCancelled);
             });
         }
 
         try
         {
-            var response = await continuation(request, context);
+            TResponse response = await continuation(request, context);
             
             if (connectId.HasValue)
             {
@@ -88,14 +80,14 @@ public class ConnectionMonitoringInterceptor : Interceptor
         ServerCallContext context,
         ServerStreamingServerMethod<TRequest, TResponse> continuation)
     {
-        var connectId = ExtractConnectId(context);
+        uint? connectId = ExtractConnectId(context);
         if (connectId.HasValue)
         {
             TrackConnection(connectId.Value, context, isStreaming: true);
             
             context.CancellationToken.Register(() => 
             {
-                CleanupConnection(connectId.Value, "Stream cancelled");
+                CleanupConnection(connectId.Value, InterceptorConstants.Connections.CloseReasons.StreamCancelled);
             });
         }
 
@@ -105,7 +97,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
             
             if (connectId.HasValue)
             {
-                CleanupConnection(connectId.Value, "Stream completed");
+                CleanupConnection(connectId.Value, InterceptorConstants.Connections.CloseReasons.StreamCompleted);
             }
         }
         catch (Exception ex)
@@ -113,7 +105,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
             if (connectId.HasValue)
             {
                 UpdateConnectionError(connectId.Value, ex);
-                CleanupConnection(connectId.Value, $"Stream error: {ex.Message}");
+                CleanupConnection(connectId.Value, string.Format(InterceptorConstants.Connections.CloseReasons.StreamError, ex.Message));
             }
             throw;
         }
@@ -123,8 +115,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
     {
         try
         {
-            // ConnectId should already be validated and stored in UserState by RequestMetaDataInterceptor
-            if (context.UserState.TryGetValue("UniqueConnectId", out var connectIdObj) && 
+            if (context.UserState.TryGetValue(InterceptorConstants.Connections.UniqueConnectIdKey, out object? connectIdObj) && 
                 connectIdObj is uint connectId)
             {
                 return connectId;
@@ -140,20 +131,20 @@ public class ConnectionMonitoringInterceptor : Interceptor
 
     private void TrackConnection(uint connectId, ServerCallContext context, bool isStreaming = false)
     {
-        var clientHash = GetPrivacySafeClientHash(context);
-        var userAgent = SanitizeUserAgent(context.GetHttpContext().Request.Headers.UserAgent.ToString());
-        var method = context.Method;
+        string clientHash = GetPrivacySafeClientHash(context);
+        string userAgent = SanitizeUserAgent(context.GetHttpContext().Request.Headers.UserAgent.ToString());
+        string method = context.Method;
 
-        var connectionInfo = ActiveConnections.AddOrUpdate(connectId, 
+        ConnectionInfo connectionInfo = ActiveConnections.AddOrUpdate(connectId, 
             _ => {
                 ConnectionsEstablished.Add(1);
-                _logger.LogDebug("New connection tracked: {ConnectId} - Method: {Method}", 
+                Log.Debug("New connection tracked: {ConnectId} - Method: {Method}", 
                     connectId, method);
                 
                 return new ConnectionInfo
                 {
                     ConnectId = connectId,
-                    ClientHash = clientHash, // Use hash instead of IP
+                    ClientHash = clientHash,
                     UserAgent = userAgent,
                     FirstSeen = DateTime.UtcNow,
                     LastActivity = DateTime.UtcNow,
@@ -170,10 +161,9 @@ public class ConnectionMonitoringInterceptor : Interceptor
                 return existing;
             });
 
-        // Log connection activity (rate limited)
-        if (connectionInfo.RequestCount % 10 == 0) // Log every 10 requests to avoid spam
+        if (connectionInfo.RequestCount % InterceptorConstants.Limits.ConnectionLogFrequency == 0)
         {
-            _logger.LogInformation("Connection {ConnectId} active: {RequestCount} requests over {Duration:mm\\:ss}", 
+            Log.Information("Connection {ConnectId} active: {RequestCount} requests over {Duration:mm\\:ss}", 
                 connectId, connectionInfo.RequestCount, DateTime.UtcNow - connectionInfo.FirstSeen);
         }
     }
@@ -183,7 +173,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
         if (ActiveConnections.TryGetValue(connectId, out var info))
         {
             info.LastActivity = DateTime.UtcNow;
-            info.LastError = null; // Clear any previous errors on successful request
+            info.LastError = null; 
         }
     }
 
@@ -194,61 +184,51 @@ public class ConnectionMonitoringInterceptor : Interceptor
             info.LastError = error.Message;
             info.ErrorCount++;
             
-            _logger.LogWarning("Connection {ConnectId} error #{ErrorCount}: {Error}", 
+            Log.Warning("Connection {ConnectId} error #{ErrorCount}: {Error}", 
                 connectId, info.ErrorCount, error.Message);
         }
     }
 
     private void CleanupConnection(uint connectId, string reason)
     {
-        if (ActiveConnections.TryRemove(connectId, out var info))
+        if (ActiveConnections.TryRemove(connectId, out ConnectionInfo info))
         {
             ConnectionsClosed.Add(1);
-            var duration = DateTime.UtcNow - info.FirstSeen;
+            TimeSpan duration = DateTime.UtcNow - info.FirstSeen;
             
-            _logger.LogInformation("Connection {ConnectId} closed after {Duration:mm\\:ss} - {RequestCount} requests, {ErrorCount} errors - Reason: {Reason}", 
+            Log.Information("Connection {ConnectId} closed after {Duration:mm\\:ss} - {RequestCount} requests, {ErrorCount} errors - Reason: {Reason}", 
                 connectId, duration, info.RequestCount, info.ErrorCount, reason);
         }
     }
 
-    /// <summary>
-    /// Creates a privacy-safe client identifier hash
-    /// </summary>
     private static string GetPrivacySafeClientHash(ServerCallContext context)
     {
         try
         {
-            var clientIp = context.GetHttpContext().Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            var userAgent = context.GetHttpContext().Request.Headers.UserAgent.ToString();
-            var combined = $"{clientIp}:{userAgent}";
+            string clientIp = context.GetHttpContext().Connection.RemoteIpAddress?.ToString() ?? InterceptorConstants.Connections.Unknown;
+            string userAgent = context.GetHttpContext().Request.Headers.UserAgent.ToString();
+            string combined = $"{clientIp}:{userAgent}";
             
-            // Create a simple hash for tracking without storing actual IP
             return Math.Abs(combined.GetHashCode()).ToString("X8");
         }
         catch
         {
-            return "unknown";
+            return InterceptorConstants.Connections.Unknown;
         }
     }
 
-    /// <summary>
-    /// Sanitizes user agent string
-    /// </summary>
     private static string SanitizeUserAgent(string userAgent)
     {
-        if (string.IsNullOrEmpty(userAgent) || userAgent.Length > 200)
-            return "sanitized";
+        if (string.IsNullOrEmpty(userAgent) || userAgent.Length > InterceptorConstants.Limits.MaxUserAgentLength)
+            return InterceptorConstants.Connections.Sanitized;
             
-        return userAgent.Split(' ')[0]; // Take only the first part
+        return userAgent.Split(' ')[0]; 
     }
 
-    /// <summary>
-    /// Gets current connection statistics for monitoring/health check endpoints
-    /// </summary>
     public static ConnectionStatistics GetConnectionStatistics()
     {
-        var connections = ActiveConnections.Values.ToList();
-        var now = DateTime.UtcNow;
+        List<ConnectionInfo> connections = ActiveConnections.Values.ToList();
+        DateTime now = DateTime.UtcNow;
         
         return new ConnectionStatistics
         {
@@ -266,13 +246,10 @@ public class ConnectionMonitoringInterceptor : Interceptor
     }
 }
 
-/// <summary>
-/// Information about an active connection
-/// </summary>
 internal class ConnectionInfo
 {
     public uint ConnectId { get; set; }
-    public string ClientHash { get; set; } = string.Empty; // Privacy-safe hash instead of IP
+    public string ClientHash { get; set; } = string.Empty;
     public string UserAgent { get; set; } = string.Empty;
     public DateTime FirstSeen { get; set; }
     public DateTime LastActivity { get; set; }
@@ -283,9 +260,6 @@ internal class ConnectionInfo
     public string? LastError { get; set; }
 }
 
-/// <summary>
-/// Connection statistics for monitoring
-/// </summary>
 public class ConnectionStatistics
 {
     public int ActiveConnectionCount { get; set; }

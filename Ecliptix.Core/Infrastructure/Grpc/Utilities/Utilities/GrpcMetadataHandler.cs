@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Protocol;
 using Grpc.Core;
+using Ecliptix.Core.Infrastructure.Grpc.Constants;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 
@@ -22,7 +23,7 @@ public static class GrpcMetadataHandler
     private const string KeyExchangeContextTypeValue = "JmTGdGilMka07zyg5hz6Q";
     private const string KeyExchangeContextTypeKey = "oiwfT6c5kOQsZozxhTBg";
 
-    public const string UniqueConnectId = "UniqueConnectId";
+    public const string UniqueConnectId = InterceptorConstants.Connections.UniqueConnectIdKey;
 
     /// <summary>
     ///     Name of the connection, like (AppDeviceEphemeralConnect)
