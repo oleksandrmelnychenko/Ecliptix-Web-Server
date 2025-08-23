@@ -23,7 +23,7 @@ public class TelemetryInterceptor : Interceptor, IDisposable
         ServerCallContext context,
         UnaryServerMethod<TRequest, TResponse> continuation)
     {
-        using Activity activity = ActivitySource.StartActivity(InterceptorConstants.Activities.GrpcUnaryCall);
+        using Activity? activity = ActivitySource.StartActivity(InterceptorConstants.Activities.GrpcUnaryCall);
         Stopwatch stopwatch = Stopwatch.StartNew();
         
         string methodName = context.Method;
