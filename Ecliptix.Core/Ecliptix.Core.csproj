@@ -111,6 +111,10 @@
         <ProjectReference Include="..\Ecliptix.Domain\Ecliptix.Domain.csproj"/>
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="logs\" />
+    </ItemGroup>
+
     <!-- Commented out: Using AOT-safe hardcoded FrozenDictionary instead of ResourceManager
     <ItemGroup>
         <EmbeddedResource Update="Resources\VerificationFlowRes.resx">
