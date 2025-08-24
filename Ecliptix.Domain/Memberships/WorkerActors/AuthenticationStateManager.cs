@@ -11,12 +11,22 @@ public record AttemptAuthentication(string MobileNumber);
 public record EstablishContext(Guid MembershipId, Guid MobileNumberId, byte[] ContextToken);
 public record AuthContextEstablished(byte[] ContextToken, DateTime ExpiresAt);
 
+public record ValidateContext(byte[] ContextToken);
+public record GetContextInfo;
+
 public abstract record AuthResult
 {
     public record Proceed : AuthResult;
     public record RateLimited(DateTime LockedUntil) : AuthResult;
     public record InvalidContext(string Reason) : AuthResult;
     public record ValidContext(Guid MembershipId, Guid MobileNumberId) : AuthResult;
+}
+
+public abstract record ContextInfo
+{
+    public record NotEstablished : ContextInfo;
+    public record Expired : ContextInfo;
+    public record Active(Guid MembershipId, Guid MobileNumberId, DateTime ExpiresAt) : ContextInfo;
 }
 
 public class AuthenticationStateManager : ReceiveActor
@@ -46,7 +56,6 @@ public class AuthenticationStateManager : ReceiveActor
     {
         base.PreStart();
         
-        // Schedule periodic cleanup of idle actors
         _cleanupTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
             CleanupInterval, 
             CleanupInterval, 
@@ -54,7 +63,6 @@ public class AuthenticationStateManager : ReceiveActor
             new CleanupIdleContexts(), 
             ActorRefs.NoSender);
 
-        // Schedule periodic metrics logging
         _metricsTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
             MetricsInterval,
             MetricsInterval,
@@ -83,15 +91,14 @@ public class AuthenticationStateManager : ReceiveActor
         {
             UpdateLastActivity(msg.ConnectId);
             
-            // Check memory limits before creating new actors
             if (_activeContexts.Count >= MaxConcurrentContexts)
             {
                 Log.Warning("Approaching memory limit ({Current}/{Max}) - evicting oldest idle contexts", 
                     _activeContexts.Count, MaxConcurrentContexts);
-                EvictOldestIdleActors(100); // Evict 100 oldest to make room
+                EvictOldestIdleActors(100); 
             }
             
-            if (!_activeContexts.TryGetValue(msg.ConnectId, out IActorRef actor))
+            if (!_activeContexts.TryGetValue(msg.ConnectId, out IActorRef? actor))
             {
                 actor = Context.ActorOf(
                     AuthenticationContextActor.Build(msg.ConnectId, Self),
@@ -116,7 +123,7 @@ public class AuthenticationStateManager : ReceiveActor
 
         Receive<RemoveAuthContext>(msg =>
         {
-            if (_activeContexts.TryRemove(msg.ConnectId, out IActorRef actor))
+            if (_activeContexts.TryRemove(msg.ConnectId, out IActorRef? actor))
             {
                 _lastActivity.TryRemove(msg.ConnectId, out _);
                 Context.Unwatch(actor);
@@ -138,15 +145,13 @@ public class AuthenticationStateManager : ReceiveActor
 
         Receive<LogMetrics>(_ =>
         {
-            Log.Information("AuthenticationStateManager metrics - Active contexts: {ActiveContexts}, Memory usage: ~{MemoryMB}MB", 
-                _activeContexts.Count, 
-                EstimateMemoryUsageMB());
+            int expiredCount = CheckForExpiredContexts();
+            Log.Information("AuthenticationStateManager metrics - Active contexts: {ActiveContexts}, Expired cleaned: {ExpiredCount}, Memory usage: ~{MemoryMB}MB", 
+                _activeContexts.Count, expiredCount, EstimateMemoryUsageMb());
         });
 
-        // Handle child actor termination
         Receive<Terminated>(terminated =>
         {
-            // Find and remove the terminated actor
             uint connectIdToRemove = _activeContexts
                 .Where(kvp => kvp.Value.Equals(terminated.ActorRef))
                 .Select(kvp => kvp.Key)
@@ -179,7 +184,7 @@ public class AuthenticationStateManager : ReceiveActor
         int cleanedCount = 0;
         foreach (uint connectId in toRemove)
         {
-            if (_activeContexts.TryRemove(connectId, out IActorRef actor))
+            if (_activeContexts.TryRemove(connectId, out IActorRef? actor))
             {
                 _lastActivity.TryRemove(connectId, out _);
                 Context.Unwatch(actor);
@@ -195,7 +200,7 @@ public class AuthenticationStateManager : ReceiveActor
     {
         DateTime now = DateTime.UtcNow;
         List<uint> toEvict = _lastActivity
-            .OrderBy(kvp => kvp.Value) // Oldest first
+            .OrderBy(kvp => kvp.Value) 
             .Take(count)
             .Select(kvp => kvp.Key)
             .ToList();
@@ -203,7 +208,7 @@ public class AuthenticationStateManager : ReceiveActor
         int evictedCount = 0;
         foreach (uint connectId in toEvict)
         {
-            if (_activeContexts.TryRemove(connectId, out IActorRef actor))
+            if (_activeContexts.TryRemove(connectId, out IActorRef? actor))
             {
                 _lastActivity.TryRemove(connectId, out _);
                 Context.Unwatch(actor);
@@ -218,9 +223,47 @@ public class AuthenticationStateManager : ReceiveActor
         return evictedCount;
     }
 
-    private long EstimateMemoryUsageMB()
+    private long EstimateMemoryUsageMb()
     {
         return _activeContexts.Count / 1024;
+    }
+
+    private int CheckForExpiredContexts()
+    {
+        int expiredCount = 0;
+        List<uint> expiredConnections = new();
+
+        foreach (var kvp in _activeContexts.ToList())
+        {
+            try
+            {
+                ContextInfo contextInfo = kvp.Value.Ask<ContextInfo>(new GetContextInfo(), TimeSpan.FromSeconds(2)).Result;
+                
+                if (contextInfo is ContextInfo.Expired or ContextInfo.NotEstablished)
+                {
+                    expiredConnections.Add(kvp.Key);
+                    expiredCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "Failed to check context status for connectId {ConnectId}, marking for removal", kvp.Key);
+                expiredConnections.Add(kvp.Key);
+                expiredCount++;
+            }
+        }
+
+        foreach (uint connectId in expiredConnections)
+        {
+            if (_activeContexts.TryRemove(connectId, out IActorRef? actor))
+            {
+                _lastActivity.TryRemove(connectId, out _);
+                Context.Unwatch(actor);
+                Context.Stop(actor);
+            }
+        }
+
+        return expiredCount;
     }
 
     private static string MaskMobileNumber(string mobileNumber)

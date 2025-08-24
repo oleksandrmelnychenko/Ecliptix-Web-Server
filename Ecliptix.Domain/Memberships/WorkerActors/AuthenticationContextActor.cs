@@ -6,12 +6,11 @@ namespace Ecliptix.Domain.Memberships.WorkerActors;
 
 public record AuthenticationContext
 {
-    public byte[] ContextToken { get; init; } = Array.Empty<byte>();
+    public byte[] ContextToken { get; init; } = [];
     public Guid MembershipId { get; init; }
     public Guid MobileNumberId { get; init; }
     public DateTime EstablishedAt { get; init; }
     public DateTime ExpiresAt { get; init; }
-    public bool IsEstablished => ContextToken.Length > 0;
 }
 
 public class AuthenticationContextActor : ReceiveActor
@@ -20,9 +19,9 @@ public class AuthenticationContextActor : ReceiveActor
     private readonly IActorRef _parent;
     
     private readonly Queue<DateTime> _attemptTimestamps = new();
-    private AuthenticationContext? _establishedContext;
     private bool _isRateLimited;
     private DateTime? _rateLimitedUntil;
+    private AuthenticationContext? _activeContext;
     
     private const int MaxAttemptsPerWindow = 5;
     private static readonly TimeSpan WindowSize = TimeSpan.FromMinutes(10);
@@ -48,7 +47,6 @@ public class AuthenticationContextActor : ReceiveActor
     {
         base.PreStart();
         
-        // Set auto-cleanup timer to prevent memory leaks
         _autoCleanupTimer = Context.System.Scheduler.ScheduleTellOnceCancelable(
             AutoCleanupTimeout,
             Self,
@@ -62,6 +60,12 @@ public class AuthenticationContextActor : ReceiveActor
     {
         _autoCleanupTimer?.Cancel();
         
+        if (_activeContext != null)
+        {
+            CryptographicOperations.ZeroMemory(_activeContext.ContextToken);
+            _activeContext = null;
+        }
+        
         Log.Debug("AuthenticationContextActor stopped for connectId {ConnectId}", _connectId);
         
         base.PostStop();
@@ -73,10 +77,9 @@ public class AuthenticationContextActor : ReceiveActor
         {
             ResetAutoCleanupTimer();
             
-            var result = CheckRateLimit();
+            AuthResult result = CheckRateLimit();
             Sender.Tell(result);
             
-            // Log attempt for monitoring
             if (result is AuthResult.RateLimited rateLimited)
             {
                 Log.Warning("Authentication rate limited for connectId {ConnectId}, mobile {MaskedMobileNumber} until {LockedUntil}", 
@@ -93,7 +96,6 @@ public class AuthenticationContextActor : ReceiveActor
         {
             ResetAutoCleanupTimer();
             
-            // Generate secure context token if not provided
             byte[] contextToken = msg.ContextToken;
             if (contextToken.Length == 0)
             {
@@ -102,7 +104,7 @@ public class AuthenticationContextActor : ReceiveActor
             
             DateTime expiresAt = DateTime.UtcNow.AddHours(24);
             
-            _establishedContext = new AuthenticationContext
+            _activeContext = new AuthenticationContext
             {
                 ContextToken = contextToken,
                 MembershipId = msg.MembershipId,
@@ -111,7 +113,6 @@ public class AuthenticationContextActor : ReceiveActor
                 ExpiresAt = expiresAt
             };
             
-            // Reset rate limiting state on successful authentication
             _attemptTimestamps.Clear();
             _isRateLimited = false;
             _rateLimitedUntil = null;
@@ -123,11 +124,54 @@ public class AuthenticationContextActor : ReceiveActor
         });
 
 
+        Receive<ValidateContext>(msg =>
+        {
+            ResetAutoCleanupTimer();
+            
+            AuthResult result = ValidateActiveContext(msg.ContextToken);
+            Sender.Tell(result);
+            
+            if (result is AuthResult.ValidContext validContext)
+            {
+                Log.Debug("Context validated for connectId {ConnectId}, membershipId {MembershipId}", 
+                    _connectId, validContext.MembershipId);
+            }
+            else if (result is AuthResult.InvalidContext invalidContext)
+            {
+                Log.Warning("Invalid context for connectId {ConnectId}: {Reason}", 
+                    _connectId, invalidContext.Reason);
+            }
+        });
+
+        Receive<GetContextInfo>(_ =>
+        {
+            ResetAutoCleanupTimer();
+            
+            if (_activeContext == null)
+            {
+                Sender.Tell(new ContextInfo.NotEstablished());
+            }
+            else if (_activeContext.ExpiresAt <= DateTime.UtcNow)
+            {
+                _activeContext = null;
+                Sender.Tell(new ContextInfo.Expired());
+            }
+            else
+            {
+                Sender.Tell(new ContextInfo.Active(_activeContext.MembershipId, _activeContext.MobileNumberId, _activeContext.ExpiresAt));
+            }
+        });
+
         Receive<AutoCleanup>(_ =>
         {
             Log.Debug("Auto-cleanup triggered for idle AuthenticationContextActor - connectId {ConnectId}", _connectId);
             
-            // Notify parent to remove us and stop
+            if (_activeContext != null)
+            {
+                CryptographicOperations.ZeroMemory(_activeContext.ContextToken);
+                _activeContext = null;
+            }
+            
             _parent.Tell(new RemoveAuthContext(_connectId));
             Context.Stop(Self);
         });
@@ -194,6 +238,28 @@ public class AuthenticationContextActor : ReceiveActor
         return result;
     }
 
+    private AuthResult ValidateActiveContext(byte[] providedToken)
+    {
+        if (_activeContext == null)
+        {
+            return new AuthResult.InvalidContext("No active authentication context");
+        }
+        
+        if (_activeContext.ExpiresAt <= DateTime.UtcNow)
+        {
+            CryptographicOperations.ZeroMemory(_activeContext.ContextToken);
+            _activeContext = null;
+            return new AuthResult.InvalidContext("Authentication context has expired");
+        }
+        
+        if (!CryptographicOperations.FixedTimeEquals(_activeContext.ContextToken, providedToken))
+        {
+            return new AuthResult.InvalidContext("Invalid authentication context token");
+        }
+        
+        return new AuthResult.ValidContext(_activeContext.MembershipId, _activeContext.MobileNumberId);
+    }
+
     private static string MaskMobileNumber(string mobileNumber)
     {
         if (string.IsNullOrEmpty(mobileNumber) || mobileNumber.Length < 4)
@@ -216,5 +282,4 @@ public class AuthenticationContextActor : ReceiveActor
     }
 }
 
-// Internal message for AuthenticationContextActor
 internal record AutoCleanup;

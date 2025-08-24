@@ -196,9 +196,6 @@ public class VerificationFlowManagerActor : ReceiveActor
     private static string GetActorName(uint connectId) =>
         $"flow-{connectId}";
 
-    /// <summary>
-    /// AOT-compatible Props builder - parameters captured but no closures
-    /// </summary>
     public static Props Build(IActorRef persistor, IActorRef membershipActor, ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider)
     {

@@ -79,8 +79,6 @@ public class MembershipActor : ReceiveActor
     {
         ReceiveAsync<SignInComplete>(HandleSignInComplete);
         Receive<CleanupExpiredPendingSignIns>(_ => CleanupExpiredPendingSignIns());
-
-
         ReceiveAsync<GenerateMembershipOprfRegistrationRequestEvent>(HandleGenerateMembershipOprfRegistrationRecord);
         ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembership);
         ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembership);
@@ -323,12 +321,12 @@ public class MembershipActor : ReceiveActor
 
             AuthContextTokenResponse contextData = contextResult.Unwrap();
 
-            AuthContextEstablished establishResult = await authContextActor.Ask<AuthContextEstablished>(
+            _ = await authContextActor.Ask<AuthContextEstablished>(
                 new EstablishContext(contextData.MembershipId, contextData.MobileNumberId, contextData.ContextToken),
                 TimeSpan.FromSeconds(10));
 
-            Result<Persistors.AuthContextQueryResult, VerificationFlowFailure> persistResult = await _authContextPersistor.Ask<Result<Persistors.AuthContextQueryResult, VerificationFlowFailure>>(
-                new Persistors.CreateAuthContextActorEvent(
+            Result<AuthContextQueryResult, VerificationFlowFailure> persistResult = await _authContextPersistor.Ask<Result<Persistors.AuthContextQueryResult, VerificationFlowFailure>>(
+                new CreateAuthContextActorEvent(
                     contextData.ContextToken,
                     contextData.MembershipId,
                     contextData.MobileNumberId,

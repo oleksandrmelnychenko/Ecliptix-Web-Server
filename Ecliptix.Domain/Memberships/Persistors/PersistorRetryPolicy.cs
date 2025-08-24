@@ -5,6 +5,7 @@ using Serilog;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
+//TODO: not used yet - integrate into persistors
 public static class PersistorRetryPolicy
 {
     private static readonly TimeSpan[] RetryDelays = 

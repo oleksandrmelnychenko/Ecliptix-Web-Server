@@ -23,25 +23,4 @@ public readonly record struct Option<T>
     {
         return HasValue ? onSome(Value!) : onNone();
     }
-
-    public void Match(Action<T> onSome, Action onNone)
-    {
-        if (HasValue) onSome(Value!);
-        else onNone();
-    }
-
-    public T ValueOr(T fallback)
-    {
-        return HasValue ? Value! : fallback;
-    }
-
-    public Option<TResult> Map<TResult>(Func<T, TResult> selector)
-    {
-        return HasValue ? Option<TResult>.Some(selector(Value!)) : Option<TResult>.None;
-    }
-
-    public static Option<T> From(T? value)
-    {
-        return value is not null ? Some(value) : None;
-    }
 }

@@ -21,6 +21,7 @@ public enum PersistorFailureType
     Generic
 }
 
+//TODO: expand with more failure types as needed
 public sealed record PersistorFailure(
     PersistorFailureType FailureType,
     string Message,

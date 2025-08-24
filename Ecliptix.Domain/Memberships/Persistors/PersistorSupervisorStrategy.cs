@@ -143,7 +143,6 @@ public static class PersistorSupervisorStrategy
     {
         DateTime now = DateTime.UtcNow;
         
-        // Clean up old restart records
         CleanupOldRestartRecords(now);
 
         if (!RestartCounts.TryGetValue(actorType, out int count) || 
@@ -152,13 +151,11 @@ public static class PersistorSupervisorStrategy
             return false;
         }
 
-        // If we're still within the cooldown period and have too many restarts
         if (now - lastRestart < RestartCooldown && count >= MaxRestartsPerCooldown)
         {
             return true;
         }
 
-        // Reset count if cooldown period has passed
         if (now - lastRestart >= RestartCooldown)
         {
             RestartCounts[actorType] = 0;
@@ -178,15 +175,8 @@ public static class PersistorSupervisorStrategy
 
     private static void CleanupOldRestartRecords(DateTime now)
     {
-        List<Type> keysToRemove = new();
-        
-        foreach (KeyValuePair<Type, DateTime> kvp in LastRestartTimes.ToList())
-        {
-            if (now - kvp.Value > RestartCooldown)
-            {
-                keysToRemove.Add(kvp.Key);
-            }
-        }
+        List<Type> keysToRemove = [];
+        keysToRemove.AddRange(from kvp in LastRestartTimes.ToList() where now - kvp.Value > RestartCooldown select kvp.Key);
 
         foreach (Type key in keysToRemove)
         {
@@ -195,6 +185,7 @@ public static class PersistorSupervisorStrategy
         }
     }
 
+    //TODO: Expose method to reset throttling for a specific actor type (e.g., after manual intervention)
     public static void ResetThrottling(Type actorType)
     {
         RestartCounts.Remove(actorType);

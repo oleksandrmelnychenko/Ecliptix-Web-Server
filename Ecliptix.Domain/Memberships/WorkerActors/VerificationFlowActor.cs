@@ -61,7 +61,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         IActorRef persistor, IActorRef membershipActor,  ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider, string cultureName)
     {
-        // AOT-compatible lambda - parameters captured but no closures
         return Props.Create(() => new VerificationFlowActor(connectId, phoneNumberIdentifier, appDeviceIdentifier,
             purpose, writer, persistor, membershipActor, smsProvider, localizationProvider, cultureName));
     }
@@ -299,7 +298,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             _localizationProvider.Localize(VerificationFlowMessageKeys.AuthenticationCodeIs, cultureName);
         StringBuilder messageBuilder = new(localizedString + ": " + plainOtp);
 
-        // Retry SMS sending with exponential backoff (max 3 attempts)
         const int maxSmsRetries = 3;
         int smsAttempt = 0;
         SmsDeliveryResult? smsResult = null;
@@ -318,13 +316,10 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             
             Log.Warning("SMS sending failed on attempt {Attempt}/{MaxAttempts} for ConnectId {ConnectId}, Status: {Status}, Error: {ErrorMessage}",
                 smsAttempt, maxSmsRetries, _connectId, smsResult.Status, smsResult.ErrorMessage);
-            
-            // Don't wait after the last attempt
-            if (smsAttempt < maxSmsRetries)
-            {
-                int delayMs = (int)Math.Pow(2, smsAttempt - 1) * 1000; // 1s, 2s, 4s
-                await Task.Delay(delayMs);
-            }
+
+            if (smsAttempt >= maxSmsRetries) continue;
+            int delayMs = (int)Math.Pow(2, smsAttempt - 1) * 1000;
+            await Task.Delay(delayMs);
         }
 
         if (smsResult?.IsSuccess != true)
@@ -413,7 +408,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             { Result = result, Message = message });
     }
 
-    private Result<VerifyCodeResponse, VerificationFlowFailure>
+    private static Result<VerifyCodeResponse, VerificationFlowFailure>
         CreateSuccessResponse(MembershipQueryRecord membership)
     {
         return Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
@@ -450,33 +445,24 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         _persistor.Tell(new ExpireAssociatedOtpActorEvent(_verificationFlow.Value!.UniqueIdentifier));
     }
     
-    /// <summary>
-    /// Safely writes to channel with timeout to prevent actor blocking
-    /// </summary>
-    private async Task<bool> SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure> update)
+    private async Task SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure> update)
     {
         try
         {
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using CancellationTokenSource timeoutCts = new(TimeSpan.FromSeconds(5));
             await _writer.WriteAsync(update, timeoutCts.Token);
-            return true;
         }
         catch (InvalidOperationException)
         {
-            // Channel is closed - this is expected during shutdown
             Log.Debug("Channel is closed for ConnectId {ConnectId}, cannot write update", _connectId);
-            return false;
         }
         catch (OperationCanceledException)
         {
-            // Timeout occurred - consumer is too slow
             Log.Warning("Channel write timeout for ConnectId {ConnectId}, consumer may be slow", _connectId);
-            return false;
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Unexpected error writing to channel for ConnectId {ConnectId}", _connectId);
-            return false;
         }
     }
     private void PrepareForTermination()
@@ -492,10 +478,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     {
         try
         {
-            // Ensure cleanup happens even on unexpected termination
             PrepareForTermination();
             
-            // Complete the channel writer to signal end of stream
             _writer?.TryComplete();
             
             Log.Information("VerificationFlowActor for ConnectId {ConnectId} stopped and resources cleaned up", _connectId);
