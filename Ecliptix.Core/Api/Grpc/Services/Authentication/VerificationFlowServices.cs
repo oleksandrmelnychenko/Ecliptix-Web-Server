@@ -53,7 +53,7 @@ public class VerificationFlowServices(
                         .Ask<Result<Unit, VerificationFlowFailure>>(
                             new InitiateVerificationFlowActorEvent(
                                 connectId,
-                                Helpers.FromByteStringToGuid(initiateRequest.PhoneNumberIdentifier),
+                                Helpers.FromByteStringToGuid(initiateRequest.MobileNumberIdentifier),
                                 Helpers.FromByteStringToGuid(initiateRequest.AppDeviceIdentifier),
                                 initiateRequest.Purpose,
                                 initiateRequest.Type,
@@ -82,7 +82,7 @@ public class VerificationFlowServices(
             async (message, connectId, ct) =>
             {
                 Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
-                    phoneNumberValidator.ValidatePhoneNumber(message.PhoneNumber, _cultureName);
+                    phoneNumberValidator.ValidatePhoneNumber(message.MobileNumber, _cultureName);
 
                 if (validationResult.IsErr)
                 {
@@ -104,12 +104,12 @@ public class VerificationFlowServices(
                     ValidatePhoneNumberResponse response = ensurePhoneNumberResult.Match(
                         guid => new ValidatePhoneNumberResponse
                         {
-                            PhoneNumberIdentifier = Helpers.GuidToByteString(guid),
+                            MobileNumberIdentifier = Helpers.GuidToByteString(guid),
                             Result = VerificationResult.Succeeded
                         },
                         failure => new ValidatePhoneNumberResponse
                         {
-                            PhoneNumberIdentifier = ByteString.Empty,
+                            MobileNumberIdentifier = ByteString.Empty,
                             Result = VerificationResult.InvalidPhone,
                             Message = failure.Message
                         });
@@ -134,7 +134,7 @@ public class VerificationFlowServices(
             async (message, connectId, ct) =>
             {
                 Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
-                    phoneNumberValidator.ValidatePhoneNumber(message.PhoneNumber, _cultureName);
+                    phoneNumberValidator.ValidatePhoneNumber(message.MobileNumber, _cultureName);
                 if (validationResult.IsErr)
                 {
                     return Result<ValidatePhoneNumberResponse, FailureBase>.Err(validationResult.UnwrapErr());
@@ -154,12 +154,12 @@ public class VerificationFlowServices(
                     ValidatePhoneNumberResponse response = verifyPhoneResult.Match(
                         guid => new ValidatePhoneNumberResponse
                         {
-                            PhoneNumberIdentifier = Helpers.GuidToByteString(guid),
+                            MobileNumberIdentifier = Helpers.GuidToByteString(guid),
                             Result = VerificationResult.Succeeded
                         },
                         failure => new ValidatePhoneNumberResponse
                         {
-                            PhoneNumberIdentifier = ByteString.Empty,
+                            MobileNumberIdentifier = ByteString.Empty,
                             Result = VerificationResult.InvalidPhone,
                             Message = failure.Message
                         }

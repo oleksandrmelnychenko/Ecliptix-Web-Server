@@ -3,6 +3,7 @@ using Akka.IO;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.OPAQUE;
+using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Membership;
@@ -24,51 +25,60 @@ public record CompleteRegistrationRecordActorEvent(Guid MembershipIdentifier, by
 public record OprfInitRecoverySecureKeyEvent(Guid MembershipIdentifier, byte[] OprfRequest);
 public record OprfCompleteRecoverySecureKeyEvent(Guid MembershipIdentifier, byte[] PeerRecoveryRecord);
 
-public record SignInComplete(OpaqueSignInFinalizeRequest Request);
+public record SignInComplete(uint ConnectId, OpaqueSignInFinalizeRequest Request);
 
 public class MembershipActor : ReceiveActor
 {
     private readonly ILocalizationProvider _localizationProvider;
     private readonly IActorRef _persistor;
+    private readonly IActorRef _authContextPersistor;
     private readonly IOpaqueProtocolService _opaqueProtocolService;
+    private readonly IActorRef _authenticationStateManager;
+    
+    private readonly Dictionary<uint, (Guid MembershipId, Guid MobileNumberId, string MobileNumber, DateTime CreatedAt)> _pendingSignIns = new();
+    private static readonly TimeSpan PendingSignInTimeout = TimeSpan.FromMinutes(10);
+    private ICancelable? _cleanupTimer;
 
-    public MembershipActor(IActorRef persistor, IOpaqueProtocolService opaqueProtocolService,
-        ILocalizationProvider localizationProvider)
+    public MembershipActor(IActorRef persistor, IActorRef authContextPersistor, IOpaqueProtocolService opaqueProtocolService,
+        ILocalizationProvider localizationProvider, IActorRef authenticationStateManager)
     {
         _persistor = persistor;
+        _authContextPersistor = authContextPersistor;
         _opaqueProtocolService = opaqueProtocolService;
         _localizationProvider = localizationProvider;
+        _authenticationStateManager = authenticationStateManager;
 
         Become(Ready);
     }
 
-    /// <summary>
-    /// AOT-compatible Props builder - parameters captured but no closures
-    /// </summary>
-    public static Props Build(IActorRef persistor, IOpaqueProtocolService opaqueProtocolService,
-        ILocalizationProvider localizationProvider)
+    public static Props Build(IActorRef persistor, IActorRef authContextPersistor, IOpaqueProtocolService opaqueProtocolService,
+        ILocalizationProvider localizationProvider, IActorRef authenticationStateManager)
     {
-        return Props.Create(() => new MembershipActor(persistor, opaqueProtocolService, localizationProvider));
+        return Props.Create(() => new MembershipActor(persistor, authContextPersistor, opaqueProtocolService, localizationProvider, authenticationStateManager));
+    }
+
+    protected override void PreStart()
+    {
+        base.PreStart();
+        _cleanupTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
+            TimeSpan.FromMinutes(5),
+            TimeSpan.FromMinutes(5),
+            Self,
+            new CleanupExpiredPendingSignIns(),
+            ActorRefs.NoSender);
+    }
+
+    protected override void PostStop()
+    {
+        _cleanupTimer?.Cancel();
+        _pendingSignIns.Clear();
+        base.PostStop();
     }
 
     private void Ready()
     {
-        Receive<SignInComplete>(updateEvent =>
-        {
-            Result<OpaqueSignInFinalizeResponse, OpaqueFailure> result =
-                _opaqueProtocolService.FinalizeSignIn(updateEvent.Request);
-            if (result.IsErr)
-            {
-                Sender.Tell(
-                    Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.InvalidOpaque(result.UnwrapErr().Message)));
-            }
-            else
-            {
-                Sender.Tell(
-                    Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Ok(result.Unwrap()));
-            }
-        });
+        ReceiveAsync<SignInComplete>(HandleSignInComplete);
+        Receive<CleanupExpiredPendingSignIns>(_ => CleanupExpiredPendingSignIns());
 
 
         ReceiveAsync<GenerateMembershipOprfRegistrationRequestEvent>(HandleGenerateMembershipOprfRegistrationRecord);
@@ -197,6 +207,53 @@ public class MembershipActor : ReceiveActor
 
     private async Task HandleSignInMembership(SignInMembershipActorEvent @event)
     {
+        IActorRef authContextActor;
+        try
+        {
+            authContextActor = await _authenticationStateManager.Ask<IActorRef>(
+                new GetOrCreateAuthContext(@event.ConnectId, @event.MobileNumber),
+                TimeSpan.FromSeconds(10));
+        }
+        catch (Exception ex)
+        {
+            Sender.Tell(Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Failed to get authentication context actor: {ex.Message}")));
+            return;
+        }
+
+        AuthResult rateLimitResult;
+        try
+        {
+            rateLimitResult = await authContextActor.Ask<AuthResult>(
+                new AttemptAuthentication(@event.MobileNumber),
+                TimeSpan.FromSeconds(5));
+        }
+        catch (Exception ex)
+        {
+            Sender.Tell(Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Rate limit check failed: {ex.Message}")));
+            return;
+        }
+
+        if (rateLimitResult is AuthResult.RateLimited rateLimited)
+        {
+            string messageTemplate = _localizationProvider.Localize(
+                VerificationFlowMessageKeys.TooManySigninAttempts,
+                @event.CultureName
+            );
+            
+            int minutesUntilRetry = (int)Math.Ceiling((rateLimited.LockedUntil - DateTime.UtcNow).TotalMinutes);
+            string message = string.Format(messageTemplate, minutesUntilRetry);
+            
+            Sender.Tell(Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
+            {
+                Result = OpaqueSignInInitResponse.Types.SignInResult.LoginAttemptExceeded,
+                Message = message,
+                MinutesUntilRetry = minutesUntilRetry
+            }));
+            return;
+        }
+
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
 
@@ -206,7 +263,7 @@ public class MembershipActor : ReceiveActor
                 Result<OpaqueSignInInitResponse, OpaqueFailure> initiateSignInResult =
                     _opaqueProtocolService.InitiateSignIn(
                         @event.OpaqueSignInInitRequest,
-                        new MembershipOpaqueQueryRecord(@event.PhoneNumber, record.SecureKey));
+                        new MembershipOpaqueQueryRecord(@event.MobileNumber, record.SecureKey));
 
                 if (initiateSignInResult.IsErr)
                 {
@@ -214,20 +271,89 @@ public class MembershipActor : ReceiveActor
                         .InvalidOpaque());
                 }
 
-                /*SignInMembershipResponse successResponse = new()
-                {
-                    Membership = new Membership
-                    {
-                        UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
-                        Status = record.ActivityStatus
-                    },
-                    Result = SignInMembershipResponse.Types.SignInResult.Succeeded
-                };*/
+                _pendingSignIns[@event.ConnectId] = (record.UniqueIdentifier, Guid.NewGuid(), @event.MobileNumber, DateTime.UtcNow);
+
                 return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(initiateSignInResult.Unwrap());
             },
             failure => TranslateSignInFailure(failure, @event.CultureName));
 
         Sender.Tell(finalResult);
+    }
+
+    private async Task HandleSignInComplete(SignInComplete @event)
+    {
+        if (!_pendingSignIns.TryGetValue(@event.ConnectId, out var membershipInfo))
+        {
+            Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.InvalidOpaque("No matching sign-in initiation found for this connection")));
+            return;
+        }
+
+        Result<OpaqueSignInFinalizeResponse, OpaqueFailure> opaqueResult =
+            _opaqueProtocolService.FinalizeSignIn(@event.Request);
+
+        if (opaqueResult.IsErr)
+        {
+            _pendingSignIns.Remove(@event.ConnectId);
+            Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.InvalidOpaque(opaqueResult.UnwrapErr().Message)));
+            return;
+        }
+
+        OpaqueSignInFinalizeResponse finalizeResponse = opaqueResult.Unwrap();
+        
+        try
+        {
+            IActorRef authContextActor = await _authenticationStateManager.Ask<IActorRef>(
+                new GetOrCreateAuthContext(@event.ConnectId, membershipInfo.MobileNumber),
+                TimeSpan.FromSeconds(5));
+
+            Result<AuthContextTokenResponse, OpaqueFailure> contextResult = _opaqueProtocolService.GenerateAuthenticationContext(
+                membershipInfo.MembershipId,
+                membershipInfo.MobileNumberId
+            );
+
+            if (contextResult.IsErr)
+            {
+                _pendingSignIns.Remove(@event.ConnectId);
+                Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.InvalidOpaque($"Failed to generate authentication context: {contextResult.UnwrapErr().Message}")));
+                return;
+            }
+
+            AuthContextTokenResponse contextData = contextResult.Unwrap();
+
+            AuthContextEstablished establishResult = await authContextActor.Ask<AuthContextEstablished>(
+                new EstablishContext(contextData.MembershipId, contextData.MobileNumberId, contextData.ContextToken),
+                TimeSpan.FromSeconds(10));
+
+            Result<Persistors.AuthContextQueryResult, VerificationFlowFailure> persistResult = await _authContextPersistor.Ask<Result<Persistors.AuthContextQueryResult, VerificationFlowFailure>>(
+                new Persistors.CreateAuthContextActorEvent(
+                    contextData.ContextToken,
+                    contextData.MembershipId,
+                    contextData.MobileNumberId,
+                    contextData.ExpiresAt
+                ),
+                TimeSpan.FromSeconds(15));
+
+            if (persistResult.IsErr)
+            {
+                Log.Warning("Failed to persist authentication context to database: {Error}", persistResult.UnwrapErr().Message);
+            }
+
+            _pendingSignIns.Remove(@event.ConnectId);
+            Log.Information("Authentication context established for connectId {ConnectId}, membershipId {MembershipId}", 
+                @event.ConnectId, membershipInfo.MembershipId);
+
+            Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Ok(finalizeResponse));
+        }
+        catch (Exception ex)
+        {
+            _pendingSignIns.Remove(@event.ConnectId);
+            Log.Error(ex, "Error during sign-in completion for connectId {ConnectId}", @event.ConnectId);
+            Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Authentication context creation failed: {ex.Message}")));
+        }
     }
 
     private Result<OpaqueSignInInitResponse, VerificationFlowFailure> TranslateSignInFailure(
@@ -274,4 +400,25 @@ public class MembershipActor : ReceiveActor
                     .Err(failure);
         }
     }
+
+    private void CleanupExpiredPendingSignIns()
+    {
+        DateTime cutoffTime = DateTime.UtcNow - PendingSignInTimeout;
+        List<uint> expiredConnections = _pendingSignIns
+            .Where(kvp => kvp.Value.CreatedAt < cutoffTime)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (uint connectId in expiredConnections)
+        {
+            _pendingSignIns.Remove(connectId);
+        }
+
+        if (expiredConnections.Count > 0)
+        {
+            Log.Information("Cleaned up {ExpiredCount} expired pending sign-ins", expiredConnections.Count);
+        }
+    }
 }
+
+internal record CleanupExpiredPendingSignIns;

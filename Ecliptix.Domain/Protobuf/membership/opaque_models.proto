@@ -40,7 +40,7 @@ message OpaqueRegistrationCompleteResponse {
 
 // OPAQUE Sign In Messages
 message OpaqueSignInInitRequest {
-  string phone_number = 1;
+  string mobile_number = 1;
   bytes peer_oprf = 2;
 }
 
@@ -62,7 +62,7 @@ message OpaqueSignInInitResponse {
 }
 
 message OpaqueSignInFinalizeRequest {
-  string phone_number = 1;
+  string mobile_number = 1;
   bytes client_ephemeral_public_key = 2;
   bytes client_mac = 3;
   bytes server_state_token = 4;

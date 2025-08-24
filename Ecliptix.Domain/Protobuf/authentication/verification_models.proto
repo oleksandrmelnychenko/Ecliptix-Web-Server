@@ -23,7 +23,7 @@ message InitiateVerificationRequest {
     RESEND_OTP = 1;
   }
 
-  bytes phone_number_identifier = 1;
+  bytes mobile_number_identifier = 1;
   bytes app_device_identifier = 2;
   VerificationPurpose purpose = 3;
   Type type = 4;
@@ -66,12 +66,12 @@ message VerifyCodeResponse {
 }
 
 message ValidatePhoneNumberRequest {
-  string phone_number = 1;
+  string mobile_number = 1;
   bytes app_device_identifier = 2;
 }
 
 message ValidatePhoneNumberResponse {
-  bytes phone_number_identifier = 1;
+  bytes mobile_number_identifier = 1;
   VerificationResult result = 2;
   optional string message = 3;
 }

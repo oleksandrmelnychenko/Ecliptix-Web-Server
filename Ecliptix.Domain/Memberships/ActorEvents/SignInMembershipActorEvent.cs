@@ -2,4 +2,4 @@ using Ecliptix.Protobuf.Membership;
 
 namespace Ecliptix.Domain.Memberships.ActorEvents;
 
-public record SignInMembershipActorEvent(string PhoneNumber, OpaqueSignInInitRequest OpaqueSignInInitRequest, string CultureName);
+public record SignInMembershipActorEvent(uint ConnectId, string MobileNumber, OpaqueSignInInitRequest OpaqueSignInInitRequest, string CultureName);

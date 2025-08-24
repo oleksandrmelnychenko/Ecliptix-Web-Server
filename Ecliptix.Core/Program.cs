@@ -355,8 +355,16 @@ static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, 
         MembershipPersistorActor.Build(dbDataSource),
         "MembershipPersistorActor");
 
+    IActorRef authContextPersistorActor = system.ActorOf(
+        AuthContextPersistorActor.Build(dbDataSource),
+        "AuthContextPersistorActor");
+
+    IActorRef authenticationStateManager = system.ActorOf(
+        AuthenticationStateManager.Build(),
+        "AuthenticationStateManager");
+
     IActorRef membershipActor = system.ActorOf(
-        MembershipActor.Build(membershipPersistorActor, opaqueProtocolService, localizationProvider),
+        MembershipActor.Build(membershipPersistorActor, authContextPersistorActor, opaqueProtocolService, localizationProvider, authenticationStateManager),
         "MembershipActor");
 
     IActorRef verificationFlowManagerActor = system.ActorOf(

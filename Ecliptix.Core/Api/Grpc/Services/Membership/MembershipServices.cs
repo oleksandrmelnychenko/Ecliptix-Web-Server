@@ -38,7 +38,7 @@ public class MembershipServices(
             async (message, connectId, ct) =>
             {
                 Result<PhoneNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
-                    phoneNumberValidator.ValidatePhoneNumber(message.PhoneNumber, _cultureName);
+                    phoneNumberValidator.ValidatePhoneNumber(message.MobileNumber, _cultureName);
 
                 if (phoneNumberValidationResult.IsErr)
                 {
@@ -65,7 +65,7 @@ public class MembershipServices(
                 }
 
                 SignInMembershipActorEvent signInEvent = new(
-                    phoneNumberResult.ParsedPhoneNumberE164!, message, _cultureName);
+                    connectId, phoneNumberResult.ParsedPhoneNumberE164!, message, _cultureName);
 
                 Result<OpaqueSignInInitResponse, VerificationFlowFailure> initSignInResult =
                     await _membershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent, ct);
@@ -87,7 +87,7 @@ public class MembershipServices(
                 {
                     Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure> finalizeSignInResult =
                         await _membershipActor.Ask<Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>>(
-                            new SignInComplete(message), ct);
+                            new SignInComplete(connectId, message), ct);
 
                     return finalizeSignInResult.Match(
                         ok: Result<OpaqueSignInFinalizeResponse, FailureBase>.Ok,

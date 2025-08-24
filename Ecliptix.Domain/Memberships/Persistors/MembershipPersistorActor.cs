@@ -54,7 +54,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         IDbConnection connection, SignInMembershipActorEvent cmd)
     {
         DynamicParameters parameters = new DynamicParameters();
-        parameters.Add("@PhoneNumber", cmd.PhoneNumber);
+        parameters.Add("@PhoneNumber", cmd.MobileNumber);
 
         LoginMembershipResult? result = await connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
@@ -64,7 +64,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
         if (result is null)
         {
-            Log.Error("LoginMembership stored procedure returned null for PhoneNumber {PhoneNumber}", cmd.PhoneNumber);
+            Log.Error("LoginMembership stored procedure returned null for MobileNumber {MaskedMobileNumber}", MaskMobileNumber(cmd.MobileNumber));
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess("Login membership failed - stored procedure returned null result"));
         }
@@ -89,10 +89,10 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
                 ),
 
-            var error when IsKnownLoginError(error) =>
+            string error when IsKnownLoginError(error) =>
                 Result<MembershipQueryRecord, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(error)),
 
-            var outcome =>
+            string outcome =>
                 Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.PersistorAccess(outcome))
         };
@@ -276,6 +276,14 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         Log.Error(ex, "Generic exception in {ActorType}: {ExceptionType} - {Message}", 
             GetType().Name, ex.GetType().Name, ex.Message);
         return VerificationFlowFailure.Generic($"Unexpected error in membership persistor: {ex.Message}", ex);
+    }
+
+    private static string MaskMobileNumber(string mobileNumber)
+    {
+        if (string.IsNullOrEmpty(mobileNumber) || mobileNumber.Length < 4)
+            return "***";
+        
+        return $"{mobileNumber[..3]}****{mobileNumber[^2..]}";
     }
 
     protected override SupervisorStrategy SupervisorStrategy()

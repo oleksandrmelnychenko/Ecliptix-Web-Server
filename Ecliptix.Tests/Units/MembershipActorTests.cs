@@ -18,19 +18,23 @@ public sealed class MembershipActorTests : TestKit
 {
     private Mock<IOpaqueProtocolService> _opaqueMock;
     private TestProbe _persistorProbe;
+    private TestProbe _authContextPersistorProbe;
+    private TestProbe _authStateManagerProbe;
     private IActorRef _membershipActor;
     
     [TestInitialize]
     public void Setup()
     {
         _persistorProbe = CreateTestProbe();
+        _authContextPersistorProbe = CreateTestProbe();
+        _authStateManagerProbe = CreateTestProbe();
         _opaqueMock = new Mock<IOpaqueProtocolService>();
 
         var localizationMock = new Mock<ILocalizationProvider>();
         localizationMock.Setup(x => x.Localize("invalid_credentials", It.IsAny<string>())).Returns("invalid");
         localizationMock.Setup(x => x.Localize("signin_too_many_attempts", It.IsAny<string>())).Returns("rate-limit");
 
-        _membershipActor = Sys.ActorOf(MembershipActor.Build(_persistorProbe.Ref, _opaqueMock.Object, localizationMock.Object));
+        _membershipActor = Sys.ActorOf(MembershipActor.Build(_persistorProbe.Ref, _authContextPersistorProbe.Ref, _opaqueMock.Object, localizationMock.Object, _authStateManagerProbe.Ref));
     }
 
 
@@ -46,7 +50,8 @@ public sealed class MembershipActorTests : TestKit
          // Arrange
          SignInMembershipActorEvent @event = new
         (
-            PhoneNumber: "+380500000000",
+            ConnectId: 12345u,
+            MobileNumber: "+380500000000",
             OpaqueSignInInitRequest: new OpaqueSignInInitRequest(),
             CultureName: "uk-UA"
         );
@@ -76,7 +81,8 @@ public sealed class MembershipActorTests : TestKit
 
             _membershipActor.Tell(@event, TestActor);
             SignInMembershipActorEvent? receivedEvent = _persistorProbe.ExpectMsg<SignInMembershipActorEvent>(TimeSpan.FromSeconds(5));
-            Assert.AreEqual(@event.PhoneNumber, receivedEvent.PhoneNumber);
+            Assert.AreEqual(@event.ConnectId, receivedEvent.ConnectId);
+            Assert.AreEqual(@event.MobileNumber, receivedEvent.MobileNumber);
             _persistorProbe.Sender.Tell(Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(membershipRecord));
         }
         else
@@ -87,7 +93,8 @@ public sealed class MembershipActorTests : TestKit
 
             _membershipActor.Tell(@event, TestActor);
             SignInMembershipActorEvent? receivedEvent = _persistorProbe.ExpectMsg<SignInMembershipActorEvent>(TimeSpan.FromSeconds(5));
-            Assert.AreEqual(@event.PhoneNumber, receivedEvent.PhoneNumber);
+            Assert.AreEqual(@event.ConnectId, receivedEvent.ConnectId);
+            Assert.AreEqual(@event.MobileNumber, receivedEvent.MobileNumber);
             _persistorProbe.Sender.Tell(Result<MembershipQueryRecord, VerificationFlowFailure>.Err(failure));
         }
 
