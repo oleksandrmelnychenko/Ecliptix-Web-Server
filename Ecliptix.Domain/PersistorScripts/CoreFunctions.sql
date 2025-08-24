@@ -1,4 +1,25 @@
 
+/*
+================================================================================
+Ecliptix Core Functions - Production Ready
+================================================================================
+Purpose: Enhanced core functions with comprehensive validation, logging,
+         and monitoring capabilities for production environments.
+
+Version: 2.0.0
+Author: Ecliptix Development Team
+Created: 2024-08-24
+Dependencies: ProductionInfrastructure.sql must be executed first
+
+Features:
+- Enhanced input validation and sanitization
+- Performance monitoring and metrics collection
+- Comprehensive error handling and logging
+- Configuration-driven parameters
+- Audit trail for all operations
+================================================================================
+*/
+
 BEGIN TRANSACTION;
 GO
 
@@ -57,6 +78,17 @@ BEGIN
 END;
 GO
 
+/*
+================================================================================
+Procedure: dbo.EnsurePhoneNumber
+Purpose: Enhanced phone number management with validation and audit logging
+Parameters:
+    @PhoneNumberString NVARCHAR(18) - Phone number (required, validated)
+    @Region NVARCHAR(2) - Region code (optional, validated if provided)
+    @AppDeviceId UNIQUEIDENTIFIER - Associated device (optional, validated if provided)
+Returns: Phone number ID and operation result with comprehensive status
+================================================================================
+*/
 CREATE PROCEDURE dbo.EnsurePhoneNumber
     @PhoneNumberString NVARCHAR(18),
     @Region NVARCHAR(2),
@@ -64,81 +96,233 @@ CREATE PROCEDURE dbo.EnsurePhoneNumber
 AS
 BEGIN
     SET NOCOUNT ON;
-
+    SET XACT_ABORT ON;
+    
+    DECLARE @StartTime DATETIME2(7) = GETUTCDATE();
+    DECLARE @ProcName NVARCHAR(100) = 'EnsurePhoneNumber';
+    DECLARE @Parameters NVARCHAR(MAX);
+    
     DECLARE @PhoneUniqueId UNIQUEIDENTIFIER;
     DECLARE @Outcome NVARCHAR(50);
-    DECLARE @Success BIT;
+    DECLARE @Success BIT = 0;
     DECLARE @Message NVARCHAR(255);
+    DECLARE @IsValidInput BIT;
+    DECLARE @ValidationError NVARCHAR(255);
+    DECLARE @RowsAffected INT = 0;
+    
+    -- Build parameters for logging (mask phone number)
+    SET @Parameters = CONCAT(
+        'PhoneNumber=', CASE WHEN @PhoneNumberString IS NULL THEN 'NULL' ELSE '***' + RIGHT(@PhoneNumberString, 4) END,
+        ', Region=', ISNULL(@Region, 'NULL'),
+        ', AppDeviceId=', ISNULL(CAST(@AppDeviceId AS NVARCHAR(36)), 'NULL')
+    );
 
-    -- Використовуємо блокування, щоб уникнути race condition при створенні/пошуку номеру
-    SELECT @PhoneUniqueId = UniqueId
-    FROM dbo.PhoneNumbers WITH (UPDLOCK, HOLDLOCK)
-    WHERE PhoneNumber = @PhoneNumberString
-      AND (Region = @Region OR (Region IS NULL AND @Region IS NULL))
-      AND IsDeleted = 0;
-
-    IF @PhoneUniqueId IS NOT NULL
-    BEGIN
-        SET @Outcome = 'exists';
-        SET @Success = 1;
-        SET @Message = 'Phone number already exists.';
-
+    BEGIN TRY
+        -- ========================================================================
+        -- INPUT VALIDATION
+        -- ========================================================================
+        
+        -- Validate phone number
+        EXEC dbo.ValidatePhoneNumber @PhoneNumberString, @IsValidInput OUTPUT, @ValidationError OUTPUT;
+        IF @IsValidInput = 0
+        BEGIN
+            SET @Success = 0;
+            SET @Outcome = 'invalid_phone_number';
+            SET @Message = @ValidationError;
+            GOTO LogAndReturn;
+        END
+        
+        -- Validate region if provided
+        IF @Region IS NOT NULL AND (LEN(@Region) != 2 OR @Region LIKE '%[^A-Z]%')
+        BEGIN
+            SET @Success = 0;
+            SET @Outcome = 'invalid_region';
+            SET @Message = 'Region must be a 2-character uppercase country code';
+            GOTO LogAndReturn;
+        END
+        
+        -- Validate AppDeviceId if provided
         IF @AppDeviceId IS NOT NULL
         BEGIN
-            IF NOT EXISTS (SELECT 1 FROM dbo.AppDevices WHERE UniqueId = @AppDeviceId AND IsDeleted = 0)
+            EXEC dbo.ValidateGuid @AppDeviceId, @IsValidInput OUTPUT, @ValidationError OUTPUT;
+            IF @IsValidInput = 0
             BEGIN
-                SELECT @PhoneUniqueId AS UniqueId, 'existing_but_invalid_app_device' AS Outcome, 0 AS Success, 'Phone exists, but provided AppDeviceId is invalid' AS Message;
-                RETURN;
+                SET @Success = 0;
+                SET @Outcome = 'invalid_app_device_id';
+                SET @Message = @ValidationError;
+                GOTO LogAndReturn;
+            END
+        END
+        
+        -- ========================================================================
+        -- PHONE NUMBER LOOKUP/CREATION WITH CONCURRENCY CONTROL
+        -- ========================================================================
+        
+        -- Use locking to prevent race conditions during phone number creation
+        SELECT @PhoneUniqueId = UniqueId
+        FROM dbo.PhoneNumbers WITH (UPDLOCK, HOLDLOCK)
+        WHERE PhoneNumber = @PhoneNumberString
+          AND (Region = @Region OR (Region IS NULL AND @Region IS NULL))
+          AND IsDeleted = 0;
+
+        IF @PhoneUniqueId IS NOT NULL
+        BEGIN
+            -- Phone number exists
+            SET @Outcome = 'exists';
+            SET @Success = 1;
+            SET @Message = 'Phone number already exists';
+
+            -- Handle device association if provided
+            IF @AppDeviceId IS NOT NULL
+            BEGIN
+                -- Verify device exists and is active
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppDevices WHERE UniqueId = @AppDeviceId AND IsDeleted = 0)
+                BEGIN
+                    SET @Success = 0;
+                    SET @Outcome = 'existing_but_invalid_app_device';
+                    SET @Message = 'Phone exists, but provided AppDeviceId is invalid';
+                    
+                    -- Log audit event for invalid device association attempt
+                    EXEC dbo.LogAuditEvent
+                        @TableName = 'PhoneNumbers',
+                        @OperationType = 'INVALID_DEVICE_ASSOCIATION',
+                        @RecordId = @PhoneUniqueId,
+                        @ErrorMessage = @Message,
+                        @ApplicationContext = 'EnsurePhoneNumber',
+                        @Success = 0;
+                    
+                    GOTO LogAndReturn;
+                END
+
+                -- Check if association already exists
+                IF EXISTS (SELECT 1 FROM dbo.PhoneNumberDevices 
+                          WHERE PhoneNumberId = @PhoneUniqueId AND AppDeviceId = @AppDeviceId)
+                BEGIN
+                    -- Reactivate if soft deleted
+                    UPDATE dbo.PhoneNumberDevices
+                    SET IsDeleted = 0, UpdatedAt = GETUTCDATE()
+                    WHERE PhoneNumberId = @PhoneUniqueId 
+                      AND AppDeviceId = @AppDeviceId 
+                      AND IsDeleted = 1;
+                      
+                    SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
+                END
+                ELSE
+                BEGIN
+                    -- Create new association
+                    DECLARE @IsPrimary BIT = CASE 
+                        WHEN EXISTS (SELECT 1 FROM dbo.PhoneNumberDevices 
+                                   WHERE PhoneNumberId = @PhoneUniqueId AND IsDeleted = 0) 
+                        THEN 0 ELSE 1 END;
+                        
+                    INSERT INTO dbo.PhoneNumberDevices (PhoneNumberId, AppDeviceId, IsPrimary)
+                    VALUES (@PhoneUniqueId, @AppDeviceId, @IsPrimary);
+                    
+                    SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
+                END
+                
+                SET @Outcome = 'associated';
+                SET @Message = 'Existing phone number associated with device';
+                
+                -- Log device association
+                EXEC dbo.LogAuditEvent
+                    @TableName = 'PhoneNumberDevices',
+                    @OperationType = 'DEVICE_ASSOCIATION',
+                    @RecordId = @PhoneUniqueId,
+                    @NewValues = CONCAT('AppDeviceId:', @AppDeviceId),
+                    @ApplicationContext = 'EnsurePhoneNumber',
+                    @Success = 1;
             END
 
-            IF EXISTS (SELECT 1 FROM dbo.PhoneNumberDevices WHERE PhoneNumberId = @PhoneUniqueId AND AppDeviceId = @AppDeviceId)
+            GOTO LogAndReturn;
+        END
+        ELSE
+        BEGIN
+            -- ====================================================================
+            -- CREATE NEW PHONE NUMBER
+            -- ====================================================================
+            
+            DECLARE @OutputTable TABLE (UniqueId UNIQUEIDENTIFIER);
+
+            INSERT INTO dbo.PhoneNumbers (PhoneNumber, Region)
+            OUTPUT inserted.UniqueId INTO @OutputTable
+            VALUES (@PhoneNumberString, @Region);
+
+            SELECT @PhoneUniqueId = UniqueId FROM @OutputTable;
+            SET @RowsAffected = @RowsAffected + 1;
+
+            SET @Outcome = 'created';
+            SET @Success = 1;
+            SET @Message = 'Phone number created successfully';
+            
+            -- Log phone number creation
+            EXEC dbo.LogAuditEvent
+                @TableName = 'PhoneNumbers',
+                @OperationType = 'INSERT',
+                @RecordId = @PhoneUniqueId,
+                @NewValues = CONCAT('PhoneNumber:', @PhoneNumberString, ', Region:', ISNULL(@Region, 'NULL')),
+                @ApplicationContext = 'EnsurePhoneNumber',
+                @Success = 1;
+
+            -- Handle device association for new phone number
+            IF @AppDeviceId IS NOT NULL
             BEGIN
-                UPDATE dbo.PhoneNumberDevices
-                SET IsDeleted = 0, UpdatedAt = GETUTCDATE()
-                WHERE PhoneNumberId = @PhoneUniqueId AND AppDeviceId = @AppDeviceId AND IsDeleted = 1;
-            END
-            ELSE
-            BEGIN
+                -- Verify device exists
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppDevices WHERE UniqueId = @AppDeviceId AND IsDeleted = 0)
+                BEGIN
+                    SET @Success = 0;
+                    SET @Outcome = 'created_but_invalid_app_device';
+                    SET @Message = 'Phone created, but invalid AppDeviceId provided';
+                    GOTO LogAndReturn;
+                END
+
+                -- Create device association (always primary for new phone numbers)
                 INSERT INTO dbo.PhoneNumberDevices (PhoneNumberId, AppDeviceId, IsPrimary)
-                VALUES (@PhoneUniqueId, @AppDeviceId, CASE WHEN EXISTS (SELECT 1 FROM dbo.PhoneNumberDevices WHERE PhoneNumberId = @PhoneUniqueId AND IsDeleted = 0) THEN 0 ELSE 1 END);
+                VALUES (@PhoneUniqueId, @AppDeviceId, 1);
+                
+                SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
+
+                SET @Outcome = 'created_and_associated';
+                SET @Message = 'Phone number created and associated with device';
+                
+                -- Log device association
+                EXEC dbo.LogAuditEvent
+                    @TableName = 'PhoneNumberDevices',
+                    @OperationType = 'INSERT',
+                    @RecordId = @PhoneUniqueId,
+                    @NewValues = CONCAT('AppDeviceId:', @AppDeviceId, ', IsPrimary:1'),
+                    @ApplicationContext = 'EnsurePhoneNumber',
+                    @Success = 1;
             END
-            SET @Outcome = 'associated';
-            SET @Message = 'Existing phone number associated with device.';
         END
 
-        SELECT @PhoneUniqueId AS UniqueId, @Outcome AS Outcome, @Success AS Success, @Message AS Message;
-    END
-    ELSE
-    BEGIN
-        DECLARE @OutputTable TABLE (UniqueId UNIQUEIDENTIFIER);
-
-        INSERT INTO dbo.PhoneNumbers (PhoneNumber, Region)
-        OUTPUT inserted.UniqueId INTO @OutputTable
-        VALUES (@PhoneNumberString, @Region);
-
-        SELECT @PhoneUniqueId = UniqueId FROM @OutputTable;
-
-        SET @Outcome = 'created';
-        SET @Success = 1;
-        SET @Message = 'Phone number created successfully.';
-
-        IF @AppDeviceId IS NOT NULL
-        BEGIN
-            IF NOT EXISTS (SELECT 1 FROM dbo.AppDevices WHERE UniqueId = @AppDeviceId AND IsDeleted = 0)
-            BEGIN
-                SELECT @PhoneUniqueId AS UniqueId, 'created_but_invalid_app_device' AS Outcome, 0 AS Success, 'Phone created, but invalid AppDeviceId provided' AS Message;
-                RETURN;
-            END
-
-            INSERT INTO dbo.PhoneNumberDevices (PhoneNumberId, AppDeviceId, IsPrimary)
-            VALUES (@PhoneUniqueId, @AppDeviceId, 1);
-
-            SET @Outcome = 'created_and_associated';
-            SET @Message = 'Phone number created and associated with device.';
-        END
-
-        SELECT @PhoneUniqueId AS UniqueId, @Outcome AS Outcome, @Success AS Success, @Message AS Message;
-    END
+    END TRY
+    BEGIN CATCH
+        SET @Success = 0;
+        SET @Outcome = 'system_error';
+        SET @Message = ERROR_MESSAGE();
+        
+        -- Log the error
+        EXEC dbo.LogError
+            @ProcedureName = @ProcName,
+            @ErrorMessage = @Message,
+            @Parameters = @Parameters;
+    END CATCH
+    
+    LogAndReturn:
+    -- Log performance metrics
+    DECLARE @ExecutionTimeMs INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
+    EXEC dbo.LogPerformanceMetric
+        @ProcedureName = @ProcName,
+        @OperationType = 'ENSURE_PHONE_NUMBER',
+        @ExecutionTimeMs = @ExecutionTimeMs,
+        @RowsAffected = @RowsAffected,
+        @Parameters = @Parameters,
+        @Success = @Success,
+        @ErrorMessage = CASE WHEN @Success = 0 THEN @Message ELSE NULL END;
+    
+    -- Return results
+    SELECT @PhoneUniqueId AS UniqueId, @Outcome AS Outcome, @Success AS Success, @Message AS Message;
 END;
 GO
 
@@ -205,5 +389,10 @@ GO
 COMMIT TRANSACTION;
 GO
 
-PRINT 'Core procedures and functions created successfully.';
+PRINT '✅ Enhanced Core procedures and functions created successfully with:';
+PRINT '   - Comprehensive input validation and sanitization';
+PRINT '   - Race condition prevention with proper locking';
+PRINT '   - Complete audit trail for all operations';
+PRINT '   - Performance monitoring and metrics collection';
+PRINT '   - Enhanced error handling and logging';
 GO

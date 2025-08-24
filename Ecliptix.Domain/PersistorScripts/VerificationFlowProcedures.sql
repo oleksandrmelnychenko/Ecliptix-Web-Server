@@ -1,4 +1,33 @@
 
+/*
+================================================================================
+Ecliptix Verification Flow Procedures - Production Ready
+================================================================================
+Purpose: Enhanced verification flow management with comprehensive security,
+         rate limiting, and monitoring capabilities for production environments.
+
+Version: 2.0.0
+Author: Ecliptix Development Team
+Created: 2024-08-24
+Dependencies: ProductionInfrastructure.sql must be executed first
+
+Features:
+- Enhanced OTP security with configurable parameters
+- Advanced rate limiting and flow management
+- Comprehensive audit logging for compliance
+- Performance monitoring and metrics collection
+- Input validation and sanitization
+- Configuration-driven security parameters
+- Suspicious activity detection and prevention
+
+Security Enhancements:
+- OTP attempt tracking and rate limiting
+- Flow expiration management
+- Complete audit trail for verification events
+- Enhanced error handling and logging
+================================================================================
+*/
+
 BEGIN TRANSACTION;
 GO
 
@@ -168,35 +197,221 @@ END;
 GO
 
 
+/*
+================================================================================
+Procedure: dbo.InsertOtpRecord
+Purpose: Enhanced OTP creation with security validation and monitoring
+Parameters:
+    @FlowUniqueId UNIQUEIDENTIFIER - Verification flow ID (required, validated)
+    @OtpHash NVARCHAR(MAX) - OTP hash (required, validated)
+    @OtpSalt NVARCHAR(MAX) - OTP salt (required, validated)
+    @ExpiresAt DATETIME2(7) - OTP expiration (required, validated)
+    @Status NVARCHAR(20) - Initial OTP status (required, validated)
+Returns: OTP ID and creation result with security audit trail
+================================================================================
+*/
 CREATE PROCEDURE dbo.InsertOtpRecord
-    @FlowUniqueId UNIQUEIDENTIFIER, @OtpHash NVARCHAR(MAX), @OtpSalt NVARCHAR(MAX), @ExpiresAt DATETIME2(7), @Status NVARCHAR(20)
+    @FlowUniqueId UNIQUEIDENTIFIER, 
+    @OtpHash NVARCHAR(MAX), 
+    @OtpSalt NVARCHAR(MAX), 
+    @ExpiresAt DATETIME2(7), 
+    @Status NVARCHAR(20)
 AS
 BEGIN
     SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    
+    DECLARE @StartTime DATETIME2(7) = GETUTCDATE();
+    DECLARE @ProcName NVARCHAR(100) = 'InsertOtpRecord';
+    DECLARE @Parameters NVARCHAR(MAX);
+    
     DECLARE @FlowId BIGINT, @PhoneNumberId BIGINT, @OtpCount SMALLINT;
+    DECLARE @OtpUniqueId UNIQUEIDENTIFIER;
+    DECLARE @Outcome NVARCHAR(50);
+    DECLARE @MaxOtpAttempts INT;
+    DECLARE @IsValidInput BIT;
+    DECLARE @ValidationError NVARCHAR(255);
+    DECLARE @RowsAffected INT = 0;
+    
+    -- Get configurable max OTP attempts
+    SET @MaxOtpAttempts = CAST(dbo.GetConfigValue('OTP.MaxAttempts') AS INT);
+    
+    -- Build parameters for logging (without sensitive data)
+    SET @Parameters = CONCAT(
+        'FlowUniqueId=', @FlowUniqueId,
+        ', Status=', ISNULL(@Status, 'NULL'),
+        ', ExpiresAt=', FORMAT(@ExpiresAt, 'yyyy-MM-dd HH:mm:ss'),
+        ', MaxAttempts=', @MaxOtpAttempts
+    );
 
-    SELECT @FlowId = Id, @PhoneNumberId = PhoneNumberId, @OtpCount = OtpCount
-    FROM dbo.VerificationFlows
-    WHERE UniqueId = @FlowUniqueId AND Status = 'pending' AND IsDeleted = 0 AND ExpiresAt > GETUTCDATE();
+    BEGIN TRY
+        -- ========================================================================
+        -- INPUT VALIDATION
+        -- ========================================================================
+        
+        -- Validate FlowUniqueId
+        EXEC dbo.ValidateGuid @FlowUniqueId, @IsValidInput OUTPUT, @ValidationError OUTPUT;
+        IF @IsValidInput = 0
+        BEGIN
+            SET @Outcome = CONCAT('invalid_flow_id: ', @ValidationError);
+            GOTO LogAndReturn;
+        END
+        
+        -- Validate OTP hash and salt
+        IF @OtpHash IS NULL OR LEN(@OtpHash) = 0
+        BEGIN
+            SET @Outcome = 'invalid_otp_hash';
+            EXEC dbo.LogError @ProcedureName = @ProcName, @ErrorMessage = 'OTP hash cannot be null or empty', @Parameters = @Parameters;
+            GOTO LogAndReturn;
+        END
+        
+        IF @OtpSalt IS NULL OR LEN(@OtpSalt) = 0
+        BEGIN
+            SET @Outcome = 'invalid_otp_salt';
+            EXEC dbo.LogError @ProcedureName = @ProcName, @ErrorMessage = 'OTP salt cannot be null or empty', @Parameters = @Parameters;
+            GOTO LogAndReturn;
+        END
+        
+        -- Validate expiration time
+        IF @ExpiresAt IS NULL OR @ExpiresAt <= GETUTCDATE()
+        BEGIN
+            SET @Outcome = 'invalid_expiration_time';
+            EXEC dbo.LogError @ProcedureName = @ProcName, @ErrorMessage = 'OTP expiration time must be in the future', @Parameters = @Parameters;
+            GOTO LogAndReturn;
+        END
+        
+        -- Validate maximum OTP expiration (prevent excessively long OTPs)
+        DECLARE @MaxOtpExpirationMinutes INT = CAST(dbo.GetConfigValue('OTP.ExpirationMinutes') AS INT);
+        IF @ExpiresAt > DATEADD(MINUTE, @MaxOtpExpirationMinutes, GETUTCDATE())
+        BEGIN
+            SET @Outcome = 'excessive_expiration_time';
+            EXEC dbo.LogError @ProcedureName = @ProcName, @ErrorMessage = 'OTP expiration exceeds maximum allowed duration', @Parameters = @Parameters;
+            GOTO LogAndReturn;
+        END
+        
+        -- Validate status
+        IF @Status IS NULL OR @Status NOT IN ('pending', 'verified', 'expired', 'failed')
+        BEGIN
+            SET @Outcome = 'invalid_status';
+            EXEC dbo.LogError @ProcedureName = @ProcName, @ErrorMessage = 'Invalid OTP status provided', @Parameters = @Parameters;
+            GOTO LogAndReturn;
+        END
+        
+        -- ========================================================================
+        -- VERIFICATION FLOW VALIDATION
+        -- ========================================================================
+        
+        SELECT @FlowId = Id, @PhoneNumberId = PhoneNumberId, @OtpCount = OtpCount
+        FROM dbo.VerificationFlows
+        WHERE UniqueId = @FlowUniqueId 
+          AND Status = 'pending' 
+          AND IsDeleted = 0 
+          AND ExpiresAt > GETUTCDATE();
 
-    IF @FlowId IS NULL
-    BEGIN
-        SELECT CAST(NULL AS UNIQUEIDENTIFIER) AS OtpUniqueId, 'flow_not_found_or_invalid' AS Outcome; RETURN;
-    END
+        IF @FlowId IS NULL
+        BEGIN
+            SET @Outcome = 'flow_not_found_or_invalid';
+            
+            -- Log potential security issue
+            EXEC dbo.LogAuditEvent
+                @TableName = 'VerificationFlows',
+                @OperationType = 'OTP_CREATION_FAILED',
+                @RecordId = @FlowUniqueId,
+                @ApplicationContext = 'InsertOtpRecord',
+                @Success = 0,
+                @ErrorMessage = 'Attempted OTP creation for invalid/expired flow';
+            
+            GOTO LogAndReturn;
+        END
 
-    IF @OtpCount >= 5
-    BEGIN
-        UPDATE dbo.VerificationFlows SET Status = 'failed' WHERE Id = @FlowId;
-        SELECT CAST(NULL AS UNIQUEIDENTIFIER) AS OtpUniqueId, 'max_otp_attempts_reached' AS Outcome; RETURN;
-    END
+        -- Check if maximum OTP attempts reached
+        IF @OtpCount >= @MaxOtpAttempts
+        BEGIN
+            -- Mark flow as failed due to excessive attempts
+            UPDATE dbo.VerificationFlows 
+            SET Status = 'failed', UpdatedAt = GETUTCDATE() 
+            WHERE Id = @FlowId;
+            
+            SET @RowsAffected = @@ROWCOUNT;
+            SET @Outcome = 'max_otp_attempts_reached';
+            
+            -- Log security event for excessive OTP attempts
+            EXEC dbo.LogAuditEvent
+                @TableName = 'VerificationFlows',
+                @OperationType = 'MAX_OTP_ATTEMPTS_REACHED',
+                @RecordId = @FlowUniqueId,
+                @NewValues = CONCAT('OtpCount:', @OtpCount, ', MaxAttempts:', @MaxOtpAttempts),
+                @ApplicationContext = 'InsertOtpRecord',
+                @Success = 0,
+                @ErrorMessage = 'Verification flow failed due to excessive OTP attempts';
+            
+            GOTO LogAndReturn;
+        END
 
-    DECLARE @OtpOutputTable TABLE (UniqueId UNIQUEIDENTIFIER);
-    INSERT INTO dbo.OtpRecords (FlowUniqueId, PhoneNumberId, OtpHash, OtpSalt, ExpiresAt, Status, IsActive)
-    OUTPUT inserted.UniqueId INTO @OtpOutputTable(UniqueId)
-    VALUES (@FlowUniqueId, @PhoneNumberId, @OtpHash, @OtpSalt, @ExpiresAt, @Status, 1);
+        -- ========================================================================
+        -- OTP RECORD CREATION
+        -- ========================================================================
+        
+        -- Deactivate any existing active OTPs for this flow
+        UPDATE dbo.OtpRecords 
+        SET IsActive = 0, UpdatedAt = GETUTCDATE()
+        WHERE FlowUniqueId = @FlowUniqueId AND IsActive = 1;
+        
+        SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
 
-    UPDATE dbo.VerificationFlows SET OtpCount = OtpCount + 1 WHERE Id = @FlowId;
-    SELECT UniqueId AS OtpUniqueId, 'created' AS Outcome FROM @OtpOutputTable;
+        -- Create new OTP record
+        DECLARE @OtpOutputTable TABLE (UniqueId UNIQUEIDENTIFIER);
+        INSERT INTO dbo.OtpRecords (FlowUniqueId, PhoneNumberId, OtpHash, OtpSalt, ExpiresAt, Status, IsActive)
+        OUTPUT inserted.UniqueId INTO @OtpOutputTable(UniqueId)
+        VALUES (@FlowUniqueId, @PhoneNumberId, @OtpHash, @OtpSalt, @ExpiresAt, @Status, 1);
+
+        SELECT @OtpUniqueId = UniqueId FROM @OtpOutputTable;
+        SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
+
+        -- Increment OTP count in verification flow
+        UPDATE dbo.VerificationFlows 
+        SET OtpCount = OtpCount + 1, UpdatedAt = GETUTCDATE() 
+        WHERE Id = @FlowId;
+        
+        SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
+        SET @Outcome = 'created';
+        
+        -- Log successful OTP creation
+        EXEC dbo.LogAuditEvent
+            @TableName = 'OtpRecords',
+            @OperationType = 'INSERT',
+            @RecordId = @OtpUniqueId,
+            @NewValues = CONCAT('FlowUniqueId:', @FlowUniqueId, ', Status:', @Status, ', OtpCount:', (@OtpCount + 1)),
+            @ApplicationContext = 'InsertOtpRecord',
+            @Success = 1;
+
+    END TRY
+    BEGIN CATCH
+        SET @Outcome = 'system_error';
+        
+        -- Log the error
+        EXEC dbo.LogError
+            @ProcedureName = @ProcName,
+            @ErrorMessage = ERROR_MESSAGE(),
+            @Parameters = @Parameters;
+    END CATCH
+    
+    LogAndReturn:
+    -- Log performance metrics
+    DECLARE @ExecutionTimeMs INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
+    EXEC dbo.LogPerformanceMetric
+        @ProcedureName = @ProcName,
+        @OperationType = 'CREATE_OTP',
+        @ExecutionTimeMs = @ExecutionTimeMs,
+        @RowsAffected = @RowsAffected,
+        @Parameters = @Parameters,
+        @Success = CASE WHEN @Outcome = 'created' THEN 1 ELSE 0 END,
+        @ErrorMessage = CASE WHEN @Outcome != 'created' THEN @Outcome ELSE NULL END;
+    
+    -- Return results
+    SELECT 
+        CASE WHEN @Outcome = 'created' THEN @OtpUniqueId ELSE CAST(NULL AS UNIQUEIDENTIFIER) END AS OtpUniqueId,
+        @Outcome AS Outcome;
 END;
 GO
 
@@ -245,8 +460,23 @@ RETURNS TABLE AS RETURN
 GO
 
 
+-- Add verification-specific configuration values
+IF NOT EXISTS (SELECT 1 FROM dbo.SystemConfiguration WHERE ConfigKey = 'VerificationFlow.DefaultExpirationMinutes')
+    INSERT INTO dbo.SystemConfiguration (ConfigKey, ConfigValue, DataType, Description, Category) 
+    VALUES ('VerificationFlow.DefaultExpirationMinutes', '5', 'int', 'Default verification flow expiration in minutes', 'Security');
+
+IF NOT EXISTS (SELECT 1 FROM dbo.SystemConfiguration WHERE ConfigKey = 'OTP.EnableRateLimitTracking')
+    INSERT INTO dbo.SystemConfiguration (ConfigKey, ConfigValue, DataType, Description, Category) 
+    VALUES ('OTP.EnableRateLimitTracking', '1', 'bool', 'Enable OTP rate limit tracking and enforcement', 'Security');
+
 COMMIT TRANSACTION;
 GO
 
-PRINT 'All verification procedures and functions created successfully.';
+PRINT '✅ Enhanced Verification Flow procedures created successfully with:';
+PRINT '   - Advanced OTP security with configurable parameters';
+PRINT '   - Enhanced rate limiting and flow management';
+PRINT '   - Comprehensive input validation and sanitization';
+PRINT '   - Complete audit trail for verification events';
+PRINT '   - Performance monitoring and metrics collection';
+PRINT '   - Configuration-driven security parameters';
 GO

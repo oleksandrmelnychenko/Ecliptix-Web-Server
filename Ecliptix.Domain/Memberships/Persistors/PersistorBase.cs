@@ -32,32 +32,33 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
             throw new ObjectDisposedException(nameof(PersistorBase<TFailure>));
 
         using Activity? activity = StartActivity(operationName, commandText);
-        
-        try
-        {
-            using IDbConnection connection = await CreateConnectionWithTimeout(operationName);
-            activity?.SetTag("db.name", connection.Database);
-            activity?.SetTag("db.connection_state", connection.State.ToString());
 
-            ValidateConnection(connection, operationName);
-            ConfigureConnectionTimeout(connection, operationName);
+        return await PersistorRetryPolicy.ExecuteWithRetryAsync(
+            async () =>
+            {
+                using IDbConnection connection = await CreateConnectionWithTimeout(operationName);
+                activity?.SetTag("db.name", connection.Database);
+                activity?.SetTag("db.connection_state", connection.State.ToString());
 
-            Result<TResult, TFailure> result = await operation(connection);
+                ValidateConnection(connection, operationName);
+                ConfigureConnectionTimeout(connection, operationName);
 
-            HandleOperationResult(activity, result, operationName);
-            return result;
-        }
-        catch (Exception ex)
-        {
-            return HandleException<TResult>(ex, activity, operationName);
-        }
+                Result<TResult, TFailure> result = await operation(connection);
+
+                HandleOperationResult(activity, result, operationName);
+                return result;
+            },
+            operationName,
+            (dbEx, opName) => MapDbException(dbEx),
+            (timeoutEx, opName) => CreateTimeoutFailure(timeoutEx),
+            (ex, opName) => CreateGenericFailure(ex));
     }
 
     protected abstract TFailure MapDbException(DbException ex);
     protected abstract TFailure CreateTimeoutFailure(TimeoutException ex);
     protected abstract TFailure CreateGenericFailure(Exception ex);
 
-    protected virtual Dictionary<string, TimeSpan> GetOperationTimeouts()
+    private static Dictionary<string, TimeSpan> GetOperationTimeouts()
     {
         return new Dictionary<string, TimeSpan>
         {
@@ -80,7 +81,7 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
     {
         if (result.IsOk)
         {
-            Log.Debug("Persistor operation {OperationName} completed successfully for actor {ActorType}", 
+            Log.Debug("Persistor operation {OperationName} completed successfully for actor {ActorType}",
                 operationName, GetType().Name);
             activity?.SetStatus(ActivityStatusCode.Ok);
             activity?.SetTag("operation.success", true);
@@ -101,26 +102,6 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
         }
     }
 
-    private Result<T, TFailure> HandleException<T>(Exception ex, Activity? activity, string operationName)
-    {
-        activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-        activity?.AddException(ex);
-        activity?.SetTag("operation.success", false);
-        activity?.SetTag("exception.type", ex.GetType().Name);
-
-        TFailure failure = ex switch
-        {
-            TimeoutException timeoutEx => CreateTimeoutFailure(timeoutEx),
-            DbException dbEx => MapDbException(dbEx),
-            _ => CreateGenericFailure(ex)
-        };
-
-        Log.Error(ex, "Persistor operation {OperationName} failed for actor {ActorType} with exception {ExceptionType}", 
-            operationName, GetType().Name, ex.GetType().Name);
-
-        return Result<T, TFailure>.Err(failure);
-    }
-
     private Activity? StartActivity(string operationName, string? commandText)
     {
         Activity? activity = _activitySource.StartActivity($"{GetType().Name}.{operationName}", ActivityKind.Client);
@@ -130,7 +111,7 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
         activity.SetTag("db.operation", operationName);
         activity.SetTag("persistor.type", GetType().Name);
         activity.SetTag("operation.start_time", DateTime.UtcNow.ToString("O"));
-        
+
         if (!string.IsNullOrWhiteSpace(commandText))
         {
             activity.SetTag("db.statement", commandText.Length > 1000 ? commandText[..1000] + "..." : commandText);
@@ -142,7 +123,7 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
     private async Task<IDbConnection> CreateConnectionWithTimeout(string operationName)
     {
         using CancellationTokenSource timeoutCts = new(TimeSpan.FromSeconds(30));
-        
+
         try
         {
             return await _connectionFactory.CreateOpenConnectionAsync(timeoutCts.Token);
@@ -157,13 +138,14 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
     {
         if (connection.State != ConnectionState.Open)
         {
-            throw new InvalidOperationException($"Connection not open for operation {operationName}. State: {connection.State}");
+            throw new InvalidOperationException(
+                $"Connection not open for operation {operationName}. State: {connection.State}");
         }
     }
 
     private void ConfigureConnectionTimeout(IDbConnection connection, string operationName)
     {
-        if (connection is not System.Data.Common.DbConnection dbConnection) return;
+        if (connection is not DbConnection dbConnection) return;
 
         TimeSpan timeout = GetTimeoutForOperation(operationName);
         if (dbConnection.ConnectionTimeout != (int)timeout.TotalSeconds)
@@ -174,13 +156,12 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
 
     private TimeSpan GetTimeoutForOperation(string operationName)
     {
-        foreach (KeyValuePair<string, TimeSpan> kvp in _operationTimeouts)
+        foreach (KeyValuePair<string, TimeSpan> kvp in _operationTimeouts.Where(kvp =>
+                     operationName.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase)))
         {
-            if (operationName.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase))
-            {
-                return kvp.Value;
-            }
+            return kvp.Value;
         }
+
         return TimeSpan.FromSeconds(15);
     }
 
@@ -194,10 +175,10 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        
-        _activitySource?.Dispose();
+
+        _activitySource.Dispose();
         _disposed = true;
-        
+
         Log.Debug("Disposed persistor actor {ActorType}", GetType().Name);
     }
 }

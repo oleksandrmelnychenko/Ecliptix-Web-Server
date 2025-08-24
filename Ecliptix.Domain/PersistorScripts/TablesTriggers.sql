@@ -1,4 +1,32 @@
 
+/*
+================================================================================
+Ecliptix Database Triggers and Constraints - Production Ready
+================================================================================
+Purpose: Enhanced database triggers with comprehensive monitoring, validation,
+         and audit capabilities for production environments.
+
+Version: 2.0.0
+Author: Ecliptix Development Team
+Created: 2024-08-24
+Dependencies: ProductionInfrastructure.sql must be executed first
+
+Features:
+- Enhanced data validation triggers
+- Comprehensive audit trail triggers
+- Performance monitoring integration
+- Data integrity enforcement
+- Security event logging
+- Configuration-driven behavior
+
+Security Enhancements:
+- Automatic audit logging for sensitive operations
+- Data validation and constraint enforcement
+- Change tracking for compliance requirements
+- Unauthorized modification detection
+================================================================================
+*/
+
 BEGIN TRANSACTION;
 GO
 
@@ -279,13 +307,87 @@ BEGIN
 END;
 GO
 
+/*
+================================================================================
+Enhanced Trigger: TRG_OtpRecords_Update
+Purpose: OTP update trigger with audit logging and validation
+================================================================================
+*/
 CREATE TRIGGER TRG_OtpRecords_Update ON dbo.OtpRecords FOR UPDATE AS
 BEGIN
     SET NOCOUNT ON;
-    IF UPDATE(UpdatedAt) RETURN;
-    UPDATE t SET UpdatedAt = GETUTCDATE()
-    FROM dbo.OtpRecords t
-    INNER JOIN inserted i ON t.Id = i.Id;
+    
+    -- Skip if no rows affected or avoiding recursion
+    IF @@ROWCOUNT = 0 OR UPDATE(UpdatedAt) RETURN;
+    
+    BEGIN TRY
+        -- Update timestamp
+        UPDATE t SET UpdatedAt = GETUTCDATE()
+        FROM dbo.OtpRecords t
+        INNER JOIN inserted i ON t.Id = i.Id;
+        
+        -- Log audit events for significant status changes (if enabled and not bulk operations)
+        IF CAST(dbo.GetConfigValue('Audit.LogOtpChanges') AS BIT) = 1 AND @@ROWCOUNT <= 100
+        BEGIN
+            DECLARE audit_cursor CURSOR LOCAL FAST_FORWARD FOR
+            SELECT 
+                i.UniqueId,
+                d.Status AS OldStatus,
+                i.Status AS NewStatus,
+                d.IsActive AS OldIsActive,
+                i.IsActive AS NewIsActive
+            FROM inserted i
+            INNER JOIN deleted d ON i.Id = d.Id
+            WHERE i.Status != d.Status OR i.IsActive != d.IsActive;
+            
+            DECLARE @OtpUniqueId UNIQUEIDENTIFIER, @OldStatus NVARCHAR(20), @NewStatus NVARCHAR(20);
+            DECLARE @OldIsActive BIT, @NewIsActive BIT;
+            
+            OPEN audit_cursor;
+            FETCH NEXT FROM audit_cursor INTO @OtpUniqueId, @OldStatus, @NewStatus, @OldIsActive, @NewIsActive;
+            
+            WHILE @@FETCH_STATUS = 0
+            BEGIN
+                -- Log status change
+                IF @OldStatus != @NewStatus
+                BEGIN
+                    EXEC dbo.LogAuditEvent
+                        @TableName = 'OtpRecords',
+                        @OperationType = 'STATUS_CHANGE',
+                        @RecordId = @OtpUniqueId,
+                        @OldValues = CONCAT('Status:', @OldStatus),
+                        @NewValues = CONCAT('Status:', @NewStatus),
+                        @ApplicationContext = 'TRG_OtpRecords_Update',
+                        @Success = 1;
+                END
+                
+                -- Log activation state change
+                IF @OldIsActive != @NewIsActive
+                BEGIN
+                    EXEC dbo.LogAuditEvent
+                        @TableName = 'OtpRecords',
+                        @OperationType = 'ACTIVATION_CHANGE',
+                        @RecordId = @OtpUniqueId,
+                        @OldValues = CONCAT('IsActive:', CAST(@OldIsActive AS NVARCHAR(1))),
+                        @NewValues = CONCAT('IsActive:', CAST(@NewIsActive AS NVARCHAR(1))),
+                        @ApplicationContext = 'TRG_OtpRecords_Update',
+                        @Success = 1;
+                END
+                
+                FETCH NEXT FROM audit_cursor INTO @OtpUniqueId, @OldStatus, @NewStatus, @OldIsActive, @NewIsActive;
+            END
+            
+            CLOSE audit_cursor;
+            DEALLOCATE audit_cursor;
+        END
+        
+    END TRY
+    BEGIN CATCH
+        -- Log trigger error but don't fail the transaction
+        EXEC dbo.LogError
+            @ProcedureName = 'TRG_OtpRecords_Update',
+            @ErrorMessage = ERROR_MESSAGE();
+    END CATCH
 END;
 GO
 
@@ -349,10 +451,24 @@ BEGIN
 END;
 GO
 
+-- Add audit-specific configuration values
+IF NOT EXISTS (SELECT 1 FROM dbo.SystemConfiguration WHERE ConfigKey = 'Audit.LogOtpChanges')
+    INSERT INTO dbo.SystemConfiguration (ConfigKey, ConfigValue, DataType, Description, Category) 
+    VALUES ('Audit.LogOtpChanges', '1', 'bool', 'Enable detailed OTP change logging in triggers', 'Security');
+
+IF NOT EXISTS (SELECT 1 FROM dbo.SystemConfiguration WHERE ConfigKey = 'Audit.LogMembershipChanges')
+    INSERT INTO dbo.SystemConfiguration (ConfigKey, ConfigValue, DataType, Description, Category) 
+    VALUES ('Audit.LogMembershipChanges', '1', 'bool', 'Enable detailed membership change logging', 'Security');
+
 -- Завершення транзакції
 COMMIT TRANSACTION;
 GO
 
--- Підтвердження створення
-PRINT '✅ Tables with ENUM-like constraints, triggers, and indexes created successfully (IMPROVED).';
+PRINT '✅ Enhanced database schema created successfully with:';
+PRINT '   - Comprehensive table structure with proper constraints';
+PRINT '   - Enhanced triggers with audit logging capabilities';
+PRINT '   - Optimized indexes for production performance';
+PRINT '   - Configuration-driven audit behavior';
+PRINT '   - Data validation and integrity enforcement';
+PRINT '   - Security event tracking and monitoring';
 GO

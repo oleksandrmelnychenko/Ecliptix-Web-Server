@@ -184,19 +184,4 @@ public static class PersistorSupervisorStrategy
             LastRestartTimes.Remove(key);
         }
     }
-
-    //TODO: Expose method to reset throttling for a specific actor type (e.g., after manual intervention)
-    public static void ResetThrottling(Type actorType)
-    {
-        RestartCounts.Remove(actorType);
-        LastRestartTimes.Remove(actorType);
-        Log.Information("Reset restart throttling for persistor actor {ActorType}", actorType.Name);
-    }
-
-    public static (int restartCount, DateTime? lastRestart) GetRestartInfo(Type actorType)
-    {
-        int count = RestartCounts.TryGetValue(actorType, out int restartCount) ? restartCount : 0;
-        DateTime? lastRestart = LastRestartTimes.TryGetValue(actorType, out DateTime timestamp) ? timestamp : null;
-        return (count, lastRestart);
-    }
 }
