@@ -5,6 +5,7 @@ using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Google.Protobuf;
 using Grpc.Core;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 
@@ -12,12 +13,36 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
     where T : ActorBase
 {
     private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
+    
+    private static PubKeyExchangeType DetermineExchangeType(ServerCallContext context)
+    {
+        // Determine exchange type based on the service method being called
+        string methodName = context.Method;
+        
+        return methodName switch
+        {
+            // Verification flow methods use VerificationFlowStream
+            var method when method.Contains("InitiateVerification") => PubKeyExchangeType.VerificationFlowStream,
+            var method when method.Contains("VerifyOtp") => PubKeyExchangeType.VerificationFlowStream,
+            
+            // Future: Message delivery methods would use MessageDeliveryStream
+            var method when method.Contains("SendMessage") => PubKeyExchangeType.MessageDeliveryStream,
+            var method when method.Contains("ReceiveMessage") => PubKeyExchangeType.MessageDeliveryStream,
+            
+            // Future: Presence methods would use PresenceStream  
+            var method when method.Contains("UpdatePresence") => PubKeyExchangeType.PresenceStream,
+            var method when method.Contains("PresenceStream") => PubKeyExchangeType.PresenceStream,
+            
+            // Default for all other operations
+            _ => PubKeyExchangeType.DataCenterEphemeralConnect
+        };
+    }
 
     public async Task<Result<CipherPayload, FailureBase>> EncryptPayload(byte[] payload, uint connectId,
         ServerCallContext context)
     {
-        EncryptPayloadActorEvent encryptCommand = new(PubKeyExchangeType.DataCenterEphemeralConnect,
-            payload);
+        PubKeyExchangeType exchangeType = DetermineExchangeType(context);
+        EncryptPayloadActorEvent encryptCommand = new(exchangeType, payload);
 
         ForwardToConnectActorEvent encryptForwarder = new(connectId, encryptCommand);
 
@@ -36,8 +61,8 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
     public async Task<Result<byte[], FailureBase>> DecryptPayload(CipherPayload request, uint connectId,
         ServerCallContext context)
     {
-        DecryptCipherPayloadActorEvent decryptEvent = new(PubKeyExchangeType.DataCenterEphemeralConnect,
-            request);
+        PubKeyExchangeType exchangeType = DetermineExchangeType(context);
+        DecryptCipherPayloadActorEvent decryptEvent = new(exchangeType, request);
 
         ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
 

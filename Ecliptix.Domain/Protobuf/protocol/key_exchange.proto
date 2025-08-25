@@ -11,7 +11,10 @@ enum PubKeyExchangeState {
 }
 
 enum PubKeyExchangeType {
-  DataCenterEphemeralConnect = 0;
+  DataCenterEphemeralConnect = 0;     // Default unary requests
+  VerificationFlowStream = 1;         // OTP countdown stream
+  MessageDeliveryStream = 2;          // Future: incoming messages
+  PresenceStream = 3;                 // Future: presence updates
 }
 
 message PubKeyExchange {

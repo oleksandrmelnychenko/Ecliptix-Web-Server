@@ -731,14 +731,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 dh4 = ScalarMult.Mult(ephemeralSecretBytes, remoteBundle.OneTimePreKeys[0].PublicKey);
             }
             
-            Console.WriteLine($"[SERVER] X3DH AS INITIATOR:");
-            Console.WriteLine($"  DH1 (Eph * RemoteId): {Convert.ToHexString(dh1)}");
-            Console.WriteLine($"  DH2 (Eph * RemoteSpk): {Convert.ToHexString(dh2)}");
-            Console.WriteLine($"  DH3 (Id * RemoteSpk): {Convert.ToHexString(dh3)}");
-            if (useOpk)
-            {
-                Console.WriteLine($"  DH4 (Eph * RemoteOpk): {Convert.ToHexString(dh4!)}");
-            }
 
             if (Log.IsEnabled(LogEventLevel.Debug))
             {
@@ -759,7 +751,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             // X3DH standard: DH(IK_A, SPK_B) || DH(EK_A, IK_B) || DH(EK_A, SPK_B) || DH(EK_A, OPK_B)
             // That's: dh3, dh1, dh2, dh4
             ConcatenateDhResults(dhConcatSpan, dh3, dh1, dh2, dh4);
-            Console.WriteLine($"[SERVER-INITIATOR] DH concat order: DH3({Convert.ToHexString(dh3)[..8]}...), DH1({Convert.ToHexString(dh1)[..8]}...), DH2({Convert.ToHexString(dh2)[..8]}...), DH4({Convert.ToHexString(dh4 ?? Array.Empty<byte>())[..8]}...)");
 
             Span<byte> f32 = stackalloc byte[Constants.X25519KeySize];
             f32.Fill(0xFF);
@@ -770,9 +761,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             dhConcatSpan.CopyTo(ikmSpan.Slice(f32.Length));
             // CRITICAL FIX: Use exact-sized IKM array, not ArrayPool array!
             var actualIkmArray = ikmSpan.ToArray();
-            Console.WriteLine($"[SERVER-INITIATOR] IKM hex: {Convert.ToHexString(actualIkmArray)}");
-            Console.WriteLine($"[SERVER-INITIATOR] IKM length: {actualIkmArray.Length}");
-            Console.WriteLine($"[SERVER-INITIATOR] Pool array length: {ikmBytes.Length} (shows ArrayPool bug if different!)");
 
             hkdfOutput = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
             Span<byte> hkdfOutputSpan = hkdfOutput.AsSpan(0, Constants.X25519KeySize);
@@ -787,7 +775,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                     info: info.ToArray()
                 );
 
-                Console.WriteLine($"[SERVER-INITIATOR] Shared secret: {Convert.ToHexString(hkdfOutputSpan.ToArray())}");
             }
             catch (Exception ex)
             {
@@ -899,11 +886,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             dh2 = ScalarMult.Mult(signedPreKeySecretBytes, remoteEphemeralPublicKeyX.ToArray());
             dh3 = ScalarMult.Mult(signedPreKeySecretBytes, remoteIdentityPublicKeyX.ToArray());
             
-            Console.WriteLine($"[SERVER] X3DH AS RECIPIENT (CORRECTED ORDER):");
-            Console.WriteLine($"  DH1 (Id * RemoteEph): {Convert.ToHexString(dh1)}");
-            Console.WriteLine($"  DH2 (Spk * RemoteEph): {Convert.ToHexString(dh2)}");
-            Console.WriteLine($"  DH3 (Spk * RemoteId): {Convert.ToHexString(dh3)}");
-            Console.WriteLine($"[SERVER] X3DH IKM order (CORRECTED): DH3, DH1, DH2, DH4 = {Convert.ToHexString(dh3)[..16]}..., {Convert.ToHexString(dh1)[..16]}..., {Convert.ToHexString(dh2)[..16]}...");
             if (oneTimePreKeySecretBytes != null)
                 dh4 = ScalarMult.Mult(oneTimePreKeySecretBytes, remoteEphemeralPublicKeyX.ToArray());
 
@@ -928,7 +910,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             // Server dh3=SPK*IK_A, dh1=IK*EK_A, dh2=SPK*EK_A, dh4=OPK*EK_A
             // Correct order: dh3, dh1, dh2, dh4
             ConcatenateDhResults(dhConcatSpan, dh3, dh1, dh2, dh4);
-            Console.WriteLine($"[SERVER-RECIPIENT] DH concat order: DH3({Convert.ToHexString(dh3)[..8]}...), DH1({Convert.ToHexString(dh1)[..8]}...), DH2({Convert.ToHexString(dh2)[..8]}...), DH4({Convert.ToHexString(dh4 ?? Array.Empty<byte>())[..8]}...)");
 
             Span<byte> f32 = stackalloc byte[Constants.X25519KeySize];
             f32.Fill(0xFF);
@@ -939,9 +920,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             dhConcatSpan.CopyTo(ikmSpan.Slice(f32.Length));
             // CRITICAL FIX: Use exact-sized IKM array, not ArrayPool array!
             var actualIkmArray = ikmSpan.ToArray();
-            Console.WriteLine($"[SERVER-RECIPIENT] IKM hex: {Convert.ToHexString(actualIkmArray)}");
-            Console.WriteLine($"[SERVER-RECIPIENT] IKM length: {actualIkmArray.Length}");
-            Console.WriteLine($"[SERVER-RECIPIENT] Pool array length: {ikmBytes.Length} (shows ArrayPool bug if different!)");
 
             hkdfOutput = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
             Span<byte> hkdfOutputSpan = hkdfOutput.AsSpan(0, Constants.X25519KeySize);
@@ -956,7 +934,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                     info: info.ToArray()
                 );
 
-                Console.WriteLine($"[SERVER-RECIPIENT] Shared secret: {Convert.ToHexString(hkdfOutputSpan.ToArray())}");
             }
             catch (Exception ex)
             {
