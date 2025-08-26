@@ -44,7 +44,7 @@ resource "aws_security_group" "ecs_sg" {
   egress {
     from_port  = 0
     to_port    = 0
-    protocol   = "tcp"
+    protocol   = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -75,3 +75,24 @@ resource "aws_security_group" "ecliptix_control_sg" {
   tags = { Name = "ecliptix-control-sg" }
 }
 
+# --- SG for VPC Enpoints ---
+
+resource "aws_security_group" "vpc_endpoints" {
+  name        = "vpc-enpoints-sg"
+  vpc_id      = aws_vpc.ecliptix.id
+  description = "Allow HTTPS for VPC Endpoints"
+
+  ingress {
+    from_port  = 443
+    to_port    = 443
+    protocol   = "tcp"
+    cidr_blocks = ["10.1.0.0/16"]
+  }
+
+  egress {
+    from_port  = 0
+    to_port    = 0
+    protocol   = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}

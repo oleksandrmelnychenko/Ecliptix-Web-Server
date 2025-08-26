@@ -9,7 +9,7 @@ resource "aws_ecs_task_definition" "memberships" {
   container_definitions = jsonencode([
     {
       name      = "memberships"
-      image     = aws_ecr_repository.memberships.repository_url
+      image     = "${aws_ecr_repository.memberships.repository_url}:lts"
       cpu       = 256
       memory    = 512
       essential = true
