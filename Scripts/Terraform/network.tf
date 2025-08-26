@@ -5,20 +5,29 @@ resource "aws_vpc" "ecliptix" {
   tags       = { Name = "ecliptix-vpc" }
 }
 
-# --- Public Subnet ---
+# --- Public Subnets ---
 
-resource "aws_subnet" "ecliptix_public" {
+resource "aws_subnet" "ecliptix_public_1a" {
   vpc_id                  = aws_vpc.ecliptix.id
   cidr_block              = "10.1.4.0/22"
+  availability_zone       = "eu-central-1a"
   map_public_ip_on_launch = true
-  tags                    = { Name = "ecliptix-public-subnet" }
+  tags                    = { Name = "ecliptix-public-subnet-1a" }
+}
+
+resource "aws_subnet" "ecliptix_public_1b" {
+  vpc_id                  = aws_vpc.ecliptix.id
+  cidr_block              = "10.1.8.0/22"
+  availability_zone       = "eu-central-1b"
+  map_public_ip_on_launch = true
+  tags = { Name = "ecliptix-public-subnet-1b" }
 }
 
 # --- Private Subnet ---
 
 resource "aws_subnet" "ecliptix_private" {
   vpc_id     = aws_vpc.ecliptix.id
-  cidr_block = "10.1.8.0/22"
+  cidr_block = "10.1.12.0/22"
   tags       = { Name = "ecliptix-private-subnet" }
 }
 
@@ -40,8 +49,12 @@ resource "aws_route_table" "ecliptix_public_rt" {
   tags = { Name = "ecliptix-public-rt" }
 }
 
-resource "aws_route_table_association" "ecliptix_public_assoc" {
-  subnet_id      = aws_subnet.ecliptix_public.id
+resource "aws_route_table_association" "ecliptix_public_assoc_1a" {
+  subnet_id      = aws_subnet.ecliptix_public_1a.id
   route_table_id = aws_route_table.ecliptix_public_rt.id
 }
 
+resource "aws_route_table_association" "ecliptix_public_assoc_1b" {
+  subnet_id      = aws_subnet.ecliptix_public_1b.id
+  route_table_id = aws_route_table.ecliptix_public_rt.id
+}

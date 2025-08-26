@@ -3,7 +3,7 @@
 resource "aws_security_group" "alb_sg" {
   name        = "ecliptix-alb-sg"
   description = "Allow HTTPS inbound"
-  vpc_id      = "aws_vpc.ecliptix.id"
+  vpc_id      = aws_vpc.ecliptix.id
 
   ingress {
     from_port  = 443
