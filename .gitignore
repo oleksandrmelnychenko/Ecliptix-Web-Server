@@ -9,6 +9,11 @@
 # Application logs
 logs/
 
+#Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+
 # User-specific files
 *.rsuser
 *.suo
