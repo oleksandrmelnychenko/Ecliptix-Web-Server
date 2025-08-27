@@ -6,16 +6,25 @@ resource "aws_ecs_service" "memberships" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets         = [aws_subnet.ecliptix_private.id]
+    subnets         = aws_subnet.ecliptix_private[*].id
     security_groups = [aws_security_group.ecs_sg.id]
     assign_public_ip = false
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.memberships.arn
+    target_group_arn = aws_lb_target_group.memberships_http.arn
+    container_name   = "memberships"
+    container_port   = 8080
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.memberships_grpc.arn
     container_name   = "memberships"
     container_port   = 5051
   }
 
-  depends_on = [aws_lb_listener.https]
+  depends_on = [
+    aws_lb_listener.memberships_https,
+    aws_lb_listener.memberships_grpc
+  ]
 }

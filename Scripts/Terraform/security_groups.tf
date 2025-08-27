@@ -6,16 +6,23 @@ resource "aws_security_group" "alb_sg" {
   vpc_id      = aws_vpc.ecliptix.id
 
   ingress {
-    from_port  = 443
-    to_port    = 443
-    protocol   = "tcp"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] 
+  }
+
+  ingress {
+    from_port   = 5051
+    to_port     = 5051
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
-    from_port  = 0
-    to_port    = 0
-    protocol   = "-1"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -51,7 +58,7 @@ resource "aws_security_group" "ecs_sg" {
   tags = { Name = "ecliptix-ecs-sg" }
 } 
 
-# --- SSH Security Group for Control Instances ---
+# --- SSH SG for Control Instances ---
 
 resource "aws_security_group" "ecliptix_control_sg" {
   name        = "ecliptix-control-sg"
@@ -95,4 +102,28 @@ resource "aws_security_group" "vpc_endpoints" {
     protocol   = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+# --- SG for mssql subnet group ---
+
+resource "aws_security_group" "mssql_sg" {
+  name        = "ecliptix-memberships-mssql-sg"
+  description = "Allow MSSQL traffic from ECS tasks"
+  vpc_id      = aws_vpc.ecliptix.id
+
+  ingress {
+    from_port       = 1433
+    to_port         = 1433
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }  
+
+  tags = { Name = "ecliptix-memberships-mssql-sg" }
 }
