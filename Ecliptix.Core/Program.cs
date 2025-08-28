@@ -33,14 +33,18 @@ using Ecliptix.Core.Domain.Protocol.Monitoring;
 using Ecliptix.Core.Api.Grpc.Services.Authentication;
 using Ecliptix.Core.Api.Grpc.Services.Membership;
 using Ecliptix.Core.Api.Grpc.Services.Device;
-using Ecliptix.Core.Infrastructure;
+using Ecliptix.Core.Infrastructure.DbUp;
 using Microsoft.Extensions.Primitives;
 
 
 const string systemActorName = "EcliptixProtocolSystemActor";
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-new DbMigrator(builder.Configuration.GetConnectionString("EcliptixMemberships")!, "../Ecliptix.Domain/PersistorScripts").Migrate();
+if (args.Length > 0 && args[0].Equals("db", StringComparison.OrdinalIgnoreCase))
+{
+    DbMigrator.Use(args.Skip(1).ToArray());
+    return;
+}
 
 builder.Host.UseSerilog((context, services, loggerConfig) =>
 {

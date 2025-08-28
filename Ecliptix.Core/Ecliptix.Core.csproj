@@ -113,6 +113,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <Folder Include="Infrastructure\DbUp\Migrations\" />
       <Folder Include="logs\" />
     </ItemGroup>
 
