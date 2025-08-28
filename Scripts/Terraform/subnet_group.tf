@@ -1,5 +1,5 @@
-resource "aws_db_subnet_group" "mssql" {
+resource "aws_db_subnet_group" "memberships_mssql" {
   name       = "mssql-subnet-group"
   subnet_ids = aws_subnet.ecliptix_private[*].id
-  tags       = { Name = "mssql-subnet-group" }
+  tags       = { Name = "memberships-mssql-subnet-group" }
 }
