@@ -40,12 +40,6 @@ using Microsoft.Extensions.Primitives;
 const string systemActorName = "EcliptixProtocolSystemActor";
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-if (args.Length > 0 && args[0].Equals("db", StringComparison.OrdinalIgnoreCase))
-{
-    DbMigrator.Use(args.Skip(1).ToArray());
-    return;
-}
-
 builder.Host.UseSerilog((context, services, loggerConfig) =>
 {
     string? appInsightsConnectionString = Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING");
@@ -170,6 +164,9 @@ try
             }
         };
     });
+    
+    DbMigrator.ApplyMaster(builder.Configuration);
+    
     app.UseRateLimiter();
     app.UseMiddleware<SecurityMiddleware>();
     app.UseMiddleware<IpThrottlingMiddleware>();
