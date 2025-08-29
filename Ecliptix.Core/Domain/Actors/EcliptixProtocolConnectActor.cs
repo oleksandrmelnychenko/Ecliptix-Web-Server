@@ -32,12 +32,12 @@ public sealed record RetryRecoveryMessage;
 public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWithTimers
 {
     public ITimerScheduler Timers { get; set; } = null!;
-    
+
     public override string PersistenceId { get; } = $"connect-{connectId}";
     private const int SnapshotInterval = Constants.SnapshotInterval;
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(1);
     private const int MaxRecoveryRetries = 3;
-    
+
     private const string RecoveryRetryTimerKey = "recovery-retry";
 
     private EcliptixSessionState? _state;
@@ -255,7 +255,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
-
     private DateTime GetLastPersistenceTime()
     {
         return DateTime.UtcNow.AddMinutes(-((SnapshotSequenceNr % Constants.SnapshotModulus) * Constants.SnapshotMinuteMultiplier));
@@ -264,7 +263,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
     private static RatchetConfig GetRatchetConfigForExchangeType(PubKeyExchangeType exchangeType)
     {
         Context.GetLogger().Info($"[ACTOR] Selecting ratchet config for exchange type: {exchangeType}");
-        
+
         return exchangeType switch
         {
             PubKeyExchangeType.DataCenterEphemeralConnect => new RatchetConfig
@@ -362,8 +361,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
         EcliptixSystemIdentityKeys identityKeys = EcliptixSystemIdentityKeys.Create(10).Unwrap();
 
-        // Use type-specific config
-        var config = GetRatchetConfigForExchangeType(exchangeType);
+        RatchetConfig config = GetRatchetConfigForExchangeType(exchangeType);
         EcliptixProtocolSystem system = new(identityKeys, config);
 
         Context.GetLogger().Info("[ACTOR] Created protocol with DH interval {0} for type {1}",
@@ -394,7 +392,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         Persist(newState, state =>
         {
             _state = state;
-            _protocolSystems[exchangeType] = system; // Store by type
+            _protocolSystems[exchangeType] = system;
             originalSender.Tell(
                 Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(new DeriveSharedSecretReply(reply)));
             MaybeSaveSnapshot();
@@ -403,10 +401,8 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
     private void HandleEncrypt(EncryptPayloadActorEvent cmd)
     {
-        // Route to the appropriate protocol system based on exchange type
         if (!_protocolSystems.TryGetValue(cmd.PubKeyExchangeType, out EcliptixProtocolSystem? system))
         {
-            // Fallback to default system for backward compatibility
             system = GetDefaultProtocolSystem();
             if (system == null || _state == null)
             {
@@ -426,7 +422,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         }
 
         Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
-            EcliptixProtocol.CreateStateFromSystem(_state, system);
+            EcliptixProtocol.CreateStateFromSystem(_state ?? new EcliptixSessionState(), system);
         (EcliptixSessionState newState, CipherPayload ciphertext) = (newStateResult.Unwrap(), result.Unwrap());
         IActorRef? originalSender = Sender;
 
@@ -440,10 +436,8 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
     private void HandleDecrypt(DecryptCipherPayloadActorEvent actorEvent)
     {
-        // Route to the appropriate protocol system based on exchange type
         if (!_protocolSystems.TryGetValue(actorEvent.PubKeyExchangeType, out EcliptixProtocolSystem? system))
         {
-            // Fallback to default system for backward compatibility
             system = GetDefaultProtocolSystem();
             if (system == null || _state == null)
             {
@@ -475,7 +469,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         }
 
         Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
-            EcliptixProtocol.CreateStateFromSystem(_state, system);
+            EcliptixProtocol.CreateStateFromSystem(_state ?? new EcliptixSessionState(), system);
         (EcliptixSessionState newState, byte[] plaintext) = (newStateResult.Unwrap(), result.Unwrap());
         IActorRef? originalSender = Sender;
 
@@ -494,7 +488,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             Context.GetLogger().Info("[CLEANUP] Disposing protocol system for type {0}", cmd.ExchangeType);
             system?.Dispose();
             _protocolSystems.Remove(cmd.ExchangeType);
-            
+
             Sender.Tell(Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value));
         }
         else
@@ -541,16 +535,16 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         DisposeAllSystems();
         base.PostStop();
     }
-    
+
     private void DisposeAllSystems()
     {
-        foreach (var system in _protocolSystems.Values)
+        foreach (EcliptixProtocolSystem system in _protocolSystems.Values)
         {
             system?.Dispose();
         }
         _protocolSystems.Clear();
     }
-    
+
     private void AttemptSystemRecreation()
     {
         if (_state == null)
@@ -567,10 +561,9 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         if (systemResult.IsOk)
         {
             EcliptixProtocolSystem system = systemResult.Unwrap();
-            // For recovery, assume DataCenterEphemeralConnect (main/default type)
             _protocolSystems[PubKeyExchangeType.DataCenterEphemeralConnect] = system;
             _recoveryRetryCount = 0;
-            
+
             Context.GetLogger()
                 .Info($"[Recovery] Protocol system successfully recreated for connectId {connectId}");
         }
@@ -578,17 +571,16 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         {
             _recoveryRetryCount++;
             EcliptixProtocolFailure failure = systemResult.UnwrapErr();
-            
+
             Context.GetLogger()
                 .Warning($"[Recovery] Failed to recreate protocol system for connectId {connectId} (attempt {_recoveryRetryCount}/{MaxRecoveryRetries}): {failure.Message}");
 
             if (_recoveryRetryCount < MaxRecoveryRetries)
             {
-                // Schedule retry with exponential backoff
-                int delaySeconds = (int)Math.Pow(2, _recoveryRetryCount - 1) * 5; // 5s, 10s, 20s
+                int delaySeconds = (int)Math.Pow(2, _recoveryRetryCount - 1) * 5;
                 Context.GetLogger()
                     .Info($"[Recovery] Scheduling retry in {delaySeconds} seconds for connectId {connectId}");
-                
+
                 Timers.StartSingleTimer(
                     RecoveryRetryTimerKey,
                     new RetryRecoveryMessage(),
@@ -598,9 +590,9 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             {
                 Context.GetLogger()
                     .Error($"[Recovery] Max recovery retries exceeded for connectId {connectId}. Continuing with degraded functionality.");
-                
+
                 DisposeAllSystems();
-                
+
                 SaveSnapshot(_state);
             }
         }
@@ -608,13 +600,11 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
     private EcliptixProtocolSystem? GetDefaultProtocolSystem()
     {
-        // Try to get DataCenterEphemeralConnect first (most common)
         if (_protocolSystems.TryGetValue(PubKeyExchangeType.DataCenterEphemeralConnect, out EcliptixProtocolSystem? defaultSystem))
         {
             return defaultSystem;
         }
-        
-        // If none found, return the first available system
+
         return _protocolSystems.Values.FirstOrDefault();
     }
 

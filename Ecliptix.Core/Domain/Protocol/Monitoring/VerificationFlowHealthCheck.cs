@@ -4,21 +4,17 @@ using Serilog;
 
 namespace Ecliptix.Core.Domain.Protocol.Monitoring;
 
-/// <summary>
-/// Health check for verification flow system monitoring
-/// </summary>
 public class VerificationFlowHealthCheck : IHealthCheck
 {
     private readonly IEcliptixActorRegistry _actorRegistry;
-    
-    // Metrics tracked
+
     private static long _totalVerificationAttempts;
     private static long _successfulVerifications;
     private static long _failedVerifications;
     private static long _timeoutVerifications;
     private static DateTime _lastVerificationAttempt = DateTime.MinValue;
     private static readonly Dictionary<string, FlowHealth> _activeFlows = new();
-    
+
     public VerificationFlowHealthCheck(IEcliptixActorRegistry actorRegistry)
     {
         _actorRegistry = actorRegistry;
@@ -30,36 +26,32 @@ public class VerificationFlowHealthCheck : IHealthCheck
     {
         try
         {
-            // Check if verification flow manager is responding
-            var verificationManagerActor = _actorRegistry.Get(ActorIds.VerificationFlowManagerActor);
+            IActorRef verificationManagerActor = _actorRegistry.Get(ActorIds.VerificationFlowManagerActor);
             if (verificationManagerActor.IsNobody())
             {
                 return Task.FromResult(HealthCheckResult.Unhealthy("VerificationFlowManagerActor is not available"));
             }
 
-            // Calculate success rate
             double successRate = _totalVerificationAttempts > 0 
                 ? (double)_successfulVerifications / _totalVerificationAttempts * 100 
                 : 100;
-            
-            // Calculate timeout rate
+
             double timeoutRate = _totalVerificationAttempts > 0 
                 ? (double)_timeoutVerifications / _totalVerificationAttempts * 100 
                 : 0;
 
-            // Check active flows
             int activeFlowCount;
             int staleFlowCount = 0;
-            
+
             lock (_activeFlows)
             {
                 activeFlowCount = _activeFlows.Count;
-                var staleThreshold = DateTime.UtcNow.AddMinutes(-15);
-                
+                DateTime staleThreshold = DateTime.UtcNow.AddMinutes(-15);
+
                 staleFlowCount = _activeFlows.Values.Count(f => f.StartTime < staleThreshold);
             }
 
-            var data = new Dictionary<string, object>
+            Dictionary<string, object> data = new Dictionary<string, object>
             {
                 ["verification_manager_actor"] = "available",
                 ["total_verification_attempts"] = _totalVerificationAttempts,
@@ -73,14 +65,13 @@ public class VerificationFlowHealthCheck : IHealthCheck
                 ["last_verification_attempt"] = _lastVerificationAttempt == DateTime.MinValue ? "never" : _lastVerificationAttempt.ToString("O")
             };
 
-            // Determine health status
             if (successRate < 80 || timeoutRate > 20 || staleFlowCount > 10)
             {
                 return Task.FromResult(HealthCheckResult.Unhealthy(
                     $"Verification system degraded - Success rate: {successRate:F2}%, Timeout rate: {timeoutRate:F2}%, Stale flows: {staleFlowCount}",
                     data: data));
             }
-            
+
             if (successRate < 90 || timeoutRate > 10 || staleFlowCount > 5)
             {
                 return Task.FromResult(HealthCheckResult.Degraded(
@@ -98,13 +89,12 @@ public class VerificationFlowHealthCheck : IHealthCheck
             return Task.FromResult(HealthCheckResult.Unhealthy("Verification health check exception", ex));
         }
     }
-    
-    // Static methods for tracking metrics
+
     public static void RecordVerificationAttempt(string flowId)
     {
         Interlocked.Increment(ref _totalVerificationAttempts);
         _lastVerificationAttempt = DateTime.UtcNow;
-        
+
         lock (_activeFlows)
         {
             _activeFlows[flowId] = new FlowHealth
@@ -114,37 +104,37 @@ public class VerificationFlowHealthCheck : IHealthCheck
             };
         }
     }
-    
+
     public static void RecordVerificationSuccess(string flowId)
     {
         Interlocked.Increment(ref _successfulVerifications);
-        
+
         lock (_activeFlows)
         {
             _activeFlows.Remove(flowId);
         }
     }
-    
+
     public static void RecordVerificationFailure(string flowId)
     {
         Interlocked.Increment(ref _failedVerifications);
-        
+
         lock (_activeFlows)
         {
             _activeFlows.Remove(flowId);
         }
     }
-    
+
     public static void RecordVerificationTimeout(string flowId)
     {
         Interlocked.Increment(ref _timeoutVerifications);
-        
+
         lock (_activeFlows)
         {
             _activeFlows.Remove(flowId);
         }
     }
-    
+
     private class FlowHealth
     {
         public string FlowId { get; set; } = string.Empty;

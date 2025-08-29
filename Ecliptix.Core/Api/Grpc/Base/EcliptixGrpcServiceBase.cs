@@ -28,7 +28,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         activity?.SetTag("grpc.method", operationName);
 
         Stopwatch stopwatch = Stopwatch.StartNew();
-        
+
         try
         {
             uint connectId = ExtractConnectionId(context);
@@ -52,14 +52,14 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
             }
 
             CipherPayload response = await EncryptResponseAsync(handlerResult.Unwrap(), connectId, context);
-            
+
             stopwatch.Stop();
             activity?.SetTag("success", true);
             activity?.SetTag("duration_ms", stopwatch.ElapsedMilliseconds);
-            
+
             Log.Debug("Completed encrypted operation {ServiceName}.{MethodName} in {Duration}ms", 
                 GetType().Name, operationName, stopwatch.ElapsedMilliseconds);
-                
+
             return response;
         }
         catch (RpcException)
@@ -74,9 +74,9 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
             stopwatch.Stop();
             activity?.SetTag("error", true);
             activity?.SetTag("duration_ms", stopwatch.ElapsedMilliseconds);
-            
+
             Log.Error(ex, "Unexpected error in encrypted operation {ServiceName}.{MethodName}", GetType().Name, operationName);
-            
+
             throw new RpcException(new GrpcStatus(StatusCode.Internal, "Internal server error occurred"));
         }
     }
@@ -108,7 +108,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
 
             Result<Unit, TFailure> result = await handler(decryptResult.Unwrap(), connectId, context.CancellationToken);
             activity?.SetTag("handler_success", result.IsOk);
-            
+
             return result.Match(
                 ok: Result<Unit, FailureBase>.Ok,
                 err: Result<Unit, FailureBase>.Err
@@ -122,9 +122,9 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         catch (Exception ex)
         {
             activity?.SetTag("error", true);
-            
+
             Log.Error(ex, "Unexpected error in encrypted streaming operation {ServiceName}.{MethodName}", GetType().Name, operationName);
-            
+
             throw new RpcException(new GrpcStatus(StatusCode.Internal, "Internal server error occurred"));
         }
     }
@@ -140,7 +140,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         activity?.SetTag("payload_size", encryptedPayload.Cipher.Length);
 
         Result<byte[], FailureBase> decryptResult = await cipherService.DecryptPayload(encryptedPayload, connectId, context);
-        
+
         if (decryptResult.IsErr)
         {
             activity?.SetTag("decrypt_success", false);
@@ -152,10 +152,10 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
             byte[] decryptedBytes = decryptResult.Unwrap();
             TRequest parsedRequest = new();
             parsedRequest.MergeFrom(decryptedBytes);
-            
+
             activity?.SetTag("decrypt_success", true);
             activity?.SetTag("decrypted_size", decryptedBytes.Length);
-            
+
             return Result<TRequest, FailureBase>.Ok(parsedRequest);
         }
         catch (Exception ex)
@@ -179,7 +179,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         activity?.SetTag("response_size", responseBytes.Length);
 
         Result<CipherPayload, FailureBase> encryptResult = await cipherService.EncryptPayload(responseBytes, connectId, context);
-        
+
         if (encryptResult.IsErr)
         {
             activity?.SetTag("encrypt_success", false);
@@ -190,7 +190,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
 
         activity?.SetTag("encrypt_success", true);
         activity?.SetTag("encrypted_size", encryptResult.Unwrap().Cipher.Length);
-        
+
         return encryptResult.Unwrap();
     }
 
@@ -205,7 +205,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         activity?.SetTag("failure_type", failure.GetType().Name);
 
         context.Status = failure.ToGrpcStatus();
-        
+
         TResponse emptyResponse = new();
         return await EncryptResponseAsync(emptyResponse, connectId, context);
     }

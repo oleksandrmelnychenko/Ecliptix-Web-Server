@@ -63,7 +63,7 @@ public class SecurityInterceptor(IDistributedCache cache) : Interceptor
     {
         DateTime now = DateTime.UtcNow;
 
-        if (LastRequestTimes.TryGetValue(clientIdentifier, out var lastTime))
+        if (LastRequestTimes.TryGetValue(clientIdentifier, out DateTime lastTime))
         {
             if (now - lastTime < MinTimeBetweenRequests)
             {
@@ -103,7 +103,7 @@ public class SecurityInterceptor(IDistributedCache cache) : Interceptor
 
             string connectIdString = connectIdHeader.Value;
 
-            if (!uint.TryParse(connectIdString, out var connectId))
+            if (!uint.TryParse(connectIdString, out uint connectId))
             {
                 Log.Warning("Invalid ConnectId format: {ConnectId}", connectIdString);
                 return Task.FromResult(false);

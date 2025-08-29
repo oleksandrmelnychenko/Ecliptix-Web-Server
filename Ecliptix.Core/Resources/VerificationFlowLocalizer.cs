@@ -8,7 +8,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
 {
     private readonly CultureInfo _defaultSystemCultureInfo = CultureInfo.GetCultureInfo("en-US");
 
-    private static readonly FrozenDictionary<string, FrozenDictionary<string, string>> Resources = 
+    private static readonly FrozenDictionary<string, FrozenDictionary<string, string>> Resources =
         new Dictionary<string, FrozenDictionary<string, string>>
         {
             ["en-US"] = new Dictionary<string, string>
@@ -45,7 +45,8 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["phone_not_found"] = "Phone number not found.",
                 ["validation_failed"] = "Form errors; check highlighted fields.",
                 ["invalid_credentials"] = "Invalid username or password.",
-                ["password_complexity_requirements"] = "Password must be {0}+ chars with upper, lower, number, special.",
+                ["password_complexity_requirements"] =
+                    "Password must be {0}+ chars with upper, lower, number, special.",
                 ["password_empty"] = "Password required.",
                 ["password_hash_error"] = "Password processing error; retry.",
                 ["password_hash_input_empty"] = "Password processing failed; retry.",
@@ -83,17 +84,20 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["phone_parsing_too_short"] = "Phone number is too short.",
                 ["phone_parsing_too_long"] = "Phone number is too long.",
                 ["phone_parsing_invalid_number"] = "Phone number format is invalid.",
-                ["phone_parsing_possible_but_local_only"] = "Number might be valid locally; add country code or region.",
+                ["phone_parsing_possible_but_local_only"] =
+                    "Number might be valid locally; add country code or region.",
                 ["phone_parsing_generic_error"] = "Error parsing phone number.",
                 ["phone_validation_unexpected_error"] = "Unexpected error validating phone number.",
                 ["authentication_code_is"] = "Your verification code is",
                 ["resend_cooldown_active"] = "Please wait a moment before requesting a new code",
-                ["max_otp_attempts_reached"] = "You've reached the maximum number of OTP requests. Please try again later"
+                ["max_otp_attempts_reached"] =
+                    "You've reached the maximum number of OTP requests. Please try again later"
             }.ToFrozenDictionary(),
-            
+
             ["uk-UA"] = new Dictionary<string, string>
             {
-                ["verification_flow_conflict_resolved_to_existing"] = "Знайдено активну сесію; будь ласка, продовжуйте.",
+                ["verification_flow_conflict_resolved_to_existing"] =
+                    "Знайдено активну сесію; будь ласка, продовжуйте.",
                 ["verification_flow_conflict_unresolved"] = "Конфлікт сесій; будь ласка, спробуйте ще раз.",
                 ["verification_flow_reused_and_updated"] = "Існуючу сесію оновлено; будь ласка, продовжуйте.",
                 ["verification_flow_conflict"] = "Активна сесія існує, завершіть або скасуйте її.",
@@ -112,10 +116,12 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["data_access_failed"] = "Проблема з доступом до даних; спробуйте пізніше.",
                 ["security_rate_limit_exceeded"] = "Забагато запитів; зачекайте і повторіть спробу.",
                 ["security_suspicious_activity"] = "Виявлено незвичайну активність; доступ обмежено.",
-                ["membership_too_many_attempts"] = "Забагато спроб членства; зачекайте {0} хв або зв'яжіться з підтримкою.",
+                ["membership_too_many_attempts"] =
+                    "Забагато спроб членства; зачекайте {0} хв або зв'яжіться з підтримкою.",
                 ["signin_too_many_attempts"] = "Забагато спроб входу; зачекайте {0} хв або зв'яжіться з підтримкою.",
                 ["activity_status_invalid"] = "Неправильний статус активності.",
-                ["app_device_created_but_invalid_id"] = "Пристрій зареєстровано, але проблема з ID; зв'яжіться з підтримкою.",
+                ["app_device_created_but_invalid_id"] =
+                    "Пристрій зареєстровано, але проблема з ID; зв'яжіться з підтримкою.",
                 ["app_device_invalid_id"] = "Неправильний ID пристрою застосунку.",
                 ["associated"] = "Номер телефону успішно пов'язано.",
                 ["phone_cannot_be_empty"] = "Номер телефону не може бути пустим.",
@@ -125,12 +131,14 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["phone_not_found"] = "Номер телефону не знайдено.",
                 ["validation_failed"] = "Помилки форми; перевірте виділені поля.",
                 ["invalid_credentials"] = "Неправильне ім'я користувача або пароль.",
-                ["password_complexity_requirements"] = "Пароль повинен містити {0}+ символів з великими, малими літерами, цифрами, спецсимволами.",
+                ["password_complexity_requirements"] =
+                    "Пароль повинен містити {0}+ символів з великими, малими літерами, цифрами, спецсимволами.",
                 ["password_empty"] = "Пароль обов'язковий.",
                 ["password_hash_error"] = "Помилка обробки пароля; повторіть спробу.",
                 ["password_hash_input_empty"] = "Обробка пароля не вдалася; повторіть спробу.",
                 ["password_invalid_chars"] = "Неправильні символи в паролі.",
-                ["password_config_hash_algorithm_unsupported"] = "Помилка налаштування пароля; зв'яжіться з підтримкою.",
+                ["password_config_hash_algorithm_unsupported"] =
+                    "Помилка налаштування пароля; зв'яжіться з підтримкою.",
                 ["password_config_iterations_invalid"] = "Проблема налаштування пароля; зв'яжіться з підтримкою.",
                 ["password_config_salt_size_invalid"] = "Проблема конфігурації пароля; зв'яжіться з підтримкою.",
                 ["password_missing_digit"] = "Додайте цифру.",
@@ -163,31 +171,33 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["phone_parsing_too_short"] = "Номер телефону занадто короткий.",
                 ["phone_parsing_too_long"] = "Номер телефону занадто довгий.",
                 ["phone_parsing_invalid_number"] = "Формат номера телефону неправильний.",
-                ["phone_parsing_possible_but_local_only"] = "Номер може бути дійсним локально; додайте код країни або регіон.",
+                ["phone_parsing_possible_but_local_only"] =
+                    "Номер може бути дійсним локально; додайте код країни або регіон.",
                 ["phone_parsing_generic_error"] = "Помилка аналізу номера телефону.",
                 ["phone_validation_unexpected_error"] = "Неочікувана помилка при валідації номера телефону.",
                 ["authentication_code_is"] = "Ваш код перевірки",
                 ["resend_cooldown_active"] = "Будь ласка, зачекайте хвилинку перед запитом нового коду",
-                ["max_otp_attempts_reached"] = "Ви досягли максимальної кількості запитів OTP. Будь ласка, спробуйте пізніше"
+                ["max_otp_attempts_reached"] =
+                    "Ви досягли максимальної кількості запитів OTP. Будь ласка, спробуйте пізніше"
             }.ToFrozenDictionary()
         }.ToFrozenDictionary();
 
     public string Localize(string key, string cultureName)
     {
         string normalizedCulture = NormalizeCultureName(cultureName);
-        
-        if (Resources.TryGetValue(normalizedCulture, out var cultureResources) &&
+
+        if (Resources.TryGetValue(normalizedCulture, out FrozenDictionary<string, string>? cultureResources) &&
             cultureResources.TryGetValue(key, out string? localizedString))
         {
             return localizedString;
         }
-        
+
         if (Resources.TryGetValue("en-US", out FrozenDictionary<string, string>? defaultResources) &&
             defaultResources.TryGetValue(key, out string? defaultString))
         {
             return defaultString;
         }
-        
+
         return key;
     }
 
@@ -195,7 +205,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
     {
         return Localize(key, _defaultSystemCultureInfo.Name);
     }
-    
+
     private static string NormalizeCultureName(string cultureName)
     {
         return cultureName.ToLowerInvariant() switch

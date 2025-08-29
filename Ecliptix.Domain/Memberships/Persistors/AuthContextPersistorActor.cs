@@ -136,7 +136,7 @@ public class AuthContextPersistorActor : PersistorBase<VerificationFlowFailure>
         parameters.Add("@IpAddress", cmd.IpAddress);
         parameters.Add("@UserAgent", cmd.UserAgent);
 
-        AuthContextQueryResult result = await connection.QuerySingleOrDefaultAsync<AuthContextQueryResult>(
+        AuthContextQueryResult? result = await connection.QuerySingleOrDefaultAsync<AuthContextQueryResult>(
             "dbo.CreateAuthenticationContext",
             parameters,
             commandType: CommandType.StoredProcedure
@@ -162,7 +162,7 @@ public class AuthContextPersistorActor : PersistorBase<VerificationFlowFailure>
         DynamicParameters parameters = new DynamicParameters();
         parameters.Add("@ContextToken", cmd.ContextToken);
 
-        AuthContextValidationResult result = await connection.QuerySingleOrDefaultAsync<AuthContextValidationResult>(
+        AuthContextValidationResult? result = await connection.QuerySingleOrDefaultAsync<AuthContextValidationResult>(
             "dbo.ValidateAuthenticationContext",
             parameters,
             commandType: CommandType.StoredProcedure
@@ -185,7 +185,7 @@ public class AuthContextPersistorActor : PersistorBase<VerificationFlowFailure>
         parameters.Add("@ContextToken", cmd.ContextToken);
         parameters.Add("@NewExpiresAt", cmd.NewExpiresAt);
 
-        BatchOperationResult result = await connection.QuerySingleOrDefaultAsync<BatchOperationResult>(
+        BatchOperationResult? result = await connection.QuerySingleOrDefaultAsync<BatchOperationResult>(
             "dbo.RefreshAuthenticationContext",
             parameters,
             commandType: CommandType.StoredProcedure
@@ -207,7 +207,7 @@ public class AuthContextPersistorActor : PersistorBase<VerificationFlowFailure>
         DynamicParameters parameters = new DynamicParameters();
         parameters.Add("@ContextToken", cmd.ContextToken);
 
-        BatchOperationResult result = await connection.QuerySingleOrDefaultAsync<BatchOperationResult>(
+        BatchOperationResult? result = await connection.QuerySingleOrDefaultAsync<BatchOperationResult>(
             "dbo.InvalidateAuthenticationContext",
             parameters,
             commandType: CommandType.StoredProcedure
@@ -229,7 +229,7 @@ public class AuthContextPersistorActor : PersistorBase<VerificationFlowFailure>
         DynamicParameters parameters = new DynamicParameters();
         parameters.Add("@MobileNumberId", cmd.MobileNumberId);
 
-        BatchOperationResult result = await connection.QuerySingleOrDefaultAsync<BatchOperationResult>(
+        BatchOperationResult? result = await connection.QuerySingleOrDefaultAsync<BatchOperationResult>(
             "dbo.InvalidateAllContextsForMobile",
             parameters,
             commandType: CommandType.StoredProcedure
@@ -253,7 +253,7 @@ public class AuthContextPersistorActor : PersistorBase<VerificationFlowFailure>
         parameters.Add("@BatchSize", cmd.BatchSize);
         parameters.Add("@OlderThanHours", cmd.OlderThanHours);
 
-        BatchOperationResult result = await connection.QuerySingleOrDefaultAsync<BatchOperationResult>(
+        BatchOperationResult? result = await connection.QuerySingleOrDefaultAsync<BatchOperationResult>(
             "dbo.CleanupExpiredContexts",
             parameters,
             commandType: CommandType.StoredProcedure
@@ -280,7 +280,7 @@ public class AuthContextPersistorActor : PersistorBase<VerificationFlowFailure>
         parameters.Add("@IsLocked", cmd.IsLocked);
         parameters.Add("@LockedUntil", cmd.LockedUntil);
 
-        BatchOperationResult result = await connection.QuerySingleOrDefaultAsync<BatchOperationResult>(
+        BatchOperationResult? result = await connection.QuerySingleOrDefaultAsync<BatchOperationResult>(
             "dbo.UpdateAuthenticationState",
             parameters,
             commandType: CommandType.StoredProcedure
@@ -303,7 +303,7 @@ public class AuthContextPersistorActor : PersistorBase<VerificationFlowFailure>
         DynamicParameters parameters = new DynamicParameters();
         parameters.Add("@MobileNumberId", cmd.MobileNumberId);
 
-        AuthStateQueryResult result = await connection.QuerySingleOrDefaultAsync<AuthStateQueryResult>(
+        AuthStateQueryResult? result = await connection.QuerySingleOrDefaultAsync<AuthStateQueryResult>(
             "dbo.GetAuthenticationState",
             parameters,
             commandType: CommandType.StoredProcedure
@@ -313,7 +313,7 @@ public class AuthContextPersistorActor : PersistorBase<VerificationFlowFailure>
         {
             Log.Warning("GetAuthenticationState returned null for MobileNumberId {MobileNumberId} - this may be normal for new mobile numbers", 
                 cmd.MobileNumberId);
-            
+
             result = new AuthStateQueryResult
             {
                 MobileNumberId = cmd.MobileNumberId,

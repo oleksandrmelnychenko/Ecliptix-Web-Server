@@ -113,7 +113,7 @@ public class SecurityMiddleware(RequestDelegate next)
     private static void LogSecurityInfo(HttpContext context)
     {
         if (!Log.IsEnabled(Serilog.Events.LogEventLevel.Debug)) return;
-        var info = new
+        object info = new
         {
             IpAddress = context.Connection.RemoteIpAddress?.ToString(),
             UserAgent = context.Request.Headers.UserAgent.ToString(),

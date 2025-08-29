@@ -20,7 +20,6 @@ public class LoginMembershipProcedureTests : IntegrationTestBase
     [DataRow(false, DisplayName = "SignInMembership_ReturnLockoutTime_WhenLockoutMarkerExists_WithUnSuccessfulStatus")]
     public async Task SignInMembership_ReturnLockoutTime_WhenLockoutMarkerExists(bool isSuccess)
     {
-        // Arrange
         string phoneNumber = "+380501234567";
         DateTime lockedUntil = DateTime.UtcNow.AddMinutes(5);
         string lockoutOutcome = $"LOCKED_UNTIL:{lockedUntil:yyyy-MM-ddTHH:mm:ss.fffffffZ}";
@@ -32,33 +31,29 @@ public class LoginMembershipProcedureTests : IntegrationTestBase
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", phoneNumber);
 
-        // Act
         LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
         );
 
-        // Assert
         Assert.IsNotNull(result);
         Assert.IsNull(result.MembershipUniqueId);
         Assert.IsNull(result.Status);
         Assert.AreEqual(result.SecureKey, []);
         Assert.IsNotNull(result.Outcome);
 
-        // Should return lockout time in minutes (5)
-        Assert.IsTrue(int.TryParse(result.Outcome, out var remainingMinutes));
+        Assert.IsTrue(int.TryParse(result.Outcome, out int remainingMinutes));
         Assert.IsTrue(remainingMinutes > 0 && remainingMinutes <= 5);
     }
-    
+
     [TestMethod]
     public async Task LoginMembership_SetsLockoutAfterMaxFailedAttempts()
     {
-        // Arrange
         string phoneNumber = "+380501234567";
         int maxAttempts = 5;
 
-        var seeder = DataSeeder.Build(DbFixture.Connection);
+        DataSeeder seeder = DataSeeder.Build(DbFixture.Connection);
         for (int i = 0; i < maxAttempts; i++)
             seeder.WithLoginAttempt(phoneNumber, "some_failed_outcome", false);
         await seeder.SeedAsync();
@@ -66,61 +61,51 @@ public class LoginMembershipProcedureTests : IntegrationTestBase
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", phoneNumber);
 
-        // Act
         LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
         );
 
-        // Assert
         Assert.IsNotNull(result);
         Assert.IsNull(result.MembershipUniqueId);
         Assert.IsNull(result.Status);
         Assert.AreEqual(result.SecureKey, []);
         Assert.IsNotNull(result.Outcome);
 
-        // Should return lockout time in minutes (5)
-        Assert.IsTrue(int.TryParse(result.Outcome, out var lockoutMinutes));
+        Assert.IsTrue(int.TryParse(result.Outcome, out int lockoutMinutes));
         Assert.AreEqual(5, lockoutMinutes);
     }
-    
+
     [TestMethod]
     public async Task LoginMembership_ReturnPhoneNotFound_WhenInvalidPhone()
     {
-        // Arrange
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", "+380501234567");
-        
-        // Act
+
         LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
         );
-        
-        // Assert
+
         Assert.IsNotNull(result);
         Assert.AreEqual("phone_number_not_found", result.Outcome);
     }
-    
+
     [TestMethod]
     [DataRow("")]
-    //[DataRow(null)] неможливо виконати команду з null, IF @PhoneNumber IS NULL OR @PhoneNumber = '' | IS NULL не спрацює
     public async Task LoginMembership_ReturnPhoneNumberCannotByEmpty_WhenEmptyPhone(string phone)
     {
-        // Arrange
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", phone);
-        
-        // Act
+
         LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
         );
-        
-        // Assert
+
         Assert.IsNotNull(result);
         Assert.AreEqual("phone_number_cannot_be_empty", result.Outcome);
     }
@@ -128,48 +113,42 @@ public class LoginMembershipProcedureTests : IntegrationTestBase
     [TestMethod]
     public async Task LoginMembership_ReturnMembershipIdNotFound_WhenMembershipIdIsNull()
     {
-        // Assert
         await DataSeeder.Build(DbFixture.Connection)
             .WithPhone("+380500000000", 10)
             .SeedAsync();
 
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", "+380500000000");
-        
-        // Act
+
         LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
         );
-        
-        // Assert
+
         Assert.IsNotNull(result);
         Assert.AreEqual("membership_not_found", result.Outcome);
     }
-    
+
     [TestMethod]
     public async Task LoginMembership_ReturnSecureKeyNotSet_WhenSecureKeyIsNull()
     {
-        // Arrange
         await DataSeeder.Build(DbFixture.Connection)
             .WithPhone("+380500000000")
             .WithAppDevice()
             .WithVerificationFlow()
             .WithMembership()
             .SeedAsync();
-        
+
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", "+380500000000");
-        
-        // Act
+
         LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
         );
-        
-        // Assert
+
         Assert.IsNotNull(result);
         Assert.AreEqual("secure_key_not_set", result.Outcome);
     }
@@ -177,7 +156,6 @@ public class LoginMembershipProcedureTests : IntegrationTestBase
     [TestMethod]
     public async Task LoginMembership_ReturnInactiveMembership_WhenMembershipNotActive()
     {
-        // Arrange 
         await DataSeeder.Build(DbFixture.Connection)
             .WithPhone("+380500000000")
             .WithAppDevice()
@@ -187,15 +165,13 @@ public class LoginMembershipProcedureTests : IntegrationTestBase
 
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", "+380500000000");
-        
-        // Act
+
         LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
         );
-        
-        // Assert
+
         Assert.IsNotNull(result);
         Assert.AreEqual("inactive_membership", result.Outcome);
     }
@@ -203,48 +179,43 @@ public class LoginMembershipProcedureTests : IntegrationTestBase
     [TestMethod]
     public async Task LoginMembership_ReturnLockout_WhenMakeSomeFailedAttempts_WithValidMembership()
     {
-        // Arrange
         string phoneNumber = "+380501234567";
-        
+
         DataSeeder seeder = DataSeeder.Build(DbFixture.Connection)
             .WithPhone(phoneNumber)
             .WithAppDevice()
             .WithVerificationFlow()
             .WithMembership(secureKey: [0x01], status: "active");
-        
+
         int maxAttempts = 6;
         for (int i = 0; i < maxAttempts; i++)
             seeder.WithLoginAttempt(phoneNumber, "success", true);
         await seeder.SeedAsync();
-        
+
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", phoneNumber);
-        
-        // Act
+
         LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
         );
-        
-        Console.WriteLine(result.Outcome);
-        
-        // Assert
+
+        Console.WriteLine(result?.Outcome);
+
         Assert.IsNotNull(result);
         Assert.IsNull(result.MembershipUniqueId);
         Assert.IsNull(result.Status);
         Assert.AreEqual(result.SecureKey, []);
         Assert.IsNotNull(result.Outcome);
 
-        // Should return lockout time in minutes (5)
-        Assert.IsTrue(int.TryParse(result.Outcome, out var remainingMinutes));
+        Assert.IsTrue(int.TryParse(result.Outcome, out int remainingMinutes));
         Assert.IsTrue(remainingMinutes > 0 && remainingMinutes <= 5);
     }
-    
+
     [TestMethod]
     public async Task LoginMembership_ReturnSuccess_WhenValidPhoneAndMembership()
     {
-        // Arrange
         await DataSeeder.Build(DbFixture.Connection)
             .WithPhone("+380500000000")
             .WithAppDevice()
@@ -254,15 +225,13 @@ public class LoginMembershipProcedureTests : IntegrationTestBase
 
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumber", "+380500000000");
-        
-        // Act
+
         LoginMembershipResult? result = await DbFixture.Connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
         );
-        
-        // Assert
+
         Assert.IsNotNull(result);
         Assert.IsNotNull(result.MembershipUniqueId);
         Assert.AreEqual("success", result.Outcome);

@@ -76,7 +76,6 @@ public class VerificationFlowServices(
         }
     }
 
-
     public override async Task<CipherPayload> ValidatePhoneNumber(CipherPayload request, ServerCallContext context) =>
         await _baseService.ExecuteEncryptedOperationAsync<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(request, context,
             async (message, connectId, ct) =>
@@ -126,7 +125,6 @@ public class VerificationFlowServices(
                     return Result<ValidatePhoneNumberResponse, FailureBase>.Ok(response);
                 }
             });
-
 
     public override async Task<CipherPayload> RecoverySecretKeyPhoneVerification(CipherPayload request,
         ServerCallContext context) =>
@@ -237,7 +235,7 @@ public class VerificationFlowServices(
             string actorPath = $"/user/{nameof(VerificationFlowManagerActor)}/{actorName}";
 
             ActorSelection? actorSelection = actorSystem.ActorSelection(actorPath);
-            
+
             actorSelection.Tell(new PrepareForTerminationMessage());
 
             Log.Information(

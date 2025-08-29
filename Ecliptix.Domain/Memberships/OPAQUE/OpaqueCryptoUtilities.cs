@@ -40,7 +40,7 @@ public static class OpaqueCryptoUtilities
 
         HMac hmac = new(new Sha256Digest());
         byte[] saltBytes;
-        
+
         if (salt.IsEmpty)
         {
             saltBytes = new byte[hmac.GetMacSize()];
@@ -53,16 +53,16 @@ public static class OpaqueCryptoUtilities
         try
         {
             hmac.Init(new KeyParameter(saltBytes));
-            
+
             byte[] ikmBytes = ikm.ToArray();
             hmac.BlockUpdate(ikmBytes, 0, ikm.Length);
-            
+
             byte[] prk = new byte[hmac.GetMacSize()];
             hmac.DoFinal(prk, 0);
-            
+
             CryptographicOperations.ZeroMemory(saltBytes);
             CryptographicOperations.ZeroMemory(ikmBytes);
-            
+
             return Result<byte[], OpaqueFailure>.Ok(prk);
         }
         catch (Exception ex)
@@ -74,37 +74,37 @@ public static class OpaqueCryptoUtilities
     public static byte[] HkdfExpand(ReadOnlySpan<byte> prk, ReadOnlySpan<byte> info, int outputLength)
     {
         HkdfBytesGenerator hkdf = new(new Sha256Digest());
-        
+
         byte[] prkBytes = prk.ToArray();
         byte[] infoBytes = info.ToArray();
-        
+
         hkdf.Init(HkdfParameters.SkipExtractParameters(prkBytes, infoBytes));
         byte[] okm = new byte[outputLength];
         hkdf.GenerateBytes(okm, 0, outputLength);
-        
+
         CryptographicOperations.ZeroMemory(prkBytes);
         CryptographicOperations.ZeroMemory(infoBytes);
-        
+
         return okm;
     }
 
     public static byte[] DeriveKey(ReadOnlySpan<byte> ikm, ReadOnlySpan<byte> salt, ReadOnlySpan<byte> info, int outputLength)
     {
         HkdfBytesGenerator hkdf = new(new Sha256Digest());
-        
+
         byte[] ikmBytes = ikm.ToArray();
         byte[] infoBytes = info.ToArray();
         byte[]? saltBytes = salt.IsEmpty ? null : salt.ToArray();
-        
+
         hkdf.Init(new HkdfParameters(ikmBytes, saltBytes, infoBytes));
         byte[] okm = new byte[outputLength];
         hkdf.GenerateBytes(okm, 0, outputLength);
-        
+
         CryptographicOperations.ZeroMemory(ikmBytes);
         CryptographicOperations.ZeroMemory(infoBytes);
         if (saltBytes != null)
             CryptographicOperations.ZeroMemory(saltBytes);
-        
+
         return okm;
     }
 
@@ -117,18 +117,18 @@ public static class OpaqueCryptoUtilities
         {
             byte[] saltBytes = new byte[Pbkdf2SaltLength];
             byte[] oprfBytes = oprfOutput.ToArray();
-            
+
             using Rfc2898DeriveBytes pbkdf2 = new(
                 oprfBytes,
                 saltBytes,
                 Pbkdf2Iterations,
                 HashAlgorithmName.SHA256);
-                
+
             byte[] stretched = pbkdf2.GetBytes(HashLength);
-            
+
             CryptographicOperations.ZeroMemory(saltBytes);
             CryptographicOperations.ZeroMemory(oprfBytes);
-            
+
             return Result<byte[], OpaqueFailure>.Ok(stretched);
         }
         catch (Exception ex)
@@ -199,11 +199,9 @@ public static class OpaqueCryptoUtilities
 
     public static Result<Unit, OpaqueFailure> ValidatePoint(Org.BouncyCastle.Math.EC.ECPoint point)
     {
-        // SECURITY: Constant-time validation to prevent timing attacks
         bool isValid = true;
         string errorMessage = string.Empty;
-        
-        // Check if point is at infinity (constant time)
+
         bool infinityCheck = point.IsInfinity;
         if (infinityCheck)
         {
@@ -211,7 +209,6 @@ public static class OpaqueCryptoUtilities
             errorMessage = ErrorMessages.PointAtInfinity;
         }
 
-        // Check if point is valid (constant time)
         bool validityCheck = point.IsValid();
         if (!validityCheck && isValid)
         {
@@ -219,7 +216,6 @@ public static class OpaqueCryptoUtilities
             errorMessage = ErrorMessages.PointNotValid;
         }
 
-        // Subgroup check (constant time)
         Org.BouncyCastle.Math.EC.ECPoint orderCheck = point.Multiply(DomainParams.N);
         bool subgroupCheck = orderCheck.IsInfinity;
         if (!subgroupCheck && isValid)
@@ -228,12 +224,10 @@ public static class OpaqueCryptoUtilities
             errorMessage = ErrorMessages.SubgroupCheckFailed;
         }
 
-        // Return result based on accumulated validation
         if (!isValid)
         {
-            // Add small constant delay to normalize timing
             Thread.SpinWait(100);
-            
+
             if (infinityCheck)
                 return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidPoint(ErrorMessages.PointAtInfinity));
             if (!validityCheck)
@@ -254,13 +248,13 @@ public static class OpaqueCryptoUtilities
 
             Span<byte> keyBuffer = stackalloc byte[key.Length];
             key.CopyTo(keyBuffer);
-            
+
             byte[]? associatedDataArray = null;
             if (!associatedData.IsEmpty)
             {
                 associatedDataArray = associatedData.ToArray();
             }
-            
+
             AeadParameters cipherParams = new(new KeyParameter(keyBuffer.ToArray()), AesGcmTagLengthBits, nonce.ToArray(), associatedDataArray);
             cipher.Init(true, cipherParams);
 
@@ -271,11 +265,10 @@ public static class OpaqueCryptoUtilities
 
             byte[] plaintextBuffer = plaintext.ToArray();
             plaintext.CopyTo(plaintextBuffer);
-            
+
             int len = cipher.ProcessBytes(plaintextBuffer, 0, plaintext.Length, result, AesGcmNonceLengthBytes);
             cipher.DoFinal(result, AesGcmNonceLengthBytes + len);
 
-            // SECURITY FIX: Clear spans directly, not copies from ToArray()
             CryptographicOperations.ZeroMemory(nonce);
             CryptographicOperations.ZeroMemory(keyBuffer);
             CryptographicOperations.ZeroMemory(plaintextBuffer);
@@ -301,34 +294,33 @@ public static class OpaqueCryptoUtilities
         try
         {
             IBufferedCipher cipher = CipherUtilities.GetCipher("AES/GCM/NoPadding");
-            
+
             Span<byte> keyBuffer = stackalloc byte[key.Length];
             key.CopyTo(keyBuffer);
-            
+
             Span<byte> nonceBuffer = stackalloc byte[nonce.Length];
             nonce.CopyTo(nonceBuffer);
-            
+
             byte[]? associatedDataArray = null;
             if (!associatedData.IsEmpty)
             {
                 associatedDataArray = associatedData.ToArray();
             }
-            
+
             AeadParameters cipherParams = new(new KeyParameter(keyBuffer.ToArray()), AesGcmTagLengthBits, nonceBuffer.ToArray(), associatedDataArray);
             cipher.Init(false, cipherParams);
 
             byte[] ciphertextBuffer = ciphertext.ToArray();
             ciphertext.CopyTo(ciphertextBuffer);
-            
+
             byte[] result = cipher.DoFinal(ciphertextBuffer);
-            
-            // SECURITY FIX: Clear spans directly, not copies from ToArray()
+
             CryptographicOperations.ZeroMemory(keyBuffer);
             CryptographicOperations.ZeroMemory(nonceBuffer);
             CryptographicOperations.ZeroMemory(ciphertextBuffer);
             if (associatedDataArray != null)
                 CryptographicOperations.ZeroMemory(associatedDataArray);
-            
+
             return Result<byte[], OpaqueFailure>.Ok(result);
         }
         catch (InvalidCipherTextException ex)
@@ -345,24 +337,23 @@ public static class OpaqueCryptoUtilities
         {
             Span<byte> nonce = stackalloc byte[NonceLength];
             RandomNumberGenerator.Fill(nonce);
-            
+
             byte[] pad = HkdfExpand(maskingKey, nonce, response.Length);
-            
+
             byte[] masked = new byte[response.Length];
             for (int i = 0; i < response.Length; i++)
             {
                 masked[i] = (byte)(response[i] ^ pad[i]);
             }
-            
+
             byte[] result = new byte[NonceLength + response.Length];
             nonce.CopyTo(result.AsSpan(0, NonceLength));
             masked.CopyTo(result.AsSpan(NonceLength));
-            
-            // SECURITY FIX: Clear original arrays, not copies
+
             CryptographicOperations.ZeroMemory(pad);
             CryptographicOperations.ZeroMemory(nonce);
             CryptographicOperations.ZeroMemory(masked);
-            
+
             return Result<byte[], OpaqueFailure>.Ok(result);
         }
         catch (Exception ex)

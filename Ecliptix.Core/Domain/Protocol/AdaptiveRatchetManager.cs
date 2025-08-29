@@ -5,10 +5,10 @@ namespace Ecliptix.Core.Domain.Protocol;
 
 public enum LoadLevel
 {
-    Light,      // < 10 msg/sec
-    Moderate,   // 10-50 msg/sec
-    Heavy,      // 50-200 msg/sec
-    Extreme     // > 200 msg/sec
+    Light,
+    Moderate,
+    Heavy,
+    Extreme
 }
 
 public sealed class AdaptiveRatchetManager : IDisposable
@@ -18,7 +18,7 @@ public sealed class AdaptiveRatchetManager : IDisposable
     private readonly Timer _loadAnalysisTimer;
     private readonly TimeSpan _analysisInterval = TimeSpan.FromSeconds(10);
     private readonly TimeSpan _messageWindowSize = TimeSpan.FromMinutes(1);
-    
+
     private LoadLevel _currentLoad = LoadLevel.Light;
     private RatchetConfig _currentConfig;
     private double _averageMessageRate;
@@ -28,7 +28,7 @@ public sealed class AdaptiveRatchetManager : IDisposable
     public AdaptiveRatchetManager(RatchetConfig baseConfig)
     {
         _currentConfig = baseConfig;
-        
+
         _loadAnalysisTimer = new Timer(
             callback: _ => AnalyzeLoadAndAdjustConfig(),
             state: null,
@@ -62,10 +62,10 @@ public sealed class AdaptiveRatchetManager : IDisposable
     public void RecordMessage()
     {
         if (_disposed) return;
-        
+
         DateTime now = DateTime.UtcNow;
         _messageTimestamps.Enqueue(now);
-        
+
         if (_messageTimestamps.Count > 10000)
         {
             CleanupOldTimestamps(now);
@@ -75,7 +75,7 @@ public sealed class AdaptiveRatchetManager : IDisposable
     private void CleanupOldTimestamps(DateTime now)
     {
         DateTime cutoff = now - _messageWindowSize;
-        
+
         while (_messageTimestamps.TryPeek(out DateTime timestamp) && timestamp < cutoff)
         {
             _messageTimestamps.TryDequeue(out _);
@@ -85,17 +85,17 @@ public sealed class AdaptiveRatchetManager : IDisposable
     private void AnalyzeLoadAndAdjustConfig()
     {
         if (_disposed) return;
-        
+
         try
         {
             DateTime now = DateTime.UtcNow;
             CleanupOldTimestamps(now);
-            
+
             DateTime windowStart = now - _messageWindowSize;
             int messageCount = _messageTimestamps.Count(timestamp => timestamp >= windowStart);
 
             double messagesPerSecond = messageCount / _messageWindowSize.TotalSeconds;
-            
+
             lock (_lock)
             {
                 _averageMessageRate = messagesPerSecond;
@@ -105,7 +105,7 @@ public sealed class AdaptiveRatchetManager : IDisposable
                 _currentLoad = newLoad;
                 _currentConfig = CreateConfigForLoad(newLoad);
                 _lastConfigUpdate = now;
-                    
+
                 Console.WriteLine($"[ADAPTIVE RATCHET] Load: {newLoad}, Rate: {messagesPerSecond:F1} msg/sec, DH Interval: {_currentConfig.DhRatchetEveryNMessages}");
             }
         }
@@ -138,7 +138,7 @@ public sealed class AdaptiveRatchetManager : IDisposable
                 MaxChainAge = TimeSpan.FromMinutes(30),
                 MaxMessagesWithoutRatchet = 100
             },
-            
+
             LoadLevel.Moderate => new RatchetConfig
             {
                 DhRatchetEveryNMessages = 10, 
@@ -147,7 +147,7 @@ public sealed class AdaptiveRatchetManager : IDisposable
                 MaxChainAge = TimeSpan.FromMinutes(45),
                 MaxMessagesWithoutRatchet = 200
             },
-            
+
             LoadLevel.Heavy => new RatchetConfig
             {
                 DhRatchetEveryNMessages = 25,  
@@ -156,7 +156,7 @@ public sealed class AdaptiveRatchetManager : IDisposable
                 MaxChainAge = TimeSpan.FromHours(1),
                 MaxMessagesWithoutRatchet = 500
             },
-            
+
             LoadLevel.Extreme => new RatchetConfig
             {
                 DhRatchetEveryNMessages = 50, 
@@ -165,7 +165,7 @@ public sealed class AdaptiveRatchetManager : IDisposable
                 MaxChainAge = TimeSpan.FromHours(2),
                 MaxMessagesWithoutRatchet = 1000
             },
-            
+
             _ => RatchetConfig.Default
         };
     }
@@ -185,7 +185,7 @@ public sealed class AdaptiveRatchetManager : IDisposable
             _currentLoad = targetLoad;
             _currentConfig = CreateConfigForLoad(targetLoad);
             _lastConfigUpdate = DateTime.UtcNow;
-            
+
             Console.WriteLine($"[ADAPTIVE RATCHET] Forced config update to {targetLoad}");
         }
     }
@@ -193,14 +193,14 @@ public sealed class AdaptiveRatchetManager : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        
+
         _disposed = true;
         _loadAnalysisTimer?.Dispose();
-        
+
         while (_messageTimestamps.TryDequeue(out _))
         {
         }
-        
+
         Console.WriteLine("[ADAPTIVE RATCHET] Manager disposed");
     }
 }

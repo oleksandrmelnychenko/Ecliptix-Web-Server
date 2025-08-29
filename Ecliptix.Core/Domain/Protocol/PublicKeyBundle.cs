@@ -78,7 +78,7 @@ public record PublicKeyBundle(
             if (identityEd25519.Length != Constants.Ed25519KeySize)
                 return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Decode($"IdentityEd25519 key must be {Constants.Ed25519KeySize} bytes."));
-            
+
             if (identityX25519.Length != Constants.X25519KeySize)
                 return Result<PublicKeyBundle, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Decode($"IdentityX25519 key must be {Constants.X25519KeySize} bytes."));

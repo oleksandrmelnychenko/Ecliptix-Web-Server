@@ -106,7 +106,7 @@ public class VerificationFlowManagerActor : ReceiveActor
                 out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? writer))
         {
             Log.Debug("Verification flow completed gracefully for actor {ActorPath}", completedActor.Path);
-            
+
             bool completeSuccess = writer.TryComplete();
             if (!completeSuccess)
             {
@@ -136,7 +136,7 @@ public class VerificationFlowManagerActor : ReceiveActor
                 VerificationFlowFailure failure = VerificationFlowFailure.Generic(
                     "The verification process was terminated due to an internal server error."
                 );
-                
+
                 bool writeSuccess =
                     writer.TryWrite(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Err(failure));
                 if (!writeSuccess)
@@ -146,7 +146,7 @@ public class VerificationFlowManagerActor : ReceiveActor
                         deadActor.Path);
                 }
             }
-            
+
             bool completeSuccess = writer.TryComplete();
             if (!completeSuccess)
             {

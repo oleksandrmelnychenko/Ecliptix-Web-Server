@@ -174,11 +174,11 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private async Task HandleSuccessfulVerification()
     {
         Log.Information("Handling successful verification for ConnectId {ConnectId}", _connectId);
-        
+
         _isCompleting = true;
-        
+
         CancelTimers();
-        
+
         await Task.Delay(50);
 
         try
@@ -193,7 +193,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         const int maxRetries = 3;
         bool otpUpdated = false;
-        
+
         for (int attempt = 1; attempt <= maxRetries && !otpUpdated; attempt++)
         {
             try
@@ -207,7 +207,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             {
                 Log.Warning(ex, "Failed to update OTP status on attempt {Attempt}/{MaxAttempts} for ConnectId {ConnectId}", 
                     attempt, maxRetries, _connectId);
-                
+
                 if (attempt < maxRetries)
                 {
                     await Task.Delay(TimeSpan.FromMilliseconds(100 * attempt)); 
@@ -217,7 +217,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         CreateMembershipActorEvent createEvent = new(_connectId, _verificationFlow.Value!.UniqueIdentifier,
             _activeOtp!.UniqueIdentifier, Membership.Types.CreationStatus.OtpVerified);
-        
+
         try
         {
             Result<MembershipQueryRecord, VerificationFlowFailure> result =
@@ -246,7 +246,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         Context.Parent.Tell(new FlowCompletedGracefullyActorEvent(Self));
         Context.Unwatch(Self);
         Context.Stop(Self);
-        
+
         Log.Information("Verification flow completed successfully for ConnectId {ConnectId}", _connectId);
     }
 
@@ -338,7 +338,13 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         CancelTimers();
         Log.Debug("Starting timers for ConnectId {ConnectId}", _connectId);
 
-        TimeSpan sessionDelay = _verificationFlow.Value.ExpiresAt - DateTime.UtcNow;
+        TimeSpan sessionDelay = TimeSpan.Zero;
+        if (_verificationFlow.HasValue)
+        {
+#pragma warning disable CS8602 // Dereference of a possibly null reference
+            sessionDelay = _verificationFlow.Value.ExpiresAt - DateTime.UtcNow;
+#pragma warning restore CS8602 // Dereference of a possibly null reference
+        }
         if (sessionDelay > TimeSpan.Zero)
         {
             _sessionTimer = Context.System.Scheduler.ScheduleTellOnceCancelable(sessionDelay, Self,
@@ -372,7 +378,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private async Task HandleTimerTick(VerificationCountdownUpdate _)
     {
         _timerTickCount++;
-        
+
         if (_activeOtp?.IsActive != true)
         {
             Log.Debug("Timer tick #{TickCount} - OTP inactive, expiring for ConnectId {ConnectId}", 
@@ -382,7 +388,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         }
 
         ulong actualRemaining = CalculateRemainingSeconds(_activeOtp.ExpiresAt);
-        
+
         if (_activeOtpRemainingSeconds > 0)
         {
             long drift = Math.Abs((long)actualRemaining - (long)_activeOtpRemainingSeconds);
@@ -393,9 +399,9 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                     drift, _connectId, _activeOtpRemainingSeconds, actualRemaining, _timerTickCount);
             }
         }
-        
+
         _activeOtpRemainingSeconds = actualRemaining;
-        
+
         if (_activeOtpRemainingSeconds <= 0)
         {
             Log.Debug("Timer tick #{TickCount} - OTP expired, remaining: {Remaining} for ConnectId {ConnectId}", 
@@ -448,19 +454,19 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         const int maxSmsRetries = 3;
         int smsAttempt = 0;
         SmsDeliveryResult? smsResult = null;
-        
+
         while (smsAttempt < maxSmsRetries)
         {
             smsAttempt++;
             smsResult = await _smsProvider.SendOtpAsync(phoneNumberQueryRecord.PhoneNumber, messageBuilder.ToString());
-            
+
             if (smsResult.IsSuccess)
             {
                 Log.Debug("SMS sent successfully on attempt {Attempt} for ConnectId {ConnectId}", 
                     smsAttempt, _connectId);
                 break;
             }
-            
+
             Log.Warning("SMS sending failed on attempt {Attempt}/{MaxAttempts} for ConnectId {ConnectId}, Status: {Status}, Error: {ErrorMessage}",
                 smsAttempt, maxSmsRetries, _connectId, smsResult.Status, smsResult.ErrorMessage);
 
@@ -596,7 +602,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         _timersStarted = false;
     }
-    
+
     private async Task<bool> ExpireAssociatedOtpAsync()
     {
         if (!_verificationFlow.HasValue)
@@ -607,14 +613,16 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         try
         {
+#pragma warning disable CS8602 // Dereference of a possibly null reference
+            Guid flowId = _verificationFlow.HasValue ? _verificationFlow.Value.UniqueIdentifier : Guid.Empty;
+#pragma warning restore CS8602 // Dereference of a possibly null reference
             Result<Unit, VerificationFlowFailure> expireResult = await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
-                new ExpireAssociatedOtpActorEvent(_verificationFlow.Value.UniqueIdentifier),
+                new ExpireAssociatedOtpActorEvent(flowId),
                 TimeSpan.FromSeconds(3));
-            
+
             if (expireResult.IsOk)
             {
-                Log.Debug("Successfully expired associated OTP for FlowUniqueId {FlowUniqueId}", 
-                    _verificationFlow.Value.UniqueIdentifier);
+                Log.Debug("Successfully expired associated OTP for FlowUniqueId {FlowUniqueId}", flowId);
                 return true;
             }
 
@@ -627,7 +635,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             return false;
         }
     }
-    
+
     private async Task SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure> update)
     {
         if (_isCompleting)
@@ -657,30 +665,30 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private async Task<bool> PrepareForTerminationAsync()
     {
         Log.Information("VerificationFlowActor for ConnectId {ConnectId} is preparing for termination", _connectId);
-        
+
         _isCompleting = true;
         CancelTimers();
         Log.Information("VerificationFlowActor for ConnectId {ConnectId} - timers cancelled", _connectId);
-        
+
         await Task.Delay(50);
-        
+
         bool otpExpired = await ExpireAssociatedOtpAsync();
         if (!otpExpired)
         {
             Log.Warning("Failed to expire OTP during termination for ConnectId {ConnectId}", _connectId);
         }
-        
+
         LogFinalMetrics();
-        
+
         Log.Information("VerificationFlowActor for ConnectId {ConnectId} termination preparation complete", _connectId);
         return otpExpired;
     }
-    
+
     private void LogFinalMetrics()
     {
         TimeSpan totalLifetime = DateTime.UtcNow - _actorCreatedAt;
         TimeSpan timerDuration = _timersStartedAt == default ? TimeSpan.Zero : DateTime.UtcNow - _timersStartedAt;
-        
+
         Log.Information("VerificationFlowActor metrics for ConnectId {ConnectId}: " +
                        "TotalLifetime={Lifetime}ms, TimerDuration={TimerDuration}ms, " +
                        "TotalTicks={TickCount}, AvgTickInterval={AvgInterval}ms",
@@ -690,7 +698,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             _timerTickCount,
             _timerTickCount > 0 ? timerDuration.TotalMilliseconds / _timerTickCount : 0);
     }
-    
+
     private void PrepareForTermination()
     {
         try
@@ -703,15 +711,15 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             Log.Error(ex, "Error in synchronous termination preparation for ConnectId {ConnectId}", _connectId);
         }
     }
-    
+
     protected override void PostStop()
     {
         try
         {
             PrepareForTermination();
-            
+
             _writer?.TryComplete();
-            
+
             Log.Information("VerificationFlowActor for ConnectId {ConnectId} stopped and resources cleaned up", _connectId);
         }
         catch (Exception ex)

@@ -35,12 +35,12 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
     {
         _ratchetManager?.Dispose();
         _ratchetManager = new AdaptiveRatchetManager(customConfig);
-        
+
         lock (_lock)
         {
             _connectSession?.UpdateRatchetConfig(customConfig);
         }
-        
+
         Log.Information("[PROTOCOL] Initialized with custom config - DH interval: {Interval}",
             customConfig.DhRatchetEveryNMessages);
     }
@@ -60,7 +60,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         _circuitBreaker.Dispose();
         _ratchetManager.Dispose();
         _metricsCollector.Dispose();
-        GC.SuppressFinalize(this);
     }
 
     public EcliptixSystemIdentityKeys GetIdentityKeys()
@@ -269,7 +268,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
             EcliptixProtocolConnection session = sessionResult.Unwrap();
 
-            // CRITICAL DEBUG: Verify server connection created as responder
             Log.Information("[SERVER-DEBUG] Connection created - IsInitiator should be FALSE: {IsInitiator}", 
                 session.IsInitiator());
 
@@ -775,10 +773,8 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                 Monitoring.ProtocolHealthCheck.RecordConnectionState(_connectSession?.ConnectId ?? 0, true, false);
             }
 
-
             if (incomingDhKey != null) SodiumInterop.SecureWipe(incomingDhKey);
             if (associatedData != null) SodiumInterop.SecureWipe(associatedData);
-
 
             return decryptResult;
         }
@@ -992,12 +988,11 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         }
 
         Log.Information("[SERVER] Attempting RatchetRecovery for out-of-order message");
-        
-        // Try to recover using stored skipped message keys
-        var recoveryResult = connection.TryRecoverMessageKey(payload.RatchetIndex);
+
+        Result<Option<EcliptixMessageKey>, EcliptixProtocolFailure> recoveryResult = connection.TryRecoverMessageKey(payload.RatchetIndex);
         if (recoveryResult.IsOk)
         {
-            var optionResult = recoveryResult.Unwrap();
+            Option<EcliptixMessageKey> optionResult = recoveryResult.Unwrap();
             if (optionResult.HasValue)
             {
                 Log.Information("[SERVER] Successfully recovered message key for index {RatchetIndex}", 

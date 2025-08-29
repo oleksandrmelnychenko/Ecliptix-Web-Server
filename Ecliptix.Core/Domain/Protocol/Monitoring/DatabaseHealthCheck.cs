@@ -4,13 +4,10 @@ using Serilog;
 
 namespace Ecliptix.Core.Domain.Protocol.Monitoring;
 
-/// <summary>
-/// Health check for database connectivity and performance
-/// </summary>
 public class DatabaseHealthCheck : IHealthCheck
 {
     private readonly IDbConnectionFactory _connectionFactory;
-    
+
     public DatabaseHealthCheck(IDbConnectionFactory connectionFactory)
     {
         _connectionFactory = connectionFactory;
@@ -22,22 +19,21 @@ public class DatabaseHealthCheck : IHealthCheck
     {
         try
         {
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            
-            using var connection = await _connectionFactory.CreateOpenConnectionAsync();
-            
-            // Test basic connectivity with a simple query
-            using var command = connection.CreateCommand();
+            System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            using System.Data.IDbConnection connection = await _connectionFactory.CreateOpenConnectionAsync();
+
+            using System.Data.IDbCommand command = connection.CreateCommand();
             command.CommandText = "SELECT 1";
             command.CommandTimeout = 10;
-            
-            var result = command.ExecuteScalar();
-            
+
+            object? result = command.ExecuteScalar();
+
             stopwatch.Stop();
-            
-            var responseTime = stopwatch.ElapsedMilliseconds;
-            
-            var data = new Dictionary<string, object>
+
+            long responseTime = stopwatch.ElapsedMilliseconds;
+
+            Dictionary<string, object> data = new Dictionary<string, object>
             {
                 ["database"] = connection.Database,
                 ["server"] = connection.ConnectionString.Split(';').FirstOrDefault(s => s.StartsWith("Server="))?.Split('=')[1] ?? "unknown",
@@ -45,15 +41,14 @@ public class DatabaseHealthCheck : IHealthCheck
                 ["connection_state"] = connection.State.ToString()
             };
 
-            // Check response time thresholds
-            if (responseTime > 5000) // 5 seconds
+            if (responseTime > 5000)
             {
                 return HealthCheckResult.Unhealthy(
                     $"Database response time too slow: {responseTime}ms",
                     data: data);
             }
-            
-            if (responseTime > 2000) // 2 seconds
+
+            if (responseTime > 2000)
             {
                 return HealthCheckResult.Degraded(
                     $"Database response time degraded: {responseTime}ms",

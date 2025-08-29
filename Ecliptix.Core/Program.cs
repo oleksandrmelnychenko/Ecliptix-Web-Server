@@ -36,14 +36,13 @@ using Ecliptix.Core.Api.Grpc.Services.Device;
 using Ecliptix.Core.Infrastructure.DbUp;
 using Microsoft.Extensions.Primitives;
 
-
 const string systemActorName = "EcliptixProtocolSystemActor";
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseSerilog((context, services, loggerConfig) =>
 {
     string? appInsightsConnectionString = Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING");
-    
+
     loggerConfig
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)
@@ -97,13 +96,13 @@ try
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService<EcliptixProtocolSystemActor>>();
-    
+
     builder.Services.AddSingleton<ObjectPool<StringBuilder>>(_ =>
     {
         DefaultObjectPoolProvider provider = new();
         return provider.CreateStringBuilderPool();
     });
-  
+
     builder.Services.AddSingleton<IOpaqueProtocolService>(sp =>
     {
         IConfiguration config = sp.GetRequiredService<IConfiguration>();
@@ -141,7 +140,6 @@ try
         .AddCheck<VerificationFlowHealthCheck>("verification_flow_health")
         .AddCheck<DatabaseHealthCheck>("database_health");
 
-    
     WebApplication app = builder.Build();
 
     app.UseSerilogRequestLogging(options =>
@@ -152,21 +150,21 @@ try
             diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value!);
             diagnosticContext.Set("UserAgent", httpContext.Request.Headers["User-Agent"].ToString());
             diagnosticContext.Set("Protocol", httpContext.Request.Protocol);
-            
+
             if (httpContext.Request.Headers.TryGetValue("X-Connect-Id", out StringValues connectId))
             {
                 diagnosticContext.Set("ConnectId", connectId.ToString());
             }
-            
+
             if (httpContext.Request.ContentLength.HasValue)
             {
                 diagnosticContext.Set("RequestSize", httpContext.Request.ContentLength.Value);
             }
         };
     });
-    
+
     DbMigrator.ApplyMaster(builder.Configuration);
-    
+
     app.UseRateLimiter();
     app.UseMiddleware<SecurityMiddleware>();
     app.UseMiddleware<IpThrottlingMiddleware>();
@@ -184,14 +182,14 @@ try
         app.Services.GetRequiredService<IEcliptixActorRegistry>(), app.Services);
 
     app.MapHealthChecks("/health");
-    
+
     app.MapGet("/metrics", async (IServiceProvider services) =>
     {
         try
         {
             ActorSystem actorSystem = services.GetRequiredService<ActorSystem>();
             ProtocolHealthCheck healthCheck = new(actorSystem);
-            
+
             HealthCheckResult healthResult = await healthCheck.CheckHealthAsync(new HealthCheckContext());
             HealthMetricsResponse response = new(
                 new HealthStatus(
@@ -206,7 +204,7 @@ try
                 ),
                 DateTime.UtcNow
             );
-            
+
             return Results.Json(response, AppJsonSerializerContext.Default.HealthMetricsResponse);
         }
         catch (Exception ex)
@@ -215,7 +213,7 @@ try
             return Results.Json(errorResponse, AppJsonSerializerContext.Default.ErrorResponse);
         }
     });
-    
+
     app.MapGet("/", () => Results.Ok(new { Status = "Success", Message = "Server is up and running" }));
 
     Log.Information("Starting Ecliptix application host");
@@ -297,31 +295,24 @@ static void RegisterGrpc(IServiceCollection services)
         options.ResponseCompressionLevel = CompressionLevel.Fastest;
         options.ResponseCompressionAlgorithm = "gzip";
         options.EnableDetailedErrors = true;
-        // Interceptor order is critical for optimal performance:
-        // 1. Security first - rate limiting, DDoS protection
         options.Interceptors.Add<SecurityInterceptor>();
-        // 2. Extract metadata early - ConnectId needed by subsequent interceptors
         options.Interceptors.Add<RequestMetaDataInterceptor>();
-        // 3. Keep actor alive - fire-and-forget, zero latency overhead
         options.Interceptors.Add<SessionKeepAliveInterceptor>();
-        // 4. Telemetry - track all requests after infrastructure setup
         options.Interceptors.Add<TelemetryInterceptor>();
-        // 5. Culture - set thread context for business logic
         options.Interceptors.Add<ThreadCultureInterceptor>();
-        // 6. Error handling last - catch all errors from previous interceptors
         options.Interceptors.Add<FailureHandlingInterceptor>();
     });
-    
+
     services.Configure<KestrelServerOptions>(options =>
     {
         options.ListenAnyIP(5051, listenOptions =>
         {
-            listenOptions.Protocols = HttpProtocols.Http2; // gRPC services only
+            listenOptions.Protocols = HttpProtocols.Http2;
         });
-        
+
         options.ListenAnyIP(8080, listenOptions =>
         {
-            listenOptions.Protocols = HttpProtocols.Http1; // REST endpoints only
+            listenOptions.Protocols = HttpProtocols.Http1;
         });
     });
 }
@@ -395,26 +386,24 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
     public Task StartAsync(CancellationToken cancellationToken)
     {
         Log.Information("Actor system hosted service started - {ActorSystemName}", _actorSystem.Name);
-        
-        // Register shutdown hooks for proper cleanup
+
         RegisterShutdownHooks();
-        
+
         return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         Log.Information("Actor system hosted service initiating graceful shutdown...");
-        
+
         try
         {
-            // Use coordinated shutdown with timeout
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromMinutes(2)); // Maximum shutdown time
-            
-            var coordinatedShutdown = CoordinatedShutdown.Get(_actorSystem);
+            using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromMinutes(2));
+
+            CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(_actorSystem);
             await coordinatedShutdown.Run(CoordinatedShutdown.ClrExitReason.Instance);
-            
+
             Log.Information("Actor system coordinated shutdown completed successfully");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -427,39 +416,34 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
             Log.Error(ex, "Error during actor system shutdown, forcing termination");
             await _actorSystem.Terminate();
         }
-        
+
         Log.Information("Actor system hosted service shutdown complete");
     }
-    
+
     private void RegisterShutdownHooks()
     {
-        var coordinatedShutdown = CoordinatedShutdown.Get(_actorSystem);
-        
-        // Register custom shutdown tasks
+        CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(_actorSystem);
+
         coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeServiceUnbind, "stop-accepting-new-connections", () =>
         {
             Log.Information("Phase: Stop accepting new connections");
             return Task.FromResult(Done.Instance);
         });
-        
+
         coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone, "drain-active-requests", async () =>
         {
             Log.Information("Phase: Draining active requests");
-            
-            // Give active requests time to complete
+
             await Task.Delay(TimeSpan.FromSeconds(5));
-            
+
             Log.Information("Active request draining completed");
             return Done.Instance;
         });
-        
+
         coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate, "cleanup-resources", () =>
         {
             Log.Information("Phase: Cleaning up application resources");
-            
-            // Perform any additional cleanup here
-            GC.Collect();
-            
+
             return Task.FromResult(Done.Instance);
         });
     }

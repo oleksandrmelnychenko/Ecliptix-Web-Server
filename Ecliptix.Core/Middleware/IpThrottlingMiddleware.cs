@@ -127,7 +127,7 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
         }
         else
         {
-            if (!ThrottleData.TryGetValue(clientIp, out var throttleInfo)) return;
+            if (!ThrottleData.TryGetValue(clientIp, out ThrottleInfo? throttleInfo)) return;
             lock (throttleInfo)
             {
                 throttleInfo.FailureCount = Math.Max(0, throttleInfo.FailureCount - 1);
@@ -161,7 +161,7 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
     private async Task HandleBlockedRequest(HttpContext context, string clientIp)
     {
         context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-        context.Response.Headers["Retry-After"] = "900"; // 15 minutes
+        context.Response.Headers["Retry-After"] = "900";
 
         Log.Warning("Blocked request from {IpAddress}", clientIp);
 
@@ -171,7 +171,7 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
     private static async Task HandleRateLimitExceeded(HttpContext context, string clientIp)
     {
         context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-        context.Response.Headers["Retry-After"] = "60"; // 1 minute
+        context.Response.Headers["Retry-After"] = "60";
 
         Log.Information("Rate limit exceeded for {IpAddress}", clientIp);
 

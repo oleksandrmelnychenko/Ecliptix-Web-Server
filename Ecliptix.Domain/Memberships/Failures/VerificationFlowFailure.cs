@@ -51,7 +51,7 @@ public sealed record VerificationFlowFailure(
         VerificationFlowFailureType.InvalidOpaque => false,
         _ => false
     };
-    
+
     public static VerificationFlowFailure InvalidOpaque(string? details = null)
     {
         return new VerificationFlowFailure(VerificationFlowFailureType.InvalidOpaque,

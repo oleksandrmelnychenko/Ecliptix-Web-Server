@@ -34,11 +34,11 @@ public static class Constants
     public const int MetricsColumnWidth = 10;
     public const int TotalReportWidth = 63;
     public const string MetricsFormat = "F2";
-    
+
     public const int SnapshotInterval = 50;
     public const int SnapshotModulus = 10;
     public const int SnapshotMinuteMultiplier = 5;
-    
+
     public const int Curve25519FieldElementSize = 32;
     public const int Field256WordCount = 8;
     public const int WordSize = 4;

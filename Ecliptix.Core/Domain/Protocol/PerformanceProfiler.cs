@@ -60,7 +60,7 @@ public sealed class PerformanceProfiler
         report.AppendLine();
 
         Dictionary<string, (long Count, double AvgMs, double MaxMs, double MinMs)> metrics = GetMetrics();
-        
+
         if (metrics.Count == 0)
         {
             report.AppendLine(ProtocolMessages.NoPerformanceDataCollected);
@@ -127,10 +127,10 @@ public sealed class PerformanceProfiler
         public void RecordDuration(TimeSpan duration)
         {
             double ms = duration.TotalMilliseconds;
-            
+
             _count++;
             _totalMs += ms;
-            
+
             if (ms > _maxMs) _maxMs = ms;
             if (ms < _minMs) _minMs = ms;
         }

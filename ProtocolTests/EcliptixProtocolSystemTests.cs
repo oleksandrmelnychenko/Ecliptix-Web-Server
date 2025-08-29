@@ -143,7 +143,7 @@ public class EcliptixProtocolSystemTests : IDisposable
 
             Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> aliceDeriveResult =
                 _aliceKeys.X3dhDeriveSharedSecret(bobBundleInternal, Constants.X3dhInfo);
-            
+
             Assert.IsTrue(aliceDeriveResult.IsOk,
                 aliceDeriveResult.IsErr
                     ? $"Alice derivation failed: {aliceDeriveResult.UnwrapErr()}"
@@ -191,6 +191,5 @@ public class EcliptixProtocolSystemTests : IDisposable
     {
         _aliceKeys.Dispose();
         _bobKeys.Dispose();
-        GC.SuppressFinalize(this);
     }
 }

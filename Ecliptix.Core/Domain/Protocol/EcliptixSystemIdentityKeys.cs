@@ -23,7 +23,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
     private SodiumSecureMemoryHandle? _ephemeralSecretKeyHandle;
     private byte[]? _ephemeralX25519PublicKey;
     private List<OneTimePreKeyLocal> _oneTimePreKeysInternal;
-    
+
     private volatile IdentityKeysState? _cachedProtoState;
     private volatile int _lastOpkCount = -1;
     private readonly Lock _cacheUpdateLock = new();
@@ -51,7 +51,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
     public void Dispose()
     {
         Dispose(true);
-        GC.SuppressFinalize(this);
     }
 
     public Result<IdentityKeysState, EcliptixProtocolFailure> ToProtoState()
@@ -60,27 +59,24 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             return Result<IdentityKeysState, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixSystemIdentityKeys)));
 
-        // Check if we can use cached state (identity keys are immutable, only OTKs change)
-        var cachedState = _cachedProtoState;
+        IdentityKeysState? cachedState = _cachedProtoState;
         if (cachedState != null && _lastOpkCount == _oneTimePreKeysInternal.Count)
         {
             return Result<IdentityKeysState, EcliptixProtocolFailure>.Ok(cachedState);
         }
 
-        // Need to rebuild state - use lock to prevent concurrent rebuilds
         lock (_cacheUpdateLock)
         {
-            // Double-check pattern - another thread may have updated cache
             cachedState = _cachedProtoState;
             if (cachedState != null && _lastOpkCount == _oneTimePreKeysInternal.Count)
             {
                 return Result<IdentityKeysState, EcliptixProtocolFailure>.Ok(cachedState);
             }
-            
+
             return BuildAndCacheProtoState();
         }
     }
-    
+
     private Result<IdentityKeysState, EcliptixProtocolFailure> BuildAndCacheProtoState()
     {
         byte[]? edSk = null;
@@ -136,10 +132,9 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 }
             }
 
-            // Cache the result and update tracking
             _cachedProtoState = proto;
             _lastOpkCount = _oneTimePreKeysInternal.Count;
-            
+
             return Result<IdentityKeysState, EcliptixProtocolFailure>.Ok(proto);
         }
         catch (Exception ex)
@@ -352,13 +347,12 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
         try
         {
-            // Step 1: Generate Ed25519 keys
             Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure> edKeysResult = GenerateEd25519Keys();
             if (edKeysResult.IsErr)
             {
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(edKeysResult.UnwrapErr());
             }
-            
+
             (edSkHandle, edPk) = edKeysResult.Unwrap();
 
             Span<byte> tempEdSk = stackalloc byte[Constants.Ed25519SecretKeySize];
@@ -373,14 +367,13 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 Log.Debug("[EcliptixSystemIdentityKeys] Generated Ed25519 Public Key: {EdPk}",
                     Convert.ToHexString(edPk));
 
-            // Step 2: Generate X25519 identity keys
             Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure> idKeysResult = GenerateX25519IdentityKeys();
             if (idKeysResult.IsErr)
             {
                 edSkHandle?.Dispose();
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(idKeysResult.UnwrapErr());
             }
-            
+
             (idXSkHandle, idXPk) = idKeysResult.Unwrap();
 
             Span<byte> tempIdSk = stackalloc byte[Constants.X25519PrivateKeySize];
@@ -395,7 +388,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 Log.Debug("[EcliptixSystemIdentityKeys] Generated Identity X25519 Public Key: {IdPk}",
                     Convert.ToHexString(idXPk));
 
-            // Step 3: Generate signed prekey
             spkId = GenerateRandomUInt32();
             Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure> spkKeysResult = GenerateX25519SignedPreKey(spkId);
             if (spkKeysResult.IsErr)
@@ -404,7 +396,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 idXSkHandle?.Dispose();
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(spkKeysResult.UnwrapErr());
             }
-            
+
             (spkSkHandle, spkPk) = spkKeysResult.Unwrap();
 
             Span<byte> tempSpkSk = stackalloc byte[Constants.X25519PrivateKeySize];
@@ -421,7 +413,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                     "[EcliptixSystemIdentityKeys] Generated Signed PreKey Public Key (ID: {SpkId}): {SpkPk}",
                     spkId, Convert.ToHexString(spkPk));
 
-            // Step 4: Sign the signed prekey
             Result<byte[], EcliptixProtocolFailure> signatureResult = SignSignedPreKey(edSkHandle!, spkPk!);
             if (signatureResult.IsErr)
             {
@@ -430,14 +421,13 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 spkSkHandle?.Dispose();
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(signatureResult.UnwrapErr());
             }
-            
+
             spkSig = signatureResult.Unwrap();
 
             if (Log.IsEnabled(LogEventLevel.Debug))
                 Log.Debug("[EcliptixSystemIdentityKeys] Generated Signed PreKey Signature: {SpkSig}",
                     Convert.ToHexString(spkSig));
 
-            // Step 5: Generate one-time prekeys
             Result<List<OneTimePreKeyLocal>, EcliptixProtocolFailure> opksResult = GenerateOneTimePreKeys(oneTimeKeyCount);
             if (opksResult.IsErr)
             {
@@ -446,19 +436,17 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 spkSkHandle?.Dispose();
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(opksResult.UnwrapErr());
             }
-            
+
             opks = opksResult.Unwrap();
 
-            // Step 6: Create the final identity keys object
             EcliptixSystemIdentityKeys material = new(edSkHandle!, edPk!, idXSkHandle!, idXPk!, spkId,
                 spkSkHandle!, spkPk!, spkSig!, opks);
-            
-            // Clear references to prevent disposal in cleanup
+
             edSkHandle = null;
             idXSkHandle = null;
             spkSkHandle = null;
             opks = null;
-            
+
             return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Ok(material);
         }
         catch (Exception ex)
@@ -654,7 +642,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
         Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> generationResult =
             SodiumInterop.GenerateX25519KeyPair("Ephemeral");
-            
+
         if (generationResult.IsOk)
         {
             (SodiumSecureMemoryHandle skHandle, byte[] pk) keys = generationResult.Unwrap();
@@ -730,7 +718,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             {
                 dh4 = ScalarMult.Mult(ephemeralSecretBytes, remoteBundle.OneTimePreKeys[0].PublicKey);
             }
-            
 
             if (Log.IsEnabled(LogEventLevel.Debug))
             {
@@ -747,9 +734,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             int totalDhLength = Constants.X25519KeySize * (useOpk ? 4 : 3);
             dhConcatBytes = ArrayPool<byte>.Shared.Rent(totalDhLength);
             Span<byte> dhConcatSpan = dhConcatBytes.AsSpan(0, totalDhLength);
-            // CRITICAL FIX: Use same DH order as recipient to match X3DH standard  
-            // X3DH standard: DH(IK_A, SPK_B) || DH(EK_A, IK_B) || DH(EK_A, SPK_B) || DH(EK_A, OPK_B)
-            // That's: dh3, dh1, dh2, dh4
             ConcatenateDhResults(dhConcatSpan, dh3, dh1, dh2, dh4);
 
             Span<byte> f32 = stackalloc byte[Constants.X25519KeySize];
@@ -759,8 +743,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             Span<byte> ikmSpan = ikmBytes.AsSpan(0, ikmSize);
             f32.CopyTo(ikmSpan);
             dhConcatSpan.CopyTo(ikmSpan.Slice(f32.Length));
-            // CRITICAL FIX: Use exact-sized IKM array, not ArrayPool array!
-            var actualIkmArray = ikmSpan.ToArray();
+            byte[] actualIkmArray = ikmSpan.ToArray();
 
             hkdfOutput = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
             Span<byte> hkdfOutputSpan = hkdfOutput.AsSpan(0, Constants.X25519KeySize);
@@ -885,7 +868,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             dh1 = ScalarMult.Mult(identitySecretBytes, remoteEphemeralPublicKeyX.ToArray());
             dh2 = ScalarMult.Mult(signedPreKeySecretBytes, remoteEphemeralPublicKeyX.ToArray());
             dh3 = ScalarMult.Mult(signedPreKeySecretBytes, remoteIdentityPublicKeyX.ToArray());
-            
+
             if (oneTimePreKeySecretBytes != null)
                 dh4 = ScalarMult.Mult(oneTimePreKeySecretBytes, remoteEphemeralPublicKeyX.ToArray());
 
@@ -905,10 +888,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                                 (oneTimePreKeySecretBytes != null ? Constants.X25519KeySize : 0);
             dhConcatBytes = ArrayPool<byte>.Shared.Rent(totalDhLength);
             Span<byte> dhConcatSpan = dhConcatBytes.AsSpan(0, totalDhLength);
-            // CRITICAL FIX: Reorder DH values to match X3DH standard
-            // X3DH standard: DH(IK_A, SPK_B) || DH(EK_A, IK_B) || DH(EK_A, SPK_B) || DH(EK_A, OPK_B)
-            // Server dh3=SPK*IK_A, dh1=IK*EK_A, dh2=SPK*EK_A, dh4=OPK*EK_A
-            // Correct order: dh3, dh1, dh2, dh4
             ConcatenateDhResults(dhConcatSpan, dh3, dh1, dh2, dh4);
 
             Span<byte> f32 = stackalloc byte[Constants.X25519KeySize];
@@ -918,8 +897,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             Span<byte> ikmSpan = ikmBytes.AsSpan(0, ikmSize);
             f32.CopyTo(ikmSpan);
             dhConcatSpan.CopyTo(ikmSpan.Slice(f32.Length));
-            // CRITICAL FIX: Use exact-sized IKM array, not ArrayPool array!
-            var actualIkmArray = ikmSpan.ToArray();
+            byte[] actualIkmArray = ikmSpan.ToArray();
 
             hkdfOutput = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
             Span<byte> hkdfOutputSpan = hkdfOutput.AsSpan(0, Constants.X25519KeySize);
@@ -1127,8 +1105,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
         _ephemeralSecretKeyHandle = null;
         if (_ephemeralX25519PublicKey != null) SodiumInterop.SecureWipe(_ephemeralX25519PublicKey).IgnoreResult();
         _ephemeralX25519PublicKey = null;
-        
-        // Clear cached state
+
         _cachedProtoState = null;
         _lastOpkCount = -1;
     }

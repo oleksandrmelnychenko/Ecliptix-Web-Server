@@ -5,14 +5,6 @@ using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Core.Domain.Protocol;
 
-/// <summary>
-/// Secure memory handle for cryptographic operations.
-/// 
-/// IMPORTANT: This class is NOT thread-safe and is designed for single-threaded usage
-/// within Akka.NET actors. The actor model guarantees sequential message processing,
-/// eliminating the need for internal locking. EcliptixProtocolConnection provides
-/// its own synchronization at the protocol level when needed.
-/// </summary>
 public sealed class SodiumSecureMemoryHandle : SafeHandle
 {
 

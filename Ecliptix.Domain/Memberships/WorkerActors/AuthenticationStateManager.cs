@@ -33,12 +33,12 @@ public class AuthenticationStateManager : ReceiveActor
 {
     private readonly ConcurrentDictionary<uint, IActorRef> _activeContexts = new();
     private readonly ConcurrentDictionary<uint, DateTime> _lastActivity = new();
-    
+
     private const int MaxConcurrentContexts = 10000;
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan MetricsInterval = TimeSpan.FromMinutes(5);
-    
+
     private ICancelable? _cleanupTimer;
     private ICancelable? _metricsTimer;
 
@@ -55,7 +55,7 @@ public class AuthenticationStateManager : ReceiveActor
     protected override void PreStart()
     {
         base.PreStart();
-        
+
         _cleanupTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
             CleanupInterval, 
             CleanupInterval, 
@@ -78,10 +78,10 @@ public class AuthenticationStateManager : ReceiveActor
     {
         _cleanupTimer?.Cancel();
         _metricsTimer?.Cancel();
-        
+
         Log.Information("AuthenticationStateManager stopped - managed {ActiveContexts} contexts", 
             _activeContexts.Count);
-        
+
         base.PostStop();
     }
 
@@ -90,26 +90,26 @@ public class AuthenticationStateManager : ReceiveActor
         Receive<GetOrCreateAuthContext>(msg =>
         {
             UpdateLastActivity(msg.ConnectId);
-            
+
             if (_activeContexts.Count >= MaxConcurrentContexts)
             {
                 Log.Warning("Approaching memory limit ({Current}/{Max}) - evicting oldest idle contexts", 
                     _activeContexts.Count, MaxConcurrentContexts);
                 EvictOldestIdleActors(100); 
             }
-            
+
             if (!_activeContexts.TryGetValue(msg.ConnectId, out IActorRef? actor))
             {
                 actor = Context.ActorOf(
                     AuthenticationContextActor.Build(msg.ConnectId, Self),
                     $"auth-context-{msg.ConnectId}"
                 );
-                
+
                 Context.Watch(actor);
-                
+
                 _activeContexts.TryAdd(msg.ConnectId, actor);
                 _lastActivity.TryAdd(msg.ConnectId, DateTime.UtcNow);
-                
+
                 Log.Debug("Created AuthenticationContextActor for connectId {ConnectId}, mobile {MaskedMobileNumber} - total contexts: {Total}", 
                     msg.ConnectId, MaskMobileNumber(msg.MobileNumber), _activeContexts.Count);
             }
@@ -117,7 +117,7 @@ public class AuthenticationStateManager : ReceiveActor
             {
                 Log.Debug("Reusing existing AuthenticationContextActor for connectId {ConnectId}", msg.ConnectId);
             }
-            
+
             Sender.Tell(actor);
         });
 
@@ -128,7 +128,7 @@ public class AuthenticationStateManager : ReceiveActor
                 _lastActivity.TryRemove(msg.ConnectId, out _);
                 Context.Unwatch(actor);
                 Context.Stop(actor);
-                
+
                 Log.Debug("Removed AuthenticationContextActor for connectId {ConnectId} - remaining contexts: {Remaining}", 
                     msg.ConnectId, _activeContexts.Count);
             }
@@ -161,7 +161,7 @@ public class AuthenticationStateManager : ReceiveActor
             {
                 _activeContexts.TryRemove(connectIdToRemove, out _);
                 _lastActivity.TryRemove(connectIdToRemove, out _);
-                
+
                 Log.Debug("AuthenticationContextActor for connectId {ConnectId} terminated - remaining: {Remaining}", 
                     connectIdToRemove, _activeContexts.Count);
             }
@@ -214,7 +214,7 @@ public class AuthenticationStateManager : ReceiveActor
                 Context.Unwatch(actor);
                 Context.Stop(actor);
                 evictedCount++;
-                
+
                 Log.Debug("Evicted AuthenticationContextActor for connectId {ConnectId} (idle for {IdleTime})", 
                     connectId, now - _lastActivity.GetValueOrDefault(connectId));
             }
@@ -233,12 +233,12 @@ public class AuthenticationStateManager : ReceiveActor
         int expiredCount = 0;
         List<uint> expiredConnections = new();
 
-        foreach (var kvp in _activeContexts.ToList())
+        foreach (KeyValuePair<uint, IActorRef> kvp in _activeContexts.ToList())
         {
             try
             {
                 ContextInfo contextInfo = kvp.Value.Ask<ContextInfo>(new GetContextInfo(), TimeSpan.FromSeconds(2)).Result;
-                
+
                 if (contextInfo is ContextInfo.Expired or ContextInfo.NotEstablished)
                 {
                     expiredConnections.Add(kvp.Key);
@@ -270,7 +270,7 @@ public class AuthenticationStateManager : ReceiveActor
     {
         if (string.IsNullOrEmpty(mobileNumber) || mobileNumber.Length < 4)
             return "***";
-        
+
         return $"{mobileNumber[..3]}****{mobileNumber[^2..]}";
     }
 

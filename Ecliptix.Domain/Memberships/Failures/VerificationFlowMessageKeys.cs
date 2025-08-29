@@ -17,7 +17,7 @@ public static class VerificationFlowMessageKeys
 
     public const string PhoneNumberInvalid = "phone_invalid";
     public const string SmsSendFailed = "sms_send_failed";
-    
+
     public const string InvalidOpaque = "invalid_opaque";
 
     public const string ConcurrencyConflict = "data_concurrency_conflict";

@@ -39,34 +39,34 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidInput($"{fieldName} too long"));
         return Result<Unit, OpaqueFailure>.Ok(Unit.Value);
     }
-    
+
     private static string GenerateTokenHash(ReadOnlySpan<byte> token)
     {
         byte[] hash = SHA256.HashData(token);
         return Convert.ToHexString(hash);
     }
-    
+
     private static bool IsTokenUsed(ReadOnlySpan<byte> token)
     {
         string tokenHash = GenerateTokenHash(token);
         CleanupExpiredTokens();
         return UsedTokens.ContainsKey(tokenHash);
     }
-    
+
     private static void MarkTokenAsUsed(ReadOnlySpan<byte> token)
     {
         string tokenHash = GenerateTokenHash(token);
         UsedTokens.TryAdd(tokenHash, DateTime.UtcNow);
     }
-    
+
     private static void CleanupExpiredTokens()
     {
         DateTime now = DateTime.UtcNow;
         if (now - _lastCleanup < TimeSpan.FromMinutes(1)) return;
-        
+
         _lastCleanup = now;
         DateTime cutoff = now - ReplayProtectionWindow;
-        
+
         const int maxTokensToKeep = 100000;
         if (UsedTokens.Count > maxTokensToKeep)
         {
@@ -75,19 +75,19 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
                 .Take(UsedTokens.Count - maxTokensToKeep + 10000)
                 .Select(kvp => kvp.Key)
                 .ToList();
-                
+
             foreach (string token in oldestTokens)
             {
                 UsedTokens.TryRemove(token, out _);
             }
         }
-        
+
         List<string> expiredTokens = UsedTokens
             .Where(kvp => kvp.Value < cutoff)
             .Select(kvp => kvp.Key)
             .Take(10000)
             .ToList();
-            
+
         foreach (string token in expiredTokens)
         {
             UsedTokens.TryRemove(token, out _);
@@ -114,7 +114,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         {
             if (oprfRequest.Length != CompressedPublicKeyLength)
                 return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.InvalidInput("Invalid OPRF request length"));
-            
+
             Span<byte> requestBuffer = stackalloc byte[oprfRequest.Length];
             oprfRequest.CopyTo(requestBuffer);
             ECPoint requestPoint = OpaqueCryptoUtilities.DomainParams.Curve.DecodePoint(requestBuffer.ToArray());
@@ -184,7 +184,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         Result<byte[], OpaqueFailure> oprfResponseResult = ProcessOprfRequestSafe(oprfRequest);
         if (oprfResponseResult.IsErr)
             return Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(oprfResponseResult.UnwrapErr());
-            
+
         byte[] oprfResponse = oprfResponseResult.Unwrap();
         AsymmetricCipherKeyPair serverEphemeralKeys = OpaqueCryptoUtilities.GenerateKeyPair();
 
@@ -326,9 +326,9 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         }
 
         byte[] serverMac = CreateMac(serverMacKey, transcriptHash);
-        
+
         MarkTokenAsUsed(request.ServerStateToken.Span);
-        
+
         return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(new OpaqueSignInFinalizeResponse
         {
             ServerMac = ByteString.CopyFrom(serverMac),
@@ -413,14 +413,6 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         return mac;
     }
 
-
-    /// <summary>
-    /// Generates a secure authentication context token for successful OPAQUE authentication.
-    /// This replaces the fake session management with real context generation.
-    /// </summary>
-    /// <param name="membershipId">The membership ID for the authenticated user</param>
-    /// <param name="mobileNumberId">The mobile number ID for the authenticated user</param>
-    /// <returns>A result containing the authentication context token and expiration</returns>
     public Result<AuthContextTokenResponse, OpaqueFailure> GenerateAuthenticationContext(
         Guid membershipId, Guid mobileNumberId)
     {
@@ -429,9 +421,9 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             byte[] contextToken = new byte[64];
             using RandomNumberGenerator rng = RandomNumberGenerator.Create();
             rng.GetBytes(contextToken);
-            
+
             DateTime expiresAt = DateTime.UtcNow.AddHours(24);
-            
+
             AuthContextTokenResponse response = new AuthContextTokenResponse
             {
                 ContextToken = contextToken,
@@ -439,9 +431,9 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
                 MobileNumberId = mobileNumberId,
                 ExpiresAt = expiresAt
             };
-            
+
             CryptographicOperations.ZeroMemory(contextToken);
-            
+
             return Result<AuthContextTokenResponse, OpaqueFailure>.Ok(response);
         }
         catch (Exception ex)

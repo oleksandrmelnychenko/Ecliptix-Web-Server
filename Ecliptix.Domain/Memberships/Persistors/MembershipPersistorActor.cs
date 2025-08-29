@@ -247,7 +247,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         Log.Error(ex, "Database exception in {ActorType}: {ExceptionType} - {Message}", 
             GetType().Name, ex.GetType().Name, ex.Message);
-            
+
         if (ex is SqlException sqlEx)
         {
             return sqlEx.Number switch
@@ -282,7 +282,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         if (string.IsNullOrEmpty(mobileNumber) || mobileNumber.Length < 4)
             return "***";
-        
+
         return $"{mobileNumber[..3]}****{mobileNumber[^2..]}";
     }
 
