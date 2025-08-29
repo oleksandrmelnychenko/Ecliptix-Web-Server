@@ -29,3 +29,15 @@ resource "aws_db_instance" "memberships_mssql" {
   publicly_accessible = false
   skip_final_snapshot = true
 }
+
+# --- Create memberships database befor memberships-rds created ---
+
+locals {
+  db_credentials = jsondecode(data.aws_secretsmanager_secret_version.memberships_mssql.secret_string)
+}
+
+resource "null_resource" "create_db" {
+  provisioner "local-exec" {
+    command = "sqlcmd -S ${aws_db_instance.memberships_mssql.address} -U ${local.db_credentials["username"]} -P ${local.db_credentials["password"]} -Q \"CREATE DATABASE memberships;\""
+  }
+}

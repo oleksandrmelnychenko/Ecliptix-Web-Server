@@ -55,4 +55,11 @@
         <Protobuf Include="Protobuf\membership\opaque_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
         <Protobuf Include="Protobuf\membership\membership_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)"/>
     </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="../Ecliptix.Domain/PersistorScripts/**/*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Link>PersistorScripts/%(RecursiveDir)%(Filename)%(Extension)</Link>
+        </Content>
+    </ItemGroup>
 </Project>
