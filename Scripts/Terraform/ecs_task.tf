@@ -18,7 +18,14 @@ resource "aws_ecs_task_definition" "memberships" {
         { containerPort = 8080, protocol = "tcp" }
       ]
       environment = [
-        { name = "DOTNET_ENVIRONMENT", value = "Deployment" }
+        { 
+          name = "DOTNET_ENVIRONMENT",
+          value = "Deployment"
+        },
+        {
+          name  = "ConnectionStrings__DefaultConnection"
+          value = "Server=${aws_db_instance.memberships_mssql.address};Database=memberships;User Id=${jsondecode(data.aws_secretsmanager_secret_version.memberships_mssql.secret_string)["username"]};Password=${jsondecode(data.aws_secretsmanager_secret_version.memberships_mssql.secret_string)["password"]};Encrypt=True;TrustServerCertificate=True;"
+        }
       ]
       logConfiguration = {
         logDriver = "awslogs"
