@@ -33,7 +33,9 @@ using Ecliptix.Core.Domain.Protocol.Monitoring;
 using Ecliptix.Core.Api.Grpc.Services.Authentication;
 using Ecliptix.Core.Api.Grpc.Services.Membership;
 using Ecliptix.Core.Api.Grpc.Services.Device;
+using Ecliptix.Core.Infrastructure.DbUp;
 using Microsoft.Extensions.Primitives;
+
 
 const string systemActorName = "EcliptixProtocolSystemActor";
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -162,6 +164,9 @@ try
             }
         };
     });
+    
+    DbMigrator.ApplyMaster(builder.Configuration);
+    
     app.UseRateLimiter();
     app.UseMiddleware<SecurityMiddleware>();
     app.UseMiddleware<IpThrottlingMiddleware>();

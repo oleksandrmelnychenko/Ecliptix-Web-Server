@@ -4,14 +4,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Core", "Ecliptix.C
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{E9747EDF-1B3E-4516-9D2B-BCBDEBA05957}"
 	ProjectSection(SolutionItems) = preProject
-		compose.yaml = compose.yaml
+		# compose.yaml = compose.yaml
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Scripts", "Scripts", "{F2A8B5C3-9E7D-4C1F-B8A6-3D2E5F7A9B1C}"
 	ProjectSection(SolutionItems) = preProject
-		Scripts\run-aot.sh = Scripts\run-aot.sh
-		Scripts\run-aot.bat = Scripts\run-aot.bat
-		Scripts\run-aot.ps1 = Scripts\run-aot.ps1
+		  Scripts\Build\run-aot.sh = Scripts\Build\run-aot.sh
+    	Scripts\Build\run-aot.bat = Scripts\Build\run-aot.bat
+    	Scripts\Build\run-aot.ps1 = Scripts\Build\run-aot.ps1
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Domain", "Ecliptix.Domain\Ecliptix.Domain.csproj", "{BAD06D56-7FE2-4CC3-8429-BE169A6E07E3}"
