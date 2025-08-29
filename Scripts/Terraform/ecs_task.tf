@@ -23,7 +23,7 @@ resource "aws_ecs_task_definition" "memberships" {
           value = "Deployment"
         },
         {
-          name  = "ConnectionStrings__DefaultConnection"
+          name  = "ConnectionStrings__EcliptixMemberships"
           value = "Server=${aws_db_instance.memberships_mssql.address};Database=memberships;User Id=${jsondecode(data.aws_secretsmanager_secret_version.memberships_mssql.secret_string)["username"]};Password=${jsondecode(data.aws_secretsmanager_secret_version.memberships_mssql.secret_string)["password"]};Encrypt=True;TrustServerCertificate=True;"
         }
       ]
