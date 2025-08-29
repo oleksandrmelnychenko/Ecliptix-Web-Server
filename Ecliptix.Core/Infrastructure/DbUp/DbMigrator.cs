@@ -1,4 +1,5 @@
 using DbUp;
+using DbUp.Engine;
 using DbUp.Engine.Output;
 using Serilog;
 using ILogger = Serilog.ILogger;
@@ -9,13 +10,16 @@ public static class DbMigrator
 {
     public static void ApplyMaster(IConfiguration configuration)
     {
-        var upgrader = DeployChanges.To
+        string basePath = AppContext.BaseDirectory;
+        string masterSqlPath = Path.Combine(basePath, configuration.GetValue<string>("DbUp:MasterSqlPath")!);
+        
+        UpgradeEngine? upgrader = DeployChanges.To
             .SqlDatabase(configuration.GetConnectionString("EcliptixMemberships"))
-            .WithScript("Master", File.ReadAllText(configuration.GetValue<string>("DbUp:MasterSqlPath")!))
+            .WithScript("Master", File.ReadAllText(masterSqlPath))
             .LogTo(new SerilogUpgradeLog(Log.Logger))
             .Build();
 
-        var result = upgrader.PerformUpgrade();
+        DatabaseUpgradeResult? result = upgrader.PerformUpgrade();
 
         if (!result.Successful)
         {
