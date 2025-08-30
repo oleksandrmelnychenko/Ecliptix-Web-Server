@@ -272,23 +272,11 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 MaxChainAge = TimeSpan.FromHours(6),
                 MaxMessagesWithoutRatchet = 200
             },
-            PubKeyExchangeType.VerificationFlowStream => new RatchetConfig
+            PubKeyExchangeType.ServerStreaming => new RatchetConfig
             {
                 DhRatchetEveryNMessages = 20,  
                 MaxChainAge = TimeSpan.FromMinutes(5),
                 MaxMessagesWithoutRatchet = 100
-            },
-            PubKeyExchangeType.MessageDeliveryStream => new RatchetConfig
-            {
-                DhRatchetEveryNMessages = 50, 
-                MaxChainAge = TimeSpan.FromMinutes(10),
-                MaxMessagesWithoutRatchet = 200
-            },
-            PubKeyExchangeType.PresenceStream => new RatchetConfig
-            {
-                DhRatchetEveryNMessages = 100,
-                MaxChainAge = TimeSpan.FromMinutes(15),
-                MaxMessagesWithoutRatchet = 500
             },
             _ => RatchetConfig.Default
         };

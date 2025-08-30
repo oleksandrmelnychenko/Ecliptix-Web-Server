@@ -20,14 +20,8 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
 
         return methodName switch
         {
-            string method when method.Contains("InitiateVerification") => PubKeyExchangeType.VerificationFlowStream,
-            string method when method.Contains("VerifyOtp") => PubKeyExchangeType.VerificationFlowStream,
-
-            string method when method.Contains("SendMessage") => PubKeyExchangeType.MessageDeliveryStream,
-            string method when method.Contains("ReceiveMessage") => PubKeyExchangeType.MessageDeliveryStream,
-
-            string method when method.Contains("UpdatePresence") => PubKeyExchangeType.PresenceStream,
-            string method when method.Contains("PresenceStream") => PubKeyExchangeType.PresenceStream,
+            string method when method.Contains("InitiateVerification") => PubKeyExchangeType.ServerStreaming,
+            string method when method.Contains("VerifyOtp") => PubKeyExchangeType.ServerStreaming,
 
             _ => PubKeyExchangeType.DataCenterEphemeralConnect
         };
