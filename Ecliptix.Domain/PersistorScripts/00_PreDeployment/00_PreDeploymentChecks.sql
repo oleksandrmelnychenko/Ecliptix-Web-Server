@@ -20,19 +20,16 @@ Created: 2024-08-24
 ================================================================================
 */
 
-USE [master];
-GO
 
 -- Set error handling
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
-GO
 
 PRINT '================================================================================';
 PRINT 'Ecliptix Database Pre-Deployment Checks';
 PRINT 'Started at: ' + CONVERT(NVARCHAR(30), GETUTCDATE(), 121);
 PRINT '================================================================================';
-GO
+
 
 -- ============================================================================
 -- ENVIRONMENT VALIDATION
@@ -364,4 +361,3 @@ PRINT 'Pre-Deployment Checks Completed Successfully';
 PRINT 'Ready to proceed with Layer 1: Configuration & Core Infrastructure';
 PRINT 'Finished at: ' + CONVERT(NVARCHAR(30), GETUTCDATE(), 121);
 PRINT '================================================================================';
-GO

@@ -1,43 +1,58 @@
 using DbUp;
-using DbUp.Engine.Output;
-using Serilog;
-using ILogger = Serilog.ILogger;
+using DbUp.Engine;
+using DbUp.Helpers;
 
 namespace Ecliptix.Core.Infrastructure.DbUp;
 
 public static class DbMigrator
-{
-    public static void ApplyMaster(IConfiguration configuration)
+{ public static void ApplyMaster(IConfiguration configuration)
+    
     {
-        var upgrader = DeployChanges.To
-            .SqlDatabase(configuration.GetConnectionString("EcliptixMemberships"))
-            .WithScript("Master", File.ReadAllText(configuration.GetValue<string>("DbUp:MasterSqlPath")!))
-            .LogTo(new SerilogUpgradeLog(Log.Logger))
-            .Build();
-
-        var result = upgrader.PerformUpgrade();
-
-        if (!result.Successful)
+        string basePath = AppContext.BaseDirectory;
+        string masterSqlPath = Path.Combine(basePath, configuration.GetValue<string>("DbUp:MasterSqlPath")!);
+        
+        string[] layers = new[]
         {
-            throw new Exception("Database migration failed. See logs for details.");
+            "00_PreDeployment",
+            "01_Configuration",
+            "02_CoreDomain",
+            "03_Relationships",
+            "04_CoreBusiness",
+            "05_AdvancedFeatures",
+            "06_Triggers",
+            "07_ViewsHelpers",
+            "08_PostDeployment"
+        };
+
+        foreach (string layer in layers)
+        {
+            string path = Path.Combine(masterSqlPath, layer);
+            Console.WriteLine($"🚀 Executing layer: {layer}");
+
+            var upgrader = DeployChanges.To
+                .SqlDatabase(configuration.GetConnectionString("EcliptixMemberships")!)
+                .WithScriptsFromFileSystem(path)
+                .JournalTo(new NullJournal())
+                .LogToConsole()
+                .Build();
+
+            DatabaseUpgradeResult? result = upgrader.PerformUpgrade();
+
+            if (!result.Successful)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"❌ Layer {layer} failed:");
+                Console.WriteLine(result.Error);
+                Console.ResetColor();
+                return;
+            }
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"✅ Layer {layer} executed successfully\n");
+            Console.ResetColor();
         }
-    }
-}
 
-public class SerilogUpgradeLog(ILogger logger) : IUpgradeLog
-{
-    public void WriteInformation(string format, params object[] args)
-    {
-        logger.Information(format, args);
-    }
-
-    public void WriteError(string format, params object[] args)
-    {
-        logger.Error(format, args);
-    }
-
-    public void WriteWarning(string format, params object[] args)
-    {
-        logger.Warning(format, args);
+        Console.WriteLine("🎉 All layers executed successfully!");
+        return;
     }
 }
