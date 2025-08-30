@@ -478,6 +478,9 @@ BEGIN TRY
             -- Create new verification flow
             SET @NewFlowUniqueId = NEWID();
             DECLARE @DefaultExpirationMinutes INT = CAST(dbo.GetConfigValue(''VerificationFlow.DefaultExpirationMinutes'') AS INT);
+            -- Ensure minimum expiration time of 5 minutes if config value is invalid or missing
+            IF @DefaultExpirationMinutes IS NULL OR @DefaultExpirationMinutes <= 0
+                SET @DefaultExpirationMinutes = 5;
             SET @ExpiresAt = DATEADD(MINUTE, @DefaultExpirationMinutes, GETUTCDATE());
             
             INSERT INTO dbo.VerificationFlows (

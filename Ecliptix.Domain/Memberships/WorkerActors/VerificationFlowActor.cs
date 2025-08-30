@@ -447,6 +447,22 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         (OtpQueryRecord otpRecord, string plainOtp) = generationResult.Unwrap();
 
+        // First, persist the OTP to database to avoid race conditions
+        Result<CreateOtpResult, VerificationFlowFailure> createResult =
+            await _persistor.Ask<Result<CreateOtpResult, VerificationFlowFailure>>(
+                new CreateOtpActorEvent(otpRecord), TimeSpan.FromSeconds(20));
+
+        if (createResult.IsErr) return Result<Unit, VerificationFlowFailure>.Err(createResult.UnwrapErr());
+
+        _activeOtp = otp;
+        _activeOtp.UniqueIdentifier = createResult.Unwrap().OtpUniqueId;
+
+        _verificationFlow = Option<VerificationFlowQueryRecord>.Some(_verificationFlow.Value with
+        {
+            OtpCount = _verificationFlow.Value!.OtpCount + 1
+        });
+
+        // Now that OTP is persisted, send the SMS
         string localizedString =
             _localizationProvider.Localize(VerificationFlowMessageKeys.AuthenticationCodeIs, cultureName);
         StringBuilder messageBuilder = new(localizedString + ": " + plainOtp);
@@ -477,24 +493,20 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         if (smsResult?.IsSuccess != true)
         {
+            // OTP was already persisted but SMS failed - we should expire it
+            Log.Warning("SMS sending failed completely for ConnectId {ConnectId}, expiring created OTP", _connectId);
+            try
+            {
+                await UpdateOtpStatus(VerificationFlowStatus.Failed);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to expire OTP after SMS failure for ConnectId {ConnectId}", _connectId);
+            }
+
             return Result<Unit, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.SmsSendFailed($"Failed to send SMS after {maxSmsRetries} attempts: {smsResult?.ErrorMessage}"));
         }
-
-        _activeOtp = otp;
-
-        Result<CreateOtpResult, VerificationFlowFailure> createResult =
-            await _persistor.Ask<Result<CreateOtpResult, VerificationFlowFailure>>(
-                new CreateOtpActorEvent(otpRecord), TimeSpan.FromSeconds(20));
-
-        if (createResult.IsErr) return Result<Unit, VerificationFlowFailure>.Err(createResult.UnwrapErr());
-
-        _verificationFlow = Option<VerificationFlowQueryRecord>.Some(_verificationFlow.Value with
-        {
-            OtpCount = _verificationFlow.Value!.OtpCount + 1
-        });
-
-        _activeOtp.UniqueIdentifier = createResult.Unwrap().OtpUniqueId;
 
         return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
     }
