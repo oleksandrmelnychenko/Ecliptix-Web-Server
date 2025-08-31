@@ -20,8 +20,7 @@ Created: 2024-08-24
 ================================================================================
 */
 
--- Use target database
-USE [memberships]; -- Replace with your actual database name
+USE [memberships];
 GO
 
 SET NOCOUNT ON;
@@ -67,15 +66,15 @@ BEGIN TRY
     BEGIN
         DECLARE @IsValid BIT = 0;
         DECLARE @CleanedNumber NVARCHAR(20);
-        
+
         -- Input validation
         IF @PhoneNumber IS NULL OR LEN(TRIM(@PhoneNumber)) = 0
             RETURN 0;
-        
+
         -- Remove common formatting characters
         SET @CleanedNumber = REPLACE(REPLACE(REPLACE(REPLACE(@PhoneNumber, '' '', ''''), ''('', ''''), '')'', ''''), ''-'', '''');
         SET @CleanedNumber = REPLACE(REPLACE(@CleanedNumber, ''.'', ''''), ''+'', '''');
-        
+
         -- Check if contains only digits after cleaning
         IF @CleanedNumber NOT LIKE ''%[^0-9]%''
         BEGIN
@@ -92,7 +91,7 @@ BEGIN TRY
                     SET @IsValid = 1;
             END
         END
-        
+
         RETURN @IsValid;
     END;
     ');
@@ -102,7 +101,6 @@ BEGIN TRY
     -- ============================================================================
     -- IP ADDRESS VALIDATION
     -- ============================================================================
-    
     PRINT 'Creating IP address validation function...';
     
     -- Drop existing if exists
@@ -116,45 +114,47 @@ BEGIN TRY
     AS
     BEGIN
         DECLARE @IsValid BIT = 0;
-        
+
         -- Input validation
         IF @IpAddress IS NULL OR LEN(TRIM(@IpAddress)) = 0
             RETURN 0;
-        
+
         SET @IpAddress = LTRIM(RTRIM(@IpAddress));
-        
+
         -- IPv4 validation
         IF CHARINDEX('':'', @IpAddress) = 0
         BEGIN
             -- Split IPv4 into octets
             DECLARE @Octet1 INT, @Octet2 INT, @Octet3 INT, @Octet4 INT;
             DECLARE @DotCount INT = LEN(@IpAddress) - LEN(REPLACE(@IpAddress, ''.'', ''''));
-            
+
             IF @DotCount = 3
             BEGIN
                 -- Extract octets
                 DECLARE @Pos1 INT = CHARINDEX(''.'', @IpAddress);
                 DECLARE @Pos2 INT = CHARINDEX(''.'', @IpAddress, @Pos1 + 1);
                 DECLARE @Pos3 INT = CHARINDEX(''.'', @IpAddress, @Pos2 + 1);
-                
+
                 IF @Pos1 > 0 AND @Pos2 > 0 AND @Pos3 > 0
                 BEGIN
-                    BEGIN TRY
+                    -- Use ISNUMERIC to check conversion
+                    IF ISNUMERIC(LEFT(@IpAddress, @Pos1 - 1)) = 1 AND
+                       ISNUMERIC(SUBSTRING(@IpAddress, @Pos1 + 1, @Pos2 - @Pos1 - 1)) = 1 AND
+                       ISNUMERIC(SUBSTRING(@IpAddress, @Pos2 + 1, @Pos3 - @Pos2 - 1)) = 1 AND
+                       ISNUMERIC(SUBSTRING(@IpAddress, @Pos3 + 1, LEN(@IpAddress) - @Pos3)) = 1
+                    BEGIN
                         SET @Octet1 = CAST(LEFT(@IpAddress, @Pos1 - 1) AS INT);
                         SET @Octet2 = CAST(SUBSTRING(@IpAddress, @Pos1 + 1, @Pos2 - @Pos1 - 1) AS INT);
                         SET @Octet3 = CAST(SUBSTRING(@IpAddress, @Pos2 + 1, @Pos3 - @Pos2 - 1) AS INT);
                         SET @Octet4 = CAST(SUBSTRING(@IpAddress, @Pos3 + 1, LEN(@IpAddress) - @Pos3) AS INT);
-                        
+
                         -- Validate octet ranges
                         IF @Octet1 BETWEEN 0 AND 255 AND
                            @Octet2 BETWEEN 0 AND 255 AND
                            @Octet3 BETWEEN 0 AND 255 AND
                            @Octet4 BETWEEN 0 AND 255
                             SET @IsValid = 1;
-                    END TRY
-                    BEGIN CATCH
-                        SET @IsValid = 0;
-                    END CATCH
+                    END
                 END
             END
         END
@@ -163,8 +163,8 @@ BEGIN TRY
         BEGIN
             -- Basic IPv6 format check
             DECLARE @ColonCount INT = LEN(@IpAddress) - LEN(REPLACE(@IpAddress, '':'', ''''));
-            DECLARE @DoubleColonCount INT = LEN(@IpAddress) - LEN(REPLACE(@IpAddress, ''::'', '''')) + 1;
-            
+            DECLARE @DoubleColonCount INT = (LEN(@IpAddress) - LEN(REPLACE(@IpAddress, ''::'', ''''))) / 2;
+
             -- IPv6 should have 2-8 colons, and at most one double colon
             IF @ColonCount >= 2 AND @ColonCount <= 8 AND @DoubleColonCount <= 1
             BEGIN
@@ -174,7 +174,7 @@ BEGIN TRY
                     SET @IsValid = 1;
             END
         END
-        
+
         RETURN @IsValid;
     END;
     ');
@@ -184,7 +184,7 @@ BEGIN TRY
     -- ============================================================================
     -- GUID VALIDATION
     -- ============================================================================
-    
+
     PRINT 'Creating GUID validation function...';
     
     -- Drop existing if exists
@@ -198,7 +198,7 @@ BEGIN TRY
     AS
     BEGIN
         DECLARE @IsValid BIT = 0;
-        
+
         -- Input validation
         IF @GuidValue IS NULL OR LEN(TRIM(@GuidValue)) = 0
             RETURN 0;
@@ -220,17 +220,10 @@ BEGIN TRY
             DECLARE @HexOnly NVARCHAR(32) = REPLACE(@GuidValue, ''-'', '''');
             IF @HexOnly NOT LIKE ''%[^0-9a-fA-F]%''
             BEGIN
-                -- Test conversion to UNIQUEIDENTIFIER
-                BEGIN TRY
-                    DECLARE @TestGuid UNIQUEIDENTIFIER = CAST(@GuidValue AS UNIQUEIDENTIFIER);
-                    SET @IsValid = 1;
-                END TRY
-                BEGIN CATCH
-                    SET @IsValid = 0;
-                END CATCH
+                SET @IsValid = 1;
             END
         END
-        
+
         RETURN @IsValid;
     END;
     ');
@@ -448,7 +441,10 @@ BEGIN TRY
         ('Valid GUID', 1, dbo.ValidateGuid('12345678-1234-1234-1234-123456789012')),
         ('Invalid GUID', 0, dbo.ValidateGuid('invalid-guid-format'));
     
-    UPDATE @TestResults SET Passed = CASE WHEN Expected = Actual THEN 1 ELSE 0 END;
+    UPDATE @TestResults
+        SET Passed = CASE WHEN Expected = Actual THEN 1 ELSE 0 END
+        WHERE Expected IS NOT NULL
+          AND Actual IS NOT NULL;
     
     DECLARE @PassedTests INT, @TotalTests INT;
     SELECT @PassedTests = COUNT(*), @TotalTests = COUNT(*) FROM @TestResults WHERE Passed = 1;
