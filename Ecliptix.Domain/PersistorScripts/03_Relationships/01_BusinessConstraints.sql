@@ -399,8 +399,7 @@ BEGIN TRY
         DROP PROCEDURE dbo.ValidateMembershipDataIntegrity;
     
     -- Comprehensive data integrity validation procedure
-    EXEC ('
-    CREATE PROCEDURE dbo.ValidateMembershipDataIntegrity
+        CREATE PROCEDURE dbo.ValidateMembershipDataIntegrity
         @MembershipId UNIQUEIDENTIFIER = NULL,
         @ValidationErrors NVARCHAR(MAX) OUTPUT,
         @IsValid BIT OUTPUT
@@ -413,32 +412,32 @@ BEGIN TRY
         
         -- Validate specific membership or all memberships
         DECLARE @WhereClause NVARCHAR(100) = CASE 
-            WHEN @MembershipId IS NOT NULL THEN '' AND m.UniqueId = @MembershipId''
-            ELSE ''''
+            WHEN @MembershipId IS NOT NULL THEN ' AND m.UniqueId = @MembershipId'
+            ELSE ''
         END;
         
         -- Check for orphaned verification flows
         INSERT INTO @ErrorList (ErrorMessage)
-        SELECT ''Orphaned verification flow: '' + CAST(vf.UniqueId AS NVARCHAR(36))
+        SELECT 'Orphaned verification flow: ' + CAST(vf.UniqueId AS NVARCHAR(36))
         FROM dbo.VerificationFlows vf
         LEFT JOIN dbo.Memberships m ON vf.UniqueId = m.VerificationFlowId
-        WHERE m.Id IS NULL AND vf.Status = ''verified'';
+        WHERE m.Id IS NULL AND vf.Status = 'verified';
         
         -- Check for active memberships without proper creation status
         INSERT INTO @ErrorList (ErrorMessage)
-        SELECT ''Invalid active membership: '' + CAST(m.UniqueId AS NVARCHAR(36))
+        SELECT 'Invalid active membership: ' + CAST(m.UniqueId AS NVARCHAR(36))
         FROM dbo.Memberships m
-        WHERE m.Status = ''active'' AND m.CreationStatus NOT IN (''secure_key_set'', ''passphrase_set'');
+        WHERE m.Status = 'active' AND m.CreationStatus NOT IN ('secure_key_set', 'passphrase_set');
         
         -- Check for expired authentication contexts still marked as active
         INSERT INTO @ErrorList (ErrorMessage)
-        SELECT ''Expired but active auth context: '' + CAST(ac.Id AS NVARCHAR(20))
+        SELECT 'Expired but active auth context: ' + CAST(ac.Id AS NVARCHAR(20))
         FROM dbo.AuthenticationContexts ac
         WHERE ac.IsActive = 1 AND ac.ExpiresAt < GETUTCDATE();
         
         -- Check for inconsistent authentication states
         INSERT INTO @ErrorList (ErrorMessage)
-        SELECT ''Inconsistent auth state: '' + CAST(auth_state.MobileNumberId AS NVARCHAR(36))
+        SELECT 'Inconsistent auth state: ' + CAST(auth_state.MobileNumberId AS NVARCHAR(36))
         FROM dbo.AuthenticationStates auth_state
         WHERE (auth_state.IsLocked = 1 AND auth_state.LockedUntil < GETUTCDATE()) OR
               (auth_state.RecentAttempts > 0 AND auth_state.LastAttemptTime IS NULL);
@@ -447,7 +446,7 @@ BEGIN TRY
         IF EXISTS (SELECT 1 FROM @ErrorList)
         BEGIN
             SET @IsValid = 0;
-            SELECT @ValidationErrors = COALESCE(@ValidationErrors + ''; '', '''') + ErrorMessage
+            SELECT @ValidationErrors = COALESCE(@ValidationErrors + '; ', '') + ErrorMessage
             FROM @ErrorList;
         END
         ELSE
@@ -461,7 +460,6 @@ BEGIN TRY
             @ValidationErrors AS ValidationErrors,
             (SELECT COUNT(*) FROM @ErrorList) AS ErrorCount;
     END;
-    ');
     
     PRINT '✓ Cross-table validation procedure created';
     

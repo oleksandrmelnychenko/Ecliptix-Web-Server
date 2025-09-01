@@ -71,8 +71,7 @@ BEGIN TRY
     PRINT 'Creating membership logging procedures...';
     
     -- LogLoginAttempt: Enhanced login attempt logging
-    EXEC ('
-    CREATE PROCEDURE dbo.LogLoginAttempt
+        CREATE PROCEDURE dbo.LogLoginAttempt
         @PhoneNumber NVARCHAR(18),
         @Outcome NVARCHAR(MAX),
         @IsSuccess BIT,
@@ -87,43 +86,41 @@ BEGIN TRY
             IF dbo.ValidatePhoneNumber(@PhoneNumber) = 0
             BEGIN
                 EXEC dbo.LogError 
-                    @ErrorMessage = ''Invalid phone number format in LogLoginAttempt'',
-                    @ErrorSeverity = ''WARNING'',
+                    @ErrorMessage = 'Invalid phone number format in LogLoginAttempt',
+                    @ErrorSeverity = 'WARNING',
                     @AdditionalInfo = @PhoneNumber;
                 RETURN;
             END
             
             -- Truncate outcome if too long
             IF LEN(@Outcome) > 255
-                SET @Outcome = LEFT(@Outcome, 252) + ''...'';
+                SET @Outcome = LEFT(@Outcome, 252) + '...';
             
             -- Insert login attempt record
             INSERT INTO dbo.LoginAttempts (Timestamp, PhoneNumber, Outcome, IsSuccess)
             VALUES (GETUTCDATE(), @PhoneNumber, @Outcome, @IsSuccess);
             
             -- Log audit event for failed attempts or suspicious patterns
-            IF @IsSuccess = 0 OR @Outcome LIKE ''%suspicious%'' OR @Outcome LIKE ''%locked%''
+            IF @IsSuccess = 0 OR @Outcome LIKE '%suspicious%' OR @Outcome LIKE '%locked%'
             BEGIN
                 EXEC dbo.LogAuditEvent 
-                    @EventType = CASE WHEN @IsSuccess = 0 THEN ''LOGIN_FAILED'' ELSE ''LOGIN_SUSPICIOUS'' END,
+                    @EventType = CASE WHEN @IsSuccess = 0 THEN 'LOGIN_FAILED' ELSE 'LOGIN_SUSPICIOUS' END,
                     @Details = @Outcome,
                     @IpAddress = @IpAddress,
-                    @AdditionalData = dbo.MaskSensitiveData(@PhoneNumber, ''PHONE'');
+                    @AdditionalData = dbo.MaskSensitiveData(@PhoneNumber, 'PHONE');
             END
             
         END TRY
         BEGIN CATCH
             EXEC dbo.LogError
                 @ErrorMessage = ERROR_MESSAGE(),
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''LogLoginAttempt failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'LogLoginAttempt failed';
         END CATCH
     END;
-    ');
     
     -- LogMembershipAttempt: Enhanced membership attempt logging
-    EXEC ('
-    CREATE PROCEDURE dbo.LogMembershipAttempt
+        CREATE PROCEDURE dbo.LogMembershipAttempt
         @PhoneNumberId UNIQUEIDENTIFIER,
         @Outcome NVARCHAR(MAX),
         @IsSuccess BIT,
@@ -138,38 +135,37 @@ BEGIN TRY
             IF dbo.ValidateGuid(CAST(@PhoneNumberId AS NVARCHAR(50))) = 0
             BEGIN
                 EXEC dbo.LogError 
-                    @ErrorMessage = ''Invalid PhoneNumberId in LogMembershipAttempt'',
-                    @ErrorSeverity = ''WARNING'';
+                    @ErrorMessage = 'Invalid PhoneNumberId in LogMembershipAttempt',
+                    @ErrorSeverity = 'WARNING';
                 RETURN;
             END
             
             -- Truncate outcome if too long
             IF LEN(@Outcome) > 255
-                SET @Outcome = LEFT(@Outcome, 252) + ''...'';
+                SET @Outcome = LEFT(@Outcome, 252) + '...';
             
             -- Insert membership attempt record
             INSERT INTO dbo.MembershipAttempts (PhoneNumberId, Timestamp, Outcome, IsSuccess)
             VALUES (@PhoneNumberId, GETUTCDATE(), @Outcome, @IsSuccess);
             
             -- Log audit event for significant membership events
-            IF @IsSuccess = 1 OR @Outcome LIKE ''%failed%'' OR @Outcome LIKE ''%blocked%''
+            IF @IsSuccess = 1 OR @Outcome LIKE '%failed%' OR @Outcome LIKE '%blocked%'
             BEGIN
                 EXEC dbo.LogAuditEvent 
-                    @EventType = CASE WHEN @IsSuccess = 1 THEN ''MEMBERSHIP_SUCCESS'' ELSE ''MEMBERSHIP_FAILED'' END,
+                    @EventType = CASE WHEN @IsSuccess = 1 THEN 'MEMBERSHIP_SUCCESS' ELSE 'MEMBERSHIP_FAILED' END,
                     @Details = @Outcome,
                     @IpAddress = @IpAddress,
-                    @AdditionalData = CONCAT(''PhoneNumberId:'', @PhoneNumberId, CASE WHEN @AdditionalContext IS NOT NULL THEN '', '' + @AdditionalContext ELSE '''' END);
+                    @AdditionalData = CONCAT('PhoneNumberId:', @PhoneNumberId, CASE WHEN @AdditionalContext IS NOT NULL THEN ', ' + @AdditionalContext ELSE '' END);
             END
             
         END TRY
         BEGIN CATCH
             EXEC dbo.LogError
                 @ErrorMessage = ERROR_MESSAGE(),
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''LogMembershipAttempt failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'LogMembershipAttempt failed';
         END CATCH
     END;
-    ');
     
     PRINT '✓ Membership logging procedures created';
     
@@ -180,8 +176,7 @@ BEGIN TRY
     PRINT 'Creating membership validation procedures...';
     
     -- ValidateMembershipEligibility: Comprehensive eligibility validation
-    EXEC ('
-    CREATE PROCEDURE dbo.ValidateMembershipEligibility
+        CREATE PROCEDURE dbo.ValidateMembershipEligibility
         @FlowUniqueId UNIQUEIDENTIFIER,
         @ConnectionId BIGINT,
         @OtpUniqueId UNIQUEIDENTIFIER,
@@ -210,20 +205,20 @@ BEGIN TRY
             -- Validate GUIDs
             IF dbo.ValidateGuid(CAST(@FlowUniqueId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @BlockingReason = ''Invalid FlowUniqueId format'';
+                SET @BlockingReason = 'Invalid FlowUniqueId format';
                 RETURN;
             END
             
             IF dbo.ValidateGuid(CAST(@OtpUniqueId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @BlockingReason = ''Invalid OtpUniqueId format'';
+                SET @BlockingReason = 'Invalid OtpUniqueId format';
                 RETURN;
             END
             
             -- Validate IP address if provided
             IF @IpAddress IS NOT NULL AND dbo.ValidateIpAddress(@IpAddress) = 0
             BEGIN
-                SET @BlockingReason = ''Invalid IP address format'';
+                SET @BlockingReason = 'Invalid IP address format';
                 RETURN;
             END
             
@@ -246,21 +241,21 @@ BEGIN TRY
             
             IF @PhoneNumberId IS NULL
             BEGIN
-                SET @BlockingReason = ''Verification flow not found or invalid'';
+                SET @BlockingReason = 'Verification flow not found or invalid';
                 RETURN;
             END
             
             -- Validate flow status
-            IF @FlowStatus != ''verified''
+            IF @FlowStatus != 'verified'
             BEGIN
-                SET @BlockingReason = CONCAT(''Verification flow not verified. Current status: '', @FlowStatus);
+                SET @BlockingReason = CONCAT('Verification flow not verified. Current status: ', @FlowStatus);
                 RETURN;
             END
             
             -- Validate flow purpose for membership creation
-            IF @FlowPurpose != ''registration''
+            IF @FlowPurpose != 'registration'
             BEGIN
-                SET @BlockingReason = CONCAT(''Invalid flow purpose for membership creation: '', @FlowPurpose);
+                SET @BlockingReason = CONCAT('Invalid flow purpose for membership creation: ', @FlowPurpose);
                 RETURN;
             END
             
@@ -271,7 +266,7 @@ BEGIN TRY
                   AND ExpiresAt < GETUTCDATE()
             )
             BEGIN
-                SET @BlockingReason = ''Verification flow has expired'';
+                SET @BlockingReason = 'Verification flow has expired';
                 RETURN;
             END
             
@@ -284,11 +279,11 @@ BEGIN TRY
                 SELECT 1 FROM dbo.OtpRecords 
                 WHERE UniqueId = @OtpUniqueId 
                   AND FlowUniqueId = @FlowUniqueId
-                  AND Status = ''verified''
+                  AND Status = 'verified'
                   AND IsDeleted = 0
             )
             BEGIN
-                SET @BlockingReason = ''OTP not found, not verified, or not associated with flow'';
+                SET @BlockingReason = 'OTP not found, not verified, or not associated with flow';
                 RETURN;
             END
             
@@ -298,8 +293,8 @@ BEGIN TRY
             
             DECLARE @FailedAttempts INT;
             DECLARE @EarliestFailedAttempt DATETIME2(7);
-            DECLARE @AttemptWindowHours INT = CAST(dbo.GetConfigValue(''RateLimit.WindowHours'') AS INT);
-            DECLARE @MaxFlowsPerHour INT = CAST(dbo.GetConfigValue(''RateLimit.MaxFlowsPerHour'') AS INT);
+            DECLARE @AttemptWindowHours INT = CAST(dbo.GetConfigValue('RateLimit.WindowHours') AS INT);
+            DECLARE @MaxFlowsPerHour INT = CAST(dbo.GetConfigValue('RateLimit.MaxFlowsPerHour') AS INT);
             
             -- Check failed membership attempts in the time window
             SELECT 
@@ -315,7 +310,7 @@ BEGIN TRY
                 SET @WaitTimeMinutes = DATEDIFF(MINUTE, GETUTCDATE(), DATEADD(HOUR, @AttemptWindowHours, @EarliestFailedAttempt));
                 IF @WaitTimeMinutes < 0 SET @WaitTimeMinutes = 0;
                 
-                SET @BlockingReason = ''Too many failed membership attempts. Rate limit exceeded.'';
+                SET @BlockingReason = 'Too many failed membership attempts. Rate limit exceeded.';
                 RETURN;
             END
             
@@ -331,7 +326,7 @@ BEGIN TRY
                   AND IsDeleted = 0
             )
             BEGIN
-                SET @BlockingReason = ''Membership already exists for this phone number and device'';
+                SET @BlockingReason = 'Membership already exists for this phone number and device';
                 RETURN;
             END
             
@@ -342,21 +337,21 @@ BEGIN TRY
             -- Use the business rule validation framework
             DECLARE @ValidationErrors NVARCHAR(MAX);
             DECLARE @ValidationEntityData NVARCHAR(MAX) = JSON_QUERY(CONCAT(
-                ''{"PhoneNumberId":"'', @PhoneNumberId, 
-                ''","AppDeviceId":"'', @AppDeviceId,
-                ''","IpAddress":"'', ISNULL(@IpAddress, ''''), ''"}''
+                '{"PhoneNumberId":"', @PhoneNumberId, 
+                '","AppDeviceId":"', @AppDeviceId,
+                '","IpAddress":"', ISNULL(@IpAddress, ''), '"}'
             ));
             
             EXEC dbo.ValidateBusinessRules 
-                @EntityType = ''Membership'',
+                @EntityType = 'Membership',
                 @EntityData = @ValidationEntityData,
-                @ValidationContext = ''MEMBERSHIP_CREATE'',
+                @ValidationContext = 'MEMBERSHIP_CREATE',
                 @IsValid = @IsEligible OUTPUT,
                 @ValidationErrors = @ValidationErrors OUTPUT;
             
             IF @IsEligible = 0
             BEGIN
-                SET @BlockingReason = ISNULL(@ValidationErrors, ''Business rule validation failed'');
+                SET @BlockingReason = ISNULL(@ValidationErrors, 'Business rule validation failed');
                 RETURN;
             END
             
@@ -370,15 +365,14 @@ BEGIN TRY
         END TRY
         BEGIN CATCH
             SET @IsEligible = 0;
-            SET @BlockingReason = ''System error during eligibility validation'';
+            SET @BlockingReason = 'System error during eligibility validation';
             
             EXEC dbo.LogError
                 @ErrorMessage = ERROR_MESSAGE(),
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''ValidateMembershipEligibility failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'ValidateMembershipEligibility failed';
         END CATCH
     END;
-    ');
     
     PRINT '✓ Membership validation procedures created';
     
@@ -389,8 +383,7 @@ BEGIN TRY
     PRINT 'Creating membership creation procedures...';
     
     -- CreateMembership: Enhanced membership creation with comprehensive validation
-    EXEC ('
-    CREATE PROCEDURE dbo.CreateMembership
+        CREATE PROCEDURE dbo.CreateMembership
         @FlowUniqueId UNIQUEIDENTIFIER,
         @ConnectionId BIGINT,
         @OtpUniqueId UNIQUEIDENTIFIER,
@@ -404,7 +397,7 @@ BEGIN TRY
         
         -- Performance monitoring
         DECLARE @StartTime DATETIME2(7) = GETUTCDATE();
-        DECLARE @ProcName NVARCHAR(100) = ''CreateMembership'';
+        DECLARE @ProcName NVARCHAR(100) = 'CreateMembership';
         
         -- Operation variables
         DECLARE @MembershipUniqueId UNIQUEIDENTIFIER;
@@ -421,10 +414,10 @@ BEGIN TRY
         
         -- Build parameters for logging
         DECLARE @Parameters NVARCHAR(MAX) = CONCAT(
-            ''FlowUniqueId='', @FlowUniqueId,
-            '', ConnectionId='', @ConnectionId,
-            '', CreationStatus='', @CreationStatus,
-            '', IpAddress='', ISNULL(@IpAddress, ''NULL'')
+            'FlowUniqueId=', @FlowUniqueId,
+            ', ConnectionId=', @ConnectionId,
+            ', CreationStatus=', @CreationStatus,
+            ', IpAddress=', ISNULL(@IpAddress, 'NULL')
         );
 
         BEGIN TRY
@@ -433,15 +426,15 @@ BEGIN TRY
             -- ================================================================
             
             -- Validate creation status
-            IF @CreationStatus NOT IN (''otp_verified'', ''secure_key_set'', ''passphrase_set'')
+            IF @CreationStatus NOT IN ('otp_verified', 'secure_key_set', 'passphrase_set')
             BEGIN
-                SET @Outcome = ''invalid_creation_status'';
+                SET @Outcome = 'invalid_creation_status';
                 GOTO LogFailure;
             END
             
             -- Sanitize user agent
             IF LEN(@UserAgent) > 500
-                SET @UserAgent = LEFT(@UserAgent, 497) + ''...'';
+                SET @UserAgent = LEFT(@UserAgent, 497) + '...';
             
             -- ================================================================
             -- ELIGIBILITY VALIDATION
@@ -459,7 +452,7 @@ BEGIN TRY
             
             IF @IsEligible = 0
             BEGIN
-                SET @Outcome = ISNULL(@BlockingReason, ''eligibility_validation_failed'');
+                SET @Outcome = ISNULL(@BlockingReason, 'eligibility_validation_failed');
                 
                 -- If rate limited, include wait time
                 IF @WaitTimeMinutes > 0
@@ -481,7 +474,7 @@ BEGIN TRY
             -- ================================================================
             
             DECLARE @CircuitOpen BIT, @CircuitError NVARCHAR(255);
-            EXEC dbo.CheckCircuitBreaker ''MembershipCreate'', @CircuitOpen OUTPUT, @CircuitError OUTPUT;
+            EXEC dbo.CheckCircuitBreaker 'MembershipCreate', @CircuitOpen OUTPUT, @CircuitError OUTPUT;
             
             IF @CircuitOpen = 1
             BEGIN
@@ -498,7 +491,7 @@ BEGIN TRY
             
             INSERT INTO dbo.Memberships (PhoneNumberId, AppDeviceId, VerificationFlowId, Status, CreationStatus)
             OUTPUT inserted.UniqueId, inserted.Status, inserted.CreationStatus INTO @OutputTable
-            VALUES (@PhoneNumberId, @AppDeviceId, @FlowUniqueId, ''inactive'', @CreationStatus);
+            VALUES (@PhoneNumberId, @AppDeviceId, @FlowUniqueId, 'inactive', @CreationStatus);
             
             SELECT @MembershipUniqueId = UniqueId, @Status = Status, @CreationStatus = CreationStatus 
             FROM @OutputTable;
@@ -507,14 +500,14 @@ BEGIN TRY
             
             -- Deactivate the OTP record
             UPDATE dbo.OtpRecords 
-            SET IsActive = 0, Status = ''used'', UpdatedAt = GETUTCDATE()
+            SET IsActive = 0, Status = 'used', UpdatedAt = GETUTCDATE()
             WHERE UniqueId = @OtpUniqueId AND FlowUniqueId = @FlowUniqueId;
             
             SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
             
             -- Update verification flow status
             UPDATE dbo.VerificationFlows
-            SET Status = ''completed'', UpdatedAt = GETUTCDATE()
+            SET Status = 'completed', UpdatedAt = GETUTCDATE()
             WHERE UniqueId = @FlowUniqueId;
             
             SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
@@ -526,18 +519,18 @@ BEGIN TRY
             SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
             
             -- Record circuit breaker success
-            EXEC dbo.RecordCircuitBreakerSuccess ''MembershipCreate'';
+            EXEC dbo.RecordCircuitBreakerSuccess 'MembershipCreate';
             
             -- Success outcome
-            SET @Outcome = ''created'';
+            SET @Outcome = 'created';
             
             -- Log successful creation
             EXEC dbo.LogMembershipAttempt @PhoneNumberId, @Outcome, 1, @IpAddress, @Parameters;
             
             -- Log audit event
             EXEC dbo.LogAuditEvent 
-                @EventType = ''MEMBERSHIP_CREATED'',
-                @Details = ''New membership created successfully'',
+                @EventType = 'MEMBERSHIP_CREATED',
+                @Details = 'New membership created successfully',
                 @UserId = @MembershipUniqueId,
                 @IpAddress = @IpAddress,
                 @AdditionalData = @Parameters;
@@ -550,8 +543,8 @@ BEGIN TRY
             
             LogFailure:
             -- Record circuit breaker failure for systemic issues
-            IF @Outcome LIKE ''%system%'' OR @Outcome LIKE ''%error%''
-                EXEC dbo.RecordCircuitBreakerFailure ''MembershipCreate'', @Outcome;
+            IF @Outcome LIKE '%system%' OR @Outcome LIKE '%error%'
+                EXEC dbo.RecordCircuitBreakerFailure 'MembershipCreate', @Outcome;
             
             -- Log failed attempt if we have phone number
             IF @PhoneNumberId IS NOT NULL
@@ -559,7 +552,7 @@ BEGIN TRY
             
             -- Log audit event for failure
             EXEC dbo.LogAuditEvent 
-                @EventType = ''MEMBERSHIP_CREATION_FAILED'',
+                @EventType = 'MEMBERSHIP_CREATION_FAILED',
                 @Details = @Outcome,
                 @IpAddress = @IpAddress,
                 @AdditionalData = @Parameters,
@@ -570,27 +563,27 @@ BEGIN TRY
             SET @Outcome = ERROR_MESSAGE();
             
             -- Record circuit breaker failure
-            EXEC dbo.RecordCircuitBreakerFailure ''MembershipCreate'', @Outcome;
+            EXEC dbo.RecordCircuitBreakerFailure 'MembershipCreate', @Outcome;
             
             -- Log error
             EXEC dbo.LogError
                 @ErrorMessage = @Outcome,
-                @ErrorSeverity = ''ERROR'',
+                @ErrorSeverity = 'ERROR',
                 @AdditionalInfo = @Parameters;
             
             -- Log failed attempt if we have phone number
             IF @PhoneNumberId IS NOT NULL
-                EXEC dbo.LogMembershipAttempt @PhoneNumberId, ''system_error'', 0, @IpAddress;
+                EXEC dbo.LogMembershipAttempt @PhoneNumberId, 'system_error', 0, @IpAddress;
         END CATCH
         
         ReturnResult:
         -- Log performance metrics
         DECLARE @ExecutionTimeMs INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
         EXEC dbo.LogPerformanceMetric
-            @MetricName = ''CreateMembership'',
+            @MetricName = 'CreateMembership',
             @MetricValue = @ExecutionTimeMs,
-            @MetricUnit = ''milliseconds'',
-            @AdditionalData = CONCAT(''Success:'', CASE WHEN @MembershipUniqueId IS NOT NULL THEN ''1'' ELSE ''0'' END, '', RowsAffected:'', @RowsAffected);
+            @MetricUnit = 'milliseconds',
+            @AdditionalData = CONCAT('Success:', CASE WHEN @MembershipUniqueId IS NOT NULL THEN '1' ELSE '0' END, ', RowsAffected:', @RowsAffected);
         
         -- Return results
         SELECT 
@@ -599,7 +592,6 @@ BEGIN TRY
             @CreationStatus AS CreationStatus,
             @Outcome AS Outcome;
     END;
-    ');
     
     PRINT '✓ CreateMembership procedure created';
     
@@ -610,8 +602,7 @@ BEGIN TRY
     PRINT 'Creating membership management procedures...';
     
     -- UpdateMembershipSecureKey: Secure key management with validation
-    EXEC ('
-    CREATE PROCEDURE dbo.UpdateMembershipSecureKey
+        CREATE PROCEDURE dbo.UpdateMembershipSecureKey
         @MembershipUniqueId UNIQUEIDENTIFIER,
         @SecureKey VARBINARY(MAX),
         @IpAddress NVARCHAR(45) = NULL,
@@ -639,34 +630,34 @@ BEGIN TRY
             -- Validate membership ID
             IF dbo.ValidateGuid(CAST(@MembershipUniqueId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @Message = ''Invalid MembershipUniqueId format'';
+                SET @Message = 'Invalid MembershipUniqueId format';
                 GOTO ReturnResult;
             END
             
             -- Validate secure key
             IF @SecureKey IS NULL OR DATALENGTH(@SecureKey) = 0
             BEGIN
-                SET @Message = ''Secure key cannot be empty'';
+                SET @Message = 'Secure key cannot be empty';
                 GOTO ReturnResult;
             END
             
             -- Validate minimum key length for security
             IF DATALENGTH(@SecureKey) < 32
             BEGIN
-                SET @Message = ''Secure key must be at least 32 bytes for security'';
+                SET @Message = 'Secure key must be at least 32 bytes for security';
                 GOTO ReturnResult;
             END
             
             -- Validate IP address if provided
             IF @IpAddress IS NOT NULL AND dbo.ValidateIpAddress(@IpAddress) = 0
             BEGIN
-                SET @Message = ''Invalid IP address format'';
+                SET @Message = 'Invalid IP address format';
                 GOTO ReturnResult;
             END
             
             -- Sanitize user agent
             IF LEN(@UserAgent) > 500
-                SET @UserAgent = LEFT(@UserAgent, 497) + ''...'';
+                SET @UserAgent = LEFT(@UserAgent, 497) + '...';
             
             -- ================================================================
             -- MEMBERSHIP VALIDATION
@@ -683,14 +674,14 @@ BEGIN TRY
 
             IF @PhoneNumberId IS NULL
             BEGIN
-                SET @Message = ''Membership not found or has been deleted'';
+                SET @Message = 'Membership not found or has been deleted';
                 GOTO ReturnResult;
             END
             
             -- Check if membership is in a state that allows key updates
-            IF @CurrentStatus = ''suspended''
+            IF @CurrentStatus = 'suspended'
             BEGIN
-                SET @Message = ''Cannot update secure key for suspended membership'';
+                SET @Message = 'Cannot update secure key for suspended membership';
                 GOTO ReturnResult;
             END
             
@@ -701,8 +692,8 @@ BEGIN TRY
             -- Update the membership with new secure key
             UPDATE dbo.Memberships
             SET SecureKey = @SecureKey,
-                Status = ''active'',
-                CreationStatus = ''secure_key_set'',
+                Status = 'active',
+                CreationStatus = 'secure_key_set',
                 UpdatedAt = GETUTCDATE()
             WHERE UniqueId = @MembershipUniqueId;
 
@@ -710,13 +701,13 @@ BEGIN TRY
             
             IF @RowsAffected = 0
             BEGIN
-                SET @Message = ''Failed to update membership secure key'';
+                SET @Message = 'Failed to update membership secure key';
                 GOTO ReturnResult;
             END
 
             -- Success
             SET @Success = 1;
-            SET @Message = ''Secure key updated successfully'';
+            SET @Message = 'Secure key updated successfully';
             
             -- Get updated status
             SELECT @CurrentStatus = Status, @CurrentCreationStatus = CreationStatus 
@@ -724,12 +715,12 @@ BEGIN TRY
             WHERE UniqueId = @MembershipUniqueId;
             
             -- Log successful update
-            EXEC dbo.LogMembershipAttempt @PhoneNumberId, ''secure_key_updated'', 1, @IpAddress;
+            EXEC dbo.LogMembershipAttempt @PhoneNumberId, 'secure_key_updated', 1, @IpAddress;
             
             -- Log audit event
             EXEC dbo.LogAuditEvent 
-                @EventType = ''SECURE_KEY_UPDATED'',
-                @Details = ''Membership secure key updated successfully'',
+                @EventType = 'SECURE_KEY_UPDATED',
+                @Details = 'Membership secure key updated successfully',
                 @UserId = @MembershipUniqueId,
                 @IpAddress = @IpAddress;
 
@@ -739,22 +730,22 @@ BEGIN TRY
             
             EXEC dbo.LogError
                 @ErrorMessage = @Message,
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''UpdateMembershipSecureKey failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'UpdateMembershipSecureKey failed';
             
             -- Log failed attempt if we have phone number
             IF @PhoneNumberId IS NOT NULL
-                EXEC dbo.LogMembershipAttempt @PhoneNumberId, ''secure_key_update_failed'', 0, @IpAddress;
+                EXEC dbo.LogMembershipAttempt @PhoneNumberId, 'secure_key_update_failed', 0, @IpAddress;
         END CATCH
         
         ReturnResult:
         -- Log performance metrics
         DECLARE @ExecutionTimeMs INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
         EXEC dbo.LogPerformanceMetric
-            @MetricName = ''UpdateMembershipSecureKey'',
+            @MetricName = 'UpdateMembershipSecureKey',
             @MetricValue = @ExecutionTimeMs,
-            @MetricUnit = ''milliseconds'',
-            @AdditionalData = CONCAT(''Success:'', @Success, '', RowsAffected:'', @RowsAffected);
+            @MetricUnit = 'milliseconds',
+            @AdditionalData = CONCAT('Success:', @Success, ', RowsAffected:', @RowsAffected);
         
         -- Return results
         SELECT 
@@ -764,7 +755,6 @@ BEGIN TRY
             CASE WHEN @Success = 1 THEN @CurrentStatus ELSE NULL END AS Status,
             CASE WHEN @Success = 1 THEN @CurrentCreationStatus ELSE NULL END AS CreationStatus;
     END;
-    ');
     
     PRINT '✓ UpdateMembershipSecureKey procedure created';
     

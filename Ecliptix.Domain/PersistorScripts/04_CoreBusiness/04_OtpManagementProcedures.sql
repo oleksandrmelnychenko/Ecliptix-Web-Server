@@ -70,8 +70,7 @@ BEGIN TRY
     PRINT 'Creating OTP validation procedures...';
     
     -- ValidateOtpTransition: Validate OTP status transitions
-    EXEC ('
-    CREATE PROCEDURE dbo.ValidateOtpTransition
+        CREATE PROCEDURE dbo.ValidateOtpTransition
         @CurrentStatus NVARCHAR(20),
         @NewStatus NVARCHAR(20),
         @IsValidTransition BIT OUTPUT,
@@ -84,54 +83,53 @@ BEGIN TRY
         SET @ErrorMessage = NULL;
         
         -- Validate status values
-        IF @CurrentStatus NOT IN (''pending'', ''verified'', ''expired'', ''failed'')
+        IF @CurrentStatus NOT IN ('pending', 'verified', 'expired', 'failed')
         BEGIN
-            SET @ErrorMessage = ''Invalid current OTP status'';
+            SET @ErrorMessage = 'Invalid current OTP status';
             RETURN;
         END
         
-        IF @NewStatus NOT IN (''pending'', ''verified'', ''expired'', ''failed'')
+        IF @NewStatus NOT IN ('pending', 'verified', 'expired', 'failed')
         BEGIN
-            SET @ErrorMessage = ''Invalid new OTP status'';
+            SET @ErrorMessage = 'Invalid new OTP status';
             RETURN;
         END
         
         -- Define valid transitions
-        IF @CurrentStatus = ''pending''
+        IF @CurrentStatus = 'pending'
         BEGIN
             -- Pending can transition to verified, expired, or failed
-            IF @NewStatus IN (''verified'', ''expired'', ''failed'')
+            IF @NewStatus IN ('verified', 'expired', 'failed')
                 SET @IsValidTransition = 1;
             ELSE
-                SET @ErrorMessage = ''Invalid transition: pending can only change to verified, expired, or failed'';
+                SET @ErrorMessage = 'Invalid transition: pending can only change to verified, expired, or failed';
         END
-        ELSE IF @CurrentStatus = ''verified''
+        ELSE IF @CurrentStatus = 'verified'
         BEGIN
             -- Verified can only transition to expired (security consideration)
-            IF @NewStatus = ''expired''
+            IF @NewStatus = 'expired'
                 SET @IsValidTransition = 1;
             ELSE
-                SET @ErrorMessage = ''Invalid transition: verified OTP can only be expired'';
+                SET @ErrorMessage = 'Invalid transition: verified OTP can only be expired';
         END
-        ELSE IF @CurrentStatus = ''expired''
+        ELSE IF @CurrentStatus = 'expired'
         BEGIN
             -- Expired is a terminal state - no transitions allowed
-            SET @ErrorMessage = ''Invalid transition: expired OTP cannot change status'';
+            SET @ErrorMessage = 'Invalid transition: expired OTP cannot change status';
         END
-        ELSE IF @CurrentStatus = ''failed''
+        ELSE IF @CurrentStatus = 'failed'
         BEGIN
             -- Failed is a terminal state - no transitions allowed
-            SET @ErrorMessage = ''Invalid transition: failed OTP cannot change status'';
+            SET @ErrorMessage = 'Invalid transition: failed OTP cannot change status';
         END
         
         -- Check for no-op transitions
         IF @CurrentStatus = @NewStatus
         BEGIN
             SET @IsValidTransition = 1;
-            SET @ErrorMessage = ''No status change required'';
+            SET @ErrorMessage = 'No status change required';
         END
     END;
-    ');
     
     PRINT '✓ ValidateOtpTransition procedure created';
     
@@ -142,8 +140,7 @@ BEGIN TRY
     PRINT 'Creating OTP record creation procedures...';
     
     -- InsertOtpRecord: Enhanced OTP creation with comprehensive validation
-    EXEC ('
-    CREATE PROCEDURE dbo.InsertOtpRecord
+        CREATE PROCEDURE dbo.InsertOtpRecord
         @FlowUniqueId UNIQUEIDENTIFIER, 
         @OtpHash NVARCHAR(255), 
         @OtpSalt NVARCHAR(255), 
@@ -157,7 +154,7 @@ BEGIN TRY
         
         -- Performance monitoring
         DECLARE @StartTime DATETIME2(7) = GETUTCDATE();
-        DECLARE @ProcName NVARCHAR(100) = ''InsertOtpRecord'';
+        DECLARE @ProcName NVARCHAR(100) = 'InsertOtpRecord';
         
         DECLARE @FlowId BIGINT, @PhoneNumberId BIGINT, @OtpCount SMALLINT;
         DECLARE @OtpUniqueId UNIQUEIDENTIFIER;
@@ -165,15 +162,15 @@ BEGIN TRY
         DECLARE @RowsAffected INT = 0;
         
         -- Configuration-driven parameters
-        DECLARE @MaxOtpAttempts INT = CAST(dbo.GetConfigValue(''OTP.MaxAttempts'') AS INT);
-        DECLARE @MaxOtpExpirationMinutes INT = CAST(dbo.GetConfigValue(''OTP.ExpirationMinutes'') AS INT);
+        DECLARE @MaxOtpAttempts INT = CAST(dbo.GetConfigValue('OTP.MaxAttempts') AS INT);
+        DECLARE @MaxOtpExpirationMinutes INT = CAST(dbo.GetConfigValue('OTP.ExpirationMinutes') AS INT);
         
         -- Build parameters for logging (mask sensitive data)
         DECLARE @Parameters NVARCHAR(MAX) = CONCAT(
-            ''FlowUniqueId='', @FlowUniqueId,
-            '', Status='', ISNULL(@Status, ''NULL''),
-            '', ExpiresAt='', FORMAT(@ExpiresAt, ''yyyy-MM-dd HH:mm:ss''),
-            '', MaxAttempts='', @MaxOtpAttempts
+            'FlowUniqueId=', @FlowUniqueId,
+            ', Status=', ISNULL(@Status, 'NULL'),
+            ', ExpiresAt=', FORMAT(@ExpiresAt, 'yyyy-MM-dd HH:mm:ss'),
+            ', MaxAttempts=', @MaxOtpAttempts
         );
 
         BEGIN TRY
@@ -184,68 +181,68 @@ BEGIN TRY
             -- Validate FlowUniqueId
             IF dbo.ValidateGuid(CAST(@FlowUniqueId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @Outcome = ''invalid_flow_id'';
+                SET @Outcome = 'invalid_flow_id';
                 GOTO LogAndReturn;
             END
             
             -- Validate OTP hash and salt formats and lengths
             IF @OtpHash IS NULL OR LEN(@OtpHash) = 0
             BEGIN
-                SET @Outcome = ''invalid_otp_hash'';
+                SET @Outcome = 'invalid_otp_hash';
                 EXEC dbo.LogError 
-                    @ErrorMessage = ''OTP hash cannot be null or empty'', 
-                    @ErrorSeverity = ''WARNING'',
+                    @ErrorMessage = 'OTP hash cannot be null or empty', 
+                    @ErrorSeverity = 'WARNING',
                     @AdditionalInfo = @Parameters;
                 GOTO LogAndReturn;
             END
             
             IF LEN(@OtpHash) < 32 OR LEN(@OtpHash) > 255
             BEGIN
-                SET @Outcome = ''invalid_otp_hash_length'';
+                SET @Outcome = 'invalid_otp_hash_length';
                 EXEC dbo.LogError 
-                    @ErrorMessage = ''OTP hash length must be between 32 and 255 characters'',
-                    @ErrorSeverity = ''WARNING'',
+                    @ErrorMessage = 'OTP hash length must be between 32 and 255 characters',
+                    @ErrorSeverity = 'WARNING',
                     @AdditionalInfo = @Parameters;
                 GOTO LogAndReturn;
             END
             
             IF @OtpSalt IS NULL OR LEN(@OtpSalt) = 0
             BEGIN
-                SET @Outcome = ''invalid_otp_salt'';
+                SET @Outcome = 'invalid_otp_salt';
                 EXEC dbo.LogError 
-                    @ErrorMessage = ''OTP salt cannot be null or empty'',
-                    @ErrorSeverity = ''WARNING'',
+                    @ErrorMessage = 'OTP salt cannot be null or empty',
+                    @ErrorSeverity = 'WARNING',
                     @AdditionalInfo = @Parameters;
                 GOTO LogAndReturn;
             END
             
             IF LEN(@OtpSalt) < 16 OR LEN(@OtpSalt) > 255
             BEGIN
-                SET @Outcome = ''invalid_otp_salt_length'';
+                SET @Outcome = 'invalid_otp_salt_length';
                 EXEC dbo.LogError 
-                    @ErrorMessage = ''OTP salt length must be between 16 and 255 characters'',
-                    @ErrorSeverity = ''WARNING'',
+                    @ErrorMessage = 'OTP salt length must be between 16 and 255 characters',
+                    @ErrorSeverity = 'WARNING',
                     @AdditionalInfo = @Parameters;
                 GOTO LogAndReturn;
             END
             
             -- Validate hash and salt are hexadecimal
-            IF @OtpHash LIKE ''%[^0-9a-fA-F]%''
+            IF @OtpHash LIKE '%[^0-9a-fA-F]%'
             BEGIN
-                SET @Outcome = ''invalid_otp_hash_format'';
+                SET @Outcome = 'invalid_otp_hash_format';
                 EXEC dbo.LogError 
-                    @ErrorMessage = ''OTP hash must contain only hexadecimal characters'',
-                    @ErrorSeverity = ''WARNING'',
+                    @ErrorMessage = 'OTP hash must contain only hexadecimal characters',
+                    @ErrorSeverity = 'WARNING',
                     @AdditionalInfo = @Parameters;
                 GOTO LogAndReturn;
             END
             
-            IF @OtpSalt LIKE ''%[^0-9a-fA-F]%''
+            IF @OtpSalt LIKE '%[^0-9a-fA-F]%'
             BEGIN
-                SET @Outcome = ''invalid_otp_salt_format'';
+                SET @Outcome = 'invalid_otp_salt_format';
                 EXEC dbo.LogError 
-                    @ErrorMessage = ''OTP salt must contain only hexadecimal characters'',
-                    @ErrorSeverity = ''WARNING'',
+                    @ErrorMessage = 'OTP salt must contain only hexadecimal characters',
+                    @ErrorSeverity = 'WARNING',
                     @AdditionalInfo = @Parameters;
                 GOTO LogAndReturn;
             END
@@ -253,10 +250,10 @@ BEGIN TRY
             -- Validate expiration time
             IF @ExpiresAt IS NULL OR @ExpiresAt <= GETUTCDATE()
             BEGIN
-                SET @Outcome = ''invalid_expiration_time'';
+                SET @Outcome = 'invalid_expiration_time';
                 EXEC dbo.LogError 
-                    @ErrorMessage = ''OTP expiration time must be in the future'',
-                    @ErrorSeverity = ''WARNING'',
+                    @ErrorMessage = 'OTP expiration time must be in the future',
+                    @ErrorSeverity = 'WARNING',
                     @AdditionalInfo = @Parameters;
                 GOTO LogAndReturn;
             END
@@ -264,24 +261,24 @@ BEGIN TRY
             -- Validate maximum OTP expiration
             IF @ExpiresAt > DATEADD(MINUTE, @MaxOtpExpirationMinutes, GETUTCDATE())
             BEGIN
-                SET @Outcome = ''excessive_expiration_time'';
+                SET @Outcome = 'excessive_expiration_time';
                 EXEC dbo.LogError 
-                    @ErrorMessage = ''OTP expiration exceeds maximum allowed duration'',
-                    @ErrorSeverity = ''WARNING'',
+                    @ErrorMessage = 'OTP expiration exceeds maximum allowed duration',
+                    @ErrorSeverity = 'WARNING',
                     @AdditionalInfo = @Parameters;
                 GOTO LogAndReturn;
             END
             
             -- Validate status using transition validation
             DECLARE @IsValidTransition BIT, @TransitionError NVARCHAR(255);
-            EXEC dbo.ValidateOtpTransition ''pending'', @Status, @IsValidTransition OUTPUT, @TransitionError OUTPUT;
+            EXEC dbo.ValidateOtpTransition 'pending', @Status, @IsValidTransition OUTPUT, @TransitionError OUTPUT;
             
-            IF @IsValidTransition = 0 AND @TransitionError != ''No status change required''
+            IF @IsValidTransition = 0 AND @TransitionError != 'No status change required'
             BEGIN
-                SET @Outcome = ''invalid_initial_status'';
+                SET @Outcome = 'invalid_initial_status';
                 EXEC dbo.LogError 
                     @ErrorMessage = @TransitionError,
-                    @ErrorSeverity = ''WARNING'',
+                    @ErrorSeverity = 'WARNING',
                     @AdditionalInfo = @Parameters;
                 GOTO LogAndReturn;
             END
@@ -289,7 +286,7 @@ BEGIN TRY
             -- Validate IP address if provided
             IF @IpAddress IS NOT NULL AND dbo.ValidateIpAddress(@IpAddress) = 0
             BEGIN
-                SET @Outcome = ''invalid_ip_address'';
+                SET @Outcome = 'invalid_ip_address';
                 GOTO LogAndReturn;
             END
             
@@ -301,18 +298,18 @@ BEGIN TRY
             SELECT @FlowId = Id, @PhoneNumberId = PhoneNumberId, @OtpCount = OtpCount
             FROM dbo.VerificationFlows
             WHERE UniqueId = @FlowUniqueId 
-              AND Status = ''pending'' 
+              AND Status = 'pending' 
               AND IsDeleted = 0 
               AND ExpiresAt > GETUTCDATE();
 
             IF @FlowId IS NULL
             BEGIN
-                SET @Outcome = ''flow_not_found_or_invalid'';
+                SET @Outcome = 'flow_not_found_or_invalid';
                 
                 -- Log potential security issue
                 EXEC dbo.LogAuditEvent
-                    @EventType = ''OTP_CREATION_INVALID_FLOW'',
-                    @Details = ''Attempted OTP creation for invalid/expired flow'',
+                    @EventType = 'OTP_CREATION_INVALID_FLOW',
+                    @Details = 'Attempted OTP creation for invalid/expired flow',
                     @IpAddress = @IpAddress,
                     @AdditionalData = CAST(@FlowUniqueId AS NVARCHAR(36)),
                     @Success = 0;
@@ -325,18 +322,18 @@ BEGIN TRY
             BEGIN
                 -- Mark flow as failed due to excessive attempts
                 UPDATE dbo.VerificationFlows 
-                SET Status = ''failed'', UpdatedAt = GETUTCDATE() 
+                SET Status = 'failed', UpdatedAt = GETUTCDATE() 
                 WHERE Id = @FlowId;
                 
                 SET @RowsAffected = @@ROWCOUNT;
-                SET @Outcome = ''max_otp_attempts_reached'';
+                SET @Outcome = 'max_otp_attempts_reached';
                 
                 -- Log security event
                 EXEC dbo.LogAuditEvent
-                    @EventType = ''MAX_OTP_ATTEMPTS_REACHED'',
-                    @Details = ''Verification flow failed due to excessive OTP attempts'',
+                    @EventType = 'MAX_OTP_ATTEMPTS_REACHED',
+                    @Details = 'Verification flow failed due to excessive OTP attempts',
                     @IpAddress = @IpAddress,
-                    @AdditionalData = CONCAT(''FlowId:'', @FlowUniqueId, '', OtpCount:'', @OtpCount, '', MaxAttempts:'', @MaxOtpAttempts),
+                    @AdditionalData = CONCAT('FlowId:', @FlowUniqueId, ', OtpCount:', @OtpCount, ', MaxAttempts:', @MaxOtpAttempts),
                     @Success = 0;
                 
                 GOTO LogAndReturn;
@@ -347,7 +344,7 @@ BEGIN TRY
             -- ================================================================
             
             DECLARE @CircuitOpen BIT, @CircuitError NVARCHAR(255);
-            EXEC dbo.CheckCircuitBreaker ''OtpCreate'', @CircuitOpen OUTPUT, @CircuitError OUTPUT;
+            EXEC dbo.CheckCircuitBreaker 'OtpCreate', @CircuitOpen OUTPUT, @CircuitError OUTPUT;
             
             IF @CircuitOpen = 1
             BEGIN
@@ -361,7 +358,7 @@ BEGIN TRY
             
             -- Deactivate any existing active OTPs for this flow
             UPDATE dbo.OtpRecords 
-            SET IsActive = 0, Status = ''expired'', UpdatedAt = GETUTCDATE()
+            SET IsActive = 0, Status = 'expired', UpdatedAt = GETUTCDATE()
             WHERE FlowUniqueId = @FlowUniqueId AND IsActive = 1;
             
             SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
@@ -383,28 +380,28 @@ BEGIN TRY
             SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
             
             -- Record circuit breaker success
-            EXEC dbo.RecordCircuitBreakerSuccess ''OtpCreate'';
+            EXEC dbo.RecordCircuitBreakerSuccess 'OtpCreate';
             
-            SET @Outcome = ''created'';
+            SET @Outcome = 'created';
             
             -- Log successful OTP creation
             EXEC dbo.LogAuditEvent
-                @EventType = ''OTP_CREATED'',
-                @Details = ''New OTP record created successfully'',
+                @EventType = 'OTP_CREATED',
+                @Details = 'New OTP record created successfully',
                 @IpAddress = @IpAddress,
-                @AdditionalData = CONCAT(''FlowUniqueId:'', @FlowUniqueId, '', Status:'', @Status, '', OtpCount:'', (@OtpCount + 1));
+                @AdditionalData = CONCAT('FlowUniqueId:', @FlowUniqueId, ', Status:', @Status, ', OtpCount:', (@OtpCount + 1));
 
         END TRY
         BEGIN CATCH
-            SET @Outcome = ''system_error'';
+            SET @Outcome = 'system_error';
             
             -- Record circuit breaker failure
-            EXEC dbo.RecordCircuitBreakerFailure ''OtpCreate'', ERROR_MESSAGE();
+            EXEC dbo.RecordCircuitBreakerFailure 'OtpCreate', ERROR_MESSAGE();
             
             -- Log the error
             EXEC dbo.LogError
                 @ErrorMessage = ERROR_MESSAGE(),
-                @ErrorSeverity = ''ERROR'',
+                @ErrorSeverity = 'ERROR',
                 @AdditionalInfo = @Parameters;
         END CATCH
         
@@ -412,17 +409,16 @@ BEGIN TRY
         -- Log performance metrics
         DECLARE @ExecutionTimeMs INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
         EXEC dbo.LogPerformanceMetric
-            @MetricName = ''InsertOtpRecord'',
+            @MetricName = 'InsertOtpRecord',
             @MetricValue = @ExecutionTimeMs,
-            @MetricUnit = ''milliseconds'',
-            @AdditionalData = CONCAT(''Outcome:'', @Outcome, '', RowsAffected:'', @RowsAffected);
+            @MetricUnit = 'milliseconds',
+            @AdditionalData = CONCAT('Outcome:', @Outcome, ', RowsAffected:', @RowsAffected);
         
         -- Return results
         SELECT 
-            CASE WHEN @Outcome = ''created'' THEN @OtpUniqueId ELSE NULL END AS OtpUniqueId,
+            CASE WHEN @Outcome = 'created' THEN @OtpUniqueId ELSE NULL END AS OtpUniqueId,
             @Outcome AS Outcome;
     END;
-    ');
     
     PRINT '✓ InsertOtpRecord procedure created';
     
@@ -433,8 +429,7 @@ BEGIN TRY
     PRINT 'Creating OTP status management procedures...';
     
     -- ProcessFailedOtpAttempt: Handle failed OTP attempts
-    EXEC ('
-    CREATE PROCEDURE dbo.ProcessFailedOtpAttempt
+        CREATE PROCEDURE dbo.ProcessFailedOtpAttempt
         @OtpUniqueId UNIQUEIDENTIFIER,
         @FlowUniqueId UNIQUEIDENTIFIER,
         @IpAddress NVARCHAR(45) = NULL
@@ -449,13 +444,13 @@ BEGIN TRY
             -- Validate inputs
             IF dbo.ValidateGuid(CAST(@OtpUniqueId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @Message = ''Invalid OtpUniqueId format'';
+                SET @Message = 'Invalid OtpUniqueId format';
                 GOTO ReturnResult;
             END
             
             IF dbo.ValidateGuid(CAST(@FlowUniqueId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @Message = ''Invalid FlowUniqueId format'';
+                SET @Message = 'Invalid FlowUniqueId format';
                 GOTO ReturnResult;
             END
             
@@ -464,14 +459,14 @@ BEGIN TRY
             VALUES (@OtpUniqueId, @FlowUniqueId, GETUTCDATE());
             
             SET @Success = 1;
-            SET @Message = ''Failed OTP attempt recorded successfully'';
+            SET @Message = 'Failed OTP attempt recorded successfully';
             
             -- Log audit event
             EXEC dbo.LogAuditEvent
-                @EventType = ''OTP_ATTEMPT_FAILED'',
-                @Details = ''Failed OTP attempt recorded'',
+                @EventType = 'OTP_ATTEMPT_FAILED',
+                @Details = 'Failed OTP attempt recorded',
                 @IpAddress = @IpAddress,
-                @AdditionalData = CONCAT(''OtpId:'', @OtpUniqueId, '', FlowId:'', @FlowUniqueId);
+                @AdditionalData = CONCAT('OtpId:', @OtpUniqueId, ', FlowId:', @FlowUniqueId);
                 
         END TRY
         BEGIN CATCH
@@ -479,18 +474,16 @@ BEGIN TRY
             
             EXEC dbo.LogError
                 @ErrorMessage = @Message,
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''ProcessFailedOtpAttempt failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'ProcessFailedOtpAttempt failed';
         END CATCH
         
         ReturnResult:
         SELECT @Success AS Success, @Message AS Message;
     END;
-    ');
     
     -- UpdateOtpStatus: Enhanced OTP status updates with validation
-    EXEC ('
-    CREATE PROCEDURE dbo.UpdateOtpStatus
+        CREATE PROCEDURE dbo.UpdateOtpStatus
         @OtpUniqueId UNIQUEIDENTIFIER, 
         @NewStatus NVARCHAR(20),
         @IpAddress NVARCHAR(45) = NULL
@@ -516,14 +509,14 @@ BEGIN TRY
             -- Validate OTP ID
             IF dbo.ValidateGuid(CAST(@OtpUniqueId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @Message = ''Invalid OtpUniqueId format'';
+                SET @Message = 'Invalid OtpUniqueId format';
                 GOTO ReturnResult;
             END
             
             -- Validate IP address if provided
             IF @IpAddress IS NOT NULL AND dbo.ValidateIpAddress(@IpAddress) = 0
             BEGIN
-                SET @Message = ''Invalid IP address format'';
+                SET @Message = 'Invalid IP address format';
                 GOTO ReturnResult;
             END
             
@@ -544,7 +537,7 @@ BEGIN TRY
 
             IF @CurrentStatus IS NULL
             BEGIN
-                SET @Message = ''OTP not found or has been deleted'';
+                SET @Message = 'OTP not found or has been deleted';
                 GOTO ReturnResult;
             END
             
@@ -558,11 +551,11 @@ BEGIN TRY
                 GOTO ReturnResult;
             END
             
-            -- Check if it''s a no-op transition
+            -- Check if it's a no-op transition
             IF @CurrentStatus = @NewStatus
             BEGIN
                 SET @Success = 1;
-                SET @Message = ''OTP status is already '' + @NewStatus;
+                SET @Message = 'OTP status is already ' + @NewStatus;
                 GOTO ReturnResult;
             END
             
@@ -573,7 +566,7 @@ BEGIN TRY
             -- Update OTP status
             UPDATE dbo.OtpRecords 
             SET Status = @NewStatus, 
-                IsActive = CASE WHEN @NewStatus = ''pending'' THEN 1 ELSE 0 END,
+                IsActive = CASE WHEN @NewStatus = 'pending' THEN 1 ELSE 0 END,
                 UpdatedAt = GETUTCDATE()
             WHERE UniqueId = @OtpUniqueId 
               AND IsDeleted = 0;
@@ -582,35 +575,35 @@ BEGIN TRY
             
             IF @RowsAffected = 0
             BEGIN
-                SET @Message = ''Failed to update OTP: no rows affected'';
+                SET @Message = 'Failed to update OTP: no rows affected';
                 GOTO ReturnResult;
             END
 
             -- Handle specific status transitions
-            IF @NewStatus = ''failed''
+            IF @NewStatus = 'failed'
             BEGIN
                 -- Record failed attempt
                 EXEC dbo.ProcessFailedOtpAttempt @OtpUniqueId, @FlowUniqueId, @IpAddress;
             END
-            ELSE IF @NewStatus = ''verified''
+            ELSE IF @NewStatus = 'verified'
             BEGIN
                 -- Update verification flow to verified
                 UPDATE dbo.VerificationFlows 
-                SET Status = ''verified'', UpdatedAt = GETUTCDATE()
-                WHERE Id = @FlowId AND Status = ''pending'';
+                SET Status = 'verified', UpdatedAt = GETUTCDATE()
+                WHERE Id = @FlowId AND Status = 'pending';
                 
                 SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
                 
                 -- Log successful verification
                 EXEC dbo.LogAuditEvent
-                    @EventType = ''OTP_VERIFIED'',
-                    @Details = ''OTP successfully verified'',
+                    @EventType = 'OTP_VERIFIED',
+                    @Details = 'OTP successfully verified',
                     @IpAddress = @IpAddress,
-                    @AdditionalData = CONCAT(''OtpId:'', @OtpUniqueId, '', FlowId:'', @FlowUniqueId);
+                    @AdditionalData = CONCAT('OtpId:', @OtpUniqueId, ', FlowId:', @FlowUniqueId);
             END
 
             SET @Success = 1;
-            SET @Message = ''OTP status updated successfully from '' + @CurrentStatus + '' to '' + @NewStatus;
+            SET @Message = 'OTP status updated successfully from ' + @CurrentStatus + ' to ' + @NewStatus;
             
         END TRY
         BEGIN CATCH
@@ -618,23 +611,22 @@ BEGIN TRY
             
             EXEC dbo.LogError
                 @ErrorMessage = @Message,
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''UpdateOtpStatus failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'UpdateOtpStatus failed';
         END CATCH
         
         ReturnResult:
         -- Log performance metrics
         DECLARE @ExecutionTimeMs INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
         EXEC dbo.LogPerformanceMetric
-            @MetricName = ''UpdateOtpStatus'',
+            @MetricName = 'UpdateOtpStatus',
             @MetricValue = @ExecutionTimeMs,
-            @MetricUnit = ''milliseconds'',
-            @AdditionalData = CONCAT(''Success:'', @Success, '', RowsAffected:'', @RowsAffected);
+            @MetricUnit = 'milliseconds',
+            @AdditionalData = CONCAT('Success:', @Success, ', RowsAffected:', @RowsAffected);
         
         -- Return results
         SELECT @Success AS Success, @Message AS Message;
     END;
-    ');
     
     PRINT '✓ OTP status management procedures created';
     
@@ -645,8 +637,7 @@ BEGIN TRY
     PRINT 'Creating verification flow status management procedures...';
     
     -- UpdateVerificationFlowStatus: Enhanced flow status updates
-    EXEC ('
-    CREATE PROCEDURE dbo.UpdateVerificationFlowStatus
+        CREATE PROCEDURE dbo.UpdateVerificationFlowStatus
         @FlowUniqueId UNIQUEIDENTIFIER, 
         @NewStatus NVARCHAR(20),
         @IpAddress NVARCHAR(45) = NULL
@@ -669,21 +660,21 @@ BEGIN TRY
             -- Validate Flow ID
             IF dbo.ValidateGuid(CAST(@FlowUniqueId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @Message = ''Invalid FlowUniqueId format'';
+                SET @Message = 'Invalid FlowUniqueId format';
                 GOTO ReturnResult;
             END
             
             -- Validate new status
-            IF @NewStatus NOT IN (''pending'', ''verified'', ''expired'', ''failed'', ''completed'')
+            IF @NewStatus NOT IN ('pending', 'verified', 'expired', 'failed', 'completed')
             BEGIN
-                SET @Message = ''Invalid verification flow status'';
+                SET @Message = 'Invalid verification flow status';
                 GOTO ReturnResult;
             END
             
             -- Validate IP address if provided
             IF @IpAddress IS NOT NULL AND dbo.ValidateIpAddress(@IpAddress) = 0
             BEGIN
-                SET @Message = ''Invalid IP address format'';
+                SET @Message = 'Invalid IP address format';
                 GOTO ReturnResult;
             END
             
@@ -698,15 +689,15 @@ BEGIN TRY
             
             IF @CurrentStatus IS NULL
             BEGIN
-                SET @Message = ''Verification flow not found or has been deleted'';
+                SET @Message = 'Verification flow not found or has been deleted';
                 GOTO ReturnResult;
             END
             
-            -- Check if it''s a no-op transition
+            -- Check if it's a no-op transition
             IF @CurrentStatus = @NewStatus
             BEGIN
                 SET @Success = 1;
-                SET @Message = ''Verification flow status is already '' + @NewStatus;
+                SET @Message = 'Verification flow status is already ' + @NewStatus;
                 GOTO ReturnResult;
             END
             
@@ -714,7 +705,7 @@ BEGIN TRY
             UPDATE dbo.VerificationFlows
             SET Status = @NewStatus, 
                 ExpiresAt = CASE 
-                    WHEN @NewStatus = ''verified'' THEN DATEADD(HOUR, 24, GETUTCDATE()) 
+                    WHEN @NewStatus = 'verified' THEN DATEADD(HOUR, 24, GETUTCDATE()) 
                     ELSE ExpiresAt 
                 END,
                 UpdatedAt = GETUTCDATE()
@@ -724,19 +715,19 @@ BEGIN TRY
             
             IF @RowsAffected = 0
             BEGIN
-                SET @Message = ''Failed to update verification flow: no rows affected'';
+                SET @Message = 'Failed to update verification flow: no rows affected';
                 GOTO ReturnResult;
             END
             
             SET @Success = 1;
-            SET @Message = ''Verification flow status updated from '' + @CurrentStatus + '' to '' + @NewStatus;
+            SET @Message = 'Verification flow status updated from ' + @CurrentStatus + ' to ' + @NewStatus;
             
             -- Log status change
             EXEC dbo.LogAuditEvent
-                @EventType = ''VERIFICATION_FLOW_STATUS_CHANGED'',
+                @EventType = 'VERIFICATION_FLOW_STATUS_CHANGED',
                 @Details = @Message,
                 @IpAddress = @IpAddress,
-                @AdditionalData = CONCAT(''FlowId:'', @FlowUniqueId, '', OldStatus:'', @CurrentStatus, '', NewStatus:'', @NewStatus);
+                @AdditionalData = CONCAT('FlowId:', @FlowUniqueId, ', OldStatus:', @CurrentStatus, ', NewStatus:', @NewStatus);
             
         END TRY
         BEGIN CATCH
@@ -744,23 +735,22 @@ BEGIN TRY
             
             EXEC dbo.LogError
                 @ErrorMessage = @Message,
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''UpdateVerificationFlowStatus failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'UpdateVerificationFlowStatus failed';
         END CATCH
         
         ReturnResult:
         -- Log performance metrics
         DECLARE @ExecutionTimeMs INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
         EXEC dbo.LogPerformanceMetric
-            @MetricName = ''UpdateVerificationFlowStatus'',
+            @MetricName = 'UpdateVerificationFlowStatus',
             @MetricValue = @ExecutionTimeMs,
-            @MetricUnit = ''milliseconds'',
-            @AdditionalData = CONCAT(''Success:'', @Success, '', RowsAffected:'', @RowsAffected);
+            @MetricUnit = 'milliseconds',
+            @AdditionalData = CONCAT('Success:', @Success, ', RowsAffected:', @RowsAffected);
         
         -- Return results  
         SELECT @Success AS Success, @Message AS Message, @RowsAffected AS RowsAffected;
     END;
-    ');
     
     PRINT '✓ Verification flow status management procedures created';
     

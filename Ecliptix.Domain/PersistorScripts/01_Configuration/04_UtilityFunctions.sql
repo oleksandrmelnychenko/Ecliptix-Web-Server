@@ -93,8 +93,7 @@ BEGIN TRY
         DROP FUNCTION dbo.IsWithinBusinessHours;
 
     -- Function to calculate business days from now
-    EXEC ('
-    CREATE FUNCTION dbo.GetBusinessDaysFromNow(@Days INT)
+        CREATE FUNCTION dbo.GetBusinessDaysFromNow(@Days INT)
     RETURNS DATETIME2(7)
     AS
     BEGIN
@@ -115,11 +114,9 @@ BEGIN TRY
 
         RETURN @ResultDate;
     END;
-    ');
 
     -- Function to check if current time is within business hours
-    EXEC ('
-    CREATE FUNCTION dbo.IsWithinBusinessHours(@CheckTime DATETIME2(7) = NULL)
+        CREATE FUNCTION dbo.IsWithinBusinessHours(@CheckTime DATETIME2(7) = NULL)
     RETURNS BIT
     AS
     BEGIN
@@ -133,7 +130,6 @@ BEGIN TRY
 
         RETURN 0;
     END;
-    ');
 
     PRINT '✓ Date/time utility functions created successfully';
 
@@ -151,8 +147,7 @@ BEGIN TRY
         DROP FUNCTION dbo.MaskSensitiveData;
 
     -- Function to format phone number for display
-    EXEC ('
-    CREATE FUNCTION dbo.FormatPhoneNumberDisplay(@PhoneNumber NVARCHAR(20))
+        CREATE FUNCTION dbo.FormatPhoneNumberDisplay(@PhoneNumber NVARCHAR(20))
     RETURNS NVARCHAR(30)
     AS
     BEGIN
@@ -160,33 +155,31 @@ BEGIN TRY
         DECLARE @FormattedNumber NVARCHAR(30);
 
         -- Clean the number
-        SET @CleanedNumber = REPLACE(REPLACE(REPLACE(REPLACE(@PhoneNumber, '' '', ''''), ''('', ''''), '')'', ''''), ''-'', '''');
-        SET @CleanedNumber = REPLACE(REPLACE(@CleanedNumber, ''.'', ''''), ''+'', '''');
+        SET @CleanedNumber = REPLACE(REPLACE(REPLACE(REPLACE(@PhoneNumber, ' ', ''), '(', ''), ')', ''), '-', '');
+        SET @CleanedNumber = REPLACE(REPLACE(@CleanedNumber, '.', ''), '+', '');
 
         -- Format based on length
         DECLARE @Length INT = LEN(@CleanedNumber);
 
         IF @Length = 10
             -- US format - (123) 456-7890
-            SET @FormattedNumber = ''('' + LEFT(@CleanedNumber, 3) + '') '' +
-                                 SUBSTRING(@CleanedNumber, 4, 3) + ''-'' +
+            SET @FormattedNumber = '(' + LEFT(@CleanedNumber, 3) + ') ' +
+                                 SUBSTRING(@CleanedNumber, 4, 3) + '-' +
                                  RIGHT(@CleanedNumber, 4);
-        ELSE IF @Length = 11 AND LEFT(@CleanedNumber, 1) = ''1''
+        ELSE IF @Length = 11 AND LEFT(@CleanedNumber, 1) = '1'
             -- US with country code - +1 (123) 456-7890
-            SET @FormattedNumber = ''+1 ('' + SUBSTRING(@CleanedNumber, 2, 3) + '') '' +
-                                 SUBSTRING(@CleanedNumber, 5, 3) + ''-'' +
+            SET @FormattedNumber = '+1 (' + SUBSTRING(@CleanedNumber, 2, 3) + ') ' +
+                                 SUBSTRING(@CleanedNumber, 5, 3) + '-' +
                                  RIGHT(@CleanedNumber, 4);
         ELSE
             -- International format - +XX XXX XXX XXXX
-            SET @FormattedNumber = ''+'' + @CleanedNumber;
+            SET @FormattedNumber = '+' + @CleanedNumber;
 
         RETURN ISNULL(@FormattedNumber, @PhoneNumber);
     END;
-    ');
 
     -- Function to mask sensitive data for logging
-    EXEC ('
-    CREATE FUNCTION dbo.MaskSensitiveData(@Data NVARCHAR(MAX), @MaskType NVARCHAR(20) = ''PARTIAL'')
+        CREATE FUNCTION dbo.MaskSensitiveData(@Data NVARCHAR(MAX), @MaskType NVARCHAR(20) = 'PARTIAL')
     RETURNS NVARCHAR(MAX)
     AS
     BEGIN
@@ -196,32 +189,31 @@ BEGIN TRY
         IF @Data IS NULL OR @Length = 0
             RETURN @Data;
 
-        IF @MaskType = ''FULL''
-            SET @MaskedData = REPLICATE(''*'', @Length);
-        ELSE IF @MaskType = ''PARTIAL''
+        IF @MaskType = 'FULL'
+            SET @MaskedData = REPLICATE('*', @Length);
+        ELSE IF @MaskType = 'PARTIAL'
         BEGIN
             -- Show first 2 and last 2 characters for data > 6 chars
             IF @Length > 6
-                SET @MaskedData = LEFT(@Data, 2) + REPLICATE(''*'', @Length - 4) + RIGHT(@Data, 2);
+                SET @MaskedData = LEFT(@Data, 2) + REPLICATE('*', @Length - 4) + RIGHT(@Data, 2);
             ELSE IF @Length > 2
-                SET @MaskedData = LEFT(@Data, 1) + REPLICATE(''*'', @Length - 1);
+                SET @MaskedData = LEFT(@Data, 1) + REPLICATE('*', @Length - 1);
             ELSE
-                SET @MaskedData = REPLICATE(''*'', @Length);
+                SET @MaskedData = REPLICATE('*', @Length);
         END
-        ELSE IF @MaskType = ''PHONE''
+        ELSE IF @MaskType = 'PHONE'
         BEGIN
             -- Mask phone numbers - show last 4 digits only
             IF @Length >= 4
-                SET @MaskedData = REPLICATE(''*'', @Length - 4) + RIGHT(@Data, 4);
+                SET @MaskedData = REPLICATE('*', @Length - 4) + RIGHT(@Data, 4);
             ELSE
-                SET @MaskedData = REPLICATE(''*'', @Length);
+                SET @MaskedData = REPLICATE('*', @Length);
         END
         ELSE
             SET @MaskedData = @Data; -- No masking
 
         RETURN @MaskedData;
     END;
-    ');
 
     PRINT '✓ String manipulation helpers created successfully';
 
@@ -236,8 +228,7 @@ BEGIN TRY
         DROP PROCEDURE dbo.GetSystemHealthStatus;
 
     -- System health check procedure
-    EXEC ('
-    CREATE PROCEDURE dbo.GetSystemHealthStatus
+        CREATE PROCEDURE dbo.GetSystemHealthStatus
         @IncludeDetails BIT = 0
     AS
     BEGIN
@@ -250,32 +241,32 @@ BEGIN TRY
             LastChecked DATETIME2(7)
         );
 
-        DECLARE @OverallStatus NVARCHAR(20) = ''HEALTHY'';
+        DECLARE @OverallStatus NVARCHAR(20) = 'HEALTHY';
 
         -- Check database connectivity
         BEGIN TRY
             DECLARE @TestValue INT = 1;
-            INSERT INTO @HealthStatus VALUES (''Database'', ''HEALTHY'', ''Database connection successful'', GETUTCDATE());
+            INSERT INTO @HealthStatus VALUES ('Database', 'HEALTHY', 'Database connection successful', GETUTCDATE());
         END TRY
         BEGIN CATCH
-            INSERT INTO @HealthStatus VALUES (''Database'', ''UNHEALTHY'', ERROR_MESSAGE(), GETUTCDATE());
-            SET @OverallStatus = ''UNHEALTHY'';
+            INSERT INTO @HealthStatus VALUES ('Database', 'UNHEALTHY', ERROR_MESSAGE(), GETUTCDATE());
+            SET @OverallStatus = 'UNHEALTHY';
         END CATCH
 
         -- Check configuration system
         BEGIN TRY
-            DECLARE @ConfigTest NVARCHAR(500) = dbo.GetConfigValue(''Authentication.MaxFailedAttempts'');
+            DECLARE @ConfigTest NVARCHAR(500) = dbo.GetConfigValue('Authentication.MaxFailedAttempts');
             IF @ConfigTest IS NOT NULL
-                INSERT INTO @HealthStatus VALUES (''Configuration'', ''HEALTHY'', ''Configuration system operational'', GETUTCDATE());
+                INSERT INTO @HealthStatus VALUES ('Configuration', 'HEALTHY', 'Configuration system operational', GETUTCDATE());
             ELSE
             BEGIN
-                INSERT INTO @HealthStatus VALUES (''Configuration'', ''DEGRADED'', ''Configuration values not accessible'', GETUTCDATE());
-                IF @OverallStatus = ''HEALTHY'' SET @OverallStatus = ''DEGRADED'';
+                INSERT INTO @HealthStatus VALUES ('Configuration', 'DEGRADED', 'Configuration values not accessible', GETUTCDATE());
+                IF @OverallStatus = 'HEALTHY' SET @OverallStatus = 'DEGRADED';
             END
         END TRY
         BEGIN CATCH
-            INSERT INTO @HealthStatus VALUES (''Configuration'', ''UNHEALTHY'', ERROR_MESSAGE(), GETUTCDATE());
-            SET @OverallStatus = ''UNHEALTHY'';
+            INSERT INTO @HealthStatus VALUES ('Configuration', 'UNHEALTHY', ERROR_MESSAGE(), GETUTCDATE());
+            SET @OverallStatus = 'UNHEALTHY';
         END CATCH
 
         -- Check recent error rates
@@ -286,22 +277,22 @@ BEGIN TRY
             WHERE CreatedAt >= DATEADD(MINUTE, -15, GETUTCDATE());
 
             IF @RecentErrors = 0
-                INSERT INTO @HealthStatus VALUES (''ErrorRate'', ''HEALTHY'', ''No recent errors'', GETUTCDATE());
+                INSERT INTO @HealthStatus VALUES ('ErrorRate', 'HEALTHY', 'No recent errors', GETUTCDATE());
             ELSE IF @RecentErrors < 10
             BEGIN
-                INSERT INTO @HealthStatus VALUES (''ErrorRate'', ''DEGRADED'',
-                    ''Recent errors - '' + CAST(@RecentErrors AS NVARCHAR(10)), GETUTCDATE());
-                IF @OverallStatus = ''HEALTHY'' SET @OverallStatus = ''DEGRADED'';
+                INSERT INTO @HealthStatus VALUES ('ErrorRate', 'DEGRADED',
+                    'Recent errors - ' + CAST(@RecentErrors AS NVARCHAR(10)), GETUTCDATE());
+                IF @OverallStatus = 'HEALTHY' SET @OverallStatus = 'DEGRADED';
             END
             ELSE
             BEGIN
-                INSERT INTO @HealthStatus VALUES (''ErrorRate'', ''UNHEALTHY'',
-                    ''High error rate - '' + CAST(@RecentErrors AS NVARCHAR(10)) + '' errors in 15 minutes'', GETUTCDATE());
-                SET @OverallStatus = ''UNHEALTHY'';
+                INSERT INTO @HealthStatus VALUES ('ErrorRate', 'UNHEALTHY',
+                    'High error rate - ' + CAST(@RecentErrors AS NVARCHAR(10)) + ' errors in 15 minutes', GETUTCDATE());
+                SET @OverallStatus = 'UNHEALTHY';
             END
         END TRY
         BEGIN CATCH
-            INSERT INTO @HealthStatus VALUES (''ErrorRate'', ''UNKNOWN'', ''Unable to check error rates'', GETUTCDATE());
+            INSERT INTO @HealthStatus VALUES ('ErrorRate', 'UNKNOWN', 'Unable to check error rates', GETUTCDATE());
         END CATCH
 
         -- Check circuit breaker states
@@ -309,19 +300,19 @@ BEGIN TRY
             DECLARE @OpenCircuits INT;
             SELECT @OpenCircuits = COUNT(*)
             FROM dbo.CircuitBreakerStates
-            WHERE State = ''OPEN'';
+            WHERE State = 'OPEN';
 
             IF @OpenCircuits = 0
-                INSERT INTO @HealthStatus VALUES (''CircuitBreakers'', ''HEALTHY'', ''All circuits closed'', GETUTCDATE());
+                INSERT INTO @HealthStatus VALUES ('CircuitBreakers', 'HEALTHY', 'All circuits closed', GETUTCDATE());
             ELSE
             BEGIN
-                INSERT INTO @HealthStatus VALUES (''CircuitBreakers'', ''DEGRADED'',
-                    CAST(@OpenCircuits AS NVARCHAR(10)) + '' open circuits'', GETUTCDATE());
-                IF @OverallStatus = ''HEALTHY'' SET @OverallStatus = ''DEGRADED'';
+                INSERT INTO @HealthStatus VALUES ('CircuitBreakers', 'DEGRADED',
+                    CAST(@OpenCircuits AS NVARCHAR(10)) + ' open circuits', GETUTCDATE());
+                IF @OverallStatus = 'HEALTHY' SET @OverallStatus = 'DEGRADED';
             END
         END TRY
         BEGIN CATCH
-            INSERT INTO @HealthStatus VALUES (''CircuitBreakers'', ''UNKNOWN'', ''Unable to check circuit breakers'', GETUTCDATE());
+            INSERT INTO @HealthStatus VALUES ('CircuitBreakers', 'UNKNOWN', 'Unable to check circuit breakers', GETUTCDATE());
         END CATCH
 
         -- Return results
@@ -333,15 +324,14 @@ BEGIN TRY
             FROM @HealthStatus
             ORDER BY
                 CASE Status
-                    WHEN ''UNHEALTHY'' THEN 1
-                    WHEN ''DEGRADED'' THEN 2
-                    WHEN ''HEALTHY'' THEN 3
+                    WHEN 'UNHEALTHY' THEN 1
+                    WHEN 'DEGRADED' THEN 2
+                    WHEN 'HEALTHY' THEN 3
                     ELSE 4
                 END,
                 Component;
         END
     END;
-    ');
 
     PRINT '✓ System health check procedures created successfully';
 
@@ -362,8 +352,7 @@ BEGIN TRY
         DROP PROCEDURE dbo.RecordCircuitBreakerFailure;
 
     -- Check circuit breaker state
-    EXEC ('
-    CREATE PROCEDURE dbo.CheckCircuitBreaker
+        CREATE PROCEDURE dbo.CheckCircuitBreaker
         @ServiceName NVARCHAR(100),
         @IsOpen BIT OUTPUT,
         @ErrorMessage NVARCHAR(255) OUTPUT
@@ -373,8 +362,8 @@ BEGIN TRY
 
         DECLARE @State NVARCHAR(20);
         DECLARE @NextRetryAt DATETIME2(7);
-        DECLARE @FailureThreshold INT = CAST(dbo.GetConfigValue(''CircuitBreaker.FailureThreshold'') AS INT);
-        DECLARE @TimeoutMinutes INT = CAST(dbo.GetConfigValue(''CircuitBreaker.TimeoutMinutes'') AS INT);
+        DECLARE @FailureThreshold INT = CAST(dbo.GetConfigValue('CircuitBreaker.FailureThreshold') AS INT);
+        DECLARE @TimeoutMinutes INT = CAST(dbo.GetConfigValue('CircuitBreaker.TimeoutMinutes') AS INT);
 
         -- Initialize circuit breaker if not exists
         IF NOT EXISTS (SELECT 1 FROM dbo.CircuitBreakerStates WHERE ServiceName = @ServiceName)
@@ -388,19 +377,19 @@ BEGIN TRY
         WHERE ServiceName = @ServiceName;
 
         -- Check state
-        IF @State = ''CLOSED''
+        IF @State = 'CLOSED'
         BEGIN
             SET @IsOpen = 0;
             SET @ErrorMessage = NULL;
         END
-        ELSE IF @State = ''OPEN''
+        ELSE IF @State = 'OPEN'
         BEGIN
             -- Check if retry time has passed
             IF GETUTCDATE() >= @NextRetryAt
             BEGIN
                 -- Move to HALF_OPEN
                 UPDATE dbo.CircuitBreakerStates
-                SET State = ''HALF_OPEN'', UpdatedAt = GETUTCDATE()
+                SET State = 'HALF_OPEN', UpdatedAt = GETUTCDATE()
                 WHERE ServiceName = @ServiceName;
 
                 SET @IsOpen = 0;
@@ -409,7 +398,7 @@ BEGIN TRY
             ELSE
             BEGIN
                 SET @IsOpen = 1;
-                SET @ErrorMessage = ''Circuit breaker is OPEN. Service temporarily unavailable.'';
+                SET @ErrorMessage = 'Circuit breaker is OPEN. Service temporarily unavailable.';
             END
         END
         ELSE -- HALF_OPEN
@@ -418,17 +407,15 @@ BEGIN TRY
             SET @ErrorMessage = NULL;
         END
     END;
-    ');
 
     -- Record circuit breaker success
-    EXEC ('
-    CREATE PROCEDURE dbo.RecordCircuitBreakerSuccess
+        CREATE PROCEDURE dbo.RecordCircuitBreakerSuccess
         @ServiceName NVARCHAR(100)
     AS
     BEGIN
         SET NOCOUNT ON;
 
-        DECLARE @SuccessThreshold INT = CAST(dbo.GetConfigValue(''CircuitBreaker.SuccessThreshold'') AS INT);
+        DECLARE @SuccessThreshold INT = CAST(dbo.GetConfigValue('CircuitBreaker.SuccessThreshold') AS INT);
         DECLARE @CurrentState NVARCHAR(20);
         DECLARE @SuccessCount INT;
 
@@ -445,10 +432,10 @@ BEGIN TRY
         WHERE ServiceName = @ServiceName;
 
         -- Close circuit if enough successes in HALF_OPEN state
-        IF @CurrentState = ''HALF_OPEN'' AND @SuccessCount >= @SuccessThreshold
+        IF @CurrentState = 'HALF_OPEN' AND @SuccessCount >= @SuccessThreshold
         BEGIN
             UPDATE dbo.CircuitBreakerStates
-            SET State = ''CLOSED'',
+            SET State = 'CLOSED',
                 FailureCount = 0,
                 SuccessCount = 0,
                 NextRetryAt = NULL,
@@ -457,24 +444,22 @@ BEGIN TRY
 
             -- Log the recovery
             EXEC dbo.LogAuditEvent
-                @EventType = ''CIRCUIT_BREAKER_CLOSED'',
-                @Details = ''Circuit breaker closed after successful operations'',
+                @EventType = 'CIRCUIT_BREAKER_CLOSED',
+                @Details = 'Circuit breaker closed after successful operations',
                 @AdditionalData = @ServiceName;
         END
     END;
-    ');
 
     -- Record circuit breaker failure
-    EXEC ('
-    CREATE PROCEDURE dbo.RecordCircuitBreakerFailure
+        CREATE PROCEDURE dbo.RecordCircuitBreakerFailure
         @ServiceName NVARCHAR(100),
         @ErrorMessage NVARCHAR(MAX) = NULL
     AS
     BEGIN
         SET NOCOUNT ON;
 
-        DECLARE @FailureThreshold INT = CAST(dbo.GetConfigValue(''CircuitBreaker.FailureThreshold'') AS INT);
-        DECLARE @TimeoutMinutes INT = CAST(dbo.GetConfigValue(''CircuitBreaker.TimeoutMinutes'') AS INT);
+        DECLARE @FailureThreshold INT = CAST(dbo.GetConfigValue('CircuitBreaker.FailureThreshold') AS INT);
+        DECLARE @TimeoutMinutes INT = CAST(dbo.GetConfigValue('CircuitBreaker.TimeoutMinutes') AS INT);
         DECLARE @CurrentState NVARCHAR(20);
         DECLARE @FailureCount INT;
         DECLARE @AdditionalInfo NVARCHAR(MAX);
@@ -493,25 +478,24 @@ BEGIN TRY
         WHERE ServiceName = @ServiceName;
 
         -- Open circuit if failure threshold exceeded
-        IF (@CurrentState IN (''CLOSED'', ''HALF_OPEN'')) AND @FailureCount >= @FailureThreshold
+        IF (@CurrentState IN ('CLOSED', 'HALF_OPEN')) AND @FailureCount >= @FailureThreshold
         BEGIN
             UPDATE dbo.CircuitBreakerStates
-            SET State = ''OPEN'',
+            SET State = 'OPEN',
                 NextRetryAt = DATEADD(MINUTE, @TimeoutMinutes, GETUTCDATE()),
                 UpdatedAt = GETUTCDATE()
             WHERE ServiceName = @ServiceName;
 
             -- Form additional info
-            SET @AdditionalInfo = @ServiceName + '': '' + ISNULL(@ErrorMessage, ''Unknown error'');
+            SET @AdditionalInfo = @ServiceName + ': ' + ISNULL(@ErrorMessage, 'Unknown error');
 
             -- Log the circuit opening
             EXEC dbo.LogError
-                @ErrorMessage = ''Circuit breaker opened due to repeated failures'',
-                @ErrorSeverity = ''WARNING'',
+                @ErrorMessage = 'Circuit breaker opened due to repeated failures',
+                @ErrorSeverity = 'WARNING',
                 @AdditionalInfo = @AdditionalInfo;
         END
     END;
-    ');
 
 
     PRINT '✓ Circuit breaker procedures created successfully';
@@ -530,8 +514,7 @@ BEGIN TRY
         DROP PROCEDURE dbo.EndPerformanceTimer;
 
     -- Start performance timer
-    EXEC ('
-    CREATE PROCEDURE dbo.StartPerformanceTimer
+        CREATE PROCEDURE dbo.StartPerformanceTimer
         @OperationName NVARCHAR(100),
         @TimerId UNIQUEIDENTIFIER OUTPUT
     AS
@@ -541,22 +524,20 @@ BEGIN TRY
         SET @TimerId = NEWID();
 
         -- Store timer start in temp table or session context
-        -- For simplicity, we''ll use a session-based approach
-        DECLARE @SessionInfo NVARCHAR(200) = ''PERF_TIMER_'' + CAST(@TimerId AS NVARCHAR(36));
+        -- For simplicity, we'll use a session-based approach
+        DECLARE @SessionInfo NVARCHAR(200) = 'PERF_TIMER_' + CAST(@TimerId AS NVARCHAR(36));
         DECLARE @StartTime NVARCHAR(30) = CONVERT(NVARCHAR(30), GETUTCDATE(), 121);
 
         -- Using session context to store timer info (SQL Server 2016+)
         EXEC sp_set_session_context @SessionInfo, @StartTime, @readonly = 0;
 
         -- Also store operation name
-        SET @SessionInfo = ''PERF_OP_'' + CAST(@TimerId AS NVARCHAR(36));
+        SET @SessionInfo = 'PERF_OP_' + CAST(@TimerId AS NVARCHAR(36));
         EXEC sp_set_session_context @SessionInfo, @OperationName, @readonly = 0;
     END;
-    ');
 
     -- End performance timer
-    EXEC ('
-    CREATE PROCEDURE dbo.EndPerformanceTimer
+        CREATE PROCEDURE dbo.EndPerformanceTimer
         @TimerId UNIQUEIDENTIFIER,
         @AdditionalMetrics NVARCHAR(MAX) = NULL
     AS
@@ -568,10 +549,10 @@ BEGIN TRY
         DECLARE @SessionInfo NVARCHAR(200);
 
         -- Retrieve start time and operation name
-        SET @SessionInfo = ''PERF_TIMER_'' + CAST(@TimerId AS NVARCHAR(36));
+        SET @SessionInfo = 'PERF_TIMER_' + CAST(@TimerId AS NVARCHAR(36));
         SET @StartTimeStr = CAST(SESSION_CONTEXT(@SessionInfo) AS NVARCHAR(30));
 
-        SET @SessionInfo = ''PERF_OP_'' + CAST(@TimerId AS NVARCHAR(36));
+        SET @SessionInfo = 'PERF_OP_' + CAST(@TimerId AS NVARCHAR(36));
         SET @OperationName = CAST(SESSION_CONTEXT(@SessionInfo) AS NVARCHAR(100));
 
         IF @StartTimeStr IS NOT NULL AND @OperationName IS NOT NULL
@@ -584,18 +565,17 @@ BEGIN TRY
             EXEC dbo.LogPerformanceMetric
                 @MetricName = @OperationName,
                 @MetricValue = @DurationMs,
-                @MetricUnit = ''milliseconds'',
+                @MetricUnit = 'milliseconds',
                 @AdditionalData = @AdditionalMetrics;
 
             -- Clean up session context
-            SET @SessionInfo = ''PERF_TIMER_'' + CAST(@TimerId AS NVARCHAR(36));
+            SET @SessionInfo = 'PERF_TIMER_' + CAST(@TimerId AS NVARCHAR(36));
             EXEC sp_set_session_context @SessionInfo, NULL;
 
-            SET @SessionInfo = ''PERF_OP_'' + CAST(@TimerId AS NVARCHAR(36));
+            SET @SessionInfo = 'PERF_OP_' + CAST(@TimerId AS NVARCHAR(36));
             EXEC sp_set_session_context @SessionInfo, NULL;
         END
     END;
-    ');
 
     PRINT '✓ Performance monitoring helpers created successfully';
 

@@ -74,8 +74,7 @@ BEGIN TRY
     */
     PRINT '👤 Creating Memberships update trigger...';
     
-    EXEC('
-    CREATE TRIGGER TRG_Memberships_Update ON dbo.Memberships FOR UPDATE AS
+        CREATE TRIGGER TRG_Memberships_Update ON dbo.Memberships FOR UPDATE AS
     BEGIN
         SET NOCOUNT ON;
         
@@ -87,7 +86,6 @@ BEGIN TRY
         FROM dbo.Memberships t
         INNER JOIN inserted i ON t.Id = i.Id;
     END;
-    ');
 
     /*
     ================================================================================
@@ -97,8 +95,7 @@ BEGIN TRY
     */
     PRINT '📝 Creating MembershipAttempts update trigger...';
     
-    EXEC('
-    CREATE TRIGGER TRG_MembershipAttempts_Update ON dbo.MembershipAttempts FOR UPDATE AS
+        CREATE TRIGGER TRG_MembershipAttempts_Update ON dbo.MembershipAttempts FOR UPDATE AS
     BEGIN
         SET NOCOUNT ON;
         
@@ -110,7 +107,6 @@ BEGIN TRY
         FROM dbo.MembershipAttempts t
         INNER JOIN inserted i ON t.Id = i.Id;
     END;
-    ');
 
     /*
     ================================================================================
@@ -122,8 +118,7 @@ BEGIN TRY
     */
     PRINT '🔐 Creating AuthenticationContexts update trigger...';
     
-    EXEC('
-    CREATE TRIGGER TRG_AuthenticationContexts_Update ON dbo.AuthenticationContexts FOR UPDATE AS
+        CREATE TRIGGER TRG_AuthenticationContexts_Update ON dbo.AuthenticationContexts FOR UPDATE AS
     BEGIN
         SET NOCOUNT ON;
         
@@ -135,7 +130,6 @@ BEGIN TRY
         FROM dbo.AuthenticationContexts t
         INNER JOIN inserted i ON t.Id = i.Id;
     END;
-    ');
 
     /*
     ================================================================================
@@ -147,8 +141,7 @@ BEGIN TRY
     */
     PRINT '⏱️ Creating AuthenticationStates update trigger...';
     
-    EXEC('
-    CREATE TRIGGER TRG_AuthenticationStates_Update ON dbo.AuthenticationStates FOR UPDATE AS
+        CREATE TRIGGER TRG_AuthenticationStates_Update ON dbo.AuthenticationStates FOR UPDATE AS
     BEGIN
         SET NOCOUNT ON;
         
@@ -160,7 +153,6 @@ BEGIN TRY
         FROM dbo.AuthenticationStates t
         INNER JOIN inserted i ON t.MobileNumberId = i.MobileNumberId;
     END;
-    ');
 
     /*
     ================================================================================
@@ -170,8 +162,7 @@ BEGIN TRY
     */
     PRINT '🚪 Creating LoginAttempts update trigger...';
     
-    EXEC('
-    CREATE TRIGGER TRG_LoginAttempts_Update ON dbo.LoginAttempts FOR UPDATE AS
+        CREATE TRIGGER TRG_LoginAttempts_Update ON dbo.LoginAttempts FOR UPDATE AS
     BEGIN
         SET NOCOUNT ON;
         
@@ -183,7 +174,6 @@ BEGIN TRY
         FROM dbo.LoginAttempts t
         INNER JOIN inserted i ON t.Id = i.Id;
     END;
-    ');
 
     -- Ensure membership audit configuration exists
     PRINT '⚙️ Configuring membership audit settings...';

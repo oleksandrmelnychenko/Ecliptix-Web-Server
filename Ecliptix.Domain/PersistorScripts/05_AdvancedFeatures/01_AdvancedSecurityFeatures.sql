@@ -70,7 +70,6 @@ BEGIN TRY
     PRINT 'Creating security analysis procedures...';
     
     -- CalculateLockoutDuration: Advanced lockout with exponential backoff
-    EXEC ('
     CREATE PROCEDURE dbo.CalculateLockoutDuration
         @PhoneNumber NVARCHAR(18),
         @BaseLockoutMinutes INT,
@@ -79,10 +78,10 @@ BEGIN TRY
     BEGIN
         SET NOCOUNT ON;
         
-        DECLARE @LockoutMarkerPrefix NVARCHAR(20) = ''LOCKED_UNTIL:'';
-        DECLARE @LockoutPattern NVARCHAR(30) = @LockoutMarkerPrefix + ''%'';
+        DECLARE @LockoutMarkerPrefix NVARCHAR(20) = 'LOCKED_UNTIL:';
+        DECLARE @LockoutPattern NVARCHAR(30) = @LockoutMarkerPrefix + '%';
         DECLARE @PreviousLockouts INT;
-        DECLARE @MaxLockoutDuration INT = CAST(dbo.GetConfigValue(''Membership.MaxLockoutDuration'') AS INT);
+        DECLARE @MaxLockoutDuration INT = CAST(dbo.GetConfigValue('Membership.MaxLockoutDuration') AS INT);
         
         -- Count previous lockouts in the last 24 hours
         SELECT @PreviousLockouts = COUNT(*)
@@ -100,15 +99,13 @@ BEGIN TRY
         
         -- Log lockout calculation
         EXEC dbo.LogAuditEvent 
-            @EventType = ''LOCKOUT_DURATION_CALCULATED'',
-            @Details = CONCAT(''Lockout duration calculated: '', @LockoutDurationMinutes, '' minutes''),
-            @AdditionalData = CONCAT(''PhoneNumber:'', dbo.MaskSensitiveData(@PhoneNumber, ''PHONE''), '', PreviousLockouts:'', @PreviousLockouts);
+            @EventType = 'LOCKOUT_DURATION_CALCULATED',
+            @Details = CONCAT('Lockout duration calculated: ', @LockoutDurationMinutes, ' minutes'),
+            @AdditionalData = CONCAT('PhoneNumber:', dbo.MaskSensitiveData(@PhoneNumber, 'PHONE'), ', PreviousLockouts:', @PreviousLockouts);
     END;
-    ');
     
     -- DetectGeographicAnomaly: Geographic-based anomaly detection
-    EXEC ('
-    CREATE PROCEDURE dbo.DetectGeographicAnomaly
+        CREATE PROCEDURE dbo.DetectGeographicAnomaly
         @PhoneNumber NVARCHAR(18),
         @CurrentIpAddress NVARCHAR(45),
         @IsAnomaly BIT OUTPUT,
@@ -121,16 +118,16 @@ BEGIN TRY
         SET @AnomalyReason = NULL;
         
         -- Skip if geographic blocking is disabled
-        IF CAST(dbo.GetConfigValue(''Membership.EnableGeoBlocking'') AS BIT) = 0
+        IF CAST(dbo.GetConfigValue('Membership.EnableGeoBlocking') AS BIT) = 0
             RETURN;
         
         DECLARE @RecentIpCount INT;
-        DECLARE @SuspiciousThreshold INT = CAST(dbo.GetConfigValue(''Membership.SuspiciousActivityThreshold'') AS INT);
+        DECLARE @SuspiciousThreshold INT = CAST(dbo.GetConfigValue('Membership.SuspiciousActivityThreshold') AS INT);
         
         -- Count unique IP addresses in the last hour
         SELECT @RecentIpCount = COUNT(DISTINCT 
             CASE 
-                WHEN Outcome LIKE ''ip_changed:%'' THEN SUBSTRING(Outcome, 12, LEN(Outcome))
+                WHEN Outcome LIKE 'ip_changed:%' THEN SUBSTRING(Outcome, 12, LEN(Outcome))
                 ELSE @CurrentIpAddress
             END
         )
@@ -142,17 +139,15 @@ BEGIN TRY
         IF @RecentIpCount > @SuspiciousThreshold
         BEGIN
             SET @IsAnomaly = 1;
-            SET @AnomalyReason = CONCAT(''Multiple IP addresses detected: '', @RecentIpCount, '' in last hour'');
+            SET @AnomalyReason = CONCAT('Multiple IP addresses detected: ', @RecentIpCount, ' in last hour');
         END
         
         -- Additional geographic checks could be added here
         -- (e.g., IP geolocation, distance calculations, etc.)
     END;
-    ');
     
     -- AnalyzeSuspiciousActivity: Comprehensive threat analysis
-    EXEC ('
-    CREATE PROCEDURE dbo.AnalyzeSuspiciousActivity
+        CREATE PROCEDURE dbo.AnalyzeSuspiciousActivity
         @PhoneNumber NVARCHAR(18),
         @IpAddress NVARCHAR(45),
         @UserAgent NVARCHAR(500),
@@ -163,7 +158,7 @@ BEGIN TRY
         SET NOCOUNT ON;
         
         SET @SuspiciousScore = 0;
-        SET @ThreatDetails = '''';
+        SET @ThreatDetails = '';
         
         DECLARE @CurrentTime DATETIME2(7) = GETUTCDATE();
         
@@ -180,12 +175,12 @@ BEGIN TRY
         IF @AttemptsInLastMinute > 10
         BEGIN
             SET @SuspiciousScore = @SuspiciousScore + 50;
-            SET @ThreatDetails = @ThreatDetails + ''Rapid fire attempts detected; '';
+            SET @ThreatDetails = @ThreatDetails + 'Rapid fire attempts detected; ';
         END
         ELSE IF @AttemptsInLastMinute > 5
         BEGIN
             SET @SuspiciousScore = @SuspiciousScore + 20;
-            SET @ThreatDetails = @ThreatDetails + ''High frequency attempts; '';
+            SET @ThreatDetails = @ThreatDetails + 'High frequency attempts; ';
         END
         
         -- ================================================================
@@ -198,7 +193,7 @@ BEGIN TRY
         IF @IsGeoAnomaly = 1
         BEGIN
             SET @SuspiciousScore = @SuspiciousScore + 30;
-            SET @ThreatDetails = @ThreatDetails + @GeoAnomalyReason + ''; '';
+            SET @ThreatDetails = @ThreatDetails + @GeoAnomalyReason + '; ';
         END
         
         -- ================================================================
@@ -208,10 +203,10 @@ BEGIN TRY
         IF @UserAgent IS NOT NULL
         BEGIN
             -- Check for suspicious user agent patterns
-            IF @UserAgent LIKE ''%bot%'' OR @UserAgent LIKE ''%crawler%'' OR @UserAgent LIKE ''%script%''
+            IF @UserAgent LIKE '%bot%' OR @UserAgent LIKE '%crawler%' OR @UserAgent LIKE '%script%'
             BEGIN
                 SET @SuspiciousScore = @SuspiciousScore + 40;
-                SET @ThreatDetails = @ThreatDetails + ''Suspicious user agent detected; '';
+                SET @ThreatDetails = @ThreatDetails + 'Suspicious user agent detected; ';
             END
             
             -- Check for uncommon user agents
@@ -225,7 +220,7 @@ BEGIN TRY
             IF @UserAgentCount > 5
             BEGIN
                 SET @SuspiciousScore = @SuspiciousScore + 15;
-                SET @ThreatDetails = @ThreatDetails + ''Multiple user agents detected; '';
+                SET @ThreatDetails = @ThreatDetails + 'Multiple user agents detected; ';
             END
         END
         
@@ -239,7 +234,7 @@ BEGIN TRY
         IF @HourOfDay BETWEEN 2 AND 5 -- 2 AM to 5 AM
         BEGIN
             SET @SuspiciousScore = @SuspiciousScore + 10;
-            SET @ThreatDetails = @ThreatDetails + ''Unusual timing pattern (late night); '';
+            SET @ThreatDetails = @ThreatDetails + 'Unusual timing pattern (late night); ';
         END
         
         -- ================================================================
@@ -256,18 +251,16 @@ BEGIN TRY
         IF @RecentFailures > 15
         BEGIN
             SET @SuspiciousScore = @SuspiciousScore + 25;
-            SET @ThreatDetails = @ThreatDetails + ''High failure rate detected; '';
+            SET @ThreatDetails = @ThreatDetails + 'High failure rate detected; ';
         END
         
         -- Clean up trailing separator
-        IF LEN(@ThreatDetails) > 0 AND RIGHT(@ThreatDetails, 2) = ''; ''
+        IF LEN(@ThreatDetails) > 0 AND RIGHT(@ThreatDetails, 2) = '; '
             SET @ThreatDetails = LEFT(@ThreatDetails, LEN(@ThreatDetails) - 2);
     END;
-    ');
     
     -- ProcessSecurityThreat: Handle detected threats
-    EXEC ('
-    CREATE PROCEDURE dbo.ProcessSecurityThreat
+        CREATE PROCEDURE dbo.ProcessSecurityThreat
         @PhoneNumber NVARCHAR(18),
         @ThreatLevel NVARCHAR(20), -- LOW, MEDIUM, HIGH, CRITICAL
         @ThreatDetails NVARCHAR(MAX),
@@ -277,37 +270,37 @@ BEGIN TRY
     BEGIN
         SET NOCOUNT ON;
         
-        SET @ActionTaken = ''No action required'';
+        SET @ActionTaken = 'No action required';
         
         -- Log the threat
         EXEC dbo.LogAuditEvent 
-            @EventType = ''SECURITY_THREAT_DETECTED'',
-            @Details = CONCAT(''Threat Level: '', @ThreatLevel, '' - '', @ThreatDetails),
+            @EventType = 'SECURITY_THREAT_DETECTED',
+            @Details = CONCAT('Threat Level: ', @ThreatLevel, ' - ', @ThreatDetails),
             @IpAddress = @IpAddress,
-            @AdditionalData = CONCAT(''PhoneNumber:'', dbo.MaskSensitiveData(@PhoneNumber, ''PHONE'')),
+            @AdditionalData = CONCAT('PhoneNumber:', dbo.MaskSensitiveData(@PhoneNumber, 'PHONE')),
             @Success = 0;
         
         -- Take action based on threat level
-        IF @ThreatLevel = ''CRITICAL''
+        IF @ThreatLevel = 'CRITICAL'
         BEGIN
             -- Immediate account lockout for 24 hours
-            DECLARE @CriticalLockoutMarker NVARCHAR(MAX) = CONCAT(''LOCKED_UNTIL:'', CONVERT(NVARCHAR(30), DATEADD(HOUR, 24, GETUTCDATE()), 127));
+            DECLARE @CriticalLockoutMarker NVARCHAR(MAX) = CONCAT('LOCKED_UNTIL:', CONVERT(NVARCHAR(30), DATEADD(HOUR, 24, GETUTCDATE()), 127));
             EXEC dbo.LogLoginAttempt @PhoneNumber, @CriticalLockoutMarker, 0, @IpAddress;
-            SET @ActionTaken = ''Account locked for 24 hours due to critical threat'';
+            SET @ActionTaken = 'Account locked for 24 hours due to critical threat';
         END
-        ELSE IF @ThreatLevel = ''HIGH''
+        ELSE IF @ThreatLevel = 'HIGH'
         BEGIN
             -- Extended lockout
-            DECLARE @HighLockoutMarker NVARCHAR(MAX) = CONCAT(''LOCKED_UNTIL:'', CONVERT(NVARCHAR(30), DATEADD(HOUR, 4, GETUTCDATE()), 127));
+            DECLARE @HighLockoutMarker NVARCHAR(MAX) = CONCAT('LOCKED_UNTIL:', CONVERT(NVARCHAR(30), DATEADD(HOUR, 4, GETUTCDATE()), 127));
             EXEC dbo.LogLoginAttempt @PhoneNumber, @HighLockoutMarker, 0, @IpAddress;
-            SET @ActionTaken = ''Account locked for 4 hours due to high threat'';
+            SET @ActionTaken = 'Account locked for 4 hours due to high threat';
         END
-        ELSE IF @ThreatLevel = ''MEDIUM''
+        ELSE IF @ThreatLevel = 'MEDIUM'
         BEGIN
             -- Standard lockout with increased monitoring
-            DECLARE @MediumLockoutMarker NVARCHAR(MAX) = CONCAT(''LOCKED_UNTIL:'', CONVERT(NVARCHAR(30), DATEADD(HOUR, 1, GETUTCDATE()), 127));
+            DECLARE @MediumLockoutMarker NVARCHAR(MAX) = CONCAT('LOCKED_UNTIL:', CONVERT(NVARCHAR(30), DATEADD(HOUR, 1, GETUTCDATE()), 127));
             EXEC dbo.LogLoginAttempt @PhoneNumber, @MediumLockoutMarker, 0, @IpAddress;
-            SET @ActionTaken = ''Account locked for 1 hour with enhanced monitoring'';
+            SET @ActionTaken = 'Account locked for 1 hour with enhanced monitoring';
         END
         
         -- Additional actions could include:
@@ -315,7 +308,6 @@ BEGIN TRY
         -- - Alert notifications
         -- - Forensic data collection
     END;
-    ');
     
     PRINT '✓ Security analysis procedures created';
     
@@ -326,8 +318,7 @@ BEGIN TRY
     PRINT 'Creating advanced login procedure with behavioral analysis...';
     
     -- LoginMembership: Advanced login with comprehensive security
-    EXEC ('
-    CREATE PROCEDURE dbo.LoginMembership
+        CREATE PROCEDURE dbo.LoginMembership
         @PhoneNumber NVARCHAR(18),
         @SecureKey VARBINARY(MAX),
         @IpAddress NVARCHAR(45) = NULL,
@@ -340,7 +331,7 @@ BEGIN TRY
         
         -- Performance and monitoring variables
         DECLARE @StartTime DATETIME2(7) = GETUTCDATE();
-        DECLARE @ProcName NVARCHAR(100) = ''LoginMembership'';
+        DECLARE @ProcName NVARCHAR(100) = 'LoginMembership';
         DECLARE @RowsAffected INT = 0;
         
         -- Core operation variables
@@ -360,10 +351,10 @@ BEGIN TRY
         DECLARE @SecurityActionTaken NVARCHAR(255);
         
         -- Configuration-driven security parameters
-        DECLARE @LockoutDurationMinutes INT = CAST(dbo.GetConfigValue(''Authentication.LockoutDurationMinutes'') AS INT);
-        DECLARE @MaxAttemptsBeforeLockout INT = CAST(dbo.GetConfigValue(''Authentication.MaxFailedAttempts'') AS INT);
-        DECLARE @LockoutMarkerPrefix NVARCHAR(20) = ''LOCKED_UNTIL:'';
-        DECLARE @LockoutPattern NVARCHAR(30) = @LockoutMarkerPrefix + ''%'';
+        DECLARE @LockoutDurationMinutes INT = CAST(dbo.GetConfigValue('Authentication.LockoutDurationMinutes') AS INT);
+        DECLARE @MaxAttemptsBeforeLockout INT = CAST(dbo.GetConfigValue('Authentication.MaxFailedAttempts') AS INT);
+        DECLARE @LockoutMarkerPrefix NVARCHAR(20) = 'LOCKED_UNTIL:';
+        DECLARE @LockoutPattern NVARCHAR(30) = @LockoutMarkerPrefix + '%';
         
         -- Lockout state variables
         DECLARE @LockedUntilTs DATETIME2(7);
@@ -373,10 +364,10 @@ BEGIN TRY
         
         -- Build parameters for logging (mask sensitive data)
         DECLARE @Parameters NVARCHAR(MAX) = CONCAT(
-            ''PhoneNumber='', dbo.MaskSensitiveData(@PhoneNumber, ''PHONE''),
-            '', IpAddress='', ISNULL(@IpAddress, ''NULL''),
-            '', UserAgent='', CASE WHEN @UserAgent IS NULL THEN ''NULL'' ELSE ''[PROVIDED]'' END,
-            '', SessionContext='', CASE WHEN @SessionContext IS NULL THEN ''NULL'' ELSE ''[PROVIDED]'' END
+            'PhoneNumber=', dbo.MaskSensitiveData(@PhoneNumber, 'PHONE'),
+            ', IpAddress=', ISNULL(@IpAddress, 'NULL'),
+            ', UserAgent=', CASE WHEN @UserAgent IS NULL THEN 'NULL' ELSE '[PROVIDED]' END,
+            ', SessionContext=', CASE WHEN @SessionContext IS NULL THEN 'NULL' ELSE '[PROVIDED]' END
         );
 
         BEGIN TRY
@@ -387,35 +378,35 @@ BEGIN TRY
             -- Validate phone number format
             IF dbo.ValidatePhoneNumber(@PhoneNumber) = 0
             BEGIN
-                SET @Outcome = ''invalid_phone_number_format'';
+                SET @Outcome = 'invalid_phone_number_format';
                 GOTO LogFailedAttempt;
             END
             
             -- Validate secure key
             IF @SecureKey IS NULL OR DATALENGTH(@SecureKey) = 0
             BEGIN
-                SET @Outcome = ''secure_key_missing'';
+                SET @Outcome = 'secure_key_missing';
                 GOTO LogFailedAttempt;
             END
             
             IF DATALENGTH(@SecureKey) < 32
             BEGIN
-                SET @Outcome = ''secure_key_too_short'';
+                SET @Outcome = 'secure_key_too_short';
                 GOTO LogFailedAttempt;
             END
             
             -- Validate IP address if provided
             IF @IpAddress IS NOT NULL AND dbo.ValidateIpAddress(@IpAddress) = 0
             BEGIN
-                SET @Outcome = ''invalid_ip_address'';
+                SET @Outcome = 'invalid_ip_address';
                 GOTO LogFailedAttempt;
             END
             
             -- Sanitize inputs
             IF LEN(@UserAgent) > 500
-                SET @UserAgent = LEFT(@UserAgent, 497) + ''...'';
+                SET @UserAgent = LEFT(@UserAgent, 497) + '...';
             IF LEN(@SessionContext) > 200
-                SET @SessionContext = LEFT(@SessionContext, 197) + ''...'';
+                SET @SessionContext = LEFT(@SessionContext, 197) + '...';
             
             -- ================================================================
             -- SUSPICIOUS ACTIVITY ANALYSIS
@@ -431,18 +422,18 @@ BEGIN TRY
             
             -- Determine threat level based on suspicious score
             IF @SuspiciousScore >= 80
-                SET @ThreatLevel = ''CRITICAL'';
+                SET @ThreatLevel = 'CRITICAL';
             ELSE IF @SuspiciousScore >= 60
-                SET @ThreatLevel = ''HIGH'';
+                SET @ThreatLevel = 'HIGH';
             ELSE IF @SuspiciousScore >= 40
-                SET @ThreatLevel = ''MEDIUM'';
+                SET @ThreatLevel = 'MEDIUM';
             ELSE IF @SuspiciousScore >= 20
-                SET @ThreatLevel = ''LOW'';
+                SET @ThreatLevel = 'LOW';
             ELSE
-                SET @ThreatLevel = ''NONE'';
+                SET @ThreatLevel = 'NONE';
             
             -- Process security threats before allowing login attempt
-            IF @ThreatLevel IN (''HIGH'', ''CRITICAL'')
+            IF @ThreatLevel IN ('HIGH', 'CRITICAL')
             BEGIN
                 EXEC dbo.ProcessSecurityThreat 
                     @PhoneNumber = @PhoneNumber,
@@ -451,7 +442,7 @@ BEGIN TRY
                     @IpAddress = @IpAddress,
                     @ActionTaken = @SecurityActionTaken OUTPUT;
                 
-                SET @Outcome = ''blocked_due_to_'' + LOWER(@ThreatLevel) + ''_threat'';
+                SET @Outcome = 'blocked_due_to_' + LOWER(@ThreatLevel) + '_threat';
                 GOTO LogFailedAttempt;
             END
             
@@ -473,8 +464,8 @@ BEGIN TRY
                 BEGIN CATCH
                     SET @LockedUntilTs = NULL;
                     EXEC dbo.LogError
-                        @ErrorMessage = ''Failed to parse lockout timestamp'',
-                        @ErrorSeverity = ''WARNING'',
+                        @ErrorMessage = 'Failed to parse lockout timestamp',
+                        @ErrorSeverity = 'WARNING',
                         @AdditionalInfo = @LockoutMarkerOutcome;
                 END CATCH
 
@@ -484,8 +475,8 @@ BEGIN TRY
                     
                     -- Log lockout violation attempt
                     EXEC dbo.LogAuditEvent
-                        @EventType = ''LOGIN_BLOCKED_LOCKOUT'',
-                        @Details = ''Account locked - attempted login during lockout period'',
+                        @EventType = 'LOGIN_BLOCKED_LOCKOUT',
+                        @Details = 'Account locked - attempted login during lockout period',
                         @IpAddress = @IpAddress,
                         @AdditionalData = @Parameters,
                         @Success = 0;
@@ -504,8 +495,8 @@ BEGIN TRY
                     
                     -- Log lockout expiration
                     EXEC dbo.LogAuditEvent
-                        @EventType = ''LOCKOUT_EXPIRED'',
-                        @Details = ''Account lockout period has expired'',
+                        @EventType = 'LOCKOUT_EXPIRED',
+                        @Details = 'Account lockout period has expired',
                         @IpAddress = @IpAddress,
                         @AdditionalData = @Parameters;
                 END
@@ -516,18 +507,18 @@ BEGIN TRY
             FROM dbo.LoginAttempts
             WHERE PhoneNumber = @PhoneNumber
               AND IsSuccess = 0
-              AND Timestamp > ISNULL(@LastLockoutInitTime, ''1900-01-01'');
+              AND Timestamp > ISNULL(@LastLockoutInitTime, '1900-01-01');
             
             -- ================================================================
             -- CIRCUIT BREAKER CHECK
             -- ================================================================
             
             DECLARE @CircuitOpen BIT, @CircuitError NVARCHAR(255);
-            EXEC dbo.CheckCircuitBreaker ''MembershipLogin'', @CircuitOpen OUTPUT, @CircuitError OUTPUT;
+            EXEC dbo.CheckCircuitBreaker 'MembershipLogin', @CircuitOpen OUTPUT, @CircuitError OUTPUT;
             
             IF @CircuitOpen = 1
             BEGIN
-                SET @Outcome = ''service_unavailable'';
+                SET @Outcome = 'service_unavailable';
                 GOTO LogFailedAttempt;
             END
             
@@ -542,7 +533,7 @@ BEGIN TRY
 
             IF @PhoneNumberId IS NULL
             BEGIN
-                SET @Outcome = ''phone_number_not_found'';
+                SET @Outcome = 'phone_number_not_found';
                 GOTO LogFailedAttempt;
             END
             
@@ -560,21 +551,21 @@ BEGIN TRY
 
             IF @MembershipUniqueId IS NULL
             BEGIN
-                SET @Outcome = ''membership_not_found'';
+                SET @Outcome = 'membership_not_found';
                 GOTO LogFailedAttempt;
             END
             
             -- Validate membership status
-            IF @Status != ''active''
+            IF @Status != 'active'
             BEGIN
-                SET @Outcome = ''inactive_membership'';
+                SET @Outcome = 'inactive_membership';
                 GOTO LogFailedAttempt;
             END
             
             -- Validate secure key (simplified comparison - in production, use proper cryptographic comparison)
             IF @StoredSecureKey != @SecureKey
             BEGIN
-                SET @Outcome = ''invalid_secure_key'';
+                SET @Outcome = 'invalid_secure_key';
                 GOTO LogFailedAttempt;
             END
             
@@ -582,7 +573,7 @@ BEGIN TRY
             -- SUCCESS PATH
             -- ================================================================
             
-            SET @Outcome = ''success'';
+            SET @Outcome = 'success';
             SET @Success = 1;
             
             -- Clean up failed attempts on successful login
@@ -593,15 +584,15 @@ BEGIN TRY
             SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
             
             -- Record circuit breaker success
-            EXEC dbo.RecordCircuitBreakerSuccess ''MembershipLogin'';
+            EXEC dbo.RecordCircuitBreakerSuccess 'MembershipLogin';
             
             -- Log successful authentication
             EXEC dbo.LogLoginAttempt @PhoneNumber, @Outcome, 1, @IpAddress, @UserAgent;
             
             -- Log audit event for successful login
             EXEC dbo.LogAuditEvent
-                @EventType = ''LOGIN_SUCCESS'',
-                @Details = ''Member logged in successfully'',
+                @EventType = 'LOGIN_SUCCESS',
+                @Details = 'Member logged in successfully',
                 @UserId = @MembershipUniqueId,
                 @IpAddress = @IpAddress,
                 @AdditionalData = @Parameters;
@@ -610,8 +601,8 @@ BEGIN TRY
             IF @SuspiciousScore > 0
             BEGIN
                 EXEC dbo.LogAuditEvent
-                    @EventType = ''LOGIN_SUCCESS_WITH_ANALYSIS'',
-                    @Details = CONCAT(''Successful login with suspicious score: '', @SuspiciousScore),
+                    @EventType = 'LOGIN_SUCCESS_WITH_ANALYSIS',
+                    @Details = CONCAT('Successful login with suspicious score: ', @SuspiciousScore),
                     @UserId = @MembershipUniqueId,
                     @IpAddress = @IpAddress,
                     @AdditionalData = @ThreatDetails;
@@ -627,8 +618,8 @@ BEGIN TRY
             SET @Success = 0;
             
             -- Record circuit breaker failure for systemic issues
-            IF @Outcome LIKE ''%service%'' OR @Outcome LIKE ''%system%''
-                EXEC dbo.RecordCircuitBreakerFailure ''MembershipLogin'', @Outcome;
+            IF @Outcome LIKE '%service%' OR @Outcome LIKE '%system%'
+                EXEC dbo.RecordCircuitBreakerFailure 'MembershipLogin', @Outcome;
             
             -- Log the failed attempt
             EXEC dbo.LogLoginAttempt @PhoneNumber, @Outcome, 0, @IpAddress, @UserAgent;
@@ -647,19 +638,19 @@ BEGIN TRY
                 
                 -- Log lockout event
                 EXEC dbo.LogAuditEvent
-                    @EventType = ''ACCOUNT_LOCKED'',
-                    @Details = CONCAT(''Account locked for '', @LockoutDurationMinutes, '' minutes due to excessive failures''),
+                    @EventType = 'ACCOUNT_LOCKED',
+                    @Details = CONCAT('Account locked for ', @LockoutDurationMinutes, ' minutes due to excessive failures'),
                     @IpAddress = @IpAddress,
-                    @AdditionalData = CONCAT(@Parameters, '', FailedAttempts:'', @FailedAttemptsCount),
+                    @AdditionalData = CONCAT(@Parameters, ', FailedAttempts:', @FailedAttemptsCount),
                     @Success = 0;
             END
             
             -- Log security threat if detected
-            IF @ThreatLevel != ''NONE''
+            IF @ThreatLevel != 'NONE'
             BEGIN
                 EXEC dbo.LogAuditEvent
-                    @EventType = ''LOGIN_FAILED_WITH_THREAT'',
-                    @Details = CONCAT(''Login failed with '', @ThreatLevel, '' threat level''),
+                    @EventType = 'LOGIN_FAILED_WITH_THREAT',
+                    @Details = CONCAT('Login failed with ', @ThreatLevel, ' threat level'),
                     @IpAddress = @IpAddress,
                     @AdditionalData = @ThreatDetails,
                     @Success = 0;
@@ -668,15 +659,15 @@ BEGIN TRY
         END TRY
         BEGIN CATCH
             SET @Success = 0;
-            SET @Outcome = ''system_error'';
+            SET @Outcome = 'system_error';
             
             -- Record circuit breaker failure
-            EXEC dbo.RecordCircuitBreakerFailure ''MembershipLogin'', ERROR_MESSAGE();
+            EXEC dbo.RecordCircuitBreakerFailure 'MembershipLogin', ERROR_MESSAGE();
             
             -- Log the error
             EXEC dbo.LogError
                 @ErrorMessage = ERROR_MESSAGE(),
-                @ErrorSeverity = ''ERROR'',
+                @ErrorSeverity = 'ERROR',
                 @AdditionalInfo = @Parameters;
         END CATCH
         
@@ -684,10 +675,10 @@ BEGIN TRY
         -- Log performance metrics
         DECLARE @ExecutionTimeMs INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
         EXEC dbo.LogPerformanceMetric
-            @MetricName = ''LoginMembership'',
+            @MetricName = 'LoginMembership',
             @MetricValue = @ExecutionTimeMs,
-            @MetricUnit = ''milliseconds'',
-            @AdditionalData = CONCAT(''Success:'', @Success, '', SuspiciousScore:'', ISNULL(@SuspiciousScore, 0), '', RowsAffected:'', @RowsAffected);
+            @MetricUnit = 'milliseconds',
+            @AdditionalData = CONCAT('Success:', @Success, ', SuspiciousScore:', ISNULL(@SuspiciousScore, 0), ', RowsAffected:', @RowsAffected);
         
         -- Return results
         SELECT 
@@ -698,7 +689,6 @@ BEGIN TRY
             ISNULL(@SuspiciousScore, 0) AS SuspiciousScore,
             @ThreatLevel AS ThreatLevel;
     END;
-    ');
     
     PRINT '✓ Advanced login procedure created';
     

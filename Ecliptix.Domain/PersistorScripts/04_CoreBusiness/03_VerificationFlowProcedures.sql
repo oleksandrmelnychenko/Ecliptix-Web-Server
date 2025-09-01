@@ -76,8 +76,7 @@ BEGIN TRY
     PRINT 'Creating verification flow utility functions...';
     
     -- GetPhoneNumber: Retrieve phone number details
-    EXEC ('
-    CREATE FUNCTION dbo.GetPhoneNumber (@PhoneUniqueId UNIQUEIDENTIFIER)
+        CREATE FUNCTION dbo.GetPhoneNumber (@PhoneUniqueId UNIQUEIDENTIFIER)
     RETURNS TABLE 
     AS 
     RETURN
@@ -92,11 +91,9 @@ BEGIN TRY
         WHERE pn.UniqueId = @PhoneUniqueId 
           AND pn.IsDeleted = 0
     );
-    ');
     
     -- GetFullFlowState: Comprehensive flow state information
-    EXEC ('
-    CREATE FUNCTION dbo.GetFullFlowState(@FlowUniqueId UNIQUEIDENTIFIER)
+        CREATE FUNCTION dbo.GetFullFlowState(@FlowUniqueId UNIQUEIDENTIFIER)
     RETURNS TABLE
     AS 
     RETURN
@@ -140,7 +137,6 @@ BEGIN TRY
         WHERE vf.UniqueId = @FlowUniqueId
           AND vf.IsDeleted = 0
     );
-    ');
     
     PRINT '✓ Verification flow utility functions created';
     
@@ -151,8 +147,7 @@ BEGIN TRY
     PRINT 'Creating verification flow validation procedures...';
     
     -- ValidateVerificationFlowEligibility: Comprehensive eligibility validation
-    EXEC ('
-    CREATE PROCEDURE dbo.ValidateVerificationFlowEligibility
+        CREATE PROCEDURE dbo.ValidateVerificationFlowEligibility
         @AppDeviceId UNIQUEIDENTIFIER,
         @PhoneUniqueId UNIQUEIDENTIFIER,
         @Purpose NVARCHAR(30),
@@ -178,27 +173,27 @@ BEGIN TRY
             -- Validate GUIDs
             IF dbo.ValidateGuid(CAST(@AppDeviceId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @BlockingReason = ''Invalid AppDeviceId format'';
+                SET @BlockingReason = 'Invalid AppDeviceId format';
                 RETURN;
             END
             
             IF dbo.ValidateGuid(CAST(@PhoneUniqueId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @BlockingReason = ''Invalid PhoneUniqueId format'';
+                SET @BlockingReason = 'Invalid PhoneUniqueId format';
                 RETURN;
             END
             
             -- Validate purpose
-            IF @Purpose NOT IN (''unspecified'', ''registration'', ''login'', ''password_recovery'', ''update_phone'')
+            IF @Purpose NOT IN ('unspecified', 'registration', 'login', 'password_recovery', 'update_phone')
             BEGIN
-                SET @BlockingReason = ''Invalid verification flow purpose'';
+                SET @BlockingReason = 'Invalid verification flow purpose';
                 RETURN;
             END
             
             -- Validate IP address if provided
             IF @IpAddress IS NOT NULL AND dbo.ValidateIpAddress(@IpAddress) = 0
             BEGIN
-                SET @BlockingReason = ''Invalid IP address format'';
+                SET @BlockingReason = 'Invalid IP address format';
                 RETURN;
             END
             
@@ -214,7 +209,7 @@ BEGIN TRY
               
             IF @PhoneNumberId IS NULL
             BEGIN
-                SET @BlockingReason = ''Phone number not found or has been deleted'';
+                SET @BlockingReason = 'Phone number not found or has been deleted';
                 RETURN;
             END
             
@@ -224,7 +219,7 @@ BEGIN TRY
             
             IF dbo.ValidatePhoneNumber(@PhoneNumber) = 0
             BEGIN
-                SET @BlockingReason = ''Invalid phone number format in database'';
+                SET @BlockingReason = 'Invalid phone number format in database';
                 RETURN;
             END
             
@@ -239,7 +234,7 @@ BEGIN TRY
                   AND IsDeleted = 0
             )
             BEGIN
-                SET @BlockingReason = ''App device not found or has been deleted'';
+                SET @BlockingReason = 'App device not found or has been deleted';
                 RETURN;
             END
             
@@ -247,11 +242,11 @@ BEGIN TRY
             -- EXISTING FLOW VALIDATION
             -- ================================================================
             
-            -- Check for existing verified flow that hasn''t expired
+            -- Check for existing verified flow that hasn't expired
             SELECT TOP 1 @ExistingFlowId = UniqueId
             FROM dbo.VerificationFlows
             WHERE PhoneNumberId = @PhoneNumberId
-              AND Status = ''verified''
+              AND Status = 'verified'
               AND IsDeleted = 0
               AND ExpiresAt > GETUTCDATE()
             ORDER BY CreatedAt DESC;
@@ -259,7 +254,7 @@ BEGIN TRY
             IF @ExistingFlowId IS NOT NULL
             BEGIN
                 SET @IsEligible = 1;
-                SET @BlockingReason = ''Existing verified flow found'';
+                SET @BlockingReason = 'Existing verified flow found';
                 RETURN;
             END
             
@@ -269,7 +264,7 @@ BEGIN TRY
             WHERE AppDeviceId = @AppDeviceId
               AND PhoneNumberId = @PhoneNumberId
               AND Purpose = @Purpose
-              AND Status = ''pending''
+              AND Status = 'pending'
               AND IsDeleted = 0
               AND ExpiresAt > GETUTCDATE()
             ORDER BY CreatedAt DESC;
@@ -277,7 +272,7 @@ BEGIN TRY
             IF @ExistingFlowId IS NOT NULL
             BEGIN
                 SET @IsEligible = 1;
-                SET @BlockingReason = ''Existing pending flow found'';
+                SET @BlockingReason = 'Existing pending flow found';
                 RETURN;
             END
             
@@ -286,7 +281,7 @@ BEGIN TRY
             -- ================================================================
             
             -- Check global rate limit for phone number
-            DECLARE @MaxFlowsPerHour INT = CAST(dbo.GetConfigValue(''RateLimit.MaxFlowsPerHour'') AS INT);
+            DECLARE @MaxFlowsPerHour INT = CAST(dbo.GetConfigValue('RateLimit.MaxFlowsPerHour') AS INT);
             DECLARE @RecentFlowCount INT;
             
             SELECT @RecentFlowCount = COUNT(*)
@@ -296,14 +291,14 @@ BEGIN TRY
               
             IF @RecentFlowCount >= @MaxFlowsPerHour
             BEGIN
-                SET @BlockingReason = ''Rate limit exceeded: too many verification flows in the last hour'';
+                SET @BlockingReason = 'Rate limit exceeded: too many verification flows in the last hour';
                 
                 -- Log rate limiting event
                 EXEC dbo.LogAuditEvent 
-                    @EventType = ''VERIFICATION_RATE_LIMITED'',
-                    @Details = CONCAT(''Rate limit exceeded: '', @RecentFlowCount, '' flows in last hour''),
+                    @EventType = 'VERIFICATION_RATE_LIMITED',
+                    @Details = CONCAT('Rate limit exceeded: ', @RecentFlowCount, ' flows in last hour'),
                     @IpAddress = @IpAddress,
-                    @AdditionalData = CONCAT(''PhoneNumber:'', dbo.MaskSensitiveData(@PhoneNumber, ''PHONE''), '', MaxFlowsPerHour:'', @MaxFlowsPerHour);
+                    @AdditionalData = CONCAT('PhoneNumber:', dbo.MaskSensitiveData(@PhoneNumber, 'PHONE'), ', MaxFlowsPerHour:', @MaxFlowsPerHour);
                     
                 RETURN;
             END
@@ -315,21 +310,21 @@ BEGIN TRY
             -- Use business rule validation framework
             DECLARE @ValidationErrors NVARCHAR(MAX);
             DECLARE @ValidationEntityData NVARCHAR(MAX) = CONCAT(
-                ''{"PhoneNumber":"'', @PhoneNumber, 
-                ''","Purpose":"'', @Purpose,
-                ''","IpAddress":"'', ISNULL(@IpAddress, ''''), ''"}''
+                '{"PhoneNumber":"', @PhoneNumber, 
+                '","Purpose":"', @Purpose,
+                '","IpAddress":"', ISNULL(@IpAddress, ''), '"}'
             );
             
             EXEC dbo.ValidateBusinessRules 
-                @EntityType = ''PhoneNumber'',
+                @EntityType = 'PhoneNumber',
                 @EntityData = @ValidationEntityData,
-                @ValidationContext = ''VERIFICATION_REQUEST'',
+                @ValidationContext = 'VERIFICATION_REQUEST',
                 @IsValid = @IsEligible OUTPUT,
                 @ValidationErrors = @ValidationErrors OUTPUT;
             
             IF @IsEligible = 0
             BEGIN
-                SET @BlockingReason = ISNULL(@ValidationErrors, ''Business rule validation failed'');
+                SET @BlockingReason = ISNULL(@ValidationErrors, 'Business rule validation failed');
                 RETURN;
             END
             
@@ -338,20 +333,19 @@ BEGIN TRY
             -- ================================================================
             
             SET @IsEligible = 1;
-            SET @BlockingReason = ''Eligible for new verification flow'';
+            SET @BlockingReason = 'Eligible for new verification flow';
             
         END TRY
         BEGIN CATCH
             SET @IsEligible = 0;
-            SET @BlockingReason = ''System error during eligibility validation'';
+            SET @BlockingReason = 'System error during eligibility validation';
             
             EXEC dbo.LogError
                 @ErrorMessage = ERROR_MESSAGE(),
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''ValidateVerificationFlowEligibility failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'ValidateVerificationFlowEligibility failed';
         END CATCH
     END;
-    ');
     
     PRINT '✓ Verification flow validation procedures created';
     
@@ -362,8 +356,7 @@ BEGIN TRY
     PRINT 'Creating verification flow management procedures...';
     
     -- InitiateVerificationFlow: Enhanced flow creation with comprehensive validation
-    EXEC ('
-    CREATE PROCEDURE dbo.InitiateVerificationFlow
+        CREATE PROCEDURE dbo.InitiateVerificationFlow
         @AppDeviceId UNIQUEIDENTIFIER,
         @PhoneUniqueId UNIQUEIDENTIFIER,
         @Purpose NVARCHAR(30),
@@ -377,7 +370,7 @@ BEGIN TRY
         
         -- Performance monitoring
         DECLARE @StartTime DATETIME2(7) = GETUTCDATE();
-        DECLARE @ProcName NVARCHAR(100) = ''InitiateVerificationFlow'';
+        DECLARE @ProcName NVARCHAR(100) = 'InitiateVerificationFlow';
         
         DECLARE @PhoneNumberId BIGINT;
         DECLARE @NewFlowUniqueId UNIQUEIDENTIFIER;
@@ -390,10 +383,10 @@ BEGIN TRY
         
         -- Build parameters for logging
         DECLARE @Parameters NVARCHAR(MAX) = CONCAT(
-            ''AppDeviceId='', @AppDeviceId,
-            '', PhoneUniqueId='', @PhoneUniqueId,
-            '', Purpose='', @Purpose,
-            '', ConnectionId='', ISNULL(CAST(@ConnectionId AS NVARCHAR(20)), ''NULL'')
+            'AppDeviceId=', @AppDeviceId,
+            ', PhoneUniqueId=', @PhoneUniqueId,
+            ', Purpose=', @Purpose,
+            ', ConnectionId=', ISNULL(CAST(@ConnectionId AS NVARCHAR(20)), 'NULL')
         );
 
         BEGIN TRY
@@ -413,14 +406,14 @@ BEGIN TRY
             -- Handle existing flow scenarios
             IF @IsEligible = 1 AND @ExistingFlowId IS NOT NULL
             BEGIN
-                IF @BlockingReason = ''Existing verified flow found''
+                IF @BlockingReason = 'Existing verified flow found'
                 BEGIN
-                    SET @Outcome = ''verified'';
+                    SET @Outcome = 'verified';
                     GOTO ReturnExistingFlow;
                 END
-                ELSE IF @BlockingReason = ''Existing pending flow found''
+                ELSE IF @BlockingReason = 'Existing pending flow found'
                 BEGIN
-                    SET @Outcome = ''retrieved'';
+                    SET @Outcome = 'retrieved';
                     GOTO ReturnExistingFlow;
                 END
             END
@@ -428,15 +421,15 @@ BEGIN TRY
             -- Handle ineligibility
             IF @IsEligible = 0
             BEGIN
-                SET @Outcome = ''ineligible'';
+                SET @Outcome = 'ineligible';
                 
                 -- Determine specific outcome based on blocking reason
-                IF @BlockingReason LIKE ''%rate limit%''
-                    SET @Outcome = ''global_rate_limit_exceeded'';
-                ELSE IF @BlockingReason LIKE ''%not found%''
-                    SET @Outcome = ''phone_not_found'';
-                ELSE IF @BlockingReason LIKE ''%invalid%''
-                    SET @Outcome = ''invalid_request'';
+                IF @BlockingReason LIKE '%rate limit%'
+                    SET @Outcome = 'global_rate_limit_exceeded';
+                ELSE IF @BlockingReason LIKE '%not found%'
+                    SET @Outcome = 'phone_not_found';
+                ELSE IF @BlockingReason LIKE '%invalid%'
+                    SET @Outcome = 'invalid_request';
                 
                 GOTO ReturnOutcome;
             END
@@ -446,11 +439,11 @@ BEGIN TRY
             -- ================================================================
             
             DECLARE @CircuitOpen BIT, @CircuitError NVARCHAR(255);
-            EXEC dbo.CheckCircuitBreaker ''VerificationFlowCreate'', @CircuitOpen OUTPUT, @CircuitError OUTPUT;
+            EXEC dbo.CheckCircuitBreaker 'VerificationFlowCreate', @CircuitOpen OUTPUT, @CircuitError OUTPUT;
             
             IF @CircuitOpen = 1
             BEGIN
-                SET @Outcome = ''service_unavailable'';
+                SET @Outcome = 'service_unavailable';
                 GOTO ReturnOutcome;
             END
             
@@ -465,11 +458,11 @@ BEGIN TRY
             
             -- Expire old flows for same device/phone/purpose
             UPDATE dbo.VerificationFlows
-            SET Status = ''expired'', UpdatedAt = GETUTCDATE()
+            SET Status = 'expired', UpdatedAt = GETUTCDATE()
             WHERE AppDeviceId = @AppDeviceId 
               AND PhoneNumberId = @PhoneNumberId 
               AND Purpose = @Purpose 
-              AND Status = ''pending'' 
+              AND Status = 'pending' 
               AND IsDeleted = 0 
               AND ExpiresAt <= GETUTCDATE();
             
@@ -477,7 +470,7 @@ BEGIN TRY
             
             -- Create new verification flow
             SET @NewFlowUniqueId = NEWID();
-            DECLARE @DefaultExpirationMinutes INT = CAST(dbo.GetConfigValue(''VerificationFlow.DefaultExpirationMinutes'') AS INT);
+            DECLARE @DefaultExpirationMinutes INT = CAST(dbo.GetConfigValue('VerificationFlow.DefaultExpirationMinutes') AS INT);
             -- Ensure minimum expiration time of 5 minutes if config value is invalid or missing
             IF @DefaultExpirationMinutes IS NULL OR @DefaultExpirationMinutes <= 0
                 SET @DefaultExpirationMinutes = 5;
@@ -495,15 +488,15 @@ BEGIN TRY
             SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
             
             -- Record circuit breaker success
-            EXEC dbo.RecordCircuitBreakerSuccess ''VerificationFlowCreate'';
+            EXEC dbo.RecordCircuitBreakerSuccess 'VerificationFlowCreate';
             
-            SET @Outcome = ''created'';
+            SET @Outcome = 'created';
             SET @ExistingFlowId = @NewFlowUniqueId;
             
             -- Log successful creation
             EXEC dbo.LogAuditEvent 
-                @EventType = ''VERIFICATION_FLOW_CREATED'',
-                @Details = ''New verification flow created successfully'',
+                @EventType = 'VERIFICATION_FLOW_CREATED',
+                @Details = 'New verification flow created successfully',
                 @IpAddress = @IpAddress,
                 @AdditionalData = @Parameters;
             
@@ -511,15 +504,15 @@ BEGIN TRY
             
         END TRY
         BEGIN CATCH
-            SET @Outcome = ''system_error'';
+            SET @Outcome = 'system_error';
             
             -- Record circuit breaker failure
-            EXEC dbo.RecordCircuitBreakerFailure ''VerificationFlowCreate'', ERROR_MESSAGE();
+            EXEC dbo.RecordCircuitBreakerFailure 'VerificationFlowCreate', ERROR_MESSAGE();
             
             -- Log error
             EXEC dbo.LogError
                 @ErrorMessage = ERROR_MESSAGE(),
-                @ErrorSeverity = ''ERROR'',
+                @ErrorSeverity = 'ERROR',
                 @AdditionalInfo = @Parameters;
             
             GOTO ReturnOutcome;
@@ -539,12 +532,11 @@ BEGIN TRY
         -- Log performance metrics
         DECLARE @ExecutionTimeMs INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
         EXEC dbo.LogPerformanceMetric
-            @MetricName = ''InitiateVerificationFlow'',
+            @MetricName = 'InitiateVerificationFlow',
             @MetricValue = @ExecutionTimeMs,
-            @MetricUnit = ''milliseconds'',
-            @AdditionalData = CONCAT(''Outcome:'', @Outcome, '', RowsAffected:'', @RowsAffected);
+            @MetricUnit = 'milliseconds',
+            @AdditionalData = CONCAT('Outcome:', @Outcome, ', RowsAffected:', @RowsAffected);
     END;
-    ');
     
     PRINT '✓ InitiateVerificationFlow procedure created';
     
@@ -555,8 +547,7 @@ BEGIN TRY
     PRINT 'Creating OTP management procedures...';
     
     -- RequestResendOtp: Enhanced OTP resend with rate limiting
-    EXEC ('
-    CREATE PROCEDURE dbo.RequestResendOtp
+        CREATE PROCEDURE dbo.RequestResendOtp
         @FlowUniqueId UNIQUEIDENTIFIER,
         @IpAddress NVARCHAR(45) = NULL
     AS
@@ -571,8 +562,8 @@ BEGIN TRY
         DECLARE @CurrentTime DATETIME2(7) = GETUTCDATE();
         
         -- Configuration-driven parameters
-        DECLARE @MaxOtpAttempts INT = CAST(dbo.GetConfigValue(''OTP.MaxAttempts'') AS INT);
-        DECLARE @MinResendIntervalSeconds INT = CAST(dbo.GetConfigValue(''OTP.ResendCooldownSeconds'') AS INT);
+        DECLARE @MaxOtpAttempts INT = CAST(dbo.GetConfigValue('OTP.MaxAttempts') AS INT);
+        DECLARE @MinResendIntervalSeconds INT = CAST(dbo.GetConfigValue('OTP.ResendCooldownSeconds') AS INT);
 
         BEGIN TRY
             -- ================================================================
@@ -582,14 +573,14 @@ BEGIN TRY
             -- Validate flow ID
             IF dbo.ValidateGuid(CAST(@FlowUniqueId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @Outcome = ''invalid_flow_id'';
+                SET @Outcome = 'invalid_flow_id';
                 GOTO ReturnResult;
             END
             
             -- Validate IP address if provided
             IF @IpAddress IS NOT NULL AND dbo.ValidateIpAddress(@IpAddress) = 0
             BEGIN
-                SET @Outcome = ''invalid_ip_address'';
+                SET @Outcome = 'invalid_ip_address';
                 GOTO ReturnResult;
             END
             
@@ -604,11 +595,11 @@ BEGIN TRY
             FROM dbo.VerificationFlows
             WHERE UniqueId = @FlowUniqueId 
               AND IsDeleted = 0 
-              AND Status = ''pending'';
+              AND Status = 'pending';
 
             IF @SessionExpiresAt IS NULL
             BEGIN
-                SET @Outcome = ''flow_not_found_or_invalid'';
+                SET @Outcome = 'flow_not_found_or_invalid';
                 GOTO ReturnResult;
             END
 
@@ -616,10 +607,10 @@ BEGIN TRY
             IF @CurrentTime >= @SessionExpiresAt
             BEGIN
                 UPDATE dbo.VerificationFlows 
-                SET Status = ''expired'', UpdatedAt = @CurrentTime
+                SET Status = 'expired', UpdatedAt = @CurrentTime
                 WHERE UniqueId = @FlowUniqueId;
                 
-                SET @Outcome = ''flow_expired'';
+                SET @Outcome = 'flow_expired';
                 GOTO ReturnResult;
             END
             
@@ -627,10 +618,10 @@ BEGIN TRY
             IF @OtpCount >= @MaxOtpAttempts
             BEGIN
                 UPDATE dbo.VerificationFlows 
-                SET Status = ''failed'', UpdatedAt = @CurrentTime
+                SET Status = 'failed', UpdatedAt = @CurrentTime
                 WHERE UniqueId = @FlowUniqueId;
                 
-                SET @Outcome = ''max_otp_attempts_reached'';
+                SET @Outcome = 'max_otp_attempts_reached';
                 GOTO ReturnResult;
             END
             
@@ -648,7 +639,7 @@ BEGIN TRY
             IF @LastOtpTimestamp IS NOT NULL 
                AND DATEDIFF(SECOND, @LastOtpTimestamp, @CurrentTime) < @MinResendIntervalSeconds
             BEGIN
-                SET @Outcome = ''resend_cooldown_active'';
+                SET @Outcome = 'resend_cooldown_active';
                 GOTO ReturnResult;
             END
             
@@ -656,37 +647,36 @@ BEGIN TRY
             -- SUCCESS PATH
             -- ================================================================
             
-            SET @Outcome = ''resend_allowed'';
+            SET @Outcome = 'resend_allowed';
             
             -- Log resend request
             EXEC dbo.LogAuditEvent 
-                @EventType = ''OTP_RESEND_REQUESTED'',
-                @Details = ''OTP resend request approved'',
+                @EventType = 'OTP_RESEND_REQUESTED',
+                @Details = 'OTP resend request approved',
                 @IpAddress = @IpAddress,
-                @AdditionalData = CONCAT(''FlowUniqueId:'', @FlowUniqueId, '', OtpCount:'', @OtpCount);
+                @AdditionalData = CONCAT('FlowUniqueId:', @FlowUniqueId, ', OtpCount:', @OtpCount);
 
         END TRY
         BEGIN CATCH
-            SET @Outcome = ''system_error'';
+            SET @Outcome = 'system_error';
             
             EXEC dbo.LogError
                 @ErrorMessage = ERROR_MESSAGE(),
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''RequestResendOtp failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'RequestResendOtp failed';
         END CATCH
         
         ReturnResult:
         -- Log performance metrics
         DECLARE @ExecutionTimeMs INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
         EXEC dbo.LogPerformanceMetric
-            @MetricName = ''RequestResendOtp'',
+            @MetricName = 'RequestResendOtp',
             @MetricValue = @ExecutionTimeMs,
-            @MetricUnit = ''milliseconds'',
-            @AdditionalData = CONCAT(''Outcome:'', @Outcome);
+            @MetricUnit = 'milliseconds',
+            @AdditionalData = CONCAT('Outcome:', @Outcome);
         
         SELECT @Outcome AS Outcome;
     END;
-    ');
     
     PRINT '✓ RequestResendOtp procedure created';
     

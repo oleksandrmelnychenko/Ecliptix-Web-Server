@@ -93,7 +93,6 @@ BEGIN TRY
         DROP FUNCTION dbo.GetConfigValue;
     
     -- Function to get configuration value with proper type conversion
-    EXEC ('
     CREATE FUNCTION dbo.GetConfigValue(@ConfigKey NVARCHAR(100))
     RETURNS NVARCHAR(500)
     AS
@@ -104,9 +103,8 @@ BEGIN TRY
         FROM dbo.SystemConfiguration
         WHERE ConfigKey = @ConfigKey;
         
-        RETURN ISNULL(@ConfigValue, '''');
+        RETURN ISNULL(@ConfigValue, '');
     END;
-    ');
     
     PRINT '✓ GetConfigValue function created successfully';
     
@@ -121,7 +119,6 @@ BEGIN TRY
         DROP PROCEDURE dbo.SetConfigValue;
     
     -- Procedure to set configuration value
-    EXEC ('
     CREATE PROCEDURE dbo.SetConfigValue
         @ConfigKey NVARCHAR(100),
         @ConfigValue NVARCHAR(500),
@@ -133,13 +130,13 @@ BEGIN TRY
         -- Validate input
         IF @ConfigKey IS NULL OR LEN(TRIM(@ConfigKey)) = 0
         BEGIN
-            RAISERROR(''Configuration key cannot be null or empty'', 16, 1);
+            RAISERROR('Configuration key cannot be null or empty', 16, 1);
             RETURN;
         END
         
         IF @ConfigValue IS NULL
         BEGIN
-            RAISERROR(''Configuration value cannot be null'', 16, 1);
+            RAISERROR('Configuration value cannot be null', 16, 1);
             RETURN;
         END
         
@@ -152,13 +149,12 @@ BEGIN TRY
         
         IF @@ROWCOUNT = 0
         BEGIN
-            RAISERROR(''Configuration key %s not found'', 16, 1, @ConfigKey);
+            RAISERROR('Configuration key %s not found', 16, 1, @ConfigKey);
             RETURN;
         END
         
-        SELECT 1 AS Success, ''Configuration updated successfully'' AS Message;
+        SELECT 1 AS Success, 'Configuration updated successfully' AS Message;
     END;
-    ');
     
     PRINT '✓ SetConfigValue procedure created successfully';
     

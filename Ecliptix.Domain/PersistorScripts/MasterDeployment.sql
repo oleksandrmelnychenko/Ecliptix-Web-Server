@@ -88,9 +88,7 @@ BEGIN TRY
     
     -- Execute Layer 0
     PRINT '📋 Executing: 00_PreDeployment/00_PreDeploymentChecks.sql...';
-    EXEC('
-    $(cat /Users/oleksandrmelnychenko/RiderProjects/Ecliptix/Ecliptix.Domain/PersistorScripts/00_PreDeployment/00_PreDeploymentChecks.sql)
-    ');
+    :r 00_PreDeployment/00_PreDeploymentChecks.sql
     
     SET @LayerDuration = DATEDIFF(MILLISECOND, @LayerStartTime, GETUTCDATE());
     PRINT CONCAT('✅ Layer ', @CurrentLayer, ' completed successfully in ', @LayerDuration, 'ms');
@@ -122,17 +120,16 @@ BEGIN TRY
     
     -- Execute Layer 1 files in dependency order
     PRINT '🔧 Executing: 01_Configuration/01_SystemConfiguration.sql...';
-    -- Include the actual file content here in production
-    -- For now, we'll reference the file path
+    :r 01_Configuration/01_SystemConfiguration.sql
     
     PRINT '📊 Executing: 01_Configuration/02_LoggingInfrastructure.sql...';
-    -- Include the actual file content here in production
+    :r 01_Configuration/02_LoggingInfrastructure.sql
     
     PRINT '✅ Executing: 01_Configuration/03_ValidationFramework.sql...';
-    -- Include the actual file content here in production
+    :r 01_Configuration/03_ValidationFramework.sql
     
     PRINT '🔨 Executing: 01_Configuration/04_UtilityFunctions.sql...';
-    -- Include the actual file content here in production
+    :r 01_Configuration/04_UtilityFunctions.sql
     
     SET @LayerDuration = DATEDIFF(MILLISECOND, @LayerStartTime, GETUTCDATE());
     PRINT CONCAT('✅ Layer ', @CurrentLayer, ' completed successfully in ', @LayerDuration, 'ms');
@@ -167,7 +164,7 @@ BEGIN TRY
     PRINT '';
     
     PRINT '🗃️ Executing: 02_CoreDomain/01_CoreDomainTables.sql...';
-    -- Include the actual file content here in production
+    :r 02_CoreDomain/01_CoreDomainTables.sql
     
     SET @LayerDuration = DATEDIFF(MILLISECOND, @LayerStartTime, GETUTCDATE());
     PRINT CONCAT('✅ Layer ', @CurrentLayer, ' completed successfully in ', @LayerDuration, 'ms');
@@ -201,7 +198,7 @@ BEGIN TRY
     PRINT '';
     
     PRINT '🔐 Executing: 03_Relationships/01_BusinessConstraints.sql...';
-    -- Include the actual file content here in production
+    :r 03_Relationships/01_BusinessConstraints.sql
     
     SET @LayerDuration = DATEDIFF(MILLISECOND, @LayerStartTime, GETUTCDATE());
     PRINT CONCAT('✅ Layer ', @CurrentLayer, ' completed successfully in ', @LayerDuration, 'ms');
@@ -235,16 +232,16 @@ BEGIN TRY
     PRINT '';
     
     PRINT '🔐 Executing: 04_CoreBusiness/01_AuthenticationProcedures.sql...';
-    -- Include the actual file content here in production
+    :r 04_CoreBusiness/01_AuthenticationProcedures.sql
     
     PRINT '👤 Executing: 04_CoreBusiness/02_MembershipProcedures.sql...';
-    -- Include the actual file content here in production
+    :r 04_CoreBusiness/02_MembershipProcedures.sql
     
     PRINT '🔄 Executing: 04_CoreBusiness/03_VerificationFlowProcedures.sql...';
-    -- Include the actual file content here in production
+    :r 04_CoreBusiness/03_VerificationFlowProcedures.sql
     
     PRINT '🔑 Executing: 04_CoreBusiness/04_OtpManagementProcedures.sql...';
-    -- Include the actual file content here in production
+    :r 04_CoreBusiness/04_OtpManagementProcedures.sql
     
     SET @LayerDuration = DATEDIFF(MILLISECOND, @LayerStartTime, GETUTCDATE());
     PRINT CONCAT('✅ Layer ', @CurrentLayer, ' completed successfully in ', @LayerDuration, 'ms');
@@ -279,10 +276,10 @@ BEGIN TRY
     PRINT '';
     
     PRINT '🔒 Executing: 05_AdvancedFeatures/01_AdvancedSecurityFeatures.sql...';
-    -- Include the actual file content here in production
+    :r 05_AdvancedFeatures/01_AdvancedSecurityFeatures.sql
     
     PRINT '🔧 Executing: 05_AdvancedFeatures/02_AdvancedMaintenanceMonitoring.sql...';
-    -- Include the actual file content here in production
+    :r 05_AdvancedFeatures/02_AdvancedMaintenanceMonitoring.sql
     
     SET @LayerDuration = DATEDIFF(MILLISECOND, @LayerStartTime, GETUTCDATE());
     PRINT CONCAT('✅ Layer ', @CurrentLayer, ' completed successfully in ', @LayerDuration, 'ms');
@@ -317,13 +314,13 @@ BEGIN TRY
     PRINT '';
     
     PRINT '📱 Executing: 06_Triggers/01_CoreEntityTriggers.sql...';
-    -- Include the actual file content here in production
+    :r 06_Triggers/01_CoreEntityTriggers.sql
     
     PRINT '🔄 Executing: 06_Triggers/02_VerificationProcessTriggers.sql...';
-    -- Include the actual file content here in production
+    :r 06_Triggers/02_VerificationProcessTriggers.sql
     
     PRINT '🔐 Executing: 06_Triggers/03_AuthenticationTriggers.sql...';
-    -- Include the actual file content here in production
+    :r 06_Triggers/03_AuthenticationTriggers.sql
     
     SET @LayerDuration = DATEDIFF(MILLISECOND, @LayerStartTime, GETUTCDATE());
     PRINT CONCAT('✅ Layer ', @CurrentLayer, ' completed successfully in ', @LayerDuration, 'ms');
@@ -358,10 +355,10 @@ BEGIN TRY
     PRINT '';
     
     PRINT '📊 Executing: 07_ViewsHelpers/01_BusinessViews.sql...';
-    -- Include the actual file content here in production
+    :r 07_ViewsHelpers/01_BusinessViews.sql
     
     PRINT '🔧 Executing: 07_ViewsHelpers/02_BusinessHelpers.sql...';
-    -- Include the actual file content here in production
+    :r 07_ViewsHelpers/02_BusinessHelpers.sql
     
     SET @LayerDuration = DATEDIFF(MILLISECOND, @LayerStartTime, GETUTCDATE());
     PRINT CONCAT('✅ Layer ', @CurrentLayer, ' completed successfully in ', @LayerDuration, 'ms');
@@ -396,7 +393,7 @@ BEGIN TRY
     PRINT '';
     
     PRINT '🧪 Executing: 08_PostDeployment/01_DeploymentValidation.sql...';
-    -- Include the actual file content here in production
+    :r 08_PostDeployment/01_DeploymentValidation.sql
     
     SET @LayerDuration = DATEDIFF(MILLISECOND, @LayerStartTime, GETUTCDATE());
     PRINT CONCAT('✅ Layer ', @CurrentLayer, ' completed successfully in ', @LayerDuration, 'ms');

@@ -81,23 +81,22 @@ BEGIN TRY
     */
     PRINT '👤 Creating GetMembershipStatus function...';
     
-    EXEC('
-    CREATE FUNCTION dbo.fn_GetMembershipStatus(
+        CREATE FUNCTION dbo.fn_GetMembershipStatus(
         @PhoneNumberId UNIQUEIDENTIFIER,
         @AppDeviceId UNIQUEIDENTIFIER
     )
     RETURNS NVARCHAR(50)
     AS
     BEGIN
-        DECLARE @Status NVARCHAR(50) = ''No Membership'';
+        DECLARE @Status NVARCHAR(50) = 'No Membership';
         
         SELECT @Status = 
             CASE 
-                WHEN m.Status = ''active'' AND m.CreationStatus = ''passphrase_set'' THEN ''Fully Active''
-                WHEN m.Status = ''active'' AND m.CreationStatus = ''secure_key_set'' THEN ''Active - Key Set''
-                WHEN m.Status = ''active'' AND m.CreationStatus = ''otp_verified'' THEN ''Active - OTP Only''
-                WHEN m.Status = ''inactive'' THEN ''Inactive''
-                ELSE ''Unknown Status''
+                WHEN m.Status = 'active' AND m.CreationStatus = 'passphrase_set' THEN 'Fully Active'
+                WHEN m.Status = 'active' AND m.CreationStatus = 'secure_key_set' THEN 'Active - Key Set'
+                WHEN m.Status = 'active' AND m.CreationStatus = 'otp_verified' THEN 'Active - OTP Only'
+                WHEN m.Status = 'inactive' THEN 'Inactive'
+                ELSE 'Unknown Status'
             END
         FROM dbo.Memberships m
         WHERE m.PhoneNumberId = @PhoneNumberId 
@@ -106,7 +105,6 @@ BEGIN TRY
             
         RETURN @Status;
     END;
-    ');
 
     /*
     ================================================================================
@@ -122,8 +120,7 @@ BEGIN TRY
     */
     PRINT '📞 Creating IsPhoneNumberActive function...';
     
-    EXEC('
-    CREATE FUNCTION dbo.fn_IsPhoneNumberActive(
+        CREATE FUNCTION dbo.fn_IsPhoneNumberActive(
         @PhoneNumber NVARCHAR(18),
         @Region NVARCHAR(2) = NULL
     )
@@ -146,7 +143,7 @@ BEGIN TRY
             IF EXISTS (
                 SELECT 1 FROM dbo.Memberships 
                 WHERE PhoneNumberId = @PhoneNumberId 
-                    AND Status = ''active''
+                    AND Status = 'active'
                     AND IsDeleted = 0
             )
                 SET @IsActive = 1;
@@ -156,7 +153,7 @@ BEGIN TRY
                 SELECT 1 FROM dbo.VerificationFlows vf
                 INNER JOIN dbo.PhoneNumbers pn ON vf.PhoneNumberId = pn.Id
                 WHERE pn.UniqueId = @PhoneNumberId
-                    AND vf.Status = ''pending''
+                    AND vf.Status = 'pending'
                     AND vf.ExpiresAt > GETUTCDATE()
                     AND vf.IsDeleted = 0
             )
@@ -165,7 +162,6 @@ BEGIN TRY
             
         RETURN @IsActive;
     END;
-    ');
 
     /*
     ================================================================================
@@ -181,8 +177,7 @@ BEGIN TRY
     */
     PRINT '📋 Creating GetUserSummary procedure...';
     
-    EXEC('
-    CREATE PROCEDURE dbo.sp_GetUserSummary
+        CREATE PROCEDURE dbo.sp_GetUserSummary
         @PhoneNumber NVARCHAR(18),
         @Region NVARCHAR(2) = NULL
     AS
@@ -195,7 +190,7 @@ BEGIN TRY
             
             -- Main user summary query
             SELECT 
-                ''User Summary'' AS ReportType,
+                'User Summary' AS ReportType,
                 pn.PhoneNumber,
                 pn.Region,
                 pn.CreatedAt AS PhoneRegisteredAt,
@@ -219,10 +214,10 @@ BEGIN TRY
                 
                 -- Current status
                 CASE 
-                    WHEN ast.IsLocked = 1 AND ast.LockedUntil > GETUTCDATE() THEN ''Account Locked''
-                    WHEN m.Status = ''active'' THEN ''Active User''
-                    WHEN m.Status = ''inactive'' THEN ''Inactive User''
-                    ELSE ''No Membership''
+                    WHEN ast.IsLocked = 1 AND ast.LockedUntil > GETUTCDATE() THEN 'Account Locked'
+                    WHEN m.Status = 'active' THEN 'Active User'
+                    WHEN m.Status = 'inactive' THEN 'Inactive User'
+                    ELSE 'No Membership'
                 END AS CurrentStatus
                 
             FROM dbo.PhoneNumbers pn
@@ -235,7 +230,7 @@ BEGIN TRY
             
             -- Active sessions information
             SELECT 
-                ''Active Sessions'' AS ReportType,
+                'Active Sessions' AS ReportType,
                 ac.ContextState,
                 ac.CreatedAt,
                 ac.ExpiresAt,
@@ -251,7 +246,7 @@ BEGIN TRY
             
             -- Recent verification flows
             SELECT 
-                ''Recent Verifications'' AS ReportType,
+                'Recent Verifications' AS ReportType,
                 vf.Status,
                 vf.Purpose,
                 vf.CreatedAt,
@@ -268,21 +263,20 @@ BEGIN TRY
             -- Log performance
             DECLARE @Duration INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
             EXEC dbo.LogPerformanceMetric
-                @OperationType = ''USER_SUMMARY'',
-                @TableName = ''sp_GetUserSummary'',
+                @OperationType = 'USER_SUMMARY',
+                @TableName = 'sp_GetUserSummary',
                 @Duration = @Duration,
                 @RowsAffected = @@ROWCOUNT,
-                @AdditionalInfo = CONCAT(''Phone: '', @PhoneNumber);
+                @AdditionalInfo = CONCAT('Phone: ', @PhoneNumber);
                 
         END TRY
         BEGIN CATCH
             EXEC dbo.LogError
-                @ProcedureName = ''sp_GetUserSummary'',
+                @ProcedureName = 'sp_GetUserSummary',
                 @ErrorMessage = ERROR_MESSAGE();
             THROW;
         END CATCH
     END;
-    ');
 
     /*
     ================================================================================
@@ -298,8 +292,7 @@ BEGIN TRY
     */
     PRINT '🧹 Creating CleanupExpiredData procedure...';
     
-    EXEC('
-    CREATE PROCEDURE dbo.sp_CleanupExpiredData
+        CREATE PROCEDURE dbo.sp_CleanupExpiredData
         @DryRun BIT = 1,
         @DaysOld INT = 30
     AS
@@ -315,7 +308,7 @@ BEGIN TRY
             DECLARE @ExpiredFlows INT;
             SELECT @ExpiredFlows = COUNT(*)
             FROM dbo.VerificationFlows
-            WHERE Status = ''expired'' 
+            WHERE Status = 'expired' 
                 AND UpdatedAt < @CutoffDate
                 AND IsDeleted = 0;
             
@@ -323,7 +316,7 @@ BEGIN TRY
             DECLARE @ExpiredOtps INT;
             SELECT @ExpiredOtps = COUNT(*)
             FROM dbo.OtpRecords
-            WHERE Status = ''expired'' 
+            WHERE Status = 'expired' 
                 AND UpdatedAt < @CutoffDate
                 AND IsDeleted = 0;
                 
@@ -331,7 +324,7 @@ BEGIN TRY
             DECLARE @ExpiredContexts INT;
             SELECT @ExpiredContexts = COUNT(*)
             FROM dbo.AuthenticationContexts
-            WHERE ContextState = ''expired''
+            WHERE ContextState = 'expired'
                 AND UpdatedAt < @CutoffDate
                 AND IsDeleted = 0;
                 
@@ -343,7 +336,7 @@ BEGIN TRY
             
             -- Display cleanup summary
             SELECT 
-                ''Cleanup Summary'' AS ReportType,
+                'Cleanup Summary' AS ReportType,
                 @DryRun AS IsDryRun,
                 @ExpiredFlows AS ExpiredVerificationFlows,
                 @ExpiredOtps AS ExpiredOtpRecords,
@@ -359,7 +352,7 @@ BEGIN TRY
                 -- Soft delete expired verification flows
                 UPDATE dbo.VerificationFlows 
                 SET IsDeleted = 1, UpdatedAt = GETUTCDATE()
-                WHERE Status = ''expired'' 
+                WHERE Status = 'expired' 
                     AND UpdatedAt < @CutoffDate
                     AND IsDeleted = 0;
                 SET @TotalRowsAffected += @@ROWCOUNT;
@@ -367,7 +360,7 @@ BEGIN TRY
                 -- Soft delete expired OTP records
                 UPDATE dbo.OtpRecords 
                 SET IsDeleted = 1, UpdatedAt = GETUTCDATE()
-                WHERE Status = ''expired'' 
+                WHERE Status = 'expired' 
                     AND UpdatedAt < @CutoffDate
                     AND IsDeleted = 0;
                 SET @TotalRowsAffected += @@ROWCOUNT;
@@ -375,7 +368,7 @@ BEGIN TRY
                 -- Soft delete expired authentication contexts
                 UPDATE dbo.AuthenticationContexts 
                 SET IsDeleted = 1, UpdatedAt = GETUTCDATE()
-                WHERE ContextState = ''expired''
+                WHERE ContextState = 'expired'
                     AND UpdatedAt < @CutoffDate
                     AND IsDeleted = 0;
                 SET @TotalRowsAffected += @@ROWCOUNT;
@@ -389,35 +382,34 @@ BEGIN TRY
                 
                 -- Log cleanup activity
                 EXEC dbo.LogAuditEvent
-                    @TableName = ''SYSTEM'',
-                    @OperationType = ''DATA_CLEANUP'',
+                    @TableName = 'SYSTEM',
+                    @OperationType = 'DATA_CLEANUP',
                     @RecordId = NULL,
                     @OldValues = NULL,
-                    @NewValues = CONCAT(''Rows affected: '', @TotalRowsAffected),
-                    @ApplicationContext = ''sp_CleanupExpiredData'',
+                    @NewValues = CONCAT('Rows affected: ', @TotalRowsAffected),
+                    @ApplicationContext = 'sp_CleanupExpiredData',
                     @Success = 1;
             END
             
             -- Log performance
             DECLARE @Duration INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
             EXEC dbo.LogPerformanceMetric
-                @OperationType = ''DATA_CLEANUP'',
-                @TableName = ''sp_CleanupExpiredData'',
+                @OperationType = 'DATA_CLEANUP',
+                @TableName = 'sp_CleanupExpiredData',
                 @Duration = @Duration,
                 @RowsAffected = @TotalRowsAffected,
-                @AdditionalInfo = CONCAT(''DryRun: '', @DryRun, '', DaysOld: '', @DaysOld);
+                @AdditionalInfo = CONCAT('DryRun: ', @DryRun, ', DaysOld: ', @DaysOld);
                 
         END TRY
         BEGIN CATCH
             IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
             
             EXEC dbo.LogError
-                @ProcedureName = ''sp_CleanupExpiredData'',
+                @ProcedureName = 'sp_CleanupExpiredData',
                 @ErrorMessage = ERROR_MESSAGE();
             THROW;
         END CATCH
     END;
-    ');
 
     /*
     ================================================================================
@@ -433,8 +425,7 @@ BEGIN TRY
     */
     PRINT '📊 Creating GenerateActivityReport procedure...';
     
-    EXEC('
-    CREATE PROCEDURE dbo.sp_GenerateActivityReport
+        CREATE PROCEDURE dbo.sp_GenerateActivityReport
         @StartDate DATETIME2(7) = NULL,
         @EndDate DATETIME2(7) = NULL
     AS
@@ -450,7 +441,7 @@ BEGIN TRY
             
             -- Report header
             SELECT 
-                ''System Activity Report'' AS ReportType,
+                'System Activity Report' AS ReportType,
                 @StartDate AS ReportStartDate,
                 @EndDate AS ReportEndDate,
                 DATEDIFF(DAY, @StartDate, @EndDate) AS ReportDays,
@@ -458,21 +449,21 @@ BEGIN TRY
             
             -- User registration activity
             SELECT 
-                ''User Registration Activity'' AS ReportSection,
+                'User Registration Activity' AS ReportSection,
                 COUNT(*) AS TotalNewMemberships,
-                COUNT(CASE WHEN Status = ''active'' THEN 1 END) AS ActiveMemberships,
-                COUNT(CASE WHEN CreationStatus = ''passphrase_set'' THEN 1 END) AS FullyConfiguredMemberships
+                COUNT(CASE WHEN Status = 'active' THEN 1 END) AS ActiveMemberships,
+                COUNT(CASE WHEN CreationStatus = 'passphrase_set' THEN 1 END) AS FullyConfiguredMemberships
             FROM dbo.Memberships
             WHERE CreatedAt BETWEEN @StartDate AND @EndDate
                 AND IsDeleted = 0;
             
             -- Verification activity
             SELECT 
-                ''Verification Activity'' AS ReportSection,
+                'Verification Activity' AS ReportSection,
                 COUNT(*) AS TotalVerificationFlows,
-                COUNT(CASE WHEN Status = ''verified'' THEN 1 END) AS SuccessfulVerifications,
-                COUNT(CASE WHEN Status = ''failed'' THEN 1 END) AS FailedVerifications,
-                COUNT(CASE WHEN Status = ''pending'' THEN 1 END) AS PendingVerifications,
+                COUNT(CASE WHEN Status = 'verified' THEN 1 END) AS SuccessfulVerifications,
+                COUNT(CASE WHEN Status = 'failed' THEN 1 END) AS FailedVerifications,
+                COUNT(CASE WHEN Status = 'pending' THEN 1 END) AS PendingVerifications,
                 AVG(OtpCount) AS AverageOtpCount
             FROM dbo.VerificationFlows
             WHERE CreatedAt BETWEEN @StartDate AND @EndDate
@@ -480,7 +471,7 @@ BEGIN TRY
             
             -- Authentication activity
             SELECT 
-                ''Authentication Activity'' AS ReportSection,
+                'Authentication Activity' AS ReportSection,
                 COUNT(*) AS TotalLoginAttempts,
                 COUNT(CASE WHEN IsSuccess = 1 THEN 1 END) AS SuccessfulLogins,
                 COUNT(CASE WHEN IsSuccess = 0 THEN 1 END) AS FailedLogins,
@@ -490,7 +481,7 @@ BEGIN TRY
             
             -- Error activity
             SELECT 
-                ''System Health'' AS ReportSection,
+                'System Health' AS ReportSection,
                 COUNT(*) AS TotalErrors,
                 COUNT(DISTINCT ProcedureName) AS AffectedProcedures
             FROM dbo.ErrorLog
@@ -498,7 +489,7 @@ BEGIN TRY
             
             -- Top procedures by performance
             SELECT TOP 10
-                ''Performance Overview'' AS ReportSection,
+                'Performance Overview' AS ReportSection,
                 OperationType,
                 TableName,
                 COUNT(*) AS ExecutionCount,
@@ -513,21 +504,20 @@ BEGIN TRY
             -- Log performance
             DECLARE @Duration INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
             EXEC dbo.LogPerformanceMetric
-                @OperationType = ''ACTIVITY_REPORT'',
-                @TableName = ''sp_GenerateActivityReport'',
+                @OperationType = 'ACTIVITY_REPORT',
+                @TableName = 'sp_GenerateActivityReport',
                 @Duration = @Duration,
                 @RowsAffected = @@ROWCOUNT,
-                @AdditionalInfo = CONCAT(''Date range: '', @StartDate, '' to '', @EndDate);
+                @AdditionalInfo = CONCAT('Date range: ', @StartDate, ' to ', @EndDate);
                 
         END TRY
         BEGIN CATCH
             EXEC dbo.LogError
-                @ProcedureName = ''sp_GenerateActivityReport'',
+                @ProcedureName = 'sp_GenerateActivityReport',
                 @ErrorMessage = ERROR_MESSAGE();
             THROW;
         END CATCH
     END;
-    ');
 
     -- Performance tracking
     DECLARE @Duration INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());

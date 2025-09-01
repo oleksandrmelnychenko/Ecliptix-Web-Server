@@ -66,8 +66,7 @@ BEGIN TRY
     */
     PRINT '🔄 Creating VerificationFlows update trigger...';
     
-    EXEC('
-    CREATE TRIGGER TRG_VerificationFlows_Update ON dbo.VerificationFlows FOR UPDATE AS
+        CREATE TRIGGER TRG_VerificationFlows_Update ON dbo.VerificationFlows FOR UPDATE AS
     BEGIN
         SET NOCOUNT ON;
         
@@ -79,7 +78,6 @@ BEGIN TRY
         FROM dbo.VerificationFlows t
         INNER JOIN inserted i ON t.Id = i.Id;
     END;
-    ');
 
     /*
     ================================================================================
@@ -96,8 +94,7 @@ BEGIN TRY
     */
     PRINT '🔐 Creating enhanced OtpRecords update trigger...';
     
-    EXEC('
-    CREATE TRIGGER TRG_OtpRecords_Update ON dbo.OtpRecords FOR UPDATE AS
+        CREATE TRIGGER TRG_OtpRecords_Update ON dbo.OtpRecords FOR UPDATE AS
     BEGIN
         SET NOCOUNT ON;
         
@@ -112,7 +109,7 @@ BEGIN TRY
             
             -- Log audit events for significant status changes (if enabled and not bulk operations)
             -- Only process audit logging if explicitly enabled and row count is reasonable
-            IF dbo.GetConfigValue(''Audit.LogOtpChanges'') = ''1'' AND @@ROWCOUNT <= 100
+            IF dbo.GetConfigValue('Audit.LogOtpChanges') = '1' AND @@ROWCOUNT <= 100
             BEGIN
                 DECLARE audit_cursor CURSOR LOCAL FAST_FORWARD FOR
                 SELECT 
@@ -137,12 +134,12 @@ BEGIN TRY
                     IF @OldStatus != @NewStatus
                     BEGIN
                         EXEC dbo.LogAuditEvent
-                            @TableName = ''OtpRecords'',
-                            @OperationType = ''STATUS_CHANGE'',
+                            @TableName = 'OtpRecords',
+                            @OperationType = 'STATUS_CHANGE',
                             @RecordId = @OtpUniqueId,
-                            @OldValues = CONCAT(''Status:'', @OldStatus),
-                            @NewValues = CONCAT(''Status:'', @NewStatus),
-                            @ApplicationContext = ''TRG_OtpRecords_Update'',
+                            @OldValues = CONCAT('Status:', @OldStatus),
+                            @NewValues = CONCAT('Status:', @NewStatus),
+                            @ApplicationContext = 'TRG_OtpRecords_Update',
                             @Success = 1;
                     END
                     
@@ -150,12 +147,12 @@ BEGIN TRY
                     IF @OldIsActive != @NewIsActive
                     BEGIN
                         EXEC dbo.LogAuditEvent
-                            @TableName = ''OtpRecords'',
-                            @OperationType = ''ACTIVATION_CHANGE'',
+                            @TableName = 'OtpRecords',
+                            @OperationType = 'ACTIVATION_CHANGE',
                             @RecordId = @OtpUniqueId,
-                            @OldValues = CONCAT(''IsActive:'', CAST(@OldIsActive AS NVARCHAR(1))),
-                            @NewValues = CONCAT(''IsActive:'', CAST(@NewIsActive AS NVARCHAR(1))),
-                            @ApplicationContext = ''TRG_OtpRecords_Update'',
+                            @OldValues = CONCAT('IsActive:', CAST(@OldIsActive AS NVARCHAR(1))),
+                            @NewValues = CONCAT('IsActive:', CAST(@NewIsActive AS NVARCHAR(1))),
+                            @ApplicationContext = 'TRG_OtpRecords_Update',
                             @Success = 1;
                     END
                     
@@ -171,11 +168,10 @@ BEGIN TRY
             -- Log trigger error but do not fail the transaction
             -- This ensures data updates succeed even if audit logging fails
             EXEC dbo.LogError
-                @ProcedureName = ''TRG_OtpRecords_Update'',
+                @ProcedureName = 'TRG_OtpRecords_Update',
                 @ErrorMessage = ERROR_MESSAGE();
         END CATCH
     END;
-    ');
 
     /*
     ================================================================================
@@ -185,8 +181,7 @@ BEGIN TRY
     */
     PRINT '❌ Creating FailedOtpAttempts update trigger...';
     
-    EXEC('
-    CREATE TRIGGER TRG_FailedOtpAttempts_Update ON dbo.FailedOtpAttempts FOR UPDATE AS
+        CREATE TRIGGER TRG_FailedOtpAttempts_Update ON dbo.FailedOtpAttempts FOR UPDATE AS
     BEGIN
         SET NOCOUNT ON;
         
@@ -198,7 +193,6 @@ BEGIN TRY
         FROM dbo.FailedOtpAttempts t
         INNER JOIN inserted i ON t.Id = i.Id;
     END;
-    ');
 
     -- Ensure audit configuration exists
     PRINT '⚙️ Configuring audit settings...';

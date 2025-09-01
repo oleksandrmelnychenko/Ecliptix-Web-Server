@@ -64,8 +64,7 @@ BEGIN TRY
     */
     PRINT '📱 Creating AppDevices update trigger...';
     
-    EXEC('
-    CREATE TRIGGER TRG_AppDevices_Update ON dbo.AppDevices FOR UPDATE AS
+        CREATE TRIGGER TRG_AppDevices_Update ON dbo.AppDevices FOR UPDATE AS
     BEGIN
         SET NOCOUNT ON;
         
@@ -77,7 +76,6 @@ BEGIN TRY
         FROM dbo.AppDevices t
         INNER JOIN inserted i ON t.Id = i.Id;
     END;
-    ');
 
     /*
     ================================================================================
@@ -87,8 +85,7 @@ BEGIN TRY
     */
     PRINT '📞 Creating PhoneNumbers update trigger...';
     
-    EXEC('
-    CREATE TRIGGER TRG_PhoneNumbers_Update ON dbo.PhoneNumbers FOR UPDATE AS
+        CREATE TRIGGER TRG_PhoneNumbers_Update ON dbo.PhoneNumbers FOR UPDATE AS
     BEGIN
         SET NOCOUNT ON;
         
@@ -100,7 +97,6 @@ BEGIN TRY
         FROM dbo.PhoneNumbers t
         INNER JOIN inserted i ON t.Id = i.Id;
     END;
-    ');
 
     /*
     ================================================================================
@@ -110,8 +106,7 @@ BEGIN TRY
     */
     PRINT '🔗 Creating PhoneNumberDevices update trigger...';
     
-    EXEC('
-    CREATE TRIGGER TRG_PhoneNumberDevices_Update ON dbo.PhoneNumberDevices FOR UPDATE AS
+        CREATE TRIGGER TRG_PhoneNumberDevices_Update ON dbo.PhoneNumberDevices FOR UPDATE AS
     BEGIN
         SET NOCOUNT ON;
         
@@ -123,7 +118,6 @@ BEGIN TRY
         FROM dbo.PhoneNumberDevices t
         INNER JOIN inserted i ON t.PhoneNumberId = i.PhoneNumberId AND t.AppDeviceId = i.AppDeviceId;
     END;
-    ');
 
     -- Performance tracking
     DECLARE @Duration INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());

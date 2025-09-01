@@ -76,7 +76,6 @@ BEGIN TRY
     */
     PRINT '👤 Creating ActiveMemberships view...';
     
-    EXEC('
     CREATE VIEW dbo.vw_ActiveMemberships AS
     SELECT 
         m.UniqueId AS MembershipId,
@@ -94,11 +93,11 @@ BEGIN TRY
         pn.CreatedAt AS PhoneCreatedAt,
         ad.CreatedAt AS DeviceCreatedAt,
         CASE 
-            WHEN m.Status = ''active'' AND m.CreationStatus = ''passphrase_set'' THEN ''Fully Active''
-            WHEN m.Status = ''active'' AND m.CreationStatus = ''secure_key_set'' THEN ''Active - Key Set''
-            WHEN m.Status = ''active'' AND m.CreationStatus = ''otp_verified'' THEN ''Active - OTP Only''
-            WHEN m.Status = ''inactive'' THEN ''Inactive''
-            ELSE ''Unknown''
+            WHEN m.Status = 'active' AND m.CreationStatus = 'passphrase_set' THEN 'Fully Active'
+            WHEN m.Status = 'active' AND m.CreationStatus = 'secure_key_set' THEN 'Active - Key Set'
+            WHEN m.Status = 'active' AND m.CreationStatus = 'otp_verified' THEN 'Active - OTP Only'
+            WHEN m.Status = 'inactive' THEN 'Inactive'
+            ELSE 'Unknown'
         END AS MembershipDisplayStatus
     FROM dbo.Memberships m
     INNER JOIN dbo.PhoneNumbers pn ON m.PhoneNumberId = pn.UniqueId
@@ -106,7 +105,6 @@ BEGIN TRY
     WHERE m.IsDeleted = 0
         AND pn.IsDeleted = 0
         AND ad.IsDeleted = 0;
-    ');
 
     /*
     ================================================================================
@@ -121,8 +119,7 @@ BEGIN TRY
     */
     PRINT '🔄 Creating VerificationFlowStatus view...';
     
-    EXEC('
-    CREATE VIEW dbo.vw_VerificationFlowStatus AS
+        CREATE VIEW dbo.vw_VerificationFlowStatus AS
     SELECT 
         vf.UniqueId AS FlowId,
         vf.Id AS FlowInternalId,
@@ -148,12 +145,12 @@ BEGIN TRY
         
         -- Status indicators
         CASE 
-            WHEN vf.ExpiresAt < GETUTCDATE() THEN ''Expired''
-            WHEN vf.Status = ''verified'' THEN ''Successfully Verified''
-            WHEN vf.Status = ''failed'' THEN ''Failed''
-            WHEN vf.Status = ''pending'' AND otp.Status = ''pending'' THEN ''Awaiting OTP Verification''
-            WHEN vf.Status = ''pending'' AND otp.Status IS NULL THEN ''No OTP Generated''
-            ELSE ''Unknown Status''
+            WHEN vf.ExpiresAt < GETUTCDATE() THEN 'Expired'
+            WHEN vf.Status = 'verified' THEN 'Successfully Verified'
+            WHEN vf.Status = 'failed' THEN 'Failed'
+            WHEN vf.Status = 'pending' AND otp.Status = 'pending' THEN 'Awaiting OTP Verification'
+            WHEN vf.Status = 'pending' AND otp.Status IS NULL THEN 'No OTP Generated'
+            ELSE 'Unknown Status'
         END AS StatusDescription,
         
         CASE 
@@ -179,7 +176,6 @@ BEGIN TRY
     WHERE vf.IsDeleted = 0
         AND pn.IsDeleted = 0
         AND ad.IsDeleted = 0;
-    ');
 
     /*
     ================================================================================
@@ -194,8 +190,7 @@ BEGIN TRY
     */
     PRINT '🔐 Creating AuthenticationSummary view...';
     
-    EXEC('
-    CREATE VIEW dbo.vw_AuthenticationSummary AS
+        CREATE VIEW dbo.vw_AuthenticationSummary AS
     SELECT 
         ac.Id AS ContextId,
         ac.ContextToken,
@@ -218,18 +213,18 @@ BEGIN TRY
         
         -- Status indicators
         CASE 
-            WHEN ac.ExpiresAt < GETUTCDATE() THEN ''Expired''
-            WHEN ac.ContextState = ''expired'' THEN ''Expired''
-            WHEN ac.ContextState = ''invalidated'' THEN ''Invalidated''
-            WHEN ac.IsActive = 1 AND ac.ContextState = ''active'' THEN ''Active''
-            ELSE ''Inactive''
+            WHEN ac.ExpiresAt < GETUTCDATE() THEN 'Expired'
+            WHEN ac.ContextState = 'expired' THEN 'Expired'
+            WHEN ac.ContextState = 'invalidated' THEN 'Invalidated'
+            WHEN ac.IsActive = 1 AND ac.ContextState = 'active' THEN 'Active'
+            ELSE 'Inactive'
         END AS ContextStatusDescription,
         
         CASE 
-            WHEN ast.IsLocked = 1 AND ast.LockedUntil > GETUTCDATE() THEN ''Account Locked''
-            WHEN ast.IsLocked = 1 THEN ''Account Previously Locked''
-            WHEN ast.RecentAttempts > 3 THEN ''Multiple Recent Attempts''
-            ELSE ''Normal''
+            WHEN ast.IsLocked = 1 AND ast.LockedUntil > GETUTCDATE() THEN 'Account Locked'
+            WHEN ast.IsLocked = 1 THEN 'Account Previously Locked'
+            WHEN ast.RecentAttempts > 3 THEN 'Multiple Recent Attempts'
+            ELSE 'Normal'
         END AS SecurityStatusDescription,
         
         -- Time calculations
@@ -247,7 +242,6 @@ BEGIN TRY
     WHERE ac.IsDeleted = 0
         AND m.IsDeleted = 0
         AND pn.IsDeleted = 0;
-    ');
 
     /*
     ================================================================================
@@ -262,19 +256,18 @@ BEGIN TRY
     */
     PRINT '📊 Creating SystemHealthDashboard view...';
     
-    EXEC('
-    CREATE VIEW dbo.vw_SystemHealthDashboard AS
+        CREATE VIEW dbo.vw_SystemHealthDashboard AS
     SELECT 
         -- Current timestamp for dashboard refresh
         GETUTCDATE() AS RefreshTime,
         
         -- Active entities count
-        (SELECT COUNT(*) FROM dbo.Memberships WHERE IsDeleted = 0 AND Status = ''active'') AS ActiveMemberships,
-        (SELECT COUNT(*) FROM dbo.VerificationFlows WHERE IsDeleted = 0 AND Status = ''pending'') AS PendingVerifications,
-        (SELECT COUNT(*) FROM dbo.AuthenticationContexts WHERE IsDeleted = 0 AND IsActive = 1 AND ContextState = ''active'') AS ActiveSessions,
-        (SELECT COUNT(*) FROM dbo.OtpRecords WHERE IsDeleted = 0 AND IsActive = 1 AND Status = ''pending'') AS PendingOtps,
+        (SELECT COUNT(*) FROM dbo.Memberships WHERE IsDeleted = 0 AND Status = 'active') AS ActiveMemberships,
+        (SELECT COUNT(*) FROM dbo.VerificationFlows WHERE IsDeleted = 0 AND Status = 'pending') AS PendingVerifications,
+        (SELECT COUNT(*) FROM dbo.AuthenticationContexts WHERE IsDeleted = 0 AND IsActive = 1 AND ContextState = 'active') AS ActiveSessions,
+        (SELECT COUNT(*) FROM dbo.OtpRecords WHERE IsDeleted = 0 AND IsActive = 1 AND Status = 'pending') AS PendingOtps,
         
-        -- Today''s activity counts
+        -- Today's activity counts
         (SELECT COUNT(*) FROM dbo.Memberships WHERE CreatedAt >= CAST(GETUTCDATE() AS DATE)) AS TodayNewMemberships,
         (SELECT COUNT(*) FROM dbo.VerificationFlows WHERE CreatedAt >= CAST(GETUTCDATE() AS DATE)) AS TodayVerificationFlows,
         (SELECT COUNT(*) FROM dbo.LoginAttempts WHERE Timestamp >= CAST(GETUTCDATE() AS DATE)) AS TodayLoginAttempts,
@@ -282,8 +275,8 @@ BEGIN TRY
         
         -- System health indicators
         (SELECT COUNT(*) FROM dbo.AuthenticationStates WHERE IsLocked = 1 AND LockedUntil > GETUTCDATE()) AS CurrentlyLockedAccounts,
-        (SELECT COUNT(*) FROM dbo.VerificationFlows WHERE Status = ''pending'' AND ExpiresAt < GETUTCDATE()) AS ExpiredPendingFlows,
-        (SELECT COUNT(*) FROM dbo.OtpRecords WHERE Status = ''pending'' AND ExpiresAt < GETUTCDATE()) AS ExpiredPendingOtps,
+        (SELECT COUNT(*) FROM dbo.VerificationFlows WHERE Status = 'pending' AND ExpiresAt < GETUTCDATE()) AS ExpiredPendingFlows,
+        (SELECT COUNT(*) FROM dbo.OtpRecords WHERE Status = 'pending' AND ExpiresAt < GETUTCDATE()) AS ExpiredPendingOtps,
         (SELECT COUNT(*) FROM dbo.AuthenticationContexts WHERE IsActive = 1 AND ExpiresAt < GETUTCDATE()) AS ExpiredActiveSessions,
         
         -- Error and audit activity (last 24 hours)
@@ -295,9 +288,8 @@ BEGIN TRY
         (SELECT COUNT(*) FROM dbo.PerformanceMetrics WHERE Duration > 5000 AND CreatedAt >= DATEADD(HOUR, -1, GETUTCDATE())) AS SlowOperationsLastHour,
         
         -- Circuit breaker status
-        (SELECT COUNT(*) FROM dbo.CircuitBreakerStates WHERE State = ''OPEN'') AS OpenCircuitBreakers,
-        (SELECT COUNT(*) FROM dbo.CircuitBreakerStates WHERE State = ''HALF_OPEN'') AS HalfOpenCircuitBreakers;
-    ');
+        (SELECT COUNT(*) FROM dbo.CircuitBreakerStates WHERE State = 'OPEN') AS OpenCircuitBreakers,
+        (SELECT COUNT(*) FROM dbo.CircuitBreakerStates WHERE State = 'HALF_OPEN') AS HalfOpenCircuitBreakers;
 
     -- Performance tracking
     DECLARE @Duration INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());

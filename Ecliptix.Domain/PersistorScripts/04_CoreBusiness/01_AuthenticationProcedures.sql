@@ -73,8 +73,7 @@ BEGIN TRY
     PRINT 'Creating authentication context management procedures...';
     
     -- CreateAuthenticationContext: Enhanced context creation with validation
-    EXEC ('
-    CREATE PROCEDURE dbo.CreateAuthenticationContext
+        CREATE PROCEDURE dbo.CreateAuthenticationContext
         @ContextToken VARBINARY(64),
         @MembershipId UNIQUEIDENTIFIER,
         @MobileNumberId UNIQUEIDENTIFIER,
@@ -88,24 +87,24 @@ BEGIN TRY
         
         -- Performance monitoring variables
         DECLARE @StartTime DATETIME2(7) = GETUTCDATE();
-        DECLARE @ProcName NVARCHAR(100) = ''CreateAuthenticationContext'';
+        DECLARE @ProcName NVARCHAR(100) = 'CreateAuthenticationContext';
         DECLARE @RowsAffected INT = 0;
         
         -- Operation variables
         DECLARE @ContextId BIGINT;
         DECLARE @Success BIT = 0;
-        DECLARE @Message NVARCHAR(255) = '''';
+        DECLARE @Message NVARCHAR(255) = '';
         DECLARE @ValidationErrors NVARCHAR(MAX);
         DECLARE @IsValidInput BIT;
         DECLARE @Parameters NVARCHAR(MAX);
         
         -- Build parameters for logging (mask sensitive data)
         SET @Parameters = CONCAT(
-            ''MembershipId='', @MembershipId,
-            '', MobileNumberId='', @MobileNumberId,
-            '', ExpiresAt='', FORMAT(@ExpiresAt, ''yyyy-MM-dd HH:mm:ss''),
-            '', IpAddress='', ISNULL(dbo.MaskSensitiveData(@IpAddress, ''PARTIAL''), ''NULL''),
-            '', UserAgent='', CASE WHEN @UserAgent IS NULL THEN ''NULL'' ELSE ''[PROVIDED]'' END
+            'MembershipId=', @MembershipId,
+            ', MobileNumberId=', @MobileNumberId,
+            ', ExpiresAt=', FORMAT(@ExpiresAt, 'yyyy-MM-dd HH:mm:ss'),
+            ', IpAddress=', ISNULL(dbo.MaskSensitiveData(@IpAddress, 'PARTIAL'), 'NULL'),
+            ', UserAgent=', CASE WHEN @UserAgent IS NULL THEN 'NULL' ELSE '[PROVIDED]' END
         );
 
         BEGIN TRY
@@ -116,49 +115,49 @@ BEGIN TRY
             -- Validate context token
             IF @ContextToken IS NULL OR DATALENGTH(@ContextToken) != 64
             BEGIN
-                SET @Message = ''Context token must be exactly 64 bytes'';
+                SET @Message = 'Context token must be exactly 64 bytes';
                 GOTO HandleValidationError;
             END
             
             -- Validate MembershipId using validation framework
             IF dbo.ValidateGuid(CAST(@MembershipId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @Message = ''Invalid MembershipId format'';
+                SET @Message = 'Invalid MembershipId format';
                 GOTO HandleValidationError;
             END
             
             -- Validate MobileNumberId
             IF dbo.ValidateGuid(CAST(@MobileNumberId AS NVARCHAR(50))) = 0
             BEGIN
-                SET @Message = ''Invalid MobileNumberId format'';
+                SET @Message = 'Invalid MobileNumberId format';
                 GOTO HandleValidationError;
             END
             
             -- Validate ExpiresAt
             IF @ExpiresAt IS NULL OR @ExpiresAt <= GETUTCDATE()
             BEGIN
-                SET @Message = ''ExpiresAt must be a future date'';
+                SET @Message = 'ExpiresAt must be a future date';
                 GOTO HandleValidationError;
             END
             
             -- Validate maximum expiration time (configurable)
-            DECLARE @MaxExpirationHours INT = CAST(dbo.GetConfigValue(''Authentication.ContextExpirationHours'') AS INT);
+            DECLARE @MaxExpirationHours INT = CAST(dbo.GetConfigValue('Authentication.ContextExpirationHours') AS INT);
             IF @ExpiresAt > DATEADD(HOUR, @MaxExpirationHours, GETUTCDATE())
             BEGIN
-                SET @Message = CONCAT(''ExpiresAt cannot exceed '', @MaxExpirationHours, '' hours from now'');
+                SET @Message = CONCAT('ExpiresAt cannot exceed ', @MaxExpirationHours, ' hours from now');
                 GOTO HandleValidationError;
             END
             
             -- Validate IP Address if provided
             IF @IpAddress IS NOT NULL AND dbo.ValidateIpAddress(@IpAddress) = 0
             BEGIN
-                SET @Message = ''Invalid IP address format'';
+                SET @Message = 'Invalid IP address format';
                 GOTO HandleValidationError;
             END
             
             -- Sanitize UserAgent
             IF LEN(@UserAgent) > 500
-                SET @UserAgent = LEFT(@UserAgent, 497) + ''...'';
+                SET @UserAgent = LEFT(@UserAgent, 497) + '...';
             
             -- ================================================================
             -- BUSINESS LOGIC VALIDATION
@@ -169,10 +168,10 @@ BEGIN TRY
                 SELECT 1 FROM dbo.Memberships 
                 WHERE UniqueId = @MembershipId 
                   AND IsDeleted = 0 
-                  AND Status = ''active''
+                  AND Status = 'active'
             )
             BEGIN
-                SET @Message = ''Membership not found or inactive'';
+                SET @Message = 'Membership not found or inactive';
                 GOTO HandleValidationError;
             END
             
@@ -183,12 +182,12 @@ BEGIN TRY
                   AND IsDeleted = 0
             )
             BEGIN
-                SET @Message = ''Mobile number not found'';
+                SET @Message = 'Mobile number not found';
                 GOTO HandleValidationError;
             END
             
             -- Check concurrent session limit
-            DECLARE @MaxSessionsPerUser INT = CAST(dbo.GetConfigValue(''Authentication.MaxSessionsPerUser'') AS INT);
+            DECLARE @MaxSessionsPerUser INT = CAST(dbo.GetConfigValue('Authentication.MaxSessionsPerUser') AS INT);
             DECLARE @CurrentActiveSessions INT;
             
             SELECT @CurrentActiveSessions = COUNT(*)
@@ -211,7 +210,7 @@ BEGIN TRY
                 
                 UPDATE dbo.AuthenticationContexts
                 SET IsActive = 0,
-                    ContextState = ''invalidated'',
+                    ContextState = 'invalidated',
                     UpdatedAt = GETUTCDATE()
                 WHERE Id = @OldestContextId;
                 
@@ -219,8 +218,8 @@ BEGIN TRY
                 
                 -- Log session displacement
                 EXEC dbo.LogAuditEvent 
-                    @EventType = ''SESSION_DISPLACED'',
-                    @Details = ''Oldest session invalidated due to concurrent session limit'',
+                    @EventType = 'SESSION_DISPLACED',
+                    @Details = 'Oldest session invalidated due to concurrent session limit',
                     @UserId = @MembershipId,
                     @IpAddress = @IpAddress,
                     @AdditionalData = CAST(@OldestContextId AS NVARCHAR(20));
@@ -232,7 +231,7 @@ BEGIN TRY
             
             -- Check for circuit breaker
             DECLARE @CircuitOpen BIT, @CircuitError NVARCHAR(255);
-            EXEC dbo.CheckCircuitBreaker ''AuthContextCreate'', @CircuitOpen OUTPUT, @CircuitError OUTPUT;
+            EXEC dbo.CheckCircuitBreaker 'AuthContextCreate', @CircuitOpen OUTPUT, @CircuitError OUTPUT;
             
             IF @CircuitOpen = 1
             BEGIN
@@ -247,7 +246,7 @@ BEGIN TRY
             )
             VALUES (
                 @ContextToken, @MembershipId, @MobileNumberId, @ExpiresAt,
-                @IpAddress, @UserAgent, 1, ''active''
+                @IpAddress, @UserAgent, 1, 'active'
             );
 
             SET @ContextId = SCOPE_IDENTITY();
@@ -273,16 +272,16 @@ BEGIN TRY
             SET @RowsAffected = @RowsAffected + @@ROWCOUNT;
             
             -- Record circuit breaker success
-            EXEC dbo.RecordCircuitBreakerSuccess ''AuthContextCreate'';
+            EXEC dbo.RecordCircuitBreakerSuccess 'AuthContextCreate';
             
             -- Operation successful
             SET @Success = 1;
-            SET @Message = CONCAT(''Authentication context created successfully. ContextId: '', @ContextId);
+            SET @Message = CONCAT('Authentication context created successfully. ContextId: ', @ContextId);
             
             -- Log audit event for successful context creation
             EXEC dbo.LogAuditEvent 
-                @EventType = ''AUTH_CONTEXT_CREATED'',
-                @Details = ''New authentication context created'',
+                @EventType = 'AUTH_CONTEXT_CREATED',
+                @Details = 'New authentication context created',
                 @UserId = @MembershipId,
                 @IpAddress = @IpAddress,
                 @AdditionalData = CAST(@ContextId AS NVARCHAR(20));
@@ -295,18 +294,18 @@ BEGIN TRY
             
             HandleValidationError:
             -- Record circuit breaker failure for systemic issues
-            IF @Message LIKE ''%not found%'' OR @Message LIKE ''%inactive%''
-                EXEC dbo.RecordCircuitBreakerFailure ''AuthContextCreate'', @Message;
+            IF @Message LIKE '%not found%' OR @Message LIKE '%inactive%'
+                EXEC dbo.RecordCircuitBreakerFailure 'AuthContextCreate', @Message;
             
             -- Log validation error
             EXEC dbo.LogError
                 @ErrorMessage = @Message,
-                @ErrorSeverity = ''WARNING'',
+                @ErrorSeverity = 'WARNING',
                 @AdditionalInfo = @Parameters;
                 
             -- Log audit event for failed validation
             EXEC dbo.LogAuditEvent
-                @EventType = ''AUTH_CONTEXT_CREATION_FAILED'',
+                @EventType = 'AUTH_CONTEXT_CREATION_FAILED',
                 @Details = @Message,
                 @UserId = @MembershipId,
                 @IpAddress = @IpAddress,
@@ -318,17 +317,17 @@ BEGIN TRY
             SET @Message = ERROR_MESSAGE();
             
             -- Record circuit breaker failure
-            EXEC dbo.RecordCircuitBreakerFailure ''AuthContextCreate'', @Message;
+            EXEC dbo.RecordCircuitBreakerFailure 'AuthContextCreate', @Message;
             
             -- Log the error
             EXEC dbo.LogError
                 @ErrorMessage = @Message,
-                @ErrorSeverity = ''ERROR'',
+                @ErrorSeverity = 'ERROR',
                 @AdditionalInfo = @Parameters;
                 
             -- Log audit event for error
             EXEC dbo.LogAuditEvent
-                @EventType = ''AUTH_CONTEXT_CREATION_ERROR'',
+                @EventType = 'AUTH_CONTEXT_CREATION_ERROR',
                 @Details = @Message,
                 @UserId = @MembershipId,
                 @IpAddress = @IpAddress,
@@ -339,10 +338,10 @@ BEGIN TRY
         -- Log performance metrics
         DECLARE @ExecutionTimeMs INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
         EXEC dbo.LogPerformanceMetric
-            @MetricName = ''CreateAuthenticationContext'',
+            @MetricName = 'CreateAuthenticationContext',
             @MetricValue = @ExecutionTimeMs,
-            @MetricUnit = ''milliseconds'',
-            @AdditionalData = CONCAT(''Success:'', @Success, '', RowsAffected:'', @RowsAffected);
+            @MetricUnit = 'milliseconds',
+            @AdditionalData = CONCAT('Success:', @Success, ', RowsAffected:', @RowsAffected);
         
         -- Return results
         SELECT 
@@ -350,7 +349,6 @@ BEGIN TRY
             @Success AS Success, 
             @Message AS Message;
     END;
-    ');
     
     PRINT '✓ CreateAuthenticationContext procedure created';
     
@@ -359,15 +357,14 @@ BEGIN TRY
     -- ============================================================================
     
     -- ValidateAuthenticationContext: Enhanced validation with security tracking
-    EXEC ('
-    CREATE PROCEDURE dbo.ValidateAuthenticationContext
+        CREATE PROCEDURE dbo.ValidateAuthenticationContext
         @ContextToken VARBINARY(64)
     AS
     BEGIN
         SET NOCOUNT ON;
         
         DECLARE @StartTime DATETIME2(7) = GETUTCDATE();
-        DECLARE @ProcName NVARCHAR(100) = ''ValidateAuthenticationContext'';
+        DECLARE @ProcName NVARCHAR(100) = 'ValidateAuthenticationContext';
         
         DECLARE @ContextId BIGINT;
         DECLARE @MembershipId UNIQUEIDENTIFIER;
@@ -382,11 +379,11 @@ BEGIN TRY
             -- Input validation
             IF @ContextToken IS NULL OR DATALENGTH(@ContextToken) != 64
             BEGIN
-                SET @Message = ''Invalid context token provided'';
+                SET @Message = 'Invalid context token provided';
                 
                 -- Log potential security issue
                 EXEC dbo.LogAuditEvent 
-                    @EventType = ''INVALID_TOKEN_FORMAT'',
+                    @EventType = 'INVALID_TOKEN_FORMAT',
                     @Details = @Message,
                     @Success = 0;
                     
@@ -408,11 +405,11 @@ BEGIN TRY
             -- Check if context exists
             IF @ContextId IS NULL
             BEGIN
-                SET @Message = ''Authentication context not found or inactive'';
+                SET @Message = 'Authentication context not found or inactive';
                 
                 -- Log potential security issue
                 EXEC dbo.LogAuditEvent 
-                    @EventType = ''CONTEXT_NOT_FOUND'',
+                    @EventType = 'CONTEXT_NOT_FOUND',
                     @Details = @Message,
                     @Success = 0;
                     
@@ -424,16 +421,16 @@ BEGIN TRY
             BEGIN
                 -- Mark as expired
                 UPDATE dbo.AuthenticationContexts 
-                SET ContextState = ''expired'', 
+                SET ContextState = 'expired', 
                     IsActive = 0,
                     UpdatedAt = @CurrentTime
                 WHERE Id = @ContextId;
 
-                SET @Message = ''Authentication context has expired'';
+                SET @Message = 'Authentication context has expired';
                 
                 -- Log expiration event
                 EXEC dbo.LogAuditEvent
-                    @EventType = ''CONTEXT_EXPIRED'',
+                    @EventType = 'CONTEXT_EXPIRED',
                     @Details = @Message,
                     @UserId = @MembershipId,
                     @AdditionalData = CAST(@ContextId AS NVARCHAR(20));
@@ -442,12 +439,12 @@ BEGIN TRY
             END
 
             -- Check context state
-            IF @ContextState != ''active''
+            IF @ContextState != 'active'
             BEGIN
-                SET @Message = CONCAT(''Authentication context is not active. State: '', @ContextState);
+                SET @Message = CONCAT('Authentication context is not active. State: ', @ContextState);
                 
                 EXEC dbo.LogAuditEvent
-                    @EventType = ''CONTEXT_INACTIVE'',
+                    @EventType = 'CONTEXT_INACTIVE',
                     @Details = @Message,
                     @UserId = @MembershipId,
                     @AdditionalData = CAST(@ContextId AS NVARCHAR(20));
@@ -462,13 +459,13 @@ BEGIN TRY
             WHERE Id = @ContextId;
 
             SET @IsValid = 1;
-            SET @Message = ''Authentication context is valid'';
+            SET @Message = 'Authentication context is valid';
             
             -- Log successful validation (if detailed logging enabled)
-            IF CAST(dbo.GetConfigValue(''Audit.LogValidations'') AS BIT) = 1
+            IF CAST(dbo.GetConfigValue('Audit.LogValidations') AS BIT) = 1
             BEGIN
                 EXEC dbo.LogAuditEvent
-                    @EventType = ''CONTEXT_VALIDATED'',
+                    @EventType = 'CONTEXT_VALIDATED',
                     @Details = @Message,
                     @UserId = @MembershipId,
                     @AdditionalData = CAST(@ContextId AS NVARCHAR(20));
@@ -480,18 +477,18 @@ BEGIN TRY
             
             EXEC dbo.LogError
                 @ErrorMessage = @Message,
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''ValidateAuthenticationContext failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'ValidateAuthenticationContext failed';
         END CATCH
 
         ExitWithResult:
         -- Log performance metrics
         DECLARE @ExecutionTimeMs INT = DATEDIFF(MILLISECOND, @StartTime, GETUTCDATE());
         EXEC dbo.LogPerformanceMetric
-            @MetricName = ''ValidateAuthenticationContext'',
+            @MetricName = 'ValidateAuthenticationContext',
             @MetricValue = @ExecutionTimeMs,
-            @MetricUnit = ''milliseconds'',
-            @AdditionalData = CONCAT(''IsValid:'', @IsValid);
+            @MetricUnit = 'milliseconds',
+            @AdditionalData = CONCAT('IsValid:', @IsValid);
             
         -- Return validation results
         SELECT 
@@ -501,7 +498,6 @@ BEGIN TRY
             CASE WHEN @IsValid = 1 THEN @MembershipId ELSE NULL END AS MembershipId,
             CASE WHEN @IsValid = 1 THEN @MobileNumberId ELSE NULL END AS MobileNumberId;
     END;
-    ');
     
     PRINT '✓ ValidateAuthenticationContext procedure created';
     
@@ -510,8 +506,7 @@ BEGIN TRY
     -- ============================================================================
     
     -- RefreshAuthenticationContext: Extend context expiration
-    EXEC ('
-    CREATE PROCEDURE dbo.RefreshAuthenticationContext
+        CREATE PROCEDURE dbo.RefreshAuthenticationContext
         @ContextToken VARBINARY(64),
         @NewExpiresAt DATETIME2(7)
     AS
@@ -526,10 +521,10 @@ BEGIN TRY
 
         BEGIN TRY
             -- Validate new expiration time
-            DECLARE @MaxExpirationHours INT = CAST(dbo.GetConfigValue(''Authentication.ContextExpirationHours'') AS INT);
+            DECLARE @MaxExpirationHours INT = CAST(dbo.GetConfigValue('Authentication.ContextExpirationHours') AS INT);
             IF @NewExpiresAt > DATEADD(HOUR, @MaxExpirationHours, @CurrentTime)
             BEGIN
-                SET @Message = CONCAT(''New expiration time cannot exceed '', @MaxExpirationHours, '' hours from now'');
+                SET @Message = CONCAT('New expiration time cannot exceed ', @MaxExpirationHours, ' hours from now');
                 GOTO ExitWithResult;
             END
 
@@ -545,7 +540,7 @@ BEGIN TRY
             WHERE ContextToken = @ContextToken
               AND IsActive = 1
               AND IsDeleted = 0
-              AND ContextState = ''active''
+              AND ContextState = 'active'
               AND ExpiresAt > @CurrentTime;
 
             SET @RowsAffected = @@ROWCOUNT;
@@ -553,20 +548,20 @@ BEGIN TRY
             IF @RowsAffected > 0
             BEGIN
                 SET @Success = 1;
-                SET @Message = ''Authentication context refreshed successfully'';
+                SET @Message = 'Authentication context refreshed successfully';
                 
                 -- Log refresh event
                 EXEC dbo.LogAuditEvent 
-                    @EventType = ''CONTEXT_REFRESHED'',
+                    @EventType = 'CONTEXT_REFRESHED',
                     @Details = @Message,
                     @AdditionalData = CAST(@ContextId AS NVARCHAR(20));
             END
             ELSE
             BEGIN
-                SET @Message = ''Authentication context not found, expired, or inactive'';
+                SET @Message = 'Authentication context not found, expired, or inactive';
                 
                 EXEC dbo.LogAuditEvent 
-                    @EventType = ''CONTEXT_REFRESH_FAILED'',
+                    @EventType = 'CONTEXT_REFRESH_FAILED',
                     @Details = @Message,
                     @Success = 0;
             END
@@ -576,18 +571,16 @@ BEGIN TRY
             
             EXEC dbo.LogError
                 @ErrorMessage = @Message,
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''RefreshAuthenticationContext failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'RefreshAuthenticationContext failed';
         END CATCH
 
         ExitWithResult:
         SELECT @Success AS Success, @Message AS Message;
     END;
-    ');
     
     -- InvalidateAuthenticationContext: Invalidate single context
-    EXEC ('
-    CREATE PROCEDURE dbo.InvalidateAuthenticationContext
+        CREATE PROCEDURE dbo.InvalidateAuthenticationContext
         @ContextToken VARBINARY(64)
     AS
     BEGIN
@@ -609,7 +602,7 @@ BEGIN TRY
             -- Invalidate the context
             UPDATE dbo.AuthenticationContexts
             SET IsActive = 0,
-                ContextState = ''invalidated'',
+                ContextState = 'invalidated',
                 UpdatedAt = @CurrentTime
             WHERE ContextToken = @ContextToken
               AND IsActive = 1
@@ -620,21 +613,21 @@ BEGIN TRY
             IF @RowsAffected > 0
             BEGIN
                 SET @Success = 1;
-                SET @Message = ''Authentication context invalidated successfully'';
+                SET @Message = 'Authentication context invalidated successfully';
                 
                 -- Log invalidation event
                 EXEC dbo.LogAuditEvent 
-                    @EventType = ''CONTEXT_INVALIDATED'',
+                    @EventType = 'CONTEXT_INVALIDATED',
                     @Details = @Message,
                     @UserId = @MembershipId,
                     @AdditionalData = CAST(@ContextId AS NVARCHAR(20));
             END
             ELSE
             BEGIN
-                SET @Message = ''Authentication context not found or already inactive'';
+                SET @Message = 'Authentication context not found or already inactive';
                 
                 EXEC dbo.LogAuditEvent 
-                    @EventType = ''CONTEXT_INVALIDATION_FAILED'',
+                    @EventType = 'CONTEXT_INVALIDATION_FAILED',
                     @Details = @Message,
                     @Success = 0;
             END
@@ -644,17 +637,15 @@ BEGIN TRY
             
             EXEC dbo.LogError
                 @ErrorMessage = @Message,
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''InvalidateAuthenticationContext failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'InvalidateAuthenticationContext failed';
         END CATCH
 
         SELECT @Success AS Success, @Message AS Message;
     END;
-    ');
     
     -- InvalidateAllContextsForMobile: Mass invalidation for security
-    EXEC ('
-    CREATE PROCEDURE dbo.InvalidateAllContextsForMobile
+        CREATE PROCEDURE dbo.InvalidateAllContextsForMobile
         @MobileNumberId UNIQUEIDENTIFIER
     AS
     BEGIN
@@ -667,14 +658,14 @@ BEGIN TRY
             -- Validate mobile number ID
             IF dbo.ValidateGuid(CAST(@MobileNumberId AS NVARCHAR(50))) = 0
             BEGIN
-                SELECT 0 AS Success, ''Invalid MobileNumberId format'' AS Message;
+                SELECT 0 AS Success, 'Invalid MobileNumberId format' AS Message;
                 RETURN;
             END
 
             -- Invalidate all active contexts for the mobile number
             UPDATE dbo.AuthenticationContexts
             SET IsActive = 0,
-                ContextState = ''invalidated'',
+                ContextState = 'invalidated',
                 UpdatedAt = @CurrentTime
             WHERE MobileNumberId = @MobileNumberId
               AND IsActive = 1
@@ -684,26 +675,25 @@ BEGIN TRY
 
             -- Log mass invalidation event
             EXEC dbo.LogAuditEvent 
-                @EventType = ''ALL_CONTEXTS_INVALIDATED'',
-                @Details = CONCAT(''All contexts invalidated for mobile number: '', @ContextsInvalidated, '' affected''),
+                @EventType = 'ALL_CONTEXTS_INVALIDATED',
+                @Details = CONCAT('All contexts invalidated for mobile number: ', @ContextsInvalidated, ' affected'),
                 @AdditionalData = CAST(@MobileNumberId AS NVARCHAR(36));
 
             SELECT 1 AS Success, 
                    @ContextsInvalidated AS ContextsInvalidated,
-                   ''All authentication contexts invalidated successfully'' AS Message;
+                   'All authentication contexts invalidated successfully' AS Message;
         END TRY
         BEGIN CATCH
             DECLARE @ErrorMsg NVARCHAR(255) = ERROR_MESSAGE();
             
             EXEC dbo.LogError
                 @ErrorMessage = @ErrorMsg,
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''InvalidateAllContextsForMobile failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'InvalidateAllContextsForMobile failed';
                 
             SELECT 0 AS Success, @ErrorMsg AS Message;
         END CATCH
     END;
-    ');
     
     PRINT '✓ Authentication context management procedures created';
     
@@ -714,8 +704,7 @@ BEGIN TRY
     PRINT 'Creating authentication state management procedures...';
     
     -- UpdateAuthenticationState: Manage authentication states
-    EXEC ('
-    CREATE PROCEDURE dbo.UpdateAuthenticationState
+        CREATE PROCEDURE dbo.UpdateAuthenticationState
         @MobileNumberId UNIQUEIDENTIFIER,
         @RecentAttempts INT,
         @WindowStartTime DATETIME2(7),
@@ -731,13 +720,13 @@ BEGIN TRY
             -- Validate input
             IF dbo.ValidateGuid(CAST(@MobileNumberId AS NVARCHAR(50))) = 0
             BEGIN
-                SELECT 0 AS Success, ''Invalid MobileNumberId format'' AS Message;
+                SELECT 0 AS Success, 'Invalid MobileNumberId format' AS Message;
                 RETURN;
             END
 
             IF @RecentAttempts < 0
             BEGIN
-                SELECT 0 AS Success, ''RecentAttempts cannot be negative'' AS Message;
+                SELECT 0 AS Success, 'RecentAttempts cannot be negative' AS Message;
                 RETURN;
             END
 
@@ -764,29 +753,27 @@ BEGIN TRY
             IF @IsLocked = 1
             BEGIN
                 EXEC dbo.LogAuditEvent 
-                    @EventType = ''ACCOUNT_LOCKED'',
-                    @Details = CONCAT(''Account locked until '', FORMAT(@LockedUntil, ''yyyy-MM-dd HH:mm:ss'')),
+                    @EventType = 'ACCOUNT_LOCKED',
+                    @Details = CONCAT('Account locked until ', FORMAT(@LockedUntil, 'yyyy-MM-dd HH:mm:ss')),
                     @AdditionalData = CAST(@MobileNumberId AS NVARCHAR(36));
             END
 
-            SELECT 1 AS Success, ''Authentication state updated successfully'' AS Message;
+            SELECT 1 AS Success, 'Authentication state updated successfully' AS Message;
         END TRY
         BEGIN CATCH
             DECLARE @ErrorMsg NVARCHAR(255) = ERROR_MESSAGE();
             
             EXEC dbo.LogError
                 @ErrorMessage = @ErrorMsg,
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''UpdateAuthenticationState failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'UpdateAuthenticationState failed';
                 
             SELECT 0 AS Success, @ErrorMsg AS Message;
         END CATCH
     END;
-    ');
     
     -- GetAuthenticationState: Retrieve authentication state
-    EXEC ('
-    CREATE PROCEDURE dbo.GetAuthenticationState
+        CREATE PROCEDURE dbo.GetAuthenticationState
         @MobileNumberId UNIQUEIDENTIFIER
     AS
     BEGIN
@@ -796,7 +783,7 @@ BEGIN TRY
             -- Validate input
             IF dbo.ValidateGuid(CAST(@MobileNumberId AS NVARCHAR(50))) = 0
             BEGIN
-                SELECT NULL AS MobileNumberId, ''Invalid MobileNumberId format'' AS ErrorMessage;
+                SELECT NULL AS MobileNumberId, 'Invalid MobileNumberId format' AS ErrorMessage;
                 RETURN;
             END
 
@@ -832,13 +819,12 @@ BEGIN TRY
         BEGIN CATCH
             EXEC dbo.LogError
                 @ErrorMessage = ERROR_MESSAGE(),
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = ''GetAuthenticationState failed'';
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = 'GetAuthenticationState failed';
                 
             SELECT NULL AS MobileNumberId, ERROR_MESSAGE() AS ErrorMessage;
         END CATCH
     END;
-    ');
     
     PRINT '✓ Authentication state management procedures created';
     
@@ -849,8 +835,7 @@ BEGIN TRY
     PRINT 'Creating cleanup and maintenance procedures...';
     
     -- CleanupExpiredContexts: Enhanced cleanup with monitoring
-    EXEC ('
-    CREATE PROCEDURE dbo.CleanupExpiredContexts
+        CREATE PROCEDURE dbo.CleanupExpiredContexts
         @BatchSize INT = NULL,
         @OlderThanHours INT = NULL
     AS
@@ -858,10 +843,10 @@ BEGIN TRY
         SET NOCOUNT ON;
         
         DECLARE @StartTime DATETIME2(7) = GETUTCDATE();
-        DECLARE @ProcName NVARCHAR(100) = ''CleanupExpiredContexts'';
+        DECLARE @ProcName NVARCHAR(100) = 'CleanupExpiredContexts';
         
         -- Use configuration values if parameters not provided
-        DECLARE @ActualBatchSize INT = ISNULL(@BatchSize, CAST(dbo.GetConfigValue(''Database.CleanupBatchSize'') AS INT));
+        DECLARE @ActualBatchSize INT = ISNULL(@BatchSize, CAST(dbo.GetConfigValue('Database.CleanupBatchSize') AS INT));
         DECLARE @ActualOlderThanHours INT = ISNULL(@OlderThanHours, 24);
         
         DECLARE @CutoffTime DATETIME2(7) = DATEADD(HOUR, -@ActualOlderThanHours, GETUTCDATE());
@@ -877,7 +862,7 @@ BEGIN TRY
             WHILE @BatchProcessed > 0 AND @BatchCount < @MaxBatches
             BEGIN
                 UPDATE TOP (@ActualBatchSize) dbo.AuthenticationContexts
-                SET ContextState = ''expired'',
+                SET ContextState = 'expired',
                     IsActive = 0,
                     UpdatedAt = @CurrentTime
                 WHERE ExpiresAt < @CurrentTime
@@ -890,7 +875,7 @@ BEGIN TRY
                 
                 -- Brief pause to avoid blocking
                 IF @BatchProcessed > 0
-                    WAITFOR DELAY ''00:00:00.100''; -- 100ms pause
+                    WAITFOR DELAY '00:00:00.100'; -- 100ms pause
             END
 
             -- Phase 2: Soft delete old expired contexts
@@ -910,13 +895,13 @@ BEGIN TRY
                 SET @BatchCount = @BatchCount + 1;
                 
                 IF @BatchProcessed > 0
-                    WAITFOR DELAY ''00:00:00.100'';
+                    WAITFOR DELAY '00:00:00.100';
             END
 
             -- Log cleanup audit event
             EXEC dbo.LogAuditEvent
-                @EventType = ''CONTEXT_CLEANUP'',
-                @Details = CONCAT(''Cleanup completed: '', @TotalExpired, '' expired, '', @TotalDeleted, '' deleted''),
+                @EventType = 'CONTEXT_CLEANUP',
+                @Details = CONCAT('Cleanup completed: ', @TotalExpired, ' expired, ', @TotalDeleted, ' deleted'),
                 @Success = 1;
 
         END TRY
@@ -925,8 +910,8 @@ BEGIN TRY
             
             EXEC dbo.LogError
                 @ErrorMessage = @ErrorMsg,
-                @ErrorSeverity = ''ERROR'',
-                @AdditionalInfo = CONCAT(''BatchSize='', @ActualBatchSize, '', OlderThanHours='', @ActualOlderThanHours);
+                @ErrorSeverity = 'ERROR',
+                @AdditionalInfo = CONCAT('BatchSize=', @ActualBatchSize, ', OlderThanHours=', @ActualOlderThanHours);
                 
             SELECT 0 AS TotalCleaned, @ErrorMsg AS Message;
             RETURN;
@@ -937,15 +922,14 @@ BEGIN TRY
         DECLARE @TotalProcessed INT = @TotalExpired + @TotalDeleted;
         
         EXEC dbo.LogPerformanceMetric
-            @MetricName = ''CleanupExpiredContexts'',
+            @MetricName = 'CleanupExpiredContexts',
             @MetricValue = @ExecutionTimeMs,
-            @MetricUnit = ''milliseconds'',
-            @AdditionalData = CONCAT(''Processed:'', @TotalProcessed, '', Expired:'', @TotalExpired, '', Deleted:'', @TotalDeleted);
+            @MetricUnit = 'milliseconds',
+            @AdditionalData = CONCAT('Processed:', @TotalProcessed, ', Expired:', @TotalExpired, ', Deleted:', @TotalDeleted);
 
         SELECT @TotalProcessed AS TotalCleaned, 
-               CONCAT(''Cleanup completed: '', @TotalExpired, '' expired, '', @TotalDeleted, '' deleted'') AS Message;
+               CONCAT('Cleanup completed: ', @TotalExpired, ' expired, ', @TotalDeleted, ' deleted') AS Message;
     END;
-    ');
     
     PRINT '✓ Cleanup and maintenance procedures created';
     
