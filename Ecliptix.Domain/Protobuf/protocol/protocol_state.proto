@@ -4,6 +4,7 @@ package ecliptix.proto.protocol;
 option csharp_namespace = "Ecliptix.Protobuf.ProtocolState";
 
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
 import "protocol/key_exchange.proto";
 
 message EcliptixSessionState {
@@ -12,6 +13,7 @@ message EcliptixSessionState {
   ecliptix.proto.protocol.PubKeyExchange peer_handshake_message = 3;
 
   RatchetState ratchet_state = 4;
+  AdaptiveRatchetState adaptive_ratchet_state = 5;
 }
 
 message IdentityKeysState {
@@ -59,4 +61,27 @@ message ChainStepState {
 message CachedMessageKey {
   uint32 index = 1;
   bytes key_material = 2;
+}
+
+enum LoadLevel {
+  LIGHT = 0;
+  MODERATE = 1;
+  HEAVY = 2;
+  EXTREME = 3;
+}
+
+message AdaptiveRatchetState {
+  LoadLevel current_load = 1;
+  RatchetConfigState current_config = 2;
+  double average_message_rate = 3;
+  google.protobuf.Timestamp last_config_update = 4;
+  repeated google.protobuf.Timestamp recent_message_timestamps = 5;
+}
+
+message RatchetConfigState {
+  uint32 dh_ratchet_every_n_messages = 1;
+  bool enable_per_message_ratchet = 2;
+  bool ratchet_on_new_dh_key = 3;
+  google.protobuf.Duration max_chain_age = 4;
+  uint32 max_messages_without_ratchet = 5;
 }

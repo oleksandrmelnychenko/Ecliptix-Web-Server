@@ -406,6 +406,16 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         {
             Log.Debug("Timer tick #{TickCount} - OTP expired, remaining: {Remaining} for ConnectId {ConnectId}", 
                 _timerTickCount, _activeOtpRemainingSeconds, _connectId);
+            
+            // Send final countdown message with 0 seconds before expiring
+            await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                new VerificationCountdownUpdate
+                {
+                    SecondsRemaining = 0,
+                    SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
+                    Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Expired
+                }));
+            
             await ExpireCurrentOtp();
             return;
         }

@@ -406,6 +406,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
     internal Result<(EcliptixMessageKey MessageKey, bool IncludeDhKey), EcliptixProtocolFailure>
         PrepareNextSendMessage()
     {
+        using IDisposable profilerScope = _profiler.StartOperation("PrepareNextSendMessage");
         lock (_lock)
         {
             byte[]? keyMaterial = null;
@@ -461,6 +462,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
     internal Result<EcliptixMessageKey, EcliptixProtocolFailure> ProcessReceivedMessage(uint receivedIndex)
     {
+        using IDisposable profilerScope = _profiler.StartOperation("ProcessReceivedMessage");
         lock (_lock)
         {
             Result<Unit, EcliptixProtocolFailure> disposedCheckResult = CheckDisposed();
@@ -479,6 +481,13 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 if (receivedIndex > currentIndex + 1)
                 {
                     uint gapSize = receivedIndex - currentIndex - 1;
+                    
+                    // Note: RatchetRecovery.StoreSkippedMessageKeys would be called here if we had
+                    // access to the current chain key. However, the chain key is encapsulated within
+                    // EcliptixProtocolChainStep and not exposed. The recovery mechanism works at the
+                    // message key level through TryRecoverMessageKey when decryption fails.
+                    
+                    System.Diagnostics.Debug.WriteLine($"Message gap detected: missing {gapSize} messages between {currentIndex + 1} and {receivedIndex}");
                 }
             }
 
@@ -498,6 +507,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
     public Result<Unit, EcliptixProtocolFailure> PerformReceivingRatchet(byte[]? receivedDhKey)
     {
+        using IDisposable profilerScope = _profiler.StartOperation("PerformReceivingRatchet");
         lock (_lock)
         {
             if (receivedDhKey == null) return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
@@ -583,6 +593,11 @@ public sealed class EcliptixProtocolConnection : IDisposable
         lock (_lock)
         {
             if (_disposed) return;
+            
+            // Note: _ratchetConfig is readonly and cannot be updated after initialization.
+            // This method exists for interface compatibility but config updates
+            // should be handled at the connection creation level via the factory pattern.
+            // See EcliptixProtocolSystem.GetConfigForExchangeType for adaptive config handling.
         }
     }
 
@@ -633,6 +648,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
             {
                 _replayProtection?.Dispose();
                 _ratchetRecovery?.Dispose();
+                _profiler?.Reset(); // Clear performance metrics
 
                 _rootKeyHandle?.Dispose();
                 _sendingStep?.Dispose();
@@ -657,6 +673,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
     private Result<Unit, EcliptixProtocolFailure> PerformDhRatchet(bool isSender,
         byte[]? receivedDhPublicKeyBytes = null)
     {
+        using IDisposable profilerScope = _profiler.StartOperation("PerformDhRatchet");
         byte[]? dhSecret = null, newRootKey = null, newChainKeyForTargetStep = null, newEphemeralPublicKey = null;
         byte[]? localPrivateKeyBytes = null, currentRootKey = null, newDhPrivateKeyBytes = null;
         byte[]? hkdfOutput = null;
