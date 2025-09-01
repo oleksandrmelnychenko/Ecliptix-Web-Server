@@ -21,7 +21,6 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
         IsOk = false;
     }
 
-
     public static Result<T, TE> Ok(T value)
     {
         return new Result<T, TE>(value, true);
@@ -66,7 +65,7 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
             return Err(error);
         }
     }
-  
+
     public static Result<Unit, TE> Try(Action action, Func<Exception, TE> errorMapper, Action? cleanup = null)
     {
         ArgumentNullException.ThrowIfNull(action, nameof(action));

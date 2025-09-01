@@ -13,27 +13,16 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
     where T : ActorBase
 {
     private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
-    
+
     private static PubKeyExchangeType DetermineExchangeType(ServerCallContext context)
     {
-        // Determine exchange type based on the service method being called
         string methodName = context.Method;
-        
+
         return methodName switch
         {
-            // Verification flow methods use VerificationFlowStream
-            var method when method.Contains("InitiateVerification") => PubKeyExchangeType.VerificationFlowStream,
-            var method when method.Contains("VerifyOtp") => PubKeyExchangeType.VerificationFlowStream,
-            
-            // Future: Message delivery methods would use MessageDeliveryStream
-            var method when method.Contains("SendMessage") => PubKeyExchangeType.MessageDeliveryStream,
-            var method when method.Contains("ReceiveMessage") => PubKeyExchangeType.MessageDeliveryStream,
-            
-            // Future: Presence methods would use PresenceStream  
-            var method when method.Contains("UpdatePresence") => PubKeyExchangeType.PresenceStream,
-            var method when method.Contains("PresenceStream") => PubKeyExchangeType.PresenceStream,
-            
-            // Default for all other operations
+            string method when method.Contains("InitiateVerification") => PubKeyExchangeType.ServerStreaming,
+            string method when method.Contains("VerifyOtp") => PubKeyExchangeType.ServerStreaming,
+
             _ => PubKeyExchangeType.DataCenterEphemeralConnect
         };
     }
@@ -54,7 +43,7 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
         {
             return Result<CipherPayload, FailureBase>.Err(encryptResult.UnwrapErr());
         }
-        
+
         return Result<CipherPayload, FailureBase>.Ok(encryptResult.Unwrap());
     }
 
@@ -74,7 +63,7 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
         {
             return Result<byte[], FailureBase>.Err(decryptionResult.UnwrapErr());
         }
-        
+
         return Result<byte[], FailureBase>.Ok(decryptionResult.Unwrap());
     }
 
@@ -123,7 +112,7 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
         {
             return await CreateFailureResponse<TSuccess>(result.UnwrapErr(), connectId, context);
         }
-        
+
         byte[] responsePayload = result.Unwrap().ToByteArray();
         return await CreateSuccessResponse<TSuccess>(responsePayload, connectId, context);
     }

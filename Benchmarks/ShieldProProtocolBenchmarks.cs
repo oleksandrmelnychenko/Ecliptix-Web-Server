@@ -29,13 +29,13 @@ public class ShieldProProtocolBenchmarks
     [GlobalSetup]
     public void GlobalSetup()
     {
-        var aliceMaterialResult = EcliptixSystemIdentityKeys.Create(1);
-        var bobMaterialResult = EcliptixSystemIdentityKeys.Create(2);
+        Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure> aliceMaterialResult = EcliptixSystemIdentityKeys.Create(1);
+        Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure> bobMaterialResult = EcliptixSystemIdentityKeys.Create(2);
         if (aliceMaterialResult.IsErr || bobMaterialResult.IsErr)
             throw new InvalidOperationException("Failed to create key materials.");
 
-        var aliceMaterial = aliceMaterialResult.Unwrap();
-        var bobMaterial = bobMaterialResult.Unwrap();
+        EcliptixSystemIdentityKeys aliceMaterial = aliceMaterialResult.Unwrap();
+        EcliptixSystemIdentityKeys bobMaterial = bobMaterialResult.Unwrap();
 
         uint sessionId = 2;
 
@@ -57,26 +57,26 @@ public class ShieldProProtocolBenchmarks
     [Benchmark(Description = "X3DH Handshake")]
     public void X3DH_Handshake()
     {
-        var aliceMaterial = EcliptixSystemIdentityKeys.Create(3).Unwrap();
-        var bobMaterial = EcliptixSystemIdentityKeys.Create(4).Unwrap();
-        var alice = new EcliptixProtocolSystem(aliceMaterial);
-        var bob = new EcliptixProtocolSystem(bobMaterial);
+        EcliptixSystemIdentityKeys aliceMaterial = EcliptixSystemIdentityKeys.Create(3).Unwrap();
+        EcliptixSystemIdentityKeys bobMaterial = EcliptixSystemIdentityKeys.Create(4).Unwrap();
+        EcliptixProtocolSystem alice = new EcliptixProtocolSystem(aliceMaterial);
+        EcliptixProtocolSystem bob = new EcliptixProtocolSystem(bobMaterial);
         uint sessionId = 2;
-        var aliceMsg = alice.BeginDataCenterPubKeyExchange(sessionId, _exchangeType);
-        var bobMsg = bob.ProcessAndRespondToPubKeyExchange(sessionId, aliceMsg);
+        PubKeyExchange aliceMsg = alice.BeginDataCenterPubKeyExchange(sessionId, _exchangeType).Unwrap();
+        PubKeyExchange bobMsg = bob.ProcessAndRespondToPubKeyExchange(sessionId, aliceMsg).Unwrap();
         alice.CompleteDataCenterPubKeyExchange(sessionId, _exchangeType, bobMsg);
     }
 
     [Benchmark(Description = "Symmetric Ratchet")]
     public void Symmetric_Ratchet()
     {
-        var aliceMaterial = EcliptixSystemIdentityKeys.Create(5).Unwrap();
-        var bobMaterial = EcliptixSystemIdentityKeys.Create(6).Unwrap();
-        var alice = new EcliptixProtocolSystem(aliceMaterial);
-        var bob = new EcliptixProtocolSystem(bobMaterial);
+        EcliptixSystemIdentityKeys aliceMaterial = EcliptixSystemIdentityKeys.Create(5).Unwrap();
+        EcliptixSystemIdentityKeys bobMaterial = EcliptixSystemIdentityKeys.Create(6).Unwrap();
+        EcliptixProtocolSystem alice = new EcliptixProtocolSystem(aliceMaterial);
+        EcliptixProtocolSystem bob = new EcliptixProtocolSystem(bobMaterial);
         uint sessionId = 2;
-        var aliceMsg = alice.BeginDataCenterPubKeyExchange(sessionId, _exchangeType);
-        var bobMsg = bob.ProcessAndRespondToPubKeyExchange(sessionId, aliceMsg);
+        PubKeyExchange aliceMsg = alice.BeginDataCenterPubKeyExchange(sessionId, _exchangeType).Unwrap();
+        PubKeyExchange bobMsg = bob.ProcessAndRespondToPubKeyExchange(sessionId, aliceMsg).Unwrap();
         alice.CompleteDataCenterPubKeyExchange(sessionId, _exchangeType, bobMsg);
 
         for (int i = 0; i < 10; i++)
@@ -91,9 +91,9 @@ public class ShieldProProtocolBenchmarks
         int sessionId = 2;
         for (int i = 0; i < 10; i++)
         {
-            var cipher =
+            CipherPayload cipher =
                 _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_exchangeType,
-                    _sampleMessage);
+                    _sampleMessage).Unwrap();
             _bobEcliptixProtocolSystem.ProcessInboundMessage(_exchangeType, cipher);
         }
     }
@@ -107,9 +107,9 @@ public class ShieldProProtocolBenchmarks
     [Benchmark(Description = "Message Decryption")]
     public void Message_Decryption()
     {
-        var cipher =
+        CipherPayload cipher =
             _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_exchangeType,
-                _sampleMessage);
+                _sampleMessage).Unwrap();
         _bobEcliptixProtocolSystem.ProcessInboundMessage(_exchangeType, cipher);
     }
 
@@ -118,12 +118,12 @@ public class ShieldProProtocolBenchmarks
     {
         for (int i = 0; i < MessageCount; i++)
         {
-            var cipher =
+            CipherPayload cipher =
                 _aliceEcliptixProtocolSystem.ProduceOutboundMessage(_exchangeType,
-                    _sampleMessage);
+                    _sampleMessage).Unwrap();
             _bobEcliptixProtocolSystem.ProcessInboundMessage(_exchangeType, cipher);
-            var reply = _bobEcliptixProtocolSystem.ProduceOutboundMessage(_exchangeType,
-                _sampleMessage);
+            CipherPayload reply = _bobEcliptixProtocolSystem.ProduceOutboundMessage(_exchangeType,
+                _sampleMessage).Unwrap();
             _aliceEcliptixProtocolSystem.ProcessInboundMessage(_exchangeType, reply);
         }
     }

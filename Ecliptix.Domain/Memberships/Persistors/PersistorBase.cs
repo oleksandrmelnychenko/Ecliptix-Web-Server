@@ -165,7 +165,6 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
         return TimeSpan.FromSeconds(15);
     }
 
-
     protected override void PostStop()
     {
         Dispose();

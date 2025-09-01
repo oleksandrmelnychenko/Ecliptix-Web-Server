@@ -22,7 +22,6 @@ public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessage
     public void Dispose()
     {
         Dispose(true);
-        GC.SuppressFinalize(this);
     }
 
     public bool Equals(EcliptixMessageKey? other)
@@ -85,7 +84,6 @@ public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessage
             byte[] messageKeyBytes = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
             try
             {
-                // Use HKDF to match client implementation
                 System.Security.Cryptography.HKDF.DeriveKey(
                     System.Security.Cryptography.HashAlgorithmName.SHA256,
                     ikm: chainKey,
@@ -110,16 +108,14 @@ public sealed class EcliptixMessageKey : IDisposable, IEquatable<EcliptixMessage
 
     private void Dispose(bool disposing)
     {
-        if (!_disposed)
+        if (_disposed) return;
+        if (disposing)
         {
-            if (disposing)
-            {
-                _keyHandle?.Dispose();
-                _keyHandle = null!;
-            }
-
-            _disposed = true;
+            _keyHandle.Dispose();
+            _keyHandle = null!;
         }
+
+        _disposed = true;
     }
 
     ~EcliptixMessageKey()

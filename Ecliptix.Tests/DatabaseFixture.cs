@@ -11,9 +11,9 @@ public class DatabaseFixture : IAsyncDisposable
         @"^\s*GO\s*(--.*)?$",
         RegexOptions.Multiline | RegexOptions.IgnoreCase | RegexOptions.Compiled
     );
-    
+
     private readonly MsSqlContainer _container;
-    public SqlConnection Connection { get; private set; }
+    public SqlConnection Connection { get; private set; } = null!;
 
     public DatabaseFixture()
     {
@@ -21,7 +21,7 @@ public class DatabaseFixture : IAsyncDisposable
             .WithPassword("test_password_gDr9r74lhatO")
             .Build();
     }
-    
+
     public async Task InitializeAsync()
     {
         await _container.StartAsync();
@@ -30,17 +30,17 @@ public class DatabaseFixture : IAsyncDisposable
 
         await SetupDatabaseAsync();
     }
-    
+
     public async Task SetupDatabaseAsync()
     {
         await ExecuteSqlFromFileAsync("init.sql");
     }
-    
+
     public async Task TruncateDatabaseAsync()
     {
         await ExecuteSqlFromFileAsync("truncate.sql");
     }
-    
+
     public async Task ExecuteSqlFromFileAsync(string filename)
     {
         string sqlPath = Path.Combine(AppContext.BaseDirectory, "Scripts", filename);
@@ -51,7 +51,7 @@ public class DatabaseFixture : IAsyncDisposable
         }
 
         string sqlScript = await File.ReadAllTextAsync(sqlPath);
-        
+
         string[] batches = GoSplitter.Split(sqlScript);
         foreach (string batch in batches)
         {
@@ -69,7 +69,7 @@ public class DatabaseFixture : IAsyncDisposable
             }
         }
     }
-    
+
     public async ValueTask DisposeAsync()
     {
         await Connection.DisposeAsync();

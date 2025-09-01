@@ -27,60 +27,46 @@ public static class PersistorSupervisorStrategy
 
                 return exception switch
                 {
-                    // Authentication and authorization failures - stop immediately
                     SqlException { Number: 18456 } => HandlePermanentFailure("Authentication failed", Directive.Stop),
                     SqlException { Number: 18486 } => HandlePermanentFailure("Account locked", Directive.Stop),
-                    
-                    // Database not found or not accessible - stop immediately  
+
                     SqlException { Number: 4060 } => HandlePermanentFailure("Database not accessible", Directive.Stop),
                     SqlException { Number: 40197 } => HandlePermanentFailure("Service unavailable", Directive.Stop),
-                    
-                    // Data corruption or invalid queries - stop immediately
+
                     SqlException { Number: 824 or 825 } => HandlePermanentFailure("Data corruption detected", Directive.Stop),
                     SqlException { Number: 102 or 156 or 207 or 208 } => HandlePermanentFailure("Invalid SQL syntax", Directive.Stop),
-                    
-                    // Network and connection failures - restart with backoff
+
                     SqlException { Number: 2 or 53 or 11001 } => HandleTransientFailure(actorType, "Network error", Directive.Restart),
                     SqlException { Number: 2146893022 } => HandleTransientFailure(actorType, "Connection timeout", Directive.Restart),
-                    
-                    // Command timeout - restart with backoff
+
                     SqlException { Number: -2 } => HandleTransientFailure(actorType, "Command timeout", Directive.Restart),
                     TimeoutException => HandleTransientFailure(actorType, "Operation timeout", Directive.Restart),
-                    
-                    // Transient Azure SQL errors - restart
+
                     SqlException { Number: 40501 or 40613 or 49918 or 49919 or 49920 } => 
                         HandleTransientFailure(actorType, "Transient Azure SQL error", Directive.Restart),
-                    
-                    // Deadlocks and concurrency conflicts - restart (can often succeed on retry)
+
                     SqlException { Number: 1205 } => HandleTransientFailure(actorType, "Deadlock detected", Directive.Restart),
                     SqlException { Number: 2627 or 2601 } => HandleTransientFailure(actorType, "Concurrency conflict", Directive.Restart),
-                    
-                    // Constraint violations - escalate (likely application logic error)
+
                     SqlException { Number: 547 or 515 } => HandleApplicationError("Constraint violation", Directive.Escalate),
-                    
-                    // Generic database exceptions - restart with caution
+
                     DbException => HandleTransientFailure(actorType, "Database error", Directive.Restart),
-                    
-                    // Task cancellation - resume (normal cancellation)
+
                     TaskCanceledException => HandleNormalCancellation(),
                     OperationCanceledException => HandleNormalCancellation(),
-                    
-                    // Null reference and argument exceptions - likely programming error
+
                     ArgumentNullException => HandleApplicationError("Null argument", Directive.Stop),
                     ArgumentException => HandleApplicationError("Invalid argument", Directive.Stop),
                     NullReferenceException => HandleApplicationError("Null reference", Directive.Stop),
-                    
-                    // Configuration and dependency injection errors - stop
+
                     InvalidOperationException when exception.Message.Contains("configuration") => 
                         HandlePermanentFailure("Configuration error", Directive.Stop),
                     InvalidOperationException when exception.Message.Contains("service") => 
                         HandlePermanentFailure("Service dependency error", Directive.Stop),
-                    
-                    // Memory and resource issues - escalate
+
                     OutOfMemoryException => HandleSystemError("Out of memory", Directive.Escalate),
                     StackOverflowException => HandleSystemError("Stack overflow", Directive.Escalate),
-                    
-                    // Generic exceptions - restart with caution
+
                     Exception => HandleGenericException(actorType, exception)
                 };
             });
@@ -103,7 +89,7 @@ public static class PersistorSupervisorStrategy
 
         Log.Warning("Transient failure in persistor actor {ActorType}: {Reason}. Directive: {Directive}", 
             actorType.Name, reason, directive);
-        
+
         RecordRestart(actorType);
         return directive;
     }
@@ -142,7 +128,7 @@ public static class PersistorSupervisorStrategy
     private static bool ShouldThrottleRestart(Type actorType)
     {
         DateTime now = DateTime.UtcNow;
-        
+
         CleanupOldRestartRecords(now);
 
         if (!RestartCounts.TryGetValue(actorType, out int count) || 
@@ -167,7 +153,7 @@ public static class PersistorSupervisorStrategy
     private static void RecordRestart(Type actorType)
     {
         DateTime now = DateTime.UtcNow;
-        
+
         RestartCounts.TryGetValue(actorType, out int currentCount);
         RestartCounts[actorType] = currentCount + 1;
         LastRestartTimes[actorType] = now;

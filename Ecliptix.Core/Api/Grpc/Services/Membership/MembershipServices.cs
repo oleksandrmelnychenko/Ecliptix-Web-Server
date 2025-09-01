@@ -77,7 +77,6 @@ public class MembershipServices(
             });
     }
 
-
     public override async Task<CipherPayload> OpaqueSignInCompleteRequest(CipherPayload request,
         ServerCallContext context)
     {

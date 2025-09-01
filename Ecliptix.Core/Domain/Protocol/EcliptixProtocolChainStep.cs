@@ -18,7 +18,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
     private readonly uint _cacheWindow;
     private readonly ChainStepType _stepType;
-    private SodiumSecureMemoryHandle _chainKeyHandle;
+    private readonly SodiumSecureMemoryHandle _chainKeyHandle;
     private uint _currentIndex;
     private SodiumSecureMemoryHandle? _dhPrivateKeyHandle;
     private byte[]? _dhPublicKey;
@@ -94,7 +94,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         {
             Result<EcliptixMessageKey, EcliptixProtocolFailure> messageKeyResult =
                 EcliptixMessageKey.New(cachedKey.Index, cachedKey.KeyMaterial.Span);
-            
+
             if (messageKeyResult.IsOk)
             {
                 EcliptixMessageKey messageKey = messageKeyResult.Unwrap();

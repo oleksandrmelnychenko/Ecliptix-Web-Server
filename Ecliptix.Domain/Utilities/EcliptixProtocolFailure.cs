@@ -28,7 +28,6 @@ public sealed record EcliptixProtocolFailure(
         return new Status(code, Message);
     }
 
-
     public static EcliptixProtocolFailure Generic(string details, Exception? inner = null)
     {
         return new EcliptixProtocolFailure(EcliptixProtocolFailureType.Generic, details, inner);

@@ -55,7 +55,7 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
             {
                 Result<EcliptixMessageKey, EcliptixProtocolFailure> messageKeyResult = 
                     EcliptixMessageKey.DeriveFromChainKey(workingChainKey, messageIndex);
-                
+
                 if (messageKeyResult.IsErr)
                 {
                     CleanupSkippedKeys();
@@ -91,7 +91,7 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
                         salt: null,
                         info: Constants.ChainInfo
                     );
-                    
+
                     newChainKey.AsSpan(0, Constants.X25519KeySize).CopyTo(chainKey);
                 }
                 finally
@@ -148,7 +148,7 @@ internal sealed class ScopedSecureMemoryCollection : IDisposable
     public byte[] Allocate(int size)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        
+
         byte[] buffer = new byte[size];
         _allocations.Add(buffer);
         return buffer;
@@ -161,7 +161,7 @@ internal sealed class ScopedSecureMemoryCollection : IDisposable
 
         foreach (byte[] allocation in _allocations)
             SodiumInterop.SecureWipe(allocation);
-        
+
         _allocations.Clear();
     }
 }

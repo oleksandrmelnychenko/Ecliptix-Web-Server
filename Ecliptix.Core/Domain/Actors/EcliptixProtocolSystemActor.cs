@@ -54,7 +54,7 @@ public class EcliptixProtocolSystemActor : ReceiveActor
     {
         uint connectId = actorEvent.UniqueConnectId;
         Result<IActorRef, EcliptixProtocolFailure> connectActorResult = GetOrCreateConnectActor(connectId);
-        
+
         if (connectActorResult.IsErr)
         {
             Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(connectActorResult.UnwrapErr()));

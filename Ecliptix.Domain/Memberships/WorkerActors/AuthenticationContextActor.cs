@@ -17,24 +17,24 @@ public class AuthenticationContextActor : ReceiveActor
 {
     private readonly uint _connectId;
     private readonly IActorRef _parent;
-    
+
     private readonly Queue<DateTime> _attemptTimestamps = new();
     private bool _isRateLimited;
     private DateTime? _rateLimitedUntil;
     private AuthenticationContext? _activeContext;
-    
+
     private const int MaxAttemptsPerWindow = 5;
     private static readonly TimeSpan WindowSize = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan AutoCleanupTimeout = TimeSpan.FromMinutes(30);
-    
+
     private ICancelable? _autoCleanupTimer;
 
     public AuthenticationContextActor(uint connectId, IActorRef parent)
     {
         _connectId = connectId;
         _parent = parent;
-        
+
         Become(Ready);
     }
 
@@ -46,7 +46,7 @@ public class AuthenticationContextActor : ReceiveActor
     protected override void PreStart()
     {
         base.PreStart();
-        
+
         _autoCleanupTimer = Context.System.Scheduler.ScheduleTellOnceCancelable(
             AutoCleanupTimeout,
             Self,
@@ -59,15 +59,15 @@ public class AuthenticationContextActor : ReceiveActor
     protected override void PostStop()
     {
         _autoCleanupTimer?.Cancel();
-        
+
         if (_activeContext != null)
         {
             CryptographicOperations.ZeroMemory(_activeContext.ContextToken);
             _activeContext = null;
         }
-        
+
         Log.Debug("AuthenticationContextActor stopped for connectId {ConnectId}", _connectId);
-        
+
         base.PostStop();
     }
 
@@ -76,10 +76,10 @@ public class AuthenticationContextActor : ReceiveActor
         Receive<AttemptAuthentication>(msg =>
         {
             ResetAutoCleanupTimer();
-            
+
             AuthResult result = CheckRateLimit();
             Sender.Tell(result);
-            
+
             if (result is AuthResult.RateLimited rateLimited)
             {
                 Log.Warning("Authentication rate limited for connectId {ConnectId}, mobile {MaskedMobileNumber} until {LockedUntil}", 
@@ -95,15 +95,15 @@ public class AuthenticationContextActor : ReceiveActor
         Receive<EstablishContext>(msg =>
         {
             ResetAutoCleanupTimer();
-            
+
             byte[] contextToken = msg.ContextToken;
             if (contextToken.Length == 0)
             {
                 contextToken = GenerateSecureToken();
             }
-            
+
             DateTime expiresAt = DateTime.UtcNow.AddHours(24);
-            
+
             _activeContext = new AuthenticationContext
             {
                 ContextToken = contextToken,
@@ -112,25 +112,24 @@ public class AuthenticationContextActor : ReceiveActor
                 EstablishedAt = DateTime.UtcNow,
                 ExpiresAt = expiresAt
             };
-            
+
             _attemptTimestamps.Clear();
             _isRateLimited = false;
             _rateLimitedUntil = null;
-            
+
             Log.Information("Authentication context established for connectId {ConnectId}, membershipId {MembershipId}", 
                 _connectId, msg.MembershipId);
-            
+
             Sender.Tell(new AuthContextEstablished(contextToken, expiresAt));
         });
-
 
         Receive<ValidateContext>(msg =>
         {
             ResetAutoCleanupTimer();
-            
+
             AuthResult result = ValidateActiveContext(msg.ContextToken);
             Sender.Tell(result);
-            
+
             if (result is AuthResult.ValidContext validContext)
             {
                 Log.Debug("Context validated for connectId {ConnectId}, membershipId {MembershipId}", 
@@ -146,7 +145,7 @@ public class AuthenticationContextActor : ReceiveActor
         Receive<GetContextInfo>(_ =>
         {
             ResetAutoCleanupTimer();
-            
+
             if (_activeContext == null)
             {
                 Sender.Tell(new ContextInfo.NotEstablished());
@@ -165,13 +164,13 @@ public class AuthenticationContextActor : ReceiveActor
         Receive<AutoCleanup>(_ =>
         {
             Log.Debug("Auto-cleanup triggered for idle AuthenticationContextActor - connectId {ConnectId}", _connectId);
-            
+
             if (_activeContext != null)
             {
                 CryptographicOperations.ZeroMemory(_activeContext.ContextToken);
                 _activeContext = null;
             }
-            
+
             _parent.Tell(new RemoveAuthContext(_connectId));
             Context.Stop(Self);
         });
@@ -180,26 +179,26 @@ public class AuthenticationContextActor : ReceiveActor
     private AuthResult CheckRateLimit()
     {
         CleanOldAttempts();
-        
+
         if (_isRateLimited && _rateLimitedUntil.HasValue)
         {
             if (DateTime.UtcNow < _rateLimitedUntil.Value)
             {
                 return new AuthResult.RateLimited(_rateLimitedUntil.Value);
             }
-            
+
             _isRateLimited = false;
             _rateLimitedUntil = null;
         }
-        
+
         if (_attemptTimestamps.Count >= MaxAttemptsPerWindow)
         {
             _isRateLimited = true;
             _rateLimitedUntil = DateTime.UtcNow.Add(LockDuration);
-            
+
             return new AuthResult.RateLimited(_rateLimitedUntil.Value);
         }
-        
+
         _attemptTimestamps.Enqueue(DateTime.UtcNow);
         return new AuthResult.Proceed();
     }
@@ -207,13 +206,12 @@ public class AuthenticationContextActor : ReceiveActor
     private void CleanOldAttempts()
     {
         DateTime cutoffTime = DateTime.UtcNow - WindowSize;
-        
+
         while (_attemptTimestamps.Count > 0 && _attemptTimestamps.Peek() < cutoffTime)
         {
             _attemptTimestamps.Dequeue();
         }
     }
-
 
     private void ResetAutoCleanupTimer()
     {
@@ -230,11 +228,11 @@ public class AuthenticationContextActor : ReceiveActor
         byte[] token = new byte[64];
         using RandomNumberGenerator rng = RandomNumberGenerator.Create();
         rng.GetBytes(token);
-        
+
         byte[] result = new byte[64];
         token.CopyTo(result, 0);
         CryptographicOperations.ZeroMemory(token);
-        
+
         return result;
     }
 
@@ -244,19 +242,19 @@ public class AuthenticationContextActor : ReceiveActor
         {
             return new AuthResult.InvalidContext("No active authentication context");
         }
-        
+
         if (_activeContext.ExpiresAt <= DateTime.UtcNow)
         {
             CryptographicOperations.ZeroMemory(_activeContext.ContextToken);
             _activeContext = null;
             return new AuthResult.InvalidContext("Authentication context has expired");
         }
-        
+
         if (!CryptographicOperations.FixedTimeEquals(_activeContext.ContextToken, providedToken))
         {
             return new AuthResult.InvalidContext("Invalid authentication context token");
         }
-        
+
         return new AuthResult.ValidContext(_activeContext.MembershipId, _activeContext.MobileNumberId);
     }
 
@@ -264,7 +262,7 @@ public class AuthenticationContextActor : ReceiveActor
     {
         if (string.IsNullOrEmpty(mobileNumber) || mobileNumber.Length < 4)
             return "***";
-        
+
         return $"{mobileNumber[..3]}****{mobileNumber[^2..]}";
     }
 

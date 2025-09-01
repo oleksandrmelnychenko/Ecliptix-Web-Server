@@ -52,14 +52,14 @@ public static class EcliptixProtocol
         RatchetState newRatchetState = ratchetStateResult.Unwrap();
         EcliptixSessionState newState = oldState.Clone();
         newState.RatchetState = newRatchetState;
-        
+
         if (Log.IsEnabled(LogEventLevel.Debug))
         {
             Log.Debug("[EcliptixProtocol] CreateStateFromSystem:");
             Log.Debug("  Updated Connection Root Key: {RootKey}", Convert.ToHexString(newRatchetState.RootKey.Span));
             Log.Debug("  Updated Peer DH Public Key: {PeerDhPublicKey}", newRatchetState.PeerDhPublicKey.IsEmpty ? "<null>" : Convert.ToHexString(newRatchetState.PeerDhPublicKey.Span));
         }
-        
+
         return Result<EcliptixSessionState, EcliptixProtocolFailure>.Ok(newState);
     }
 
@@ -74,13 +74,13 @@ public static class EcliptixProtocol
             return Result<EcliptixSessionState, EcliptixProtocolFailure>.Err(identityKeysResult.UnwrapErr());
 
         IdentityKeysState identityKeysProto = identityKeysResult.Unwrap();
-        
+
         Result<RatchetState, EcliptixProtocolFailure> ratchetStateResult = connection.ToProtoState();
         if (ratchetStateResult.IsErr)
             return Result<EcliptixSessionState, EcliptixProtocolFailure>.Err(ratchetStateResult.UnwrapErr());
 
         RatchetState ratchetStateProto = ratchetStateResult.Unwrap();
-        
+
         EcliptixSessionState state = new()
         {
             ConnectId = connectId,
@@ -88,7 +88,7 @@ public static class EcliptixProtocol
             PeerHandshakeMessage = peerMsg,
             RatchetState = ratchetStateProto
         };
-        
+
         if (Log.IsEnabled(LogEventLevel.Debug))
         {
             Log.Debug("[EcliptixProtocol] CreateInitialState (ConnectId: {ConnectId}):", connectId);
@@ -96,7 +96,7 @@ public static class EcliptixProtocol
             Log.Debug("  Connection Root Key: {RootKey}", Convert.ToHexString(ratchetStateProto.RootKey.Span));
             Log.Debug("  Peer DH Public Key: {PeerDhPublicKey}", ratchetStateProto.PeerDhPublicKey.IsEmpty ? "<null>" : Convert.ToHexString(ratchetStateProto.PeerDhPublicKey.Span));
         }
-        
+
         return Result<EcliptixSessionState, EcliptixProtocolFailure>.Ok(state);
     }
 }

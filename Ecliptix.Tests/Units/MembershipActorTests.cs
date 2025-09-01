@@ -16,12 +16,12 @@ namespace Ecliptix.Tests.Units;
 [TestClass]
 public sealed class MembershipActorTests : TestKit
 {
-    private Mock<IOpaqueProtocolService> _opaqueMock;
-    private TestProbe _persistorProbe;
-    private TestProbe _authContextPersistorProbe;
-    private TestProbe _authStateManagerProbe;
-    private IActorRef _membershipActor;
-    
+    private Mock<IOpaqueProtocolService> _opaqueMock = null!;
+    private TestProbe _persistorProbe = null!;
+    private TestProbe _authContextPersistorProbe = null!;
+    private TestProbe _authStateManagerProbe = null!;
+    private IActorRef _membershipActor = null!;
+
     [TestInitialize]
     public void Setup()
     {
@@ -30,13 +30,12 @@ public sealed class MembershipActorTests : TestKit
         _authStateManagerProbe = CreateTestProbe();
         _opaqueMock = new Mock<IOpaqueProtocolService>();
 
-        var localizationMock = new Mock<ILocalizationProvider>();
+        Mock<ILocalizationProvider> localizationMock = new Mock<ILocalizationProvider>();
         localizationMock.Setup(x => x.Localize("invalid_credentials", It.IsAny<string>())).Returns("invalid");
         localizationMock.Setup(x => x.Localize("signin_too_many_attempts", It.IsAny<string>())).Returns("rate-limit");
 
         _membershipActor = Sys.ActorOf(MembershipActor.Build(_persistorProbe.Ref, _authContextPersistorProbe.Ref, _opaqueMock.Object, localizationMock.Object, _authStateManagerProbe.Ref));
     }
-
 
     [TestMethod]
     [DataRow(null, false, OpaqueSignInInitResponse.Types.SignInResult.Succeeded, DisplayName = "Returns_Ok_When_All_Succeed")]
@@ -47,7 +46,6 @@ public sealed class MembershipActorTests : TestKit
     public void HandleSignInMembership_Handles_AllCases(object? failureTypeObj, bool opaqueShouldFail, object? expectedResultObj)
 
     {
-         // Arrange
          SignInMembershipActorEvent @event = new
         (
             ConnectId: 12345u,
@@ -58,7 +56,6 @@ public sealed class MembershipActorTests : TestKit
 
         if (failureTypeObj is null)
         {
-            // Success persistor
             MembershipQueryRecord membershipRecord = new MembershipQueryRecord
             {
                 SecureKey = [1, 2, 3],
@@ -87,7 +84,6 @@ public sealed class MembershipActorTests : TestKit
         }
         else
         {
-            // Failure persistor
             VerificationFlowFailureType failureType = (VerificationFlowFailureType)failureTypeObj;
             VerificationFlowFailure failure = new VerificationFlowFailure(failureType, "msg");
 
@@ -98,7 +94,6 @@ public sealed class MembershipActorTests : TestKit
             _persistorProbe.Sender.Tell(Result<MembershipQueryRecord, VerificationFlowFailure>.Err(failure));
         }
 
-        // Assert
         Result<OpaqueSignInInitResponse, VerificationFlowFailure> result =
             ExpectMsg<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(TimeSpan.FromSeconds(5));
 

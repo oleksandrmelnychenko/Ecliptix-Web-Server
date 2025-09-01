@@ -34,7 +34,7 @@ public class MembershipActor : ReceiveActor
     private readonly IActorRef _authContextPersistor;
     private readonly IOpaqueProtocolService _opaqueProtocolService;
     private readonly IActorRef _authenticationStateManager;
-    
+
     private readonly Dictionary<uint, (Guid MembershipId, Guid MobileNumberId, string MobileNumber, DateTime CreatedAt)> _pendingSignIns = new();
     private static readonly TimeSpan PendingSignInTimeout = TimeSpan.FromMinutes(10);
     private ICancelable? _cleanupTimer;
@@ -128,9 +128,9 @@ public class MembershipActor : ReceiveActor
                 VerificationFlowFailure.InvalidOpaque(completionResult.UnwrapErr().Message)));
             return;
         }
-        
+
         UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRecoveryRecord);
-        
+
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
 
@@ -170,7 +170,7 @@ public class MembershipActor : ReceiveActor
 
         Sender.Tell(finalResult);
     }
-    
+
     private async Task HandleGenerateMembershipOprfRegistrationRecord(
         GenerateMembershipOprfRegistrationRequestEvent @event)
     {
@@ -239,10 +239,10 @@ public class MembershipActor : ReceiveActor
                 VerificationFlowMessageKeys.TooManySigninAttempts,
                 @event.CultureName
             );
-            
+
             int minutesUntilRetry = (int)Math.Ceiling((rateLimited.LockedUntil - DateTime.UtcNow).TotalMinutes);
             string message = string.Format(messageTemplate, minutesUntilRetry);
-            
+
             Sender.Tell(Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
             {
                 Result = OpaqueSignInInitResponse.Types.SignInResult.LoginAttemptExceeded,
@@ -280,7 +280,7 @@ public class MembershipActor : ReceiveActor
 
     private async Task HandleSignInComplete(SignInComplete @event)
     {
-        if (!_pendingSignIns.TryGetValue(@event.ConnectId, out var membershipInfo))
+        if (!_pendingSignIns.TryGetValue(@event.ConnectId, out (Guid MembershipId, Guid MobileNumberId, string MobileNumber, DateTime CreatedAt) membershipInfo))
         {
             Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.InvalidOpaque("No matching sign-in initiation found for this connection")));
@@ -299,7 +299,7 @@ public class MembershipActor : ReceiveActor
         }
 
         OpaqueSignInFinalizeResponse finalizeResponse = opaqueResult.Unwrap();
-        
+
         try
         {
             IActorRef authContextActor = await _authenticationStateManager.Ask<IActorRef>(
@@ -376,15 +376,15 @@ public class MembershipActor : ReceiveActor
 
             case VerificationFlowFailureType.RateLimitExceeded:
             {
-                
+
                 string messageTemplate = _localizationProvider.Localize(
                     VerificationFlowMessageKeys.TooManySigninAttempts,
                     cultureName
                 );
-                
+
                 int.TryParse(failure.Message, out int minutesUntilRetry);
                 string message = string.Format(messageTemplate, minutesUntilRetry);
-                
+
                 return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
                 {
                     Result = OpaqueSignInInitResponse.Types.SignInResult.LoginAttemptExceeded,

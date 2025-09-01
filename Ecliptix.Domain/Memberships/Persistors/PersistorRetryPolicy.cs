@@ -25,18 +25,18 @@ public static class PersistorRetryPolicy
         where TFailure : IFailureBase
     {
         Exception? lastException = null;
-        
+
         for (int attempt = 0; attempt <= maxRetries; attempt++)
         {
             try
             {
                 Result<TResult, TFailure> result = await operation();
-                
+
                 if (result.IsOk || !ShouldRetryFailure(result.UnwrapErr(), attempt))
                 {
                     return result;
                 }
-                
+
                 if (attempt < maxRetries)
                 {
                     TimeSpan delay = GetRetryDelay(attempt);
@@ -77,7 +77,7 @@ public static class PersistorRetryPolicy
                 return Result<TResult, TFailure>.Err(genericExceptionMapper(ex, operationName));
             }
         }
-        
+
         Log.Error("All retry attempts failed for operation {OperationName}", operationName);
         return Result<TResult, TFailure>.Err(genericExceptionMapper(
             lastException ?? new InvalidOperationException("All retry attempts failed"), 
@@ -90,42 +90,41 @@ public static class PersistorRetryPolicy
         {
             return sqlException.Number switch
             {
-                2 => true,    // Network error
-                53 => true,   // Network path not found  
-                11001 => true, // Host not found
-                -2 => true,   // Timeout
-                2146893022 => true, // Connection timeout
-                40501 => true, // Azure SQL transient
-                40613 => true, // Azure SQL transient
-                49918 => true, // Azure SQL transient
-                49919 => true, // Azure SQL transient
-                49920 => true, // Azure SQL transient
-                1205 => true,  // Deadlock - can be retried
-                
-                18456 => false, // Authentication failed
-                18486 => false, // Account locked
-                4060 => false,  // Database not accessible
-                547 => false,   // Foreign key violation
-                515 => false,   // NOT NULL violation
-                2627 => false,  // Unique constraint
-                2601 => false,  // Unique index
-                102 => false,   // Syntax error
-                156 => false,   // Syntax error
-                207 => false,   // Invalid column
-                208 => false,   // Invalid object
-                824 => false,   // Data corruption
-                825 => false,   // Data corruption
-                
+                2 => true,
+                53 => true,
+                11001 => true,
+                -2 => true,
+                2146893022 => true,
+                40501 => true,
+                40613 => true,
+                49918 => true,
+                49919 => true,
+                49920 => true,
+                1205 => true,
+
+                18456 => false,
+                18486 => false,
+                4060 => false,
+                547 => false,
+                515 => false,
+                2627 => false,
+                2601 => false,
+                102 => false,
+                156 => false,
+                207 => false,
+                208 => false,
+                824 => false,
+                825 => false,
+
                 _ => true
             };
         }
-        
+
         return true;
     }
 
     private static bool ShouldRetryFailure<TFailure>(TFailure failure, int attempt) where TFailure : IFailureBase
     {
-        // Basic implementation - can be enhanced based on failure types
         return attempt < 3;
     }
 

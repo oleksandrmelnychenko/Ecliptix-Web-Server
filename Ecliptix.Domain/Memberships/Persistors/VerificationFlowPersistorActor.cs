@@ -89,7 +89,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         DynamicParameters parameters = new();
         parameters.Add("@FlowUniqueId", cmd.FlowUniqueId);
-        
+
         RequestResendOtpResult? result = await conn.QuerySingleOrDefaultAsync<RequestResendOtpResult>(
             "dbo.RequestResendOtp",
             parameters,
@@ -108,7 +108,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         DynamicParameters parameters = new();
         parameters.Add("@OtpUniqueId", cmd.OtpIdentified);
         parameters.Add("@NewStatus", cmd.Status.ToString().ToLowerInvariant());
-        
+
         UpdateOtpStatusResult? result = await conn.QuerySingleOrDefaultAsync<UpdateOtpStatusResult>(
             "dbo.UpdateOtpStatus",
             parameters,
@@ -129,7 +129,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         DynamicParameters parameters = new();
         parameters.Add("@PhoneUniqueId", cmd.PhoneNumberIdentifier);
-        
+
         PhoneNumberQueryRecord? result = await conn.QuerySingleOrDefaultAsync<PhoneNumberQueryRecord>(
             "SELECT * FROM dbo.GetPhoneNumber(@PhoneUniqueId)",
             parameters);
@@ -140,7 +140,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             return Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.PhoneNotFound));
         }
-        
+
         return Result<PhoneNumberQueryRecord, VerificationFlowFailure>.Ok(result);
     }
 
@@ -199,7 +199,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         parameters.Add("@PhoneNumberString", cmd.PhoneNumber);
         parameters.Add("@Region", cmd.RegionCode);
         parameters.Add("@AppDeviceId", cmd.AppDeviceIdentifier);
-        
+
         EnsurePhoneNumberResult? result = await conn.QuerySingleOrDefaultAsync<EnsurePhoneNumberResult>(
             "dbo.EnsurePhoneNumber",
             parameters,
@@ -222,13 +222,13 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         DynamicParameters parameters = new();
         parameters.Add("@PhoneNumberString", cmd.PhoneNumber);
         parameters.Add("@Region", cmd.RegionCode);
-        
+
         VerifyPhoneForSecretKeyRecoveryResult? result =
             await conn.QuerySingleOrDefaultAsync<VerifyPhoneForSecretKeyRecoveryResult>(
                 "dbo.VerifyPhoneForSecretKeyRecovery",
                 parameters,
                 commandType: CommandType.StoredProcedure);
-        
+
         if (result is null)
         {
             Log.Error("VerifyPhoneForSecretKeyRecovery stored procedure returned null for PhoneNumber {PhoneNumber}",
@@ -247,12 +247,12 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         DynamicParameters parameters = new();
         parameters.Add("@FlowUniqueId", cmd.FlowUniqueId);
-        
+
         await conn.ExecuteAsync(
             "dbo.ExpireAssociatedOtp",
             parameters,
             commandType: CommandType.StoredProcedure);
-        
+
         return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
     }
 
@@ -293,7 +293,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         Log.Error(ex, "Database exception in {ActorType}: {ExceptionType} - {Message}", 
             GetType().Name, ex.GetType().Name, ex.Message);
-            
+
         if (ex is SqlException sqlEx)
         {
             return sqlEx.Number switch

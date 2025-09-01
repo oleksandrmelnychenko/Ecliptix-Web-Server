@@ -11,22 +11,22 @@ public class ConnectionMonitoringInterceptor : Interceptor
 {
     private static readonly ConcurrentDictionary<uint, ConnectionInfo> ActiveConnections = new();
     private static readonly Meter ConnectionMeter = new(InterceptorConstants.Telemetry.ConnectionsMeter);
-    
+
     private static readonly Counter<int> ConnectionsEstablished = ConnectionMeter.CreateCounter<int>(
         InterceptorConstants.Metrics.ConnectionsEstablishedTotal, 
         description: InterceptorConstants.Metrics.ConnectionsEstablishedTotalDescription);
-        
+
     private static readonly Counter<int> ConnectionsClosed = ConnectionMeter.CreateCounter<int>(
         InterceptorConstants.Metrics.ConnectionsClosedTotal, 
         description: InterceptorConstants.Metrics.ConnectionsClosedTotalDescription);
-        
+
     private static readonly Gauge<int> ActiveConnectionsCount = ConnectionMeter.CreateGauge<int>(
         InterceptorConstants.Metrics.ActiveConnectionsCurrent, 
         description: InterceptorConstants.Metrics.ActiveConnectionsCurrentDescription);
 
     public ConnectionMonitoringInterceptor()
     {
-        
+
         _ = Task.Run(async () =>
         {
             while (true)
@@ -46,7 +46,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
         if (connectId.HasValue)
         {
             TrackConnection(connectId.Value, context);
-            
+
             context.CancellationToken.Register(() => 
             {
                 CleanupConnection(connectId.Value, InterceptorConstants.Connections.CloseReasons.RequestCancelled);
@@ -56,12 +56,12 @@ public class ConnectionMonitoringInterceptor : Interceptor
         try
         {
             TResponse response = await continuation(request, context);
-            
+
             if (connectId.HasValue)
             {
                 UpdateConnectionActivity(connectId.Value);
             }
-            
+
             return response;
         }
         catch (Exception ex)
@@ -84,7 +84,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
         if (connectId.HasValue)
         {
             TrackConnection(connectId.Value, context, isStreaming: true);
-            
+
             context.CancellationToken.Register(() => 
             {
                 CleanupConnection(connectId.Value, InterceptorConstants.Connections.CloseReasons.StreamCancelled);
@@ -94,7 +94,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
         try
         {
             await continuation(request, responseStream, context);
-            
+
             if (connectId.HasValue)
             {
                 CleanupConnection(connectId.Value, InterceptorConstants.Connections.CloseReasons.StreamCompleted);
@@ -120,7 +120,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
             {
                 return connectId;
             }
-            
+
             return null;
         }
         catch
@@ -140,7 +140,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
                 ConnectionsEstablished.Add(1);
                 Log.Debug("New connection tracked: {ConnectId} - Method: {Method}", 
                     connectId, method);
-                
+
                 return new ConnectionInfo
                 {
                     ConnectId = connectId,
@@ -170,7 +170,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
 
     private void UpdateConnectionActivity(uint connectId)
     {
-        if (ActiveConnections.TryGetValue(connectId, out var info))
+        if (ActiveConnections.TryGetValue(connectId, out ConnectionInfo? info))
         {
             info.LastActivity = DateTime.UtcNow;
             info.LastError = null; 
@@ -179,11 +179,11 @@ public class ConnectionMonitoringInterceptor : Interceptor
 
     private void UpdateConnectionError(uint connectId, Exception error)
     {
-        if (ActiveConnections.TryGetValue(connectId, out var info))
+        if (ActiveConnections.TryGetValue(connectId, out ConnectionInfo? info))
         {
             info.LastError = error.Message;
             info.ErrorCount++;
-            
+
             Log.Warning("Connection {ConnectId} error #{ErrorCount}: {Error}", 
                 connectId, info.ErrorCount, error.Message);
         }
@@ -191,11 +191,11 @@ public class ConnectionMonitoringInterceptor : Interceptor
 
     private void CleanupConnection(uint connectId, string reason)
     {
-        if (ActiveConnections.TryRemove(connectId, out ConnectionInfo info))
+        if (ActiveConnections.TryRemove(connectId, out ConnectionInfo? info))
         {
             ConnectionsClosed.Add(1);
             TimeSpan duration = DateTime.UtcNow - info.FirstSeen;
-            
+
             Log.Information("Connection {ConnectId} closed after {Duration:mm\\:ss} - {RequestCount} requests, {ErrorCount} errors - Reason: {Reason}", 
                 connectId, duration, info.RequestCount, info.ErrorCount, reason);
         }
@@ -208,7 +208,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
             string clientIp = context.GetHttpContext().Connection.RemoteIpAddress?.ToString() ?? InterceptorConstants.Connections.Unknown;
             string userAgent = context.GetHttpContext().Request.Headers.UserAgent.ToString();
             string combined = $"{clientIp}:{userAgent}";
-            
+
             return Math.Abs(combined.GetHashCode()).ToString("X8");
         }
         catch
@@ -221,7 +221,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
     {
         if (string.IsNullOrEmpty(userAgent) || userAgent.Length > InterceptorConstants.Limits.MaxUserAgentLength)
             return InterceptorConstants.Connections.Sanitized;
-            
+
         return userAgent.Split(' ')[0]; 
     }
 
@@ -229,7 +229,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
     {
         List<ConnectionInfo> connections = ActiveConnections.Values.ToList();
         DateTime now = DateTime.UtcNow;
-        
+
         return new ConnectionStatistics
         {
             ActiveConnectionCount = connections.Count,

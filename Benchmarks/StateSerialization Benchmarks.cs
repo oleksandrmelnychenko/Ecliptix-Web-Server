@@ -21,32 +21,29 @@ public class StateSerializationBenchmarks
     [GlobalSetup]
     public void GlobalSetup()
     {
-        // Mock logger
-        var loggerMock = new Mock<ILogger<EcliptixProtocolSystem>>();
+        Mock<ILogger<EcliptixProtocolSystem>> loggerMock = new Mock<ILogger<EcliptixProtocolSystem>>();
         _logger = loggerMock.Object;
 
-        // Create identity keys for benchmarking
-        var identityKeysResult = EcliptixSystemIdentityKeys.Create(1);
+        Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure> identityKeysResult = EcliptixSystemIdentityKeys.Create(1);
         if (identityKeysResult.IsErr)
             throw new InvalidOperationException($"Failed to create identity keys: {identityKeysResult.UnwrapErr().Message}");
 
         _identityKeys = identityKeysResult.Unwrap();
         _protocolSystem = new EcliptixProtocolSystem(_identityKeys, null, _logger);
-        
-        // Setup a session for state creation benchmarks
+
         _sessionId = 1;
-        var sessionResult = _protocolSystem.BeginDataCenterPubKeyExchange(_sessionId, Ecliptix.Protobuf.PubKeyExchange.PubKeyExchangeType.DataCenterEphemeralConnect);
+        Result<(uint, EcliptixProtocolSystem, Ecliptix.Protobuf.PubKeyExchange.PubKeyExchange), EcliptixProtocolFailure> sessionResult = _protocolSystem.BeginDataCenterPubKeyExchange(_sessionId, Ecliptix.Protobuf.PubKeyExchange.PubKeyExchangeType.DataCenterEphemeralConnect);
         if (sessionResult.IsErr)
             throw new InvalidOperationException($"Failed to setup session: {sessionResult.UnwrapErr().Message}");
-        
-        var (_, updatedSystem, _) = sessionResult.Unwrap();
+
+        (uint _, EcliptixProtocolSystem updatedSystem, Ecliptix.Protobuf.PubKeyExchange.PubKeyExchange _) = sessionResult.Unwrap();
         _protocolSystem = updatedSystem;
     }
 
     [Benchmark(Description = "Identity Keys ToProtoState (with caching)")]
     public IdentityKeysState IdentityKeysToProtoState()
     {
-        var result = _identityKeys.ToProtoState();
+        Result<IdentityKeysState, EcliptixProtocolFailure> result = _identityKeys.ToProtoState();
         if (result.IsErr)
             throw new InvalidOperationException($"ToProtoState failed: {result.UnwrapErr().Message}");
         return result.Unwrap();
@@ -55,11 +52,10 @@ public class StateSerializationBenchmarks
     [Benchmark(Description = "Identity Keys ToProtoState Repeated (tests cache hit)")]
     public IdentityKeysState IdentityKeysToProtoStateRepeated()
     {
-        // Call multiple times to test caching effectiveness
-        var result1 = _identityKeys.ToProtoState();
-        var result2 = _identityKeys.ToProtoState();
-        var result3 = _identityKeys.ToProtoState();
-        
+        Result<IdentityKeysState, EcliptixProtocolFailure> result1 = _identityKeys.ToProtoState();
+        Result<IdentityKeysState, EcliptixProtocolFailure> result2 = _identityKeys.ToProtoState();
+        Result<IdentityKeysState, EcliptixProtocolFailure> result3 = _identityKeys.ToProtoState();
+
         if (result3.IsErr)
             throw new InvalidOperationException($"ToProtoState failed: {result3.UnwrapErr().Message}");
         return result3.Unwrap();
@@ -68,13 +64,12 @@ public class StateSerializationBenchmarks
     [Benchmark(Description = "Full Session State Creation")]
     public Ecliptix.Protobuf.ProtocolState.EcliptixSessionState FullSessionStateCreation()
     {
-        // This tests the full state serialization path including all optimizations
-        var dummyOldState = new Ecliptix.Protobuf.ProtocolState.EcliptixSessionState
+        Ecliptix.Protobuf.ProtocolState.EcliptixSessionState dummyOldState = new Ecliptix.Protobuf.ProtocolState.EcliptixSessionState
         {
             ConnectId = _sessionId
         };
-        
-        var result = EcliptixProtocol.CreateStateFromSystem(dummyOldState, _protocolSystem);
+
+        Result<Ecliptix.Protobuf.ProtocolState.EcliptixSessionState, EcliptixProtocolFailure> result = EcliptixProtocol.CreateStateFromSystem(dummyOldState, _protocolSystem);
         if (result.IsErr)
             throw new InvalidOperationException($"CreateStateFromSystem failed: {result.UnwrapErr().Message}");
         return result.Unwrap();
@@ -83,13 +78,11 @@ public class StateSerializationBenchmarks
     [Benchmark(Description = "Memory Allocation Pressure Test")]
     public void MemoryAllocationPressureTest()
     {
-        // Test repeated state serialization to measure GC pressure
         for (int i = 0; i < 100; i++)
         {
-            var result = _identityKeys.ToProtoState();
+            Result<IdentityKeysState, EcliptixProtocolFailure> result = _identityKeys.ToProtoState();
             if (result.IsOk)
             {
-                // Dispose to simulate realistic usage
                 result.Unwrap();
             }
         }

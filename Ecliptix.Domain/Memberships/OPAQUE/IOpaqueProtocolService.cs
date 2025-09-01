@@ -17,7 +17,5 @@ public interface IOpaqueProtocolService
     Result<Unit, OpaqueFailure> CompleteRegistration(
         byte[] peerRegistrationRecord);
 
-
-    // Authentication Context Management (replaces session management)
     Result<AuthContextTokenResponse, OpaqueFailure> GenerateAuthenticationContext(Guid membershipId, Guid mobileNumberId);
 }

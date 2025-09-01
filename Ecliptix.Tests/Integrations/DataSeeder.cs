@@ -6,7 +6,7 @@ namespace Ecliptix.Tests.Integrations;
 public class DataSeeder
 {
     private const string DefaultGuid = "00000000-0000-0000-0000-000000000000";
-    
+
     private readonly SqlConnection _connection;
     private readonly List<Func<Task>> _actions = new();
 
@@ -49,7 +49,7 @@ public class DataSeeder
     {
         _phoneId = id;
         _phoneUniqueId = Guid.NewGuid();
-        
+
         _actions.Add(async () =>
         {
             SqlCommand cmd = new ($"""
@@ -63,7 +63,7 @@ public class DataSeeder
 
         return this;
     }
-    
+
     public DataSeeder WithAppDevice()
     {
         _deviceUniqueId = Guid.NewGuid();
@@ -78,7 +78,7 @@ public class DataSeeder
 
         return this;
     }
-    
+
     public DataSeeder WithVerificationFlow()
     {
         _verificationFlowUniqueId = Guid.NewGuid();
@@ -88,12 +88,12 @@ public class DataSeeder
                                        INSERT INTO VerificationFlows(PhoneNumberId, AppDeviceId, Status, Purpose, ExpiresAt, UniqueId)
                                        VALUES (@PhoneNumberId, @AppDeviceId, 'verified', 'registration', @ExpiresAt, @UniqueId);
                                    """, _connection);
-        
+
             cmd.Parameters.Add("@PhoneNumberId", SqlDbType.Int).Value = _phoneId;
             cmd.Parameters.Add("@AppDeviceId", SqlDbType.UniqueIdentifier).Value = _deviceUniqueId;
             cmd.Parameters.Add("@ExpiresAt", SqlDbType.DateTime2).Value = DateTime.UtcNow.AddHours(1);
             cmd.Parameters.Add("@UniqueId", SqlDbType.UniqueIdentifier).Value = _verificationFlowUniqueId;
-        
+
             await cmd.ExecuteNonQueryAsync();
         });
 
@@ -130,10 +130,10 @@ public class DataSeeder
 
         return this;
     }
-    
+
     public async Task SeedAsync()
     {
-        foreach (var action in _actions)
+        foreach (Func<Task> action in _actions)
         {
             await action();
         }

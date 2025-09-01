@@ -24,7 +24,7 @@ public static class SecureByteStringInterop
             return Result<ByteString, SodiumFailure>.Err(
                 SodiumFailure.InvalidBufferSize($"Requested length {length} exceeds handle length {source.Length}"));
 
-        var readResult = source.ReadBytes(length);
+        Result<byte[], SodiumFailure> readResult = source.ReadBytes(length);
         if (readResult.IsErr)
             return Result<ByteString, SodiumFailure>.Err(readResult.UnwrapErr());
 

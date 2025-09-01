@@ -42,20 +42,18 @@ public static class OpaqueConstants
     public const string DefaultServerIdentity = "server.ecliptix.com";
     public const string OpaqueVersion = "OPAQUE-3DH";
     public const int ProtocolOverheadBytes = 96;
-    
-    // Session and Recovery Constants
+
     public const int SessionTokenLength = 32;
     public const int RecoveryTokenLength = 16;
     public const int RecoveryCodeLength = 6;
     public const int DefaultSessionExpirationMinutes = 60;
     public const int DefaultRecoveryExpirationMinutes = 15;
-    
-    // Security Validation Constants
-    public const int MaxInputLength = 16384; // 16KB max input size
+
+    public const int MaxInputLength = 16384;
     public const int MaxPhoneNumberLength = 32;
     public const int MaxRegistrationRecordLength = 256;
     public const int MinRegistrationRecordLength = CompressedPublicKeyLength + NonceLength + HashLength;
-    
+
     public static class RfcCompliance
     {
         public const bool EnableMasking = true;
@@ -64,7 +62,7 @@ public static class OpaqueConstants
         public const bool UseMacEnvelopes = true;
         public const bool IncludeServerIdentityInTranscript = true;
     }
-    
+
     public static class ErrorMessages
     {
         public const string InvalidRegistrationRecordTooShort = "Invalid registration record: too short.";
@@ -95,7 +93,7 @@ public static class OpaqueConstants
         public const string AccountNotFound = "Account not found";
         public const string RateLimitExceeded = "Rate limit exceeded";
     }
-    
+
     public static class ProtocolIndices
     {
         public const int DhTripleCount = 3;
@@ -104,13 +102,13 @@ public static class OpaqueConstants
         public const int DhSecondOffset = 1;
         public const int DhThirdOffset = 2;
     }
-    
+
     public static class CryptographicFlags
     {
         public const bool CompressedPointEncoding = true;
         public const bool ClearOnDispose = false;
     }
-    
+
     public static class CryptographicConstants
     {
         public const string EllipticCurveName = "secp256r1";
@@ -118,7 +116,7 @@ public static class OpaqueConstants
         public const int MaxHashToPointAttempts = 255;
         public const int BigIntegerPositiveSign = 1;
     }
-    
+
     public static class HkdfInfoStrings
     {
         public static ReadOnlySpan<byte> OpaqueSalt => "OPAQUE-Salt"u8;

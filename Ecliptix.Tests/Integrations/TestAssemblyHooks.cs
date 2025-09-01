@@ -3,7 +3,7 @@ namespace Ecliptix.Tests.Integrations;
 [TestClass]
 public class TestAssemblyHooks
 {
-    public static DatabaseFixture DbFixture;
+    public static DatabaseFixture DbFixture = null!;
 
     [AssemblyInitialize]
     public static async Task AssemblyInit(TestContext context)
