@@ -25,7 +25,6 @@ using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Options;
 using Serilog;
-using Serilog.Context;
 using System.Threading.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using HealthStatus = Ecliptix.Core.Json.HealthStatus;
@@ -35,6 +34,7 @@ using Ecliptix.Core.Api.Grpc.Services.Membership;
 using Ecliptix.Core.Api.Grpc.Services.Device;
 using Ecliptix.Core.Infrastructure.DbUp;
 using Microsoft.Extensions.Primitives;
+using Serilog.Context;
 
 const string systemActorName = "EcliptixProtocolSystemActor";
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -47,20 +47,9 @@ builder.Host.UseSerilog((context, services, loggerConfig) =>
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)
         .Enrich.FromLogContext()
-        .Enrich.WithProperty("Application", "Ecliptix")
-        .Enrich.WithProperty("Environment", context.HostingEnvironment.EnvironmentName)
-        .Enrich.WithMachineName()
-        .Enrich.WithThreadId()
-        .WriteTo.Console(outputTemplate: 
-            "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} " +
-            "{Properties:j}{NewLine}{Exception}")
-        .WriteTo.File("logs/ecliptix-.log", 
-            rollingInterval: RollingInterval.Day,
-            retainedFileCountLimit: 30,
-            outputTemplate: 
-                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} " +
-                "{Properties:j}{NewLine}{Exception}");
+        .Enrich.WithProperty("Environment", context.HostingEnvironment.EnvironmentName);
 
+    
     if (!string.IsNullOrEmpty(appInsightsConnectionString))
     {
         loggerConfig.WriteTo.ApplicationInsights(
@@ -162,9 +151,9 @@ try
             }
         };
     });
-
-    DbMigrator.ApplyMaster(builder.Configuration);
-
+    
+    DbMigrator.ApplySql(builder.Configuration);
+   
     app.UseRateLimiter();
     app.UseMiddleware<SecurityMiddleware>();
     app.UseMiddleware<IpThrottlingMiddleware>();

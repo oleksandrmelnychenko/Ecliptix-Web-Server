@@ -1,44 +1,47 @@
 using DbUp;
 using DbUp.Engine;
-using DbUp.Engine.Output;
+using DbUp.Helpers;
 using Serilog;
-using ILogger = Serilog.ILogger;
 
 namespace Ecliptix.Core.Infrastructure.DbUp;
 
 public static class DbMigrator
 {
-    public static void ApplyMaster(IConfiguration configuration)
+    public static void ApplySql(IConfiguration configuration)
     {
-        UpgradeEngine upgrader = DeployChanges.To
-            .SqlDatabase(configuration.GetConnectionString("EcliptixMemberships"))
-            .WithScript("Master", File.ReadAllText(configuration.GetValue<string>("DbUp:MasterSqlPath")!))
-            .LogTo(new SerilogUpgradeLog(Log.Logger))
-            .Build();
-
-        DatabaseUpgradeResult result = upgrader.PerformUpgrade();
-
-        if (!result.Successful)
+        try
         {
-            throw new Exception("Database migration failed. See logs for details.");
+            Log.Information("[DbUp] Starting DB migration for {Database}",
+                configuration.GetConnectionString("EcliptixMemberships")?.Split(';')[0]);
+
+            string basePath = AppContext.BaseDirectory;
+            string path = Path.Combine(basePath, "PersistorScripts", "old_scripts");
+
+            if (!Directory.Exists(path))
+            {
+                Log.Warning("[DbUp] Script folder not found: {Path}", path);
+                Log.Fatal("[DbUp] Migration scripts directory not found. Application cannot start.");
+                Environment.Exit(1);
+            }
+
+            var upgrader = DeployChanges.To
+                .SqlDatabase(configuration.GetConnectionString("EcliptixMemberships")!)
+                .WithScriptsFromFileSystem(path)
+                .JournalTo(new NullJournal())
+                .Build();
+
+            DatabaseUpgradeResult result = upgrader.PerformUpgrade();
+
+            if (!result.Successful)
+            {
+                Log.Fatal(result.Error, "[DbUp] Database migration failed. Application cannot start.");
+                Environment.Exit(1);
+            }
         }
-    }
-}
-
-public class SerilogUpgradeLog(ILogger logger) : IUpgradeLog
-{
-    public void WriteInformation(string format, params object[] args)
-    {
-        logger.Information(format, args);
-    }
-
-    public void WriteError(string format, params object[] args)
-    {
-        logger.Error(format, args);
-    }
-
-    public void WriteWarning(string format, params object[] args)
-    {
-        logger.Warning(format, args);
+        catch (Exception ex)
+        {
+            Log.Fatal(ex, "[DbUp] Unexpected error during database migration. Application cannot start.");
+            Environment.Exit(1);
+        }
     }
 }
