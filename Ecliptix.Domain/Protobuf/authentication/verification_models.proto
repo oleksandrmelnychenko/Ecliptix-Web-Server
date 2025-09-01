@@ -37,7 +37,7 @@ message InitiateVerificationResponse {
 }
 
 message VerificationCountdownUpdate {
-  uint64 seconds_remaining = 1;
+  uint32 seconds_remaining = 1;
   bytes session_identifier = 2;
   bool already_verified = 3;
 
