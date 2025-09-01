@@ -21,7 +21,6 @@ Created: 2024-08-24
 */
 
 USE [memberships];
-GO
 
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -34,16 +33,20 @@ PRINT '=========================================================================
 
 -- Log deployment start
 DECLARE @DeploymentId UNIQUEIDENTIFIER = (
-    SELECT TOP 1 DeploymentId 
+    SELECT TOP 1 DeploymentId
     FROM dbo.DeploymentLog 
     WHERE Status = 'COMPLETED' 
     ORDER BY CreatedAt DESC
 );
 
+DECLARE @LogId BIGINT;
+DECLARE @LogIdTable TABLE (Id BIGINT);
+
 INSERT INTO dbo.DeploymentLog (DeploymentId, ScriptName, ExecutionOrder, Status)
+OUTPUT INSERTED.Id INTO @LogIdTable
 VALUES (@DeploymentId, '03_ValidationFramework.sql', 3, 'RUNNING');
 
-DECLARE @LogId BIGINT = SCOPE_IDENTITY();
+SELECT TOP 1 @LogId = Id FROM @LogIdTable;
 
 BEGIN TRY
     BEGIN TRANSACTION;
@@ -304,7 +307,7 @@ BEGIN TRY
     -- Drop existing if exists
     IF OBJECT_ID('dbo.ValidateBusinessRules', 'P') IS NOT NULL 
         DROP PROCEDURE dbo.ValidateBusinessRules;
-    
+
     -- Business rule validation procedure
     EXEC ('
     CREATE PROCEDURE dbo.ValidateBusinessRules
@@ -343,13 +346,13 @@ BEGIN TRY
             BEGIN
                 DECLARE @RecentFlows INT;
                 DECLARE @MaxFlowsPerHour INT = CAST(dbo.GetConfigValue(''RateLimit.MaxFlowsPerHour'') AS INT);
-                
+
                 SELECT @RecentFlows = COUNT(*)
                 FROM dbo.VerificationFlows vf
-                INNER JOIN dbo.PhoneNumbers pn ON vf.PhoneNumberId = pn.PhoneNumberId
+                INNER JOIN dbo.PhoneNumbers pn ON vf.PhoneNumberId = pn.Id
                 WHERE pn.PhoneNumber = @EntityData
                   AND vf.CreatedAt >= DATEADD(HOUR, -1, GETUTCDATE());
-                
+
                 IF @RecentFlows >= @MaxFlowsPerHour
                 BEGIN
                     INSERT INTO @ErrorList VALUES (''Too many verification attempts. Please try again later.'');
@@ -377,29 +380,6 @@ BEGIN TRY
             BEGIN
                 INSERT INTO @ErrorList VALUES (''Invalid device ID format'');
                 SET @IsValid = 0;
-            END
-            
-            -- Check for suspicious patterns
-            IF @ValidationContext = ''MEMBERSHIP_CREATE''
-            BEGIN
-                DECLARE @SuspiciousThreshold INT = CAST(dbo.GetConfigValue(''Membership.SuspiciousActivityThreshold'') AS INT);
-                DECLARE @UniqueIPs INT;
-                
-                SELECT @UniqueIPs = COUNT(DISTINCT IpAddress)
-                FROM dbo.Memberships m
-                INNER JOIN dbo.PhoneNumbers pn ON m.PhoneNumberId = pn.PhoneNumberId
-                WHERE pn.PhoneNumber = @PhoneNumber
-                  AND m.CreatedAt >= DATEADD(HOUR, -24, GETUTCDATE());
-                
-                IF @UniqueIPs > @SuspiciousThreshold
-                BEGIN
-                    INSERT INTO @ErrorList VALUES (''Suspicious activity detected: multiple IP addresses'');
-                    -- Don''t set @IsValid = 0 here, just log for review
-                    EXEC dbo.LogAuditEvent 
-                        @EventType = ''SUSPICIOUS_ACTIVITY'',
-                        @Details = ''Multiple IP addresses detected for phone number'',
-                        @AdditionalData = @EntityData;
-                END
             END
         END
         
@@ -486,7 +466,7 @@ BEGIN CATCH
         EndTime = GETUTCDATE(), 
         ErrorMessage = ERROR_MESSAGE()
     WHERE Id = @LogId;
-    
+
     -- Re-throw the error
     PRINT 'ERROR in Layer 1.3: ' + ERROR_MESSAGE();
     THROW;
