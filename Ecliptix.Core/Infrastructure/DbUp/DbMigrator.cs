@@ -10,11 +10,14 @@ public static class DbMigrator
 {
     public static void ApplyMaster(IConfiguration configuration)
     {
-        string masterSqlPath = configuration.GetValue<string>("DbUp:MasterSqlPath")!;
+        string configuredPath = configuration.GetValue<string>("DbUp:MasterSqlPath")!;
+        string masterSqlPath = ResolveMasterSqlPath(configuredPath);
         string expandedSql = ExpandSqlIncludeFiles(masterSqlPath);
 
+        string sqlConnectionString = configuration.GetConnectionString("EcliptixMemberships")!;
+        
         UpgradeEngine upgrader = DeployChanges.To
-            .SqlDatabase(configuration.GetConnectionString("EcliptixMemberships"))
+            .SqlDatabase(sqlConnectionString)
             .WithScript("Master", expandedSql)
             .LogTo(new SerilogUpgradeLog(Log.Logger))
             .Build();
@@ -27,32 +30,58 @@ public static class DbMigrator
         }
     }
 
+    private static string ResolveMasterSqlPath(string configuredPath)
+    {
+        if (Path.IsPathRooted(configuredPath) && File.Exists(configuredPath))
+        {
+            return configuredPath;
+        }
+
+        string baseDirectoryPath = Path.Combine(AppContext.BaseDirectory, configuredPath);
+        if (File.Exists(baseDirectoryPath))
+        {
+            return baseDirectoryPath;
+        }
+
+        string sourceDirectoryPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Ecliptix.Domain",
+            "PersistorScripts", "MasterDeployment.sql");
+        sourceDirectoryPath = Path.GetFullPath(sourceDirectoryPath);
+        if (File.Exists(sourceDirectoryPath))
+        {
+            return sourceDirectoryPath;
+        }
+
+        throw new FileNotFoundException($"Could not find MasterDeployment.sql. Searched paths:\n" +
+                                        $"1. {configuredPath} (configured path)\n" +
+                                        $"2. {baseDirectoryPath} (AppContext.BaseDirectory + configured path)\n" +
+                                        $"3. {sourceDirectoryPath} (source directory fallback)");
+    }
+
     private static string ExpandSqlIncludeFiles(string masterSqlPath)
     {
         string masterDirectory = Path.GetDirectoryName(masterSqlPath)!;
         string masterContent = File.ReadAllText(masterSqlPath);
-        
-        // Replace all :r commands with actual file content
+
         string result = System.Text.RegularExpressions.Regex.Replace(
-            masterContent, 
+            masterContent,
             @"^\s*:r\s+(.+)\s*$",
-            match => {
+            match =>
+            {
                 string relativePath = match.Groups[1].Value.Trim();
                 string fullPath = Path.Combine(masterDirectory, relativePath);
-                
+
                 if (!File.Exists(fullPath))
                 {
                     throw new FileNotFoundException($"SQL include file not found: {fullPath}");
                 }
-                
+
                 string includeContent = File.ReadAllText(fullPath);
-                
-                // Add a comment indicating the source file
+
                 return $"-- BEGIN: {relativePath}\n{includeContent}\n-- END: {relativePath}";
             },
             System.Text.RegularExpressions.RegexOptions.Multiline
         );
-        
+
         return result;
     }
 }
