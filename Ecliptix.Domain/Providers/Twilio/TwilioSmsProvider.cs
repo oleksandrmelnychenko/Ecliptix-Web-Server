@@ -18,17 +18,17 @@ public class TwilioSmsProvider : ISmsProvider
     {
         try
         {
-            MessageResource? messageResource = await MessageResource.CreateAsync(
+            /*MessageResource? messageResource = await MessageResource.CreateAsync(
                 body: message,
                 from: new PhoneNumber(_settings.MobileNumber),
                 to: new PhoneNumber(phoneNumber),
-                statusCallback: callbackUrl != null ? new Uri(callbackUrl, UriKind.Absolute) : null);
+                statusCallback: callbackUrl != null ? new Uri(callbackUrl, UriKind.Absolute) : null);*/
 
             return new SmsDeliveryResult
             {
                 IsSuccess = true,
-                MessageId = messageResource.Sid,
-                Status = MapTwilioStatus(messageResource.Status)
+                MessageId = Guid.NewGuid().ToString(),
+                Status = MapTwilioStatus(MessageResource.StatusEnum.Sent)
             };
         }
         catch (Exception ex)

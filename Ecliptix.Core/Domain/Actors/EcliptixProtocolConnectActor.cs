@@ -349,11 +349,11 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
         EcliptixSystemIdentityKeys identityKeys = EcliptixSystemIdentityKeys.Create(10).Unwrap();
 
-        RatchetConfig config = GetRatchetConfigForExchangeType(exchangeType);
-        EcliptixProtocolSystem system = new(identityKeys, config);
+        RatchetConfig ratchetConfig = GetRatchetConfigForExchangeType(exchangeType);
+        EcliptixProtocolSystem system = new(identityKeys, ratchetConfig);
 
         Context.GetLogger().Info("[ACTOR] Created protocol with DH interval {0} for type {1}",
-            config.DhRatchetEveryNMessages, exchangeType);
+            ratchetConfig.DhRatchetEveryNMessages, exchangeType);
         Result<PubKeyExchange, EcliptixProtocolFailure> replyResult =
             system.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.PubKeyExchange);
 

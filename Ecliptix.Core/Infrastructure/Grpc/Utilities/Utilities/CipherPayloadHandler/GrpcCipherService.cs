@@ -14,23 +14,26 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
 {
     private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
 
-    private static PubKeyExchangeType DetermineExchangeType(ServerCallContext context)
+    private static PubKeyExchangeType GetExchangeTypeFromMetadata(ServerCallContext context)
     {
-        string methodName = context.Method;
-
-        return methodName switch
+        string connectionContextId = GrpcMetadataHandler.GetConnectionContextId(context.RequestHeaders);
+        
+        if (Enum.TryParse(connectionContextId, true, out PubKeyExchangeType exchangeType) && 
+            Enum.IsDefined(exchangeType))
         {
-            string method when method.Contains("InitiateVerification") => PubKeyExchangeType.ServerStreaming,
-            string method when method.Contains("VerifyOtp") => PubKeyExchangeType.ServerStreaming,
-
-            _ => PubKeyExchangeType.DataCenterEphemeralConnect
-        };
+            return exchangeType;
+        }
+        
+        // Fallback to default if metadata is invalid
+        return PubKeyExchangeType.DataCenterEphemeralConnect;
     }
+
 
     public async Task<Result<CipherPayload, FailureBase>> EncryptPayload(byte[] payload, uint connectId,
         ServerCallContext context)
     {
-        PubKeyExchangeType exchangeType = DetermineExchangeType(context);
+        // Get exchange type from metadata that was already used to compute connectId
+        PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
         EncryptPayloadActorEvent encryptCommand = new(exchangeType, payload);
 
         ForwardToConnectActorEvent encryptForwarder = new(connectId, encryptCommand);
@@ -50,7 +53,8 @@ public class GrpcCipherService<T>(IEcliptixActorRegistry actorRegistry) : IGrpcC
     public async Task<Result<byte[], FailureBase>> DecryptPayload(CipherPayload request, uint connectId,
         ServerCallContext context)
     {
-        PubKeyExchangeType exchangeType = DetermineExchangeType(context);
+        // Get exchange type from metadata that was already used to compute connectId
+        PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
         DecryptCipherPayloadActorEvent decryptEvent = new(exchangeType, request);
 
         ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptEvent);
