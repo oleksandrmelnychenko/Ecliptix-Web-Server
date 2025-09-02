@@ -198,30 +198,39 @@ public class VerificationFlowServices(
         ServerCallContext context)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
-        await foreach (Result<VerificationCountdownUpdate, VerificationFlowFailure> updateResult in reader.ReadAllAsync(context.CancellationToken))
+        
+        try
         {
-            CipherPayload payload;
+            await foreach (Result<VerificationCountdownUpdate, VerificationFlowFailure> updateResult in reader.ReadAllAsync(context.CancellationToken))
+            {
+                CipherPayload payload;
 
-            if (updateResult.IsErr)
-            {
-                payload = await grpcCipherService.CreateFailureResponse(updateResult.UnwrapErr(), connectId, context);
-            }
-            else
-            {
-                Result<CipherPayload, FailureBase> encryptResult =
-                    await grpcCipherService.EncryptPayload(updateResult.Unwrap().ToByteArray(), connectId, context);
-                if (encryptResult.IsErr)
+                if (updateResult.IsErr)
                 {
-                    payload = await grpcCipherService.CreateFailureResponse(encryptResult.UnwrapErr(), connectId,
-                        context);
+                    payload = await grpcCipherService.CreateFailureResponse(updateResult.UnwrapErr(), connectId, context);
                 }
                 else
                 {
-                    payload = encryptResult.Unwrap();
+                    Result<CipherPayload, FailureBase> encryptResult =
+                        await grpcCipherService.EncryptPayload(updateResult.Unwrap().ToByteArray(), connectId, context);
+                    if (encryptResult.IsErr)
+                    {
+                        payload = await grpcCipherService.CreateFailureResponse(encryptResult.UnwrapErr(), connectId,
+                            context);
+                    }
+                    else
+                    {
+                        payload = encryptResult.Unwrap();
+                    }
                 }
-            }
 
-            await responseStream.WriteAsync(payload);
+                await responseStream.WriteAsync(payload);
+            }
+        }
+        catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
+        {
+            // Client disconnected - this is normal behavior during streaming
+            Log.Debug("Client disconnected during streaming for ConnectId {ConnectId}", connectId);
         }
     }
 
