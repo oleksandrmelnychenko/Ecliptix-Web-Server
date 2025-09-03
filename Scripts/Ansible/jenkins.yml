@@ -1,0 +1,46 @@
+- hosts: jenkins
+  become: true
+  vars_files: 
+    - group_vars/all.yml
+
+  tasks:
+    - name: Install Java
+      yum:
+        name: java-17-amazon-coretto
+        state: present
+        
+    - name : Add Jenkins repo
+      get_url:
+        url: https://pkg.jenkins.io/redhat-stable/jenkins-repo
+        dest: /etc/yum.repos.d/jenkins.repo
+
+    - name: Import Jenkins key
+      rpm_key:
+        key: https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+        state: present
+
+    - name: Install Jenkins and tools
+      yum:
+        name:
+          - jenkins
+          - docker
+          - awscli
+          - git
+        state: present
+
+    - name: Start and enable services
+      systemd: 
+        name: "{{ item }}"
+        enable: true
+        state: started
+      loop:
+        - docker
+        - jenkins
+        
+    - name: Install Jenkins plugins
+      command: > 
+        java -jar /var/lib/jenkins/jenkins-cli.jar
+        -s http://localhost:8080/
+        install-plugin git workflow-aggregator github github-branch-source
+      ignore_errors: true        
+        

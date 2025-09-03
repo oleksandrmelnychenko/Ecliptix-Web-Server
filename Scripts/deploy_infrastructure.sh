@@ -1,5 +1,7 @@
 #!/bin/sh
 
 cd Terraform
+terraform apply -auto-approve
 
-terraform apply
+cd ../
+ansible-playbook -i Ansible/inventory.ini Ansible/jenkins.yml

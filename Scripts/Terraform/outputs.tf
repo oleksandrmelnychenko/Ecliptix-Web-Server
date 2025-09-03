@@ -27,13 +27,3 @@ output "ecs_cluster" {
 output "ecs_memberships_service" {
   value = aws_ecs_service.memberships.name
 } 
-
-# --- Files ---
-
-resource "local_file" "ansible_invertory" {
-  content = <<EOT
-[jenkins]
-${aws_instance.ecliptix_control.public_ip} ansible_user=ubuntu ansible_ssh_private_key_file=~./ssh/ecliptix-control-key.pem
-EOT
-  filename = "${path.module}/inventory.ini"
-}

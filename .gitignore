@@ -15,7 +15,7 @@ logs/
 .terraform/
 
 #Ansible
-Scripts/Terraform/inventory.ini
+Scripts/Ansible/inventory.ini
 
 # User-specific files
 *.rsuser
