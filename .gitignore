@@ -14,6 +14,9 @@ logs/
 *.tfstate.backup
 .terraform/
 
+#Ansible
+Scripts/Terraform/inventory.ini
+
 # User-specific files
 *.rsuser
 *.suo
