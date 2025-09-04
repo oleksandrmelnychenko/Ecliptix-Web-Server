@@ -180,7 +180,7 @@ public class VerificationFlowServices(
         await _baseService.ExecuteEncryptedOperationAsync<VerifyCodeRequest, VerifyCodeResponse>(request, context,
             async (message, connectId, ct) =>
             {
-                VerifyFlowActorEvent actorEvent = new(connectId, message.Code, _cultureName);
+                VerifyFlowActorEvent actorEvent = new(message.StreamConnectId, message.Code, _cultureName);
 
                 Result<VerifyCodeResponse, VerificationFlowFailure> verificationResult =
                     await _verificationFlowManagerActor
