@@ -57,6 +57,7 @@ message VerifyCodeRequest {
   bytes app_device_identifier = 1;
   string code = 2;
   VerificationPurpose purpose = 3;
+  uint32 stream_connect_id = 4;
 }
 
 message VerifyCodeResponse {
