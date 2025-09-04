@@ -1,0 +1,61 @@
+- hosts: jenkins
+  become: true
+
+  tasks:
+    - name: Install Nginx and Certbot
+      apt:
+        name: 
+          - nginx
+          - python3-certbot-nginx
+        state: present
+        update_cache: yes
+
+    - name: Configure nginx reverse proxy
+      copy:
+        dest: /etc/nginx/sites-available/jenkins
+        content: |
+          server {
+            listen 80;
+            server_name jenkins.ecliptix.online;
+
+            location / {
+              proxy_pass http://127.0.0.1:10001;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+            }
+          }
+      notify: Reload nginx
+
+    - name: Enable nginx site
+      file:
+        src: /etc/nginx/sites-available/jenkins
+        dest: /etc/nginx/sites-enabled/jenkins
+        state: link
+        force: true
+      notify: Reload nginx
+
+    - name: Reload default nginx site
+      file: 
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Reload nginx
+
+    - name: Reload nginx
+      systemd:
+        name: nginx
+        state: restarted
+        enabled: true
+
+    - name: Obtain Lets Encrypt SSL certificate
+      command: certbot --nginx -d jenkins.ecliptix.online --non-interactive --agree-tos -m admin@ecliptix.online
+      args:
+        creates: /etc/letsencrypt/live/jenkins.ecliptix.online/fullchain.pem
+
+  handlers:
+    - name: Reload nginx
+      systemd:
+        name: nginx
+        state: resrarted
+        enabled: true 

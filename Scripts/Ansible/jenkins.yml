@@ -1,7 +1,10 @@
 - hosts: jenkins
   become: true
-  vars_files: 
-    - group_vars/all.yml
+
+  vars_prompt:
+    - name: jenkins_admin_password
+      prompt: "Enter Jenkins admin password"
+      private: yes   # приховує введений пароль
 
   tasks:
     - name: Install dependencies
@@ -15,30 +18,103 @@
         update_cache: yes
 
     - name: Add Jenkins key
-      ansible.builtin.shell: |
-        curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key | sudo tee \
+      shell: |
+        curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key | tee \
         /usr/share/keyrings/jenkins-keyring.asc > /dev/null
 
     - name: Add Jenkins apt repo
-      ansible.builtin.apt_repository:
+      apt_repository:
         repo: "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian binary/"
         state: present
         filename: jenkins
 
-    - name: Install Jenkins and tools
+    - name: Install Jenkins
       apt:
-        name:
-          - jenkins
-          - docker.io
-          - git
+        name: jenkins
         state: present
-        update_cache: yes
 
-    - name: Start and enable services
-      systemd: 
-        name: "{{ item }}"
-        enabled: true
+    - name: Ensure systemd override directory exists
+      file:
+        path: /etc/systemd/system/jenkins.service.d
+        state: directory
+
+    - name: Override Jenkins port to 10001
+      copy:
+        dest: /etc/systemd/system/jenkins.service.d/override.conf
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart=/usr/bin/java -Djava.awt.headless=true -jar /usr/share/java/jenkins.war --webroot=/var/cache/jenkins/war --httpPort=10001
+      notify: Reload systemd and restart Jenkins
+
+    - name: Ensure Jenkins service is enabled and started
+      systemd:
+        name: jenkins
         state: started
-      loop:
-        - docker
-        - jenkins
+        enabled: true
+
+    - name: Wait for Jenkins to be up on port 10001
+      wait_for:
+        host: localhost
+        port: 10001
+        delay: 5
+        timeout: 60
+        state: started
+
+    - name: Download Jenkins CLI if missing
+      shell: |
+        if [ ! -f /var/lib/jenkins/jenkins-cli.jar ]; then
+          curl -sSL http://localhost:10001/jnlpJars/jenkins-cli.jar -o /var/lib/jenkins/jenkins-cli.jar
+        fi
+      args:
+        creates: /var/lib/jenkins/jenkins-cli.jar
+
+    - name: Read initial admin password
+      slurp:
+        src: /var/lib/jenkins/secrets/initialAdminPassword
+      register: init_pass
+
+    - name: Ensure init.groovy.d exists
+      file:
+        path: /var/lib/jenkins/init.groovy.d
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: '0755'
+
+    - name: Create Jenkins admin user via init.groovy
+      copy:
+        dest: /var/lib/jenkins/init.groovy.d/01-create-admin.groovy
+        content: |
+          import jenkins.model.*
+          import hudson.security.*
+          
+          def instance = Jenkins.getInstance()
+          if (instance.getSecurityRealm() instanceof HudsonPrivateSecurityRealm) {
+              println "--> Security already set up, skipping"
+          } else {
+              def hudsonRealm = new HudsonPrivateSecurityRealm(false)
+              hudsonRealm.createAccount("admin", "{{ jenkins_admin_password }}")
+              instance.setSecurityRealm(hudsonRealm)
+              def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
+              strategy.setAllowAnonymousRead(false)
+              instance.setAuthorizationStrategy(strategy)
+              instance.save()
+              println "--> Admin user created"
+          }
+        owner: jenkins
+        group: jenkins
+        mode: '0644'
+    
+    - name: Install basic Jenkins plugins
+      shell: |
+        java -jar /var/lib/jenkins/jenkins-cli.jar -s http://localhost:10001 -auth admin:{{ jenkins_admin_password }} install-plugin git workflow-aggregator github github-branch-source -restart
+      args:
+        executable: /bin/bash
+
+  handlers:
+    - name: Reload systemd and restart Jenkins
+      shell: |
+        systemctl daemon-reexec
+        systemctl daemon-reload
+        systemctl restart jenkins
