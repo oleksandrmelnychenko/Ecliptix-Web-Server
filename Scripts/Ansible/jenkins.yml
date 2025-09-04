@@ -4,43 +4,41 @@
     - group_vars/all.yml
 
   tasks:
-    - name: Install Java
-      yum:
-        name: java-17-amazon-coretto
+    - name: Install dependencies
+      apt:
+        name:
+          - fontconfig
+          - openjdk-17-jdk
+          - gnupg
+          - curl
         state: present
-        
-    - name : Add Jenkins repo
-      get_url:
-        url: https://pkg.jenkins.io/redhat-stable/jenkins-repo
-        dest: /etc/yum.repos.d/jenkins.repo
+        update_cache: yes
 
-    - name: Import Jenkins key
-      rpm_key:
-        key: https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+    - name: Add Jenkins key
+      ansible.builtin.shell: |
+        curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key | sudo tee \
+        /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+
+    - name: Add Jenkins apt repo
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian binary/"
         state: present
+        filename: jenkins
 
     - name: Install Jenkins and tools
-      yum:
+      apt:
         name:
           - jenkins
-          - docker
-          - awscli
+          - docker.io
           - git
         state: present
+        update_cache: yes
 
     - name: Start and enable services
       systemd: 
         name: "{{ item }}"
-        enable: true
+        enabled: true
         state: started
       loop:
         - docker
         - jenkins
-        
-    - name: Install Jenkins plugins
-      command: > 
-        java -jar /var/lib/jenkins/jenkins-cli.jar
-        -s http://localhost:8080/
-        install-plugin git workflow-aggregator github github-branch-source
-      ignore_errors: true        
-        
