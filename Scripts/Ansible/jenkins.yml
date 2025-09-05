@@ -4,7 +4,7 @@
   vars_prompt:
     - name: jenkins_admin_password
       prompt: "Enter Jenkins admin password"
-      private: yes   # приховує введений пароль
+      private: yes
 
   tasks:
     - name: Install dependencies
@@ -19,8 +19,7 @@
 
     - name: Add Jenkins key
       shell: |
-        curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key | tee \
-        /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+        curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key | tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
 
     - name: Add Jenkins apt repo
       apt_repository:
@@ -58,23 +57,10 @@
         host: localhost
         port: 10001
         delay: 5
-        timeout: 60
+        timeout: 120
         state: started
 
-    - name: Download Jenkins CLI if missing
-      shell: |
-        if [ ! -f /var/lib/jenkins/jenkins-cli.jar ]; then
-          curl -sSL http://localhost:10001/jnlpJars/jenkins-cli.jar -o /var/lib/jenkins/jenkins-cli.jar
-        fi
-      args:
-        creates: /var/lib/jenkins/jenkins-cli.jar
-
-    - name: Read initial admin password
-      slurp:
-        src: /var/lib/jenkins/secrets/initialAdminPassword
-      register: init_pass
-
-    - name: Ensure init.groovy.d exists
+    - name: Ensure init.groovy.d directory exists
       file:
         path: /var/lib/jenkins/init.groovy.d
         state: directory
@@ -82,39 +68,44 @@
         group: jenkins
         mode: '0755'
 
-    - name: Create Jenkins admin user via init.groovy
+    - name: Create Groovy init script for Jenkins admin and plugins
       copy:
-        dest: /var/lib/jenkins/init.groovy.d/01-create-admin.groovy
-        content: |
-          import jenkins.model.*
-          import hudson.security.*
-          
-          def instance = Jenkins.getInstance()
-          if (instance.getSecurityRealm() instanceof HudsonPrivateSecurityRealm) {
-              println "--> Security already set up, skipping"
-          } else {
-              def hudsonRealm = new HudsonPrivateSecurityRealm(false)
-              hudsonRealm.createAccount("admin", "{{ jenkins_admin_password }}")
-              instance.setSecurityRealm(hudsonRealm)
-              def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
-              strategy.setAllowAnonymousRead(false)
-              instance.setAuthorizationStrategy(strategy)
-              instance.save()
-              println "--> Admin user created"
-          }
+        dest: /var/lib/jenkins/init.groovy.d/init-admin.groovy
         owner: jenkins
         group: jenkins
         mode: '0644'
-    
-    - name: Install basic Jenkins plugins
-      shell: |
-        java -jar /var/lib/jenkins/jenkins-cli.jar -s http://localhost:10001 -auth admin:{{ jenkins_admin_password }} install-plugin git workflow-aggregator github github-branch-source -restart
-      args:
-        executable: /bin/bash
+        content: |
+          import jenkins.model.*
+          import hudson.security.*
+
+          def instance = Jenkins.getInstance()
+
+          // Create admin user if missing
+          def hudsonRealm = new HudsonPrivateSecurityRealm(false)
+          if (hudsonRealm.getAllUsers().find { it.getId() == "admin" } == null) {
+              hudsonRealm.createAccount("admin", "{{ jenkins_admin_password }}")
+          }
+          instance.setSecurityRealm(hudsonRealm)
+
+          // Set authorization strategy
+          def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
+          strategy.setAllowAnonymousRead(false)
+          instance.setAuthorizationStrategy(strategy)
+
+          // Install basic plugins
+          def pluginManager = instance.getPluginManager()
+          def updateCenter = instance.getUpdateCenter()
+          ["git","workflow-aggregator","github","github-branch-source"].each { plugin ->
+              if (!pluginManager.getPlugin(plugin)) {
+                  def installFuture = updateCenter.getPlugin(plugin).deploy()
+                  installFuture.get()
+              }
+          }
+
+          instance.save()
 
   handlers:
-    - name: Reload systemd and restart Jenkins
-      shell: |
-        systemctl daemon-reexec
-        systemctl daemon-reload
-        systemctl restart jenkins
+    - name: Reload nginx
+      systemd:
+        name: nginx
+        state: reloaded
