@@ -26,6 +26,7 @@
       apt:
         name: jenkins
         state: present
+        update_cache: yes
 
     - name: Ensure systemd override directory exists
       file:
@@ -72,6 +73,7 @@
         content: |
           import jenkins.model.*
           import hudson.security.*
+          import jenkins.install.InstallState
 
           def instance = Jenkins.getInstance()
 
@@ -97,10 +99,14 @@
               }
           }
 
+          // Mark initial setup as complete
+          Jenkins.instance.setInstallState(InstallState.INITIAL_SETUP_COMPLETED)
+
           instance.save()
 
   handlers:
-    - name: Reload nginx
+    - name: Reload systemd and restart Jenkins
       systemd:
-        name: nginx
-        state: reloaded
+        name: jenkins
+        daemon_reload: yes
+        state: restarted

@@ -9,12 +9,15 @@
 # Application logs
 logs/
 
-#Terraform
+# Infrastructure as code logs
+Scripts/Infratructure/Logs/
+
+# Terraform
 *.tfstate
 *.tfstate.backup
 .terraform/
 
-#Ansible
+# Ansible
 inventory.ini
 
 # User-specific files
