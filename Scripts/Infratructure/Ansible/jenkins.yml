@@ -40,7 +40,6 @@
           [Service]
           ExecStart=
           ExecStart=/usr/bin/java -Djava.awt.headless=true -jar /usr/share/java/jenkins.war --webroot=/var/cache/jenkins/war --httpPort={{ env_vars.JENKINS_PORT }}
-      notify: Reload systemd and restart Jenkins
 
     - name: Ensure Jenkins service is enabled and started
       systemd:
@@ -74,35 +73,25 @@
           import jenkins.model.*
           import hudson.security.*
           import jenkins.install.InstallState
-
-          def instance = Jenkins.getInstance()
-
-          // Create admin user if missing
+          
+          def instance = Jenkins.get()
           def hudsonRealm = new HudsonPrivateSecurityRealm(false)
-          if (hudsonRealm.getAllUsers().find { it.getId() == "{{ env_vars.JENKINS_USER }}" } == null) {
-              hudsonRealm.createAccount("{{ env_vars.JENKINS_USER }}", "{{ env_vars.JENKINS_PASS }}")
+          
+          def existingUser = hudsonRealm.getUser("{{ env_vars.JENKINS_USER }}")
+          if (existingUser == null) {
+            hudsonRealm.createAccount("{{ env_vars.JENKINS_USER }}", "{{ env_vars.JENKINS_PASS }}")
+          } else {
+            existingUser.setPassword("{{ env_vars.JENKINS_PASS }}")
           }
+          
           instance.setSecurityRealm(hudsonRealm)
-
-          // Set authorization strategy
           def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
           strategy.setAllowAnonymousRead(false)
           instance.setAuthorizationStrategy(strategy)
-
-          // Install basic plugins
-          def pluginManager = instance.getPluginManager()
-          def updateCenter = instance.getUpdateCenter()
-          ["git","workflow-aggregator","github","github-branch-source"].each { plugin ->
-              if (!pluginManager.getPlugin(plugin)) {
-                  def installFuture = updateCenter.getPlugin(plugin).deploy()
-                  installFuture.get()
-              }
-          }
-
-          // Mark initial setup as complete
-          Jenkins.instance.setInstallState(InstallState.INITIAL_SETUP_COMPLETED)
-
+          
+          instance.setInstallState(InstallState.INITIAL_SETUP_COMPLETED)
           instance.save()
+      notify: Reload systemd and restart Jenkins
 
   handlers:
     - name: Reload systemd and restart Jenkins
