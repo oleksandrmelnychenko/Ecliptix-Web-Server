@@ -1,11 +1,6 @@
 - hosts: jenkins
   become: true
 
-  vars_prompt:
-    - name: jenkins_admin_password
-      prompt: "Enter Jenkins admin password"
-      private: yes
-
   tasks:
     - name: Install dependencies
       apt:
@@ -37,13 +32,13 @@
         path: /etc/systemd/system/jenkins.service.d
         state: directory
 
-    - name: Override Jenkins port to 10001
+    - name: Override Jenkins port
       copy:
         dest: /etc/systemd/system/jenkins.service.d/override.conf
         content: |
           [Service]
           ExecStart=
-          ExecStart=/usr/bin/java -Djava.awt.headless=true -jar /usr/share/java/jenkins.war --webroot=/var/cache/jenkins/war --httpPort=10001
+          ExecStart=/usr/bin/java -Djava.awt.headless=true -jar /usr/share/java/jenkins.war --webroot=/var/cache/jenkins/war --httpPort={{ env_vars.JENKINS_PORT }}
       notify: Reload systemd and restart Jenkins
 
     - name: Ensure Jenkins service is enabled and started
@@ -52,10 +47,10 @@
         state: started
         enabled: true
 
-    - name: Wait for Jenkins to be up on port 10001
+    - name: Wait for Jenkins to be up on port {{ env_vars.JENKINS_PORT }}
       wait_for:
         host: localhost
-        port: 10001
+        port: "{{ env_vars.JENKINS_PORT }}"
         delay: 5
         timeout: 120
         state: started
@@ -82,8 +77,8 @@
 
           // Create admin user if missing
           def hudsonRealm = new HudsonPrivateSecurityRealm(false)
-          if (hudsonRealm.getAllUsers().find { it.getId() == "admin" } == null) {
-              hudsonRealm.createAccount("admin", "{{ jenkins_admin_password }}")
+          if (hudsonRealm.getAllUsers().find { it.getId() == "{{ env_vars.JENKINS_USER }}" } == null) {
+              hudsonRealm.createAccount("{{ env_vars.JENKINS_USER }}", "{{ env_vars.JENKINS_PASS }}")
           }
           instance.setSecurityRealm(hudsonRealm)
 

@@ -1,0 +1,28 @@
+- name: Load env vars
+  hosts: all
+  gather_facts: false
+  tasks:
+
+    - name: Read .env file on localhost
+      slurp:
+        src: "{{ playbook_dir }}/../.env"
+      register: env_file_raw
+      delegate_to: localhost
+      run_once: true
+
+    - name: Parse .env into dict
+      set_fact:
+        env_vars: >-
+          {{
+            dict(
+              (env_file_raw.content | b64decode).splitlines()
+              | select('match', '^[A-Za-z_][A-Za-z0-9_]*=.*')
+              | map('split', '=', 1)
+            )
+          }}
+      run_once: true
+
+    - name: Debug env vars
+      debug:
+        msg: "Env vars loaded: {{ env_vars }}"
+      run_once: true
