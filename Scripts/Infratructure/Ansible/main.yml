@@ -1,3 +1,4 @@
 - import_playbook: import_env_vars.yml
 - import_playbook: jenkins.yml
+- import_playbook: jenkins_creds.yml
 - import_playbook: nginx.yml

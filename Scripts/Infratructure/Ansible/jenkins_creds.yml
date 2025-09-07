@@ -1,0 +1,76 @@
+- name: Install credentials into Jenkins from .env 
+  hosts: jenkins
+  gather_facts: false
+  tasks:
+    - name: Distribute env vars to Jenkins hosts
+      set_fact:
+        GITHUB_TOKEN: "{{ env_vars.GITHUB_TOKEN }}"
+        AWS_ACCESS_KEY_ID: "{{ env_vars.AWS_ACCESS_KEY_ID }}"
+        AWS_SECRET_ACCESS_KEY: "{{ env_vars.AWS_SECRET_ACCESS_KEY }}"
+        AWS_REGION: "{{ env_vars.AWS_REGION }}"
+      delegate_to: "{{ item }}"
+      loop: "{{ ansible_play_hosts }}"
+      no_log: true
+
+    - name: Install plugins via jenkins_script
+      community.general.jenkins_script:
+        url: "{{ env_vars.JENKINS_URL }}"
+        user: "{{ env_vars.JENKINS_USER }}"
+        password: "{{ env_vars.JENKINS_PASS }}"
+        script: |
+          import jenkins.model.*
+          def instance = Jenkins.getInstance()
+          ["plain-credentials","aws-credentials"].each { plugin ->
+              def pm = instance.getPluginManager()
+              def uc = instance.getUpdateCenter()
+              if (!pm.getPlugin(plugin)) {
+                  uc.getPlugin(plugin).deploy().get()
+              }
+          }
+          
+    - name: Create Github token credential
+      community.general.jenkins_script:
+        url: "{{ env_vars.JENKINS_URL }}"
+        user: "{{ env_vars.JENKINS_USER }}"
+        password: "{{ env_vars.JENKINS_PASS }}"
+        script: |
+          import jenkins.model.*
+          import com.cloudbees.plugins.credentials.*
+          import com.cloudbees.plugins.credentials.domains.*
+          import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl
+          import hudson.util.Secret
+
+          def store = Jenkins.instance.getExtensionList('com.cloudbees.plugins.credentials.SystemCredentialsProvider')[0].getStore()
+          def domain = Domain.global()
+          def existing = store.getCredentials(domain).find { it.id == 'github-token' }
+          if (existing) { store.removeCredentials(domain, existing) }
+          def cred = new StringCredentialsImpl(
+            CredentialsScope.GLOBAL,
+            'github-token',
+            'GitHub token from .env',
+            Secret.fromString({{ GITHUB_TOKEN | to_json }})
+          )
+          store.addCredentials(domain, cred)
+
+    - name: Create AWS credential
+      community.general.jenkins_script:
+        url: "{{ env_vars.JENKINS_URL }}"
+        user: "{{ env_vars.JENKINS_USER }}"
+        password: "{{ env_vars.JENKINS_PASS }}"
+        script: |
+          import com.cloudbees.plugins.credentials.*
+          import com.cloudbees.plugins.credentials.domains.*
+          import com.cloudbees.plugins.credentials.SystemCredentialsProvider
+          import com.cloudbees.jenkins.plugins.awscredentials.AWSCredentialsImpl
+          import com.cloudbees.plugins.credentials.CredentialsScope
+          
+          def awsCredentials = new AWSCredentialsImpl(
+            CredentialsScope.GLOBAL,
+            "aws-creds",
+            "{{ env_vars.AWS_ACCESS_KEY_ID }}",
+            "{{ env_vars.AWS_SECRET_ACCESS_KEY }}",
+            "AWS credentials for Jenkins"
+          )
+          
+          def credentialsStore = SystemCredentialsProvider.getInstance().getStore()
+          credentialsStore.addCredentials(Domain.global(), awsCredentials)

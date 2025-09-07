@@ -77,11 +77,11 @@
           def instance = Jenkins.get()
           def hudsonRealm = new HudsonPrivateSecurityRealm(false)
           
-          def existingUser = hudsonRealm.getUser("{{ env_vars.JENKINS_USER }}")
-          if (existingUser == null) {
-            hudsonRealm.createAccount("{{ env_vars.JENKINS_USER }}", "{{ env_vars.JENKINS_PASS }}")
-          } else {
-            existingUser.setPassword("{{ env_vars.JENKINS_PASS }}")
+          def userId = "{{ env_vars.JENKINS_USER }}"
+          def password = "{{ env_vars.JENKINS_PASS }}"
+          
+          if (!hudsonRealm.getAllUsers().find { it.id == userId }) {
+            hudsonRealm.createAccount(userId, password)
           }
           
           instance.setSecurityRealm(hudsonRealm)
