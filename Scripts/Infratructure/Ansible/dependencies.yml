@@ -1,0 +1,12 @@
+- hosts: jenkins
+  become: true
+  tasks:
+    - name: Install dependencies
+      apt:
+        name:
+          - fontconfig
+          - openjdk-17-jdk
+          - gnupg
+          - curl
+        state: present
+        update_cache: yes

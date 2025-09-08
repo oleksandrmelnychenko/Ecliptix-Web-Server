@@ -2,13 +2,9 @@
   become: true
 
   tasks:
-    - name: Install dependencies
-      apt:
-        name:
-          - fontconfig
-          - openjdk-17-jdk
-          - gnupg
-          - curl
+    - name: Install python-jenkins via apt
+      ansible.builtin.apt:
+        name: python3-jenkins
         state: present
         update_cache: yes
 
@@ -63,7 +59,7 @@
         group: jenkins
         mode: '0755'
 
-    - name: Create Groovy init script for Jenkins admin and plugins
+    - name: Create Groovy init script for Jenkins admin
       copy:
         dest: /var/lib/jenkins/init.groovy.d/init-admin.groovy
         owner: jenkins
@@ -92,7 +88,23 @@
           instance.setInstallState(InstallState.INITIAL_SETUP_COMPLETED)
           instance.save()
       notify: Reload systemd and restart Jenkins
-
+      
+    - name: Install plugins via jenkins_script
+      community.general.jenkins_script:
+        url: "{{ env_vars.JENKINS_URL }}"
+        user: "{{ env_vars.JENKINS_USER }}"
+        password: "{{ env_vars.JENKINS_PASS }}"
+        script: |
+          import jenkins.model.*
+          def instance = Jenkins.getInstance()
+          ["plain-credentials","aws-credentials", "git", "github", "workflow-aggregator"].each { plugin ->
+              def pm = instance.getPluginManager()
+              def uc = instance.getUpdateCenter()
+              if (!pm.getPlugin(plugin)) {
+                  uc.getPlugin(plugin).deploy().get()
+              }
+          }
+          
   handlers:
     - name: Reload systemd and restart Jenkins
       systemd:
