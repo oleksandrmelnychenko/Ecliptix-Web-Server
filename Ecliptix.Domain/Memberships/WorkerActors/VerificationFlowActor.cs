@@ -639,35 +639,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 new UpdateOtpStatusActorEvent(_activeOtp.UniqueIdentifier, status));
     }
 
-    private async Task TerminateVerificationFlow(VerificationFlowStatus status, string messageKey, string cultureName)
-    {
-        if (!_isCompleting)
-        {
-            CancelTimers();
-        }
-        
-        _sessionTimerPaused = false;
-        
-        await _persistor.Ask<Result<int, VerificationFlowFailure>>(
-            new UpdateVerificationFlowStatusActorEvent(_verificationFlow.Value!.UniqueIdentifier, status));
-
-        await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
-            new VerificationCountdownUpdate
-            {
-                SecondsRemaining = 0,
-                SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
-                Status = status == VerificationFlowStatus.Expired
-                    ? VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired
-                    : VerificationCountdownUpdate.Types.CountdownUpdateStatus.MaxAttemptsReached,
-                Message = _localizationProvider.Localize(messageKey, cultureName)
-            }));
-
-        await Task.Delay(50);
-
-        Context.Parent.Tell(new FlowCompletedGracefullyActorEvent(Self));
-        Context.Unwatch(Self);
-        Context.Stop(Self);
-    }
 
     private static uint CalculateRemainingSeconds(DateTime expiresAt)
     {
