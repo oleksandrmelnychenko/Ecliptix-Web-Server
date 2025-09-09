@@ -14,6 +14,7 @@
           import hudson.triggers.SCMTrigger
           import hudson.plugins.git.*
           import hudson.plugins.git.extensions.impl.CleanCheckout
+          import com.cloudbees.jenkins.GitHubPushTrigger
           
           def jenkins = Jenkins.instance
           def jobName = "memberships-pipeline"
@@ -42,7 +43,7 @@
           flowDef.lightweight = true
           job.setDefinition(flowDef)
           
-          def trigger = new SCMTrigger("") // пустий cron, бо через webhook
+          def trigger = new GitHubPushTrigger()
           job.addTrigger(trigger)
           trigger.start(job, true)
           
