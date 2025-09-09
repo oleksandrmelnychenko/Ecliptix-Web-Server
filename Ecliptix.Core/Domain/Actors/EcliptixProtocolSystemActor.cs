@@ -1,4 +1,5 @@
 using Akka.Actor;
+using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
@@ -26,6 +27,7 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 {
     public EcliptixProtocolSystemActor()
     {
+        Context.System.EventStream.Subscribe(Self, typeof(ProtocolCleanupRequiredEvent));
         Become(Ready);
     }
 
@@ -46,6 +48,17 @@ public class EcliptixProtocolSystemActor : ReceiveActor
             if (!connectActor.IsNobody())
             {
                 connectActor.Forward(cmd);
+            }
+        });
+
+        Receive<ProtocolCleanupRequiredEvent>(cmd =>
+        {
+            string actorName = $"connect-{cmd.ConnectId}";
+            IActorRef connectActor = Context.Child(actorName);
+            if (!connectActor.IsNobody())
+            {
+                connectActor.Tell(new ClientDisconnectedActorEvent(cmd.ConnectId), ActorRefs.NoSender);
+                Log.Information("Triggered protocol cleanup for ConnectId {ConnectId} due to session expiration", cmd.ConnectId);
             }
         });
     }

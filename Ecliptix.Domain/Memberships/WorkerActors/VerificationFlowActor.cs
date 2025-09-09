@@ -13,6 +13,8 @@ using Serilog;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors;
 
+public record ProtocolCleanupRequiredEvent(uint ConnectId);
+
 public class VerificationFlowActor : ReceiveActor, IWithStash
 {
     private readonly uint _connectId;
@@ -499,6 +501,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired,
                 Message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowExpired, actorEvent.CultureName)
             }));
+
+        Context.System.EventStream.Publish(new ProtocolCleanupRequiredEvent(_connectId));
         
         await Task.Delay(50);
         
