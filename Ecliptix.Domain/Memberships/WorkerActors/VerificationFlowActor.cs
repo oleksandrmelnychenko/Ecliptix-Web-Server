@@ -162,10 +162,16 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         Receive<StartOtpTimerEvent>(_ => { });
         ReceiveAsync<VerificationCountdownUpdate>(_ => Task.CompletedTask);
         ReceiveAsync<VerificationFlowExpiredEvent>(HandleSessionExpired);
-        ReceiveAsync<VerifyFlowActorEvent>(actorEvent => HandleExpiredVerifyOtp(actorEvent));
+        ReceiveAsync<VerifyFlowActorEvent>(actorEvent =>
+        {
+            string message = _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidOtp, actorEvent.CultureName);
+            Sender.Tell(CreateVerifyResponse(VerificationResult.Expired, message));
+            return Task.CompletedTask;
+        });
         ReceiveAsync<InitiateVerificationFlowActorEvent>(HandleInitiateVerificationRequest);
         ReceiveAsync<PrepareForTerminationMessage>(HandleClientDisconnection);
     }
+
 
     private async Task HandleVerifyOtp(VerifyFlowActorEvent actorEvent)
     {
@@ -309,7 +315,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                     {
                         SecondsRemaining = 0,
                         SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
-                        Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Expired,
+                        Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired,
                         Message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowExpired, actorEvent.CultureName)
                     }));
                 break;
@@ -469,12 +475,36 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         _isCompleting = true;
         CancelTimers();
         _sessionTimerPaused = false;
-        await Task.Delay(200);
         
-        await TerminateVerificationFlow(
-            VerificationFlowStatus.Expired, 
-            VerificationFlowMessageKeys.VerificationFlowExpired, 
-            actorEvent.CultureName);
+        if (_activeOtp != null)
+        {
+            try
+            {
+                await UpdateOtpStatus(VerificationFlowStatus.Expired);
+            }
+            catch (Exception)
+            {
+            }
+            _activeOtp = null;
+        }
+        
+        await _persistor.Ask<Result<int, VerificationFlowFailure>>(
+            new UpdateVerificationFlowStatusActorEvent(_verificationFlow.Value!.UniqueIdentifier, VerificationFlowStatus.Expired));
+
+        await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+            new VerificationCountdownUpdate
+            {
+                SecondsRemaining = 0,
+                SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
+                Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired,
+                Message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowExpired, actorEvent.CultureName)
+            }));
+        
+        await Task.Delay(50);
+        
+        Context.Parent.Tell(new FlowCompletedGracefullyActorEvent(Self));
+        Context.Unwatch(Self);
+        Context.Stop(Self);
     }
 
     private async Task HandleClientDisconnection(PrepareForTerminationMessage _)
@@ -601,11 +631,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         ResumeSessionTimer();
     }
 
-    private async Task HandleExpiredVerifyOtp(VerifyFlowActorEvent actorEvent)
-    {
-        string message = _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidOtp, actorEvent.CultureName);
-        Sender.Tell(CreateVerifyResponse(VerificationResult.Expired, message));
-    }
 
     private async Task UpdateOtpStatus(VerificationFlowStatus status)
     {
@@ -629,6 +654,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
             new VerificationCountdownUpdate
             {
+                SecondsRemaining = 0,
                 SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
                 Status = status == VerificationFlowStatus.Expired
                     ? VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired
