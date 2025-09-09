@@ -97,7 +97,7 @@
         script: |
           import jenkins.model.*
           def instance = Jenkins.getInstance()
-          ["plain-credentials","aws-credentials", "git", "github", "workflow-aggregator"].each { plugin ->
+          ["plain-credentials","aws-credentials", "pipeline-aws", "git", "github", "workflow-aggregator"].each { plugin ->
               def pm = instance.getPluginManager()
               def uc = instance.getUpdateCenter()
               if (!pm.getPlugin(plugin)) {

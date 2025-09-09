@@ -1,12 +1,31 @@
 - hosts: jenkins
   become: true
+
   tasks:
     - name: Install dependencies
-      apt:
+      ansible.builtin.apt:
         name:
           - fontconfig
           - openjdk-17-jdk
           - gnupg
           - curl
+          - unzip
         state: present
         update_cache: yes
+
+    - name: Download AWS CLI v2 (x86_64)
+      get_url:
+        url: "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+        dest: "/tmp/awscliv2.zip"
+        mode: '0644'
+
+    - name: Unzip AWS CLI installer
+      unarchive:
+        src: "/tmp/awscliv2.zip"
+        dest: "/tmp"
+        remote_src: yes
+
+    - name: Install/Update AWS CLI
+      command: /tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
+      args:
+        creates: /usr/local/bin/aws
