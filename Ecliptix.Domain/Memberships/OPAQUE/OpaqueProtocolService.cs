@@ -212,7 +212,6 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         if (encryptResult.IsErr)
             return Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(OpaqueFailure.EncryptFailed());
 
-        ByteString maskedOprfResponse;
         ByteString maskedRegistrationRecord;
 
         if (RfcCompliance.EnableMasking)
@@ -226,11 +225,6 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             byte[] maskingKey =
                 OpaqueCryptoUtilities.DeriveKey(stretchedOprfKey.AsSpan(), ReadOnlySpan<byte>.Empty, MaskingKeyInfo, DefaultKeyLength);
 
-            Result<byte[], OpaqueFailure> maskOprfResult = OpaqueCryptoUtilities.MaskResponse(oprfResponse, maskingKey);
-            if (maskOprfResult.IsErr)
-                return Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(maskOprfResult.UnwrapErr());
-            maskedOprfResponse = ByteString.CopyFrom(maskOprfResult.Unwrap());
-
             Result<byte[], OpaqueFailure> maskRecordResult =
                 OpaqueCryptoUtilities.MaskResponse(queryRecord.RegistrationRecord, maskingKey);
             if (maskRecordResult.IsErr)
@@ -240,10 +234,14 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             CryptographicOperations.ZeroMemory(maskingKey);
             CryptographicOperations.ZeroMemory(stretchedOprfKey);
         }
+        else
+        {
+            maskedRegistrationRecord = ByteString.CopyFrom(queryRecord.RegistrationRecord);
+        }
 
         return Result<OpaqueSignInInitResponse, OpaqueFailure>.Ok(new OpaqueSignInInitResponse
         {
-            ServerOprfResponse = maskedOprfResponse,
+            ServerOprfResponse = ByteString.CopyFrom(oprfResponse),
             ServerEphemeralPublicKey = serverState.ServerEphemeralPublicKey,
             RegistrationRecord = maskedRegistrationRecord,
             ServerStateToken = ByteString.CopyFrom(encryptResult.Unwrap()),
