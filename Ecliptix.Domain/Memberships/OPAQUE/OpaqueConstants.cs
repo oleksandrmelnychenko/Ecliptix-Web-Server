@@ -57,6 +57,8 @@ public static class OpaqueConstants
     public static class RfcCompliance
     {
         public const bool EnableMasking = true;
+        public const bool EnableOprfMasking = false;
+        public const bool EnableRegistrationRecordMasking = true;
         public const bool EnableStretching = true;
         public const bool EnforcePointValidation = true;
         public const bool UseMacEnvelopes = true;

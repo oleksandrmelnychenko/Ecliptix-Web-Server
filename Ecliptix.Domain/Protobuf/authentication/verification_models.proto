@@ -47,6 +47,7 @@ message VerificationCountdownUpdate {
     NOT_FOUND = 2; 
     FAILED = 3; 
     MAX_ATTEMPTS_REACHED = 4;
+    SESSION_EXPIRED = 5;
   }
 
   CountdownUpdateStatus status = 4;
