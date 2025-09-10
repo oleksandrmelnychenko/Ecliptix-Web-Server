@@ -16,6 +16,7 @@ namespace Ecliptix.Core.Json;
 [JsonSerializable(typeof(ProtocolMetrics))]
 [JsonSerializable(typeof(HealthStatus))]
 [JsonSerializable(typeof(ErrorResponse))]
+[JsonSerializable(typeof(long))]
 public partial class AppJsonSerializerContext : JsonSerializerContext
 {
 }
