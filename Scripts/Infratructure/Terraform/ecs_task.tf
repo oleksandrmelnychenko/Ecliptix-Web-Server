@@ -20,7 +20,7 @@ resource "aws_ecs_task_definition" "memberships" {
       environment = [
         { 
           name = "DOTNET_ENVIRONMENT",
-          value = "Deployment"
+          value = "Production"
         },
         {
           name  = "ConnectionStrings__EcliptixMemberships"
