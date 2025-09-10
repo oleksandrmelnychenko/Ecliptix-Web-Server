@@ -21,7 +21,6 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_attach" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-
 # --- IAM Policy for CloudWatch Logs ---
 
 resource "aws_iam_policy" "ecs_cloudwatch_logs" {
@@ -62,7 +61,8 @@ resource "aws_iam_role" "ecs_task_role" {
   })
 }
 
-# --- Link policy with role
+# --- Link policy with role ---
+
 resource "aws_iam_role_policy_attachment" "ecs_task_logs_attach" {
   role       = aws_iam_role.ecs_task_role.name
   policy_arn = aws_iam_policy.ecs_cloudwatch_logs.arn

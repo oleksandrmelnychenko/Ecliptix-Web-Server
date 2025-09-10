@@ -1,9 +1,10 @@
 resource "aws_ecs_service" "memberships" {
-  name            = "ecliptix-memberships"
-  cluster         = aws_ecs_cluster.ecliptix.id
-  task_definition = aws_ecs_task_definition.memberships.arn
-  desired_count   = 1
-  launch_type     = "FARGATE"
+  name                    = "ecliptix-memberships"
+  cluster                 = aws_ecs_cluster.ecliptix.id
+  task_definition         = aws_ecs_task_definition.memberships.arn
+  desired_count           = 1
+  launch_type             = "FARGATE"
+  enable_execute_command  = true
 
   network_configuration {
     subnets         = aws_subnet.ecliptix_private[*].id

@@ -5,6 +5,7 @@ resource "aws_ecs_task_definition" "memberships" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([
     {
@@ -17,10 +18,7 @@ resource "aws_ecs_task_definition" "memberships" {
         { containerPort = 5051, protocol = "tcp" },
         { containerPort = 8080, protocol = "tcp" }
       ]
-
-      execution_role_arn = aws_iam_role.ecs_task_role.arn
-      task_role_arn      = aws_iam_role.ecs_task_role.arn
-
+    
       environment = [
         { 
           name = "DOTNET_ENVIRONMENT",
