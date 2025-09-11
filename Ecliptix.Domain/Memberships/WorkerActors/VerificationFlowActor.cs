@@ -15,6 +15,8 @@ namespace Ecliptix.Domain.Memberships.WorkerActors;
 
 public record ProtocolCleanupRequiredEvent(uint ConnectId);
 
+public record SessionExpiredMessageDeliveredEvent(uint ConnectId);
+
 public class VerificationFlowActor : ReceiveActor, IWithStash
 {
     private readonly uint _connectId;
@@ -59,6 +61,13 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         _persistor.Ask<Result<VerificationFlowQueryRecord, VerificationFlowFailure>>(
             new InitiateFlowAndReturnStateActorEvent(appDeviceIdentifier, _phoneNumberIdentifier, purpose, _connectId)
         ).PipeTo(Self);
+    }
+
+    protected override void PreStart()
+    {
+        base.PreStart();
+        // Subscribe to session expired message delivery confirmations
+        Context.System.EventStream.Subscribe(Self, typeof(SessionExpiredMessageDeliveredEvent));
     }
 
     public static Props Build(
@@ -147,6 +156,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         ReceiveAsync<VerifyFlowActorEvent>(HandleVerifyOtp);
         ReceiveAsync<InitiateVerificationFlowActorEvent>(HandleInitiateVerificationRequest);
         ReceiveAsync<PrepareForTerminationMessage>(HandleClientDisconnection);
+        ReceiveAsync<SessionExpiredMessageDeliveredEvent>(HandleSessionExpiredMessageDelivered);
     }
 
     private void OtpActive()
@@ -157,6 +167,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         ReceiveAsync<VerifyFlowActorEvent>(HandleVerifyOtp);
         ReceiveAsync<InitiateVerificationFlowActorEvent>(HandleInitiateVerificationRequest);
         ReceiveAsync<PrepareForTerminationMessage>(HandleClientDisconnection);
+        ReceiveAsync<SessionExpiredMessageDeliveredEvent>(HandleSessionExpiredMessageDelivered);
     }
 
     private void OtpExpiredWaitingForSession()
@@ -173,6 +184,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         });
         ReceiveAsync<InitiateVerificationFlowActorEvent>(HandleInitiateVerificationRequest);
         ReceiveAsync<PrepareForTerminationMessage>(HandleClientDisconnection);
+        ReceiveAsync<SessionExpiredMessageDeliveredEvent>(HandleSessionExpiredMessageDelivered);
     }
 
     private async Task HandleVerifyOtp(VerifyFlowActorEvent actorEvent)
@@ -504,10 +516,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         if (_verificationFlow.HasValue)
         {
-            await _persistor.Ask<Result<int, VerificationFlowFailure>>(
-                new UpdateVerificationFlowStatusActorEvent(_verificationFlow.Value.UniqueIdentifier,
-                    VerificationFlowStatus.Expired));
-
+            // Write the session expired message to channel but DON'T complete channel yet
+            // Wait for delivery confirmation before doing cleanup
             await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
                 new VerificationCountdownUpdate
                 {
@@ -519,11 +529,31 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 }));
         }
 
+        // Don't complete channel or stop actor yet - wait for delivery confirmation
         _isCompleting = true;
+    }
 
-        // Complete the channel to signal end of stream - this will cause StreamCountdownUpdatesAsync to finish
-        // processing remaining messages and trigger cleanup when done
+    private async Task HandleSessionExpiredMessageDelivered(SessionExpiredMessageDeliveredEvent evt)
+    {
+        // Only handle if it's for this specific connectId
+        if (evt.ConnectId != _connectId)
+            return;
+
+        // Message has been delivered to client successfully
+        // Now follow the proper sequence: Update DB -> Cleanup protocol -> Stop actor
+
+        if (_verificationFlow.HasValue)
+        {
+            await _persistor.Ask<Result<int, VerificationFlowFailure>>(
+                new UpdateVerificationFlowStatusActorEvent(_verificationFlow.Value.UniqueIdentifier,
+                    VerificationFlowStatus.Expired));
+        }
+
+        // Complete the channel now that message was delivered
         _writer?.TryComplete();
+
+        // Trigger protocol cleanup after DB update
+        Context.System.EventStream.Publish(new ProtocolCleanupRequiredEvent(_connectId));
 
         Context.Parent.Tell(new FlowCompletedGracefullyActorEvent(Self));
         Context.Unwatch(Self);

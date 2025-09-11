@@ -235,6 +235,17 @@ public class VerificationFlowServices(
                         if (update.Status == VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired)
                         {
                             Log.Information("Successfully encrypted and sending session expired message to client for ConnectId {ConnectId}", connectId);
+                            
+                            // Notify that session expired message has been delivered - trigger cleanup
+                            try
+                            {
+                                ActorSystem actorSystem = context.GetHttpContext().RequestServices.GetRequiredService<ActorSystem>();
+                                actorSystem.EventStream.Publish(new Ecliptix.Domain.Memberships.WorkerActors.SessionExpiredMessageDeliveredEvent(connectId));
+                            }
+                            catch (Exception ex)
+                            {
+                                Log.Warning(ex, "Failed to publish session expired delivery confirmation for ConnectId {ConnectId}", connectId);
+                            }
                         }
                     }
                 }
@@ -246,19 +257,9 @@ public class VerificationFlowServices(
         {
             Log.Debug("Client disconnected during streaming for ConnectId {ConnectId}", connectId);
         }
-        finally
+        catch (Exception ex) when (!(ex is OperationCanceledException && context.CancellationToken.IsCancellationRequested))
         {
-            // Stream has completed - trigger protocol cleanup now that all messages have been processed
-            try
-            {
-                ActorSystem actorSystem = context.GetHttpContext().RequestServices.GetRequiredService<ActorSystem>();
-                actorSystem.EventStream.Publish(new Ecliptix.Domain.Memberships.WorkerActors.ProtocolCleanupRequiredEvent(connectId));
-                Log.Debug("Published ProtocolCleanupRequiredEvent after stream completion for ConnectId {ConnectId}", connectId);
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "Failed to publish protocol cleanup event for ConnectId {ConnectId}", connectId);
-            }
+            Log.Error(ex, "Unexpected error in countdown streaming for ConnectId {ConnectId}", connectId);
         }
     }
 
