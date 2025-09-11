@@ -516,8 +516,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         if (_verificationFlow.HasValue)
         {
-            // Write the session expired message to channel but DON'T complete channel yet
-            // Wait for delivery confirmation before doing cleanup
             await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
                 new VerificationCountdownUpdate
                 {
@@ -529,18 +527,13 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 }));
         }
 
-        // Don't complete channel or stop actor yet - wait for delivery confirmation
         _isCompleting = true;
     }
 
     private async Task HandleSessionExpiredMessageDelivered(SessionExpiredMessageDeliveredEvent evt)
     {
-        // Only handle if it's for this specific connectId
         if (evt.ConnectId != _connectId)
             return;
-
-        // Message has been delivered to client successfully
-        // Now follow the proper sequence: Update DB -> Cleanup protocol -> Stop actor
 
         if (_verificationFlow.HasValue)
         {
@@ -549,10 +542,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                     VerificationFlowStatus.Expired));
         }
 
-        // Complete the channel now that message was delivered
         _writer?.TryComplete();
 
-        // Trigger protocol cleanup after DB update
         Context.System.EventStream.Publish(new ProtocolCleanupRequiredEvent(_connectId));
 
         Context.Parent.Tell(new FlowCompletedGracefullyActorEvent(Self));
@@ -567,13 +558,17 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         _sessionTimerPaused = false;
         await Task.Delay(100);
 
+        // Complete the channel to signal end of stream
         _writer?.TryComplete();
         _writer = null;
 
-        _isCompleting = false;
-        _timersStarted = false;
-        _activeOtp = null;
-        Become(Running);
+        // Trigger protocol cleanup when client disconnects
+        Context.System.EventStream.Publish(new ProtocolCleanupRequiredEvent(_connectId));
+
+        // Notify parent that flow completed and stop actor
+        Context.Parent.Tell(new FlowCompletedGracefullyActorEvent(Self));
+        Context.Unwatch(Self);
+        Context.Stop(Self);
     }
 
     private async Task<Result<Unit, VerificationFlowFailure>> PrepareAndSendOtp(string cultureName)
