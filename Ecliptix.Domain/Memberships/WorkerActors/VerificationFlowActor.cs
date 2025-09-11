@@ -521,13 +521,9 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         _isCompleting = true;
 
-        // Wait to ensure the session expired message has been read from channel and encrypted
-        await Task.Delay(200);
-
-        // Now it's safe to clean up the protocol actor since the final message has been processed
-        Context.System.EventStream.Publish(new ProtocolCleanupRequiredEvent(_connectId));
-
-        await Task.Delay(50);
+        // Complete the channel to signal end of stream - this will cause StreamCountdownUpdatesAsync to finish
+        // processing remaining messages and trigger cleanup when done
+        _writer?.TryComplete();
 
         Context.Parent.Tell(new FlowCompletedGracefullyActorEvent(Self));
         Context.Unwatch(Self);
@@ -758,7 +754,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private async Task SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure> update)
     {
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? writer = _writer;
-        if (_isCompleting || writer == null)
+        if (writer == null)
         {
             return;
         }
@@ -770,9 +766,11 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         }
         catch (InvalidOperationException)
         {
+            // Channel is already completed - this is expected during shutdown
         }
         catch (OperationCanceledException)
         {
+            // Write was cancelled - this is expected during shutdown
         }
         catch (Exception ex)
         {

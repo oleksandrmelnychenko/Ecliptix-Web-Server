@@ -232,6 +232,20 @@ public class VerificationFlowServices(
         {
             Log.Debug("Client disconnected during streaming for ConnectId {ConnectId}", connectId);
         }
+        finally
+        {
+            // Stream has completed - trigger protocol cleanup now that all messages have been processed
+            try
+            {
+                ActorSystem actorSystem = context.GetHttpContext().RequestServices.GetRequiredService<ActorSystem>();
+                actorSystem.EventStream.Publish(new Ecliptix.Domain.Memberships.WorkerActors.ProtocolCleanupRequiredEvent(connectId));
+                Log.Debug("Published ProtocolCleanupRequiredEvent after stream completion for ConnectId {ConnectId}", connectId);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to publish protocol cleanup event for ConnectId {ConnectId}", connectId);
+            }
+        }
     }
 
     private void StopVerificationFlowActor(ServerCallContext context, uint connectId)
