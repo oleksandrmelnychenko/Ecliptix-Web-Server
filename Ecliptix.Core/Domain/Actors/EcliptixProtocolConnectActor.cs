@@ -30,6 +30,8 @@ public sealed record KeepAlive
 
 public sealed record RetryRecoveryMessage;
 
+public sealed record DelayedTerminationMessage;
+
 public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWithTimers
 {
     public ITimerScheduler Timers { get; set; } = null!;
@@ -48,6 +50,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
     private bool _savingFinalSnapshot;
     private bool _pendingMessageDeletion;
     private bool _pendingSnapshotDeletion;
+    private bool _markedForTermination;
     
     private PubKeyExchangeType? _currentExchangeType;
 
@@ -116,11 +119,25 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             case RetryRecoveryMessage:
                 AttemptSystemRecreation();
                 return true;
+            case DelayedTerminationMessage:
+                Context.GetLogger().Info("[SESSION_CLEANUP] Grace period expired - marking for termination ConnectId: {0}", connectId);
+                _markedForTermination = true;
+                return true;
 
             case ReceiveTimeout:
                 SaveFinalSnapshot();
                 return true;
             case ClientDisconnectedActorEvent:
+                Context.GetLogger().Info("Client disconnected for ConnectId: {0}", connectId);
+                
+                // If marked for termination, stop now that gRPC stream is complete
+                if (_markedForTermination)
+                {
+                    Context.GetLogger().Info("Stopping actor after final message processing for ConnectId: {0}", connectId);
+                    Context.Stop(Self);
+                    return true;
+                }
+                
                 // Analyze what protocol systems are active to make proper cleanup decision
                 bool hasStreaming = _protocolSystems.ContainsKey(PubKeyExchangeType.ServerStreaming);
                 bool hasPersistent = _protocolSystems.Keys.Any(t => t != PubKeyExchangeType.ServerStreaming);
@@ -128,7 +145,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 if (hasStreaming && !hasPersistent)
                 {
                     // Only streaming protocols - immediate ephemeral cleanup
-                    Context.GetLogger().Info("Immediate cleanup for pure ServerStreaming connection - ConnectId: {ConnectId}", connectId);
+                    Context.GetLogger().Info("Immediate cleanup for pure ServerStreaming connection - ConnectId: {0}", connectId);
                     DisposeAllSystems();
                     _state = null;
                     _currentExchangeType = null;
@@ -603,12 +620,12 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         if (evt.ConnectId != connectId)
             return;
 
-        Context.GetLogger().Info("[SESSION_CLEANUP] Received cleanup request for verification session expiry - ConnectId: {ConnectId}", connectId);
+        Context.GetLogger().Info("[SESSION_CLEANUP] Received cleanup request for verification session expiry - ConnectId: {0}", connectId);
 
         // Clean up streaming protocol if it exists
         if (_protocolSystems.TryGetValue(PubKeyExchangeType.ServerStreaming, out EcliptixProtocolSystem? streamingSystem))
         {
-            Context.GetLogger().Info("[SESSION_CLEANUP] Disposing SERVER_STREAMING protocol system for ConnectId: {ConnectId}", connectId);
+            Context.GetLogger().Info("[SESSION_CLEANUP] Disposing SERVER_STREAMING protocol system for ConnectId: {0}", connectId);
             streamingSystem?.Dispose();
             _protocolSystems.Remove(PubKeyExchangeType.ServerStreaming);
 
@@ -616,19 +633,24 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             if (_currentExchangeType == PubKeyExchangeType.ServerStreaming)
             {
                 _currentExchangeType = null;
-                Context.GetLogger().Info("[SESSION_CLEANUP] Cleared current exchange type for ConnectId: {ConnectId}", connectId);
+                Context.GetLogger().Info("[SESSION_CLEANUP] Cleared current exchange type for ConnectId: {0}", connectId);
             }
         }
 
-        // If no other protocols are active, stop the actor entirely
+        // If no other protocols are active, schedule delayed termination to allow final message processing
         if (_protocolSystems.Count == 0)
         {
-            Context.GetLogger().Info("[SESSION_CLEANUP] No remaining protocols - stopping actor for ConnectId: {ConnectId}", connectId);
-            Context.Stop(Self);
+            Context.GetLogger().Info("[SESSION_CLEANUP] No remaining protocols - scheduling delayed termination after grace period for ConnectId: {0}", connectId);
+            
+            // Schedule delayed marking for termination to allow any pending encryption requests to complete
+            Timers.StartSingleTimer(
+                "delayed-termination",
+                new DelayedTerminationMessage(),
+                TimeSpan.FromMilliseconds(300));
         }
         else
         {
-            Context.GetLogger().Info("[SESSION_CLEANUP] {ActiveProtocols} protocol(s) remain active for ConnectId: {ConnectId}", 
+            Context.GetLogger().Info("[SESSION_CLEANUP] {0} protocol(s) remain active for ConnectId: {1}", 
                 _protocolSystems.Count, connectId);
         }
     }

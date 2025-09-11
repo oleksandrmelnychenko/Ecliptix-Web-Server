@@ -521,6 +521,10 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         _isCompleting = true;
 
+        // Wait to ensure the session expired message has been read from channel and encrypted
+        await Task.Delay(200);
+
+        // Now it's safe to clean up the protocol actor since the final message has been processed
         Context.System.EventStream.Publish(new ProtocolCleanupRequiredEvent(_connectId));
 
         await Task.Delay(50);
