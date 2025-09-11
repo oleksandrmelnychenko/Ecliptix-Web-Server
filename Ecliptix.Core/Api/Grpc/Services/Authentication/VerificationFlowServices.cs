@@ -212,8 +212,16 @@ public class VerificationFlowServices(
                 }
                 else
                 {
+                    VerificationCountdownUpdate update = updateResult.Unwrap();
+                    
+                    // Log session expired messages to verify client notification
+                    if (update.Status == VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired)
+                    {
+                        Log.Information("Sending session expired notification to client for ConnectId {ConnectId}", connectId);
+                    }
+                    
                     Result<CipherPayload, FailureBase> encryptResult =
-                        await grpcCipherService.EncryptPayload(updateResult.Unwrap().ToByteArray(), connectId, context);
+                        await grpcCipherService.EncryptPayload(update.ToByteArray(), connectId, context);
                     if (encryptResult.IsErr)
                     {
                         payload = await grpcCipherService.CreateFailureResponse(encryptResult.UnwrapErr(), connectId,
@@ -222,6 +230,12 @@ public class VerificationFlowServices(
                     else
                     {
                         payload = encryptResult.Unwrap();
+                        
+                        // Log successful encryption and delivery of session expired message
+                        if (update.Status == VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired)
+                        {
+                            Log.Information("Successfully encrypted and sending session expired message to client for ConnectId {ConnectId}", connectId);
+                        }
                     }
                 }
 

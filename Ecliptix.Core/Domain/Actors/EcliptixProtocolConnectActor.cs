@@ -154,7 +154,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 else if (hasStreaming && hasPersistent)
                 {
                     // Mixed protocols - dispose streaming only, persist the rest
-                    Context.GetLogger().Info("Mixed protocol cleanup - disposing streaming, persisting others - ConnectId: {ConnectId}", connectId);
+                    Context.GetLogger().Info("Mixed protocol cleanup - disposing streaming, persisting others - ConnectId: {0}", connectId);
                     if (_protocolSystems.TryGetValue(PubKeyExchangeType.ServerStreaming, out EcliptixProtocolSystem? streamingSystem))
                     {
                         streamingSystem?.Dispose();
@@ -167,7 +167,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 else
                 {
                     // Only persistent protocols - normal cleanup with persistence
-                    Context.GetLogger().Info("Standard cleanup for persistent protocols - ConnectId: {ConnectId}", connectId);
+                    Context.GetLogger().Info("Standard cleanup for persistent protocols - ConnectId: {0}", connectId);
                     SaveFinalSnapshot();
                 }
                 return true;
