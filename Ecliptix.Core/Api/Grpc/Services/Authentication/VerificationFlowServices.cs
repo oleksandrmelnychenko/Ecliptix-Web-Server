@@ -214,7 +214,6 @@ public class VerificationFlowServices(
                 {
                     VerificationCountdownUpdate update = updateResult.Unwrap();
                     
-                    // Log session expired messages to verify client notification
                     if (update.Status == VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired)
                     {
                         Log.Information("Sending session expired notification to client for ConnectId {ConnectId}", connectId);
@@ -231,12 +230,10 @@ public class VerificationFlowServices(
                     {
                         payload = encryptResult.Unwrap();
                         
-                        // Log successful encryption and delivery of session expired message
                         if (update.Status == VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired)
                         {
                             Log.Information("Successfully encrypted and sending session expired message to client for ConnectId {ConnectId}", connectId);
                             
-                            // Notify that session expired message has been delivered - trigger cleanup
                             try
                             {
                                 ActorSystem actorSystem = context.GetHttpContext().RequestServices.GetRequiredService<ActorSystem>();

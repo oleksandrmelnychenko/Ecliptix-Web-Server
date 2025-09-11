@@ -66,7 +66,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     protected override void PreStart()
     {
         base.PreStart();
-        // Subscribe to session expired message delivery confirmations
         Context.System.EventStream.Subscribe(Self, typeof(SessionExpiredMessageDeliveredEvent));
     }
 
@@ -558,14 +557,12 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         _sessionTimerPaused = false;
         await Task.Delay(100);
 
-        // Complete the channel to signal end of stream
         _writer?.TryComplete();
         _writer = null;
 
-        // Trigger protocol cleanup when client disconnects
         Context.System.EventStream.Publish(new ProtocolCleanupRequiredEvent(_connectId));
 
-        // Notify parent that flow completed and stop actor
+        
         Context.Parent.Tell(new FlowCompletedGracefullyActorEvent(Self));
         Context.Unwatch(Self);
         Context.Stop(Self);
@@ -791,11 +788,9 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         }
         catch (InvalidOperationException)
         {
-            // Channel is already completed - this is expected during shutdown
         }
         catch (OperationCanceledException)
         {
-            // Write was cancelled - this is expected during shutdown
         }
         catch (Exception ex)
         {
