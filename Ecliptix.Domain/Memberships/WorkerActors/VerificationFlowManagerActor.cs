@@ -47,35 +47,49 @@ public class VerificationFlowManagerActor : ReceiveActor
 
     private void HandleInitiateFlow(InitiateVerificationFlowActorEvent actorEvent)
     {
-        string actorName = GetActorName(actorEvent.ConnectId);
-        IActorRef? childActor = Context.Child(actorName);
+        string baseActorName = GetActorName(actorEvent.ConnectId);
+        IActorRef? childActor = Context.Child(baseActorName);
 
-        if (!childActor.IsNobody())
+        // For SendOtp (new verification flow), always create a fresh actor
+        if (actorEvent.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
         {
-            childActor.Forward(actorEvent);
+            // If an actor exists (possibly dead/stopping), clean it up first
+            if (!childActor.IsNobody())
+            {
+                Log.Information("Cleaning up existing flow actor for ConnectId {ConnectId} before creating new one", 
+                    actorEvent.ConnectId);
+                
+                // Remove from tracking and stop the old actor
+                _flowWriters.Remove(childActor);
+                Context.Unwatch(childActor);
+                Context.Stop(childActor);
+            }
+
+            // Create fresh flow actor with consistent naming for SendOtp and ResendOtp
+            IActorRef? newFlowActor = Context.ActorOf(VerificationFlowActor.Build(
+                actorEvent.ConnectId,
+                actorEvent.PhoneNumberIdentifier,
+                actorEvent.AppDeviceIdentifier,
+                actorEvent.Purpose,
+                actorEvent.ChannelWriter,
+                _persistor,
+                _membershipActor,
+                _smsProvider,
+                _localizationProvider,
+                actorEvent.CultureName
+            ), baseActorName);
+
+            Context.Watch(newFlowActor);
+            _flowWriters.TryAdd(newFlowActor, actorEvent.ChannelWriter);
+
+            Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
         }
         else
         {
-            if (actorEvent.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
+            // For non-SendOtp requests, forward to existing actor if it exists
+            if (!childActor.IsNobody())
             {
-                IActorRef? newFlowActor = Context.ActorOf(VerificationFlowActor.Build(
-                    actorEvent.ConnectId,
-                    actorEvent.PhoneNumberIdentifier,
-                    actorEvent.AppDeviceIdentifier,
-                    actorEvent.Purpose,
-                    actorEvent.ChannelWriter,
-                    _persistor,
-                    _membershipActor,
-                    _smsProvider,
-                    _localizationProvider,
-                    actorEvent.CultureName
-                ), actorName);
-
-                Context.Watch(newFlowActor);
-
-                _flowWriters.TryAdd(newFlowActor, actorEvent.ChannelWriter);
-
-                Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
+                childActor.Forward(actorEvent);
             }
             else
             {
@@ -103,17 +117,11 @@ public class VerificationFlowManagerActor : ReceiveActor
     {
         IActorRef completedActor = actorEvent.ActorRef;
         if (_flowWriters.TryGetValue(completedActor,
-                out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? writer))
+                out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? _))
         {
-            Log.Debug("Verification flow completed gracefully for actor {ActorPath}", completedActor.Path);
-
-            bool completeSuccess = writer.TryComplete();
-            if (!completeSuccess)
-            {
-                Log.Warning("Failed to complete channel for gracefully terminated actor {ActorPath}", completedActor.Path);
-            }
-
             _flowWriters.Remove(completedActor);
+            Log.Debug("Verification flow completed gracefully for actor {ActorPath}", completedActor.Path);
+            // Actor has already completed its channel, no need to complete it again
         }
         else
         {
@@ -127,6 +135,7 @@ public class VerificationFlowManagerActor : ReceiveActor
         if (_flowWriters.TryGetValue(deadActor,
                 out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? writer))
         {
+            _flowWriters.Remove(deadActor);
             if (terminatedMessage is { ExistenceConfirmed: true, AddressTerminated: false })
             {
                 Log.Warning(
@@ -145,15 +154,14 @@ public class VerificationFlowManagerActor : ReceiveActor
                         "Failed to write error to channel for actor {ActorPath}. Channel may be completed or faulted",
                         deadActor.Path);
                 }
-            }
 
-            bool completeSuccess = writer.TryComplete();
-            if (!completeSuccess)
-            {
-                Log.Warning("Failed to complete channel for terminated actor {ActorPath}", deadActor.Path);
+                bool completeSuccess = writer.TryComplete();
+                if (!completeSuccess)
+                {
+                    Log.Warning("Failed to complete channel for terminated actor {ActorPath}", deadActor.Path);
+                }
             }
-
-            _flowWriters.Remove(deadActor);
+            // For graceful terminations, actor has already completed its channel
         }
         else
         {
