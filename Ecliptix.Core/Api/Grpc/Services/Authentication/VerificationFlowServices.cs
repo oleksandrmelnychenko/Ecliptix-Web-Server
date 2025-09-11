@@ -43,6 +43,7 @@ public class VerificationFlowServices(
                         SingleReader = true,
                         SingleWriter = false
                     };
+                    
                     Channel<Result<VerificationCountdownUpdate, VerificationFlowFailure>> channel =
                         Channel.CreateBounded<Result<VerificationCountdownUpdate, VerificationFlowFailure>>(channelOptions);
                     Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context);
@@ -229,7 +230,6 @@ public class VerificationFlowServices(
         }
         catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
         {
-            // Client disconnected - this is normal behavior during streaming
             Log.Debug("Client disconnected during streaming for ConnectId {ConnectId}", connectId);
         }
     }

@@ -276,6 +276,7 @@ BEGIN TRY
                 RETURN;
             END
             
+            
             -- ================================================================
             -- RATE LIMITING VALIDATION
             -- ================================================================
@@ -416,6 +417,48 @@ BEGIN TRY
                     SET @Outcome = 'retrieved';
                     GOTO ReturnExistingFlow;
                 END
+                ELSE IF @BlockingReason = 'Existing expired flow can be reactivated'
+                BEGIN
+                    SET @Outcome = 'reactivated';
+                    GOTO ReturnExistingFlow;
+                END
+            END
+            
+            -- ================================================================
+            -- ATOMIC EXPIRED FLOW REACTIVATION
+            -- ================================================================
+            
+            -- Try atomic reactivation of expired flow with proper locking
+            DECLARE @ReactivatedFlowId UNIQUEIDENTIFIER;
+            DECLARE @ReactivationExpiry DATETIME2(7) = DATEADD(MINUTE, 15, GETUTCDATE());
+            
+            -- Atomic operation: find, lock, and update expired flow if exists
+            UPDATE TOP(1) dbo.VerificationFlows 
+            SET @ReactivatedFlowId = UniqueId,
+                Status = 'pending',
+                ExpiresAt = @ReactivationExpiry,
+                UpdatedAt = GETUTCDATE(),
+                OtpCount = 0
+            WHERE AppDeviceId = @AppDeviceId
+              AND PhoneNumberId = (SELECT Id FROM dbo.PhoneNumbers WHERE UniqueId = @PhoneUniqueId AND IsDeleted = 0)
+              AND Purpose = @Purpose
+              AND Status = 'expired'
+              AND IsDeleted = 0
+              AND CreatedAt > DATEADD(HOUR, -24, GETUTCDATE());
+            
+            -- If we successfully reactivated a flow
+            IF @ReactivatedFlowId IS NOT NULL
+            BEGIN
+                -- Clean up old OTPs atomically in same transaction
+                UPDATE dbo.OtpRecords 
+                SET Status = 'expired',
+                    UpdatedAt = GETUTCDATE()
+                WHERE FlowUniqueId = @ReactivatedFlowId 
+                  AND Status IN ('pending', 'unused');
+                
+                SET @ExistingFlowId = @ReactivatedFlowId;
+                SET @Outcome = 'reactivated';
+                GOTO ReturnExistingFlow;
             END
             
             -- Handle ineligibility
