@@ -50,25 +50,18 @@ public class VerificationFlowManagerActor : ReceiveActor
         string baseActorName = GetActorName(actorEvent.ConnectId);
         IActorRef? childActor = Context.Child(baseActorName);
 
-        // For SendOtp (new verification flow), always create a fresh actor
         if (actorEvent.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
         {
-            // If an actor exists (possibly dead/stopping), clean it up first
             if (!childActor.IsNobody())
             {
                 Log.Information("Cleaning up existing flow actor for ConnectId {ConnectId} before creating new one",
                     actorEvent.ConnectId);
 
-                // Remove from tracking and stop the old actor
                 _flowWriters.Remove(childActor);
                 Context.Unwatch(childActor);
                 Context.Stop(childActor);
-
-                // Generate unique name to avoid conflicts
-                baseActorName = $"flow-{actorEvent.ConnectId}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
             }
 
-            // Create fresh flow actor with unique naming
             IActorRef? newFlowActor = Context.ActorOf(VerificationFlowActor.Build(
                 actorEvent.ConnectId,
                 actorEvent.PhoneNumberIdentifier,
@@ -89,7 +82,6 @@ public class VerificationFlowManagerActor : ReceiveActor
         }
         else
         {
-            // For non-SendOtp requests, forward to existing actor if it exists
             if (!childActor.IsNobody())
             {
                 childActor.Forward(actorEvent);
@@ -107,19 +99,9 @@ public class VerificationFlowManagerActor : ReceiveActor
 
     private void HandleVerifyFlow(VerifyFlowActorEvent actorEvent)
     {
-        // Find the actor by ConnectId prefix since name might include timestamp
-        string baseActorName = GetActorName(actorEvent.ConnectId);
-        IActorRef? childActor = Context.Child(baseActorName);
+        IActorRef? childActor = Context.Child(GetActorName(actorEvent.ConnectId));
 
-        // If not found with base name, look for timestamped versions
-        if (childActor.IsNobody())
-        {
-            var allChildren = Context.GetChildren();
-            childActor = allChildren.FirstOrDefault(child =>
-                child.Path.Name.StartsWith(baseActorName + "-"));
-        }
-
-        if (!childActor?.IsNobody() == true)
+        if (!childActor.IsNobody())
             childActor.Forward(actorEvent);
         else
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
@@ -134,7 +116,6 @@ public class VerificationFlowManagerActor : ReceiveActor
         {
             _flowWriters.Remove(completedActor);
             Log.Debug("Verification flow completed gracefully for actor {ActorPath}", completedActor.Path);
-            // Actor has already completed its channel, no need to complete it again
         }
         else
         {
@@ -174,7 +155,6 @@ public class VerificationFlowManagerActor : ReceiveActor
                     Log.Warning("Failed to complete channel for terminated actor {ActorPath}", deadActor.Path);
                 }
             }
-            // For graceful terminations, actor has already completed its channel
         }
         else
         {

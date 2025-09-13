@@ -128,7 +128,7 @@ BEGIN TRY
     ('OTP.EnableRateLimitTracking', '1', 'bool', 'Enable OTP rate limit tracking and enforcement', 'Security');
     
     INSERT INTO dbo.SystemConfiguration (ConfigKey, ConfigValue, DataType, Description, Category) VALUES
-    ('RateLimit.MaxFlowsPerHour', '5', 'int', 'Maximum verification flows per phone number per hour', 'Security'),
+    ('RateLimit.MaxFlowsPerHour', '100', 'int', 'Maximum verification flows per phone number per hour', 'Security'),
     ('RateLimit.WindowHours', '1', 'int', 'Rate limiting window in hours', 'Security');
     
     INSERT INTO dbo.SystemConfiguration (ConfigKey, ConfigValue, DataType, Description, Category) VALUES
