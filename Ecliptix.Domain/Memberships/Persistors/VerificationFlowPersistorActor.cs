@@ -158,10 +158,10 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         return Result<int, VerificationFlowFailure>.Ok(parameters.Get<int>("@rowsAffected"));
     }
 
-    private async Task<Result<CreateOtpResult, VerificationFlowFailure>> CreateOtpAsync(IDbConnection conn,
+    private static async Task<Result<CreateOtpResult, VerificationFlowFailure>> CreateOtpAsync(IDbConnection conn,
         CreateOtpActorEvent cmd)
     {
-        DynamicParameters parameters = new DynamicParameters();
+        DynamicParameters parameters = new();
         parameters.Add("@FlowUniqueId", cmd.OtpRecord.FlowUniqueId);
         parameters.Add("@OtpHash", cmd.OtpRecord.OtpHash);
         parameters.Add("@OtpSalt", cmd.OtpRecord.OtpSalt);

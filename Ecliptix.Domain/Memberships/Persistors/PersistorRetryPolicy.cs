@@ -1,87 +1,59 @@
 using System.Data.Common;
 using Ecliptix.Domain.Utilities;
 using Microsoft.Data.SqlClient;
+using Polly;
+using Polly.Retry;
 using Serilog;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
 public static class PersistorRetryPolicy
 {
-    private static readonly TimeSpan[] RetryDelays = 
+    private static AsyncRetryPolicy CreateRetryPolicy(string operationName)
     {
-        TimeSpan.FromMilliseconds(250),
-        TimeSpan.FromMilliseconds(500), 
-        TimeSpan.FromSeconds(1),
-        TimeSpan.FromSeconds(2)
-    };
+        return Policy
+            .Handle<DbException>(ShouldRetryDbException)
+            .Or<TimeoutException>()
+            .WaitAndRetryAsync(
+                retryCount: 3,
+                sleepDurationProvider: retryAttempt => TimeSpan.FromMilliseconds(Math.Pow(2, retryAttempt) * 200),
+                onRetry: (outcome, timespan, retryCount, context) =>
+                {
+                    Log.Warning("Retry {RetryCount} for operation {OperationName} after {Delay}ms due to {ExceptionType}: {Message}",
+                        retryCount, operationName, timespan.TotalMilliseconds,
+                        outcome.GetType().Name, outcome.Message);
+                });
+    }
 
     public static async Task<Result<TResult, TFailure>> ExecuteWithRetryAsync<TResult, TFailure>(
         Func<Task<Result<TResult, TFailure>>> operation,
         string operationName,
         Func<DbException, string, TFailure> dbExceptionMapper,
         Func<TimeoutException, string, TFailure> timeoutExceptionMapper,
-        Func<Exception, string, TFailure> genericExceptionMapper,
-        int maxRetries = 3)
+        Func<Exception, string, TFailure> genericExceptionMapper)
         where TFailure : IFailureBase
     {
-        Exception? lastException = null;
+        AsyncRetryPolicy policy = CreateRetryPolicy(operationName);
 
-        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        try
         {
-            try
-            {
-                Result<TResult, TFailure> result = await operation();
-
-                if (result.IsOk || !ShouldRetryFailure(result.UnwrapErr(), attempt))
-                {
-                    return result;
-                }
-
-                if (attempt < maxRetries)
-                {
-                    TimeSpan delay = GetRetryDelay(attempt);
-                    Log.Warning("Retry {RetryCount} for operation {OperationName} after {Delay}ms",
-                        attempt + 1, operationName, delay.TotalMilliseconds);
-                    await Task.Delay(delay);
-                }
-            }
-            catch (DbException dbEx) when (ShouldRetryDbException(dbEx) && attempt < maxRetries)
-            {
-                lastException = dbEx;
-                TimeSpan delay = GetRetryDelay(attempt);
-                Log.Warning("Retry {RetryCount} for operation {OperationName} after {Delay}ms due to {ExceptionType}: {Message}",
-                    attempt + 1, operationName, delay.TotalMilliseconds, dbEx.GetType().Name, dbEx.Message);
-                await Task.Delay(delay);
-            }
-            catch (DbException dbEx)
-            {
-                Log.Error(dbEx, "Database exception in operation {OperationName}: {Message}", operationName, dbEx.Message);
-                return Result<TResult, TFailure>.Err(dbExceptionMapper(dbEx, operationName));
-            }
-            catch (TimeoutException timeoutEx) when (attempt < maxRetries)
-            {
-                lastException = timeoutEx;
-                TimeSpan delay = GetRetryDelay(attempt);
-                Log.Warning("Retry {RetryCount} for operation {OperationName} after {Delay}ms due to timeout: {Message}",
-                    attempt + 1, operationName, delay.TotalMilliseconds, timeoutEx.Message);
-                await Task.Delay(delay);
-            }
-            catch (TimeoutException timeoutEx)
-            {
-                Log.Error(timeoutEx, "Timeout exception in operation {OperationName}: {Message}", operationName, timeoutEx.Message);
-                return Result<TResult, TFailure>.Err(timeoutExceptionMapper(timeoutEx, operationName));
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Unexpected exception in operation {OperationName}", operationName);
-                return Result<TResult, TFailure>.Err(genericExceptionMapper(ex, operationName));
-            }
+            return await policy.ExecuteAsync(async () => await operation());
         }
-
-        Log.Error("All retry attempts failed for operation {OperationName}", operationName);
-        return Result<TResult, TFailure>.Err(genericExceptionMapper(
-            lastException ?? new InvalidOperationException("All retry attempts failed"), 
-            operationName));
+        catch (DbException dbEx)
+        {
+            Log.Error(dbEx, "Database exception in operation {OperationName}: {Message}", operationName, dbEx.Message);
+            return Result<TResult, TFailure>.Err(dbExceptionMapper(dbEx, operationName));
+        }
+        catch (TimeoutException timeoutEx)
+        {
+            Log.Error(timeoutEx, "Timeout exception in operation {OperationName}: {Message}", operationName, timeoutEx.Message);
+            return Result<TResult, TFailure>.Err(timeoutExceptionMapper(timeoutEx, operationName));
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Unexpected exception in operation {OperationName}", operationName);
+            return Result<TResult, TFailure>.Err(genericExceptionMapper(ex, operationName));
+        }
     }
 
     private static bool ShouldRetryDbException(DbException exception)
@@ -121,21 +93,5 @@ public static class PersistorRetryPolicy
         }
 
         return true;
-    }
-
-    private static bool ShouldRetryFailure<TFailure>(TFailure failure, int attempt) where TFailure : IFailureBase
-    {
-        return attempt < 3;
-    }
-
-    private static TimeSpan GetRetryDelay(int attempt)
-    {
-        if (attempt < RetryDelays.Length)
-        {
-            TimeSpan baseDelay = RetryDelays[attempt];
-            TimeSpan jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 100));
-            return baseDelay + jitter;
-        }
-        return TimeSpan.FromSeconds(5);
     }
 }

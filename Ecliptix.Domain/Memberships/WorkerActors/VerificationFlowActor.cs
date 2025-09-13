@@ -103,7 +103,15 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                         }));
                 }
 
-                await CompleteWithError(verificationFlowFailure);
+                if (verificationFlowFailure.FailureType == VerificationFlowFailureType.NotFound ||
+                    verificationFlowFailure.FailureType == VerificationFlowFailureType.InvalidOpaque)
+                {
+                    await CompleteWithError(verificationFlowFailure);
+                }
+                else
+                {
+                    Become(OtpExpiredWaitingForSession);
+                }
                 return;
             }
 
@@ -136,15 +144,42 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private async Task ContinueWithOtp()
     {
         Result<Unit, VerificationFlowFailure> otpResult = await PrepareAndSendOtp(_cultureName);
-        otpResult.Switch(
-            _ =>
+        if (otpResult.IsErr)
+        {
+            VerificationFlowFailure failure = otpResult.UnwrapErr();
+
+            if (failure.IsUserFacing)
             {
-                Become(Running);
+                string message = _localizationProvider.Localize(failure.Message, _cultureName);
+                await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                    new VerificationCountdownUpdate
+                    {
+                        SecondsRemaining = 0,
+                        SessionIdentifier = _verificationFlow.HasValue
+                            ? Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier)
+                            : ByteString.Empty,
+                        Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Failed,
+                        Message = message
+                    }));
+            }
+
+            if (failure.FailureType == VerificationFlowFailureType.NotFound ||
+                failure.FailureType == VerificationFlowFailureType.Generic)
+            {
+                await CompleteWithError(failure);
+            }
+            else
+            {
+                Become(OtpExpiredWaitingForSession);
                 Stash.UnstashAll();
-                Self.Tell(new StartOtpTimerEvent());
-            },
-            async failure => await CompleteWithError(failure)
-        );
+            }
+        }
+        else
+        {
+            Become(Running);
+            Stash.UnstashAll();
+            Self.Tell(new StartOtpTimerEvent());
+        }
     }
 
     private void Running()
@@ -223,33 +258,13 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             Log.Warning(ex, "Error completing channel for ConnectId {ConnectId}", _connectId);
         }
 
-        const int maxRetries = 3;
-        bool otpUpdated = false;
-
-        for (int attempt = 1; attempt <= maxRetries && !otpUpdated; attempt++)
+        try
         {
-            try
-            {
-                await UpdateOtpStatus(VerificationFlowStatus.Verified);
-                otpUpdated = true;
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex,
-                    "Failed to update OTP status on attempt {Attempt}/{MaxAttempts} for ConnectId {ConnectId}",
-                    attempt, maxRetries, _connectId);
-
-                if (attempt < maxRetries)
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(100 * attempt));
-                }
-            }
+            await UpdateOtpStatus(VerificationFlowStatus.Verified);
         }
-
-        if (!otpUpdated)
+        catch (Exception ex)
         {
-            Log.Error("Failed to update OTP status after {MaxRetries} attempts for ConnectId {ConnectId}", maxRetries,
-                _connectId);
+            Log.Error(ex, "Failed to update OTP status for ConnectId {ConnectId}", _connectId);
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Generic("Failed to verify OTP due to system error")));
             return;
@@ -336,7 +351,22 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 new RequestResendOtpActorEvent(_verificationFlow.Value!.UniqueIdentifier), TimeSpan.FromSeconds(15));
         if (checkResult.IsErr)
         {
-            await CompleteWithError(checkResult.UnwrapErr());
+            VerificationFlowFailure failure = checkResult.UnwrapErr();
+
+            if (failure.IsUserFacing)
+            {
+                string message = _localizationProvider.Localize(failure.Message, _cultureName);
+                await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                    new VerificationCountdownUpdate
+                    {
+                        SecondsRemaining = 0,
+                        SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
+                        Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Failed,
+                        Message = message
+                    }));
+            }
+
+            Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(failure));
             return;
         }
 
@@ -583,8 +613,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         _isCompleting = true;
         _writer = null;
 
-        if (_activeOtp?.IsActive == true) 
-        { 
+        if (_activeOtp?.IsActive == true)
+        {
             await UpdateOtpStatus(VerificationFlowStatus.Expired);
         }
 
@@ -783,7 +813,12 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
     private async Task CompleteWithError(VerificationFlowFailure failure)
     {
-        await TerminateActor(graceful: false, error: failure.InnerException, publishCleanupEvent: false);
+        bool isGraceful = failure.IsUserFacing;
+
+        await TerminateActor(
+            graceful: isGraceful,
+            error: failure.InnerException,
+            publishCleanupEvent: false);
     }
 
     private void CancelTimers()
