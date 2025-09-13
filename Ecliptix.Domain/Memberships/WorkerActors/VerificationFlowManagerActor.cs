@@ -56,16 +56,19 @@ public class VerificationFlowManagerActor : ReceiveActor
             // If an actor exists (possibly dead/stopping), clean it up first
             if (!childActor.IsNobody())
             {
-                Log.Information("Cleaning up existing flow actor for ConnectId {ConnectId} before creating new one", 
+                Log.Information("Cleaning up existing flow actor for ConnectId {ConnectId} before creating new one",
                     actorEvent.ConnectId);
-                
+
                 // Remove from tracking and stop the old actor
                 _flowWriters.Remove(childActor);
                 Context.Unwatch(childActor);
                 Context.Stop(childActor);
+
+                // Generate unique name to avoid conflicts
+                baseActorName = $"flow-{actorEvent.ConnectId}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
             }
 
-            // Create fresh flow actor with consistent naming for SendOtp and ResendOtp
+            // Create fresh flow actor with unique naming
             IActorRef? newFlowActor = Context.ActorOf(VerificationFlowActor.Build(
                 actorEvent.ConnectId,
                 actorEvent.PhoneNumberIdentifier,
@@ -104,9 +107,19 @@ public class VerificationFlowManagerActor : ReceiveActor
 
     private void HandleVerifyFlow(VerifyFlowActorEvent actorEvent)
     {
-        IActorRef? childActor = Context.Child(GetActorName(actorEvent.ConnectId));
+        // Find the actor by ConnectId prefix since name might include timestamp
+        string baseActorName = GetActorName(actorEvent.ConnectId);
+        IActorRef? childActor = Context.Child(baseActorName);
 
-        if (!childActor.IsNobody())
+        // If not found with base name, look for timestamped versions
+        if (childActor.IsNobody())
+        {
+            var allChildren = Context.GetChildren();
+            childActor = allChildren.FirstOrDefault(child =>
+                child.Path.Name.StartsWith(baseActorName + "-"));
+        }
+
+        if (!childActor?.IsNobody() == true)
             childActor.Forward(actorEvent);
         else
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(

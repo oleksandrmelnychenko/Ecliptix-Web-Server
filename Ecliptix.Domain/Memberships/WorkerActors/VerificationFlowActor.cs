@@ -37,7 +37,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private Option<VerificationFlowQueryRecord> _verificationFlow = Option<VerificationFlowQueryRecord>.None;
     private DateTime _sessionDeadline;
     private bool _sessionTimerPaused;
-    private TimeSpan _sessionRemainingTime;
 
     private ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> _writer;
     private bool _isCompleting;
@@ -114,7 +113,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             VerificationFlowQueryRecord currentFlow = result.Unwrap();
             _verificationFlow = Option<VerificationFlowQueryRecord>.Some(currentFlow);
             _sessionDeadline = currentFlow.ExpiresAt;
-            _sessionRemainingTime = _sessionDeadline - DateTime.UtcNow;
 
             if (currentFlow.Status == VerificationFlowStatus.Verified)
             {
@@ -434,7 +432,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         {
             _sessionTimer = Context.System.Scheduler.ScheduleTellOnceCancelable(sessionDelay, Self,
                 new VerificationFlowExpiredEvent(_cultureName), ActorRefs.NoSender);
-            _sessionRemainingTime = sessionDelay;
         }
     }
 
@@ -814,7 +811,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     {
         if (_sessionTimer is { IsCancellationRequested: false })
         {
-            _sessionRemainingTime = _sessionDeadline - DateTime.UtcNow;
             _sessionTimer.Cancel(false);
             _sessionTimerPaused = true;
         }
@@ -860,7 +856,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             Log.Error(ex, "Unexpected error writing to channel for ConnectId {ConnectId}", _connectId);
         }
     }
-
 
     protected override void PostStop()
     {
