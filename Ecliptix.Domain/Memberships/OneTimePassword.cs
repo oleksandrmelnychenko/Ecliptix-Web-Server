@@ -12,7 +12,7 @@ public sealed class OneTimePassword
     private Option<OtpQueryRecord> _otpQueryRecord = Option<OtpQueryRecord>.None;
 
     public bool IsActive { get; private set; }
-    public DateTime ExpiresAt { get; } = DateTime.UtcNow.AddSeconds(30);
+    public DateTime ExpiresAt { get; internal set; } = DateTime.UtcNow.AddSeconds(30);
     public Guid UniqueIdentifier { get; set; }
 
     public Result<(OtpQueryRecord Record, string PlainOtp), VerificationFlowFailure> Generate(
@@ -91,5 +91,17 @@ public sealed class OneTimePassword
         if (isValid) ConsumeOtp();
 
         return isValid;
+    }
+
+    public static OneTimePassword FromExisting(OtpQueryRecord record)
+    {
+        var otp = new OneTimePassword
+        {
+            UniqueIdentifier = record.UniqueIdentifier,
+            ExpiresAt = record.ExpiresAt,
+            IsActive = record.IsActive
+        };
+        otp._otpQueryRecord = Option<OtpQueryRecord>.Some(record);
+        return otp;
     }
 }

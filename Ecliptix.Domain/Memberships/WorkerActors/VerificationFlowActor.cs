@@ -128,6 +128,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             }
             else
             {
+                _activeOtp = OneTimePassword.FromExisting(currentFlow.OtpActive);
                 Self.Tell(new StartOtpTimerEvent());
                 Become(Running);
                 Stash.UnstashAll();
@@ -217,7 +218,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         _isCompleting = true;
         CancelTimers();
         _sessionTimerPaused = false;
-        await Task.Delay(50);
 
         try
         {
@@ -471,13 +471,14 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     {
         if (_otpTimer?.IsCancellationRequested == false)
         {
-            _otpTimer.Cancel(false);
+            _otpTimer.Cancel(true);
+            _otpTimer = null;
         }
     }
 
     private async Task HandleTimerTick(VerificationCountdownUpdate _)
     {
-        if (_isCompleting || !_timersStarted)
+        if (_isCompleting || _cleanupCompleted || !_timersStarted)
         {
             return;
         }
@@ -582,7 +583,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     private async Task HandleClientDisconnection(PrepareForTerminationMessage _)
     {
         _isCompleting = true;
-        await Task.Delay(100);
         _writer = null;
 
         await TerminateActor(graceful: true);
@@ -791,12 +791,14 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
             if (_sessionTimer?.IsCancellationRequested == false)
             {
-                _sessionTimer.Cancel(false);
+                _sessionTimer.Cancel(true);
+                _sessionTimer = null;
             }
 
             if (_cleanupFallbackTimer?.IsCancellationRequested == false)
             {
-                _cleanupFallbackTimer.Cancel(false);
+                _cleanupFallbackTimer.Cancel(true);
+                _cleanupFallbackTimer = null;
             }
 
             _timersStarted = false;
