@@ -102,11 +102,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                             Message = message
                         }));
                 }
-                else
-                {
-                    await CompleteWithError(result.UnwrapErr());
-                }
 
+                await CompleteWithError(verificationFlowFailure);
                 return;
             }
 
