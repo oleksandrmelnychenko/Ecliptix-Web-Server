@@ -74,3 +74,41 @@ module "ecs_cluster" {
     region  = "eu-central-1"
   } 
 }
+
+module "ecs_service" {
+  source = "../../modules/ecs/ecs_service"
+
+  project                 = "ecliptix"
+  env                     = "dev"
+  cluster_id              = module.ecs_cluster.cluster_id
+  task_definition_arn     = module.ecs_task.task_definition_arn
+  private_subnet_ids      = module.network.private_subnets
+  ecs_sg_id               = module.security.ecs_sg_id
+
+  load_balancers = [
+    {
+      target_group_arn = module.alb.memberships_grpc_tg_arn
+      container_name   = "memberships"
+      container_port   = "5051"
+    },
+    {
+      target_group_arn = module.alb.memberships_http_tg_arn
+      container_name   = "memberships"
+      container_port   = "8080"
+    }
+  ]
+
+  tags = {
+    project = "ecliptix"
+    env     = "dev"
+    region  = "eu-central-1"
+  }
+}
+
+
+resource "null_resource" "ecs_service_depends" {
+  depends_on = [
+    module.alb.memberships_https_listener,
+    module.alb.memberships_grpc_listener
+  ]
+}
