@@ -21,6 +21,7 @@ module "network" {
 
 module "security" {
   source   = "../../modules/security"
+  
   vpc_id   = module.network.vpc_id
 
   alb_ports         = [5051, 8080]
@@ -62,3 +63,14 @@ module "alb" {
   }
 }
 
+module "ecs_cluster" {
+  source = "../../modules/ecs/ecs_cluster"
+
+  project = "ecliptix"
+  env     = "dev"
+  tags = {
+    project = "ecliptix"
+    env     = "dev"
+    region  = "eu-central-1"
+  } 
+}
