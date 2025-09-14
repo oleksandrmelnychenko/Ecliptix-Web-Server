@@ -44,3 +44,21 @@ module "vpc_endpoints" {
     region  = "eu-central-1"
   }
 }
+
+module "alb" {
+  source = "../../modules/alb"
+
+  vpc_id                = module.network.vpc_id
+  public_subnet_ids     = module.network.public_subnets
+  alb_sg_id             = module.security.alb_sg_id
+  alb_acm_certificate_arn = var.alb_acm_certificate_arn
+
+  project = "ecliptix"
+  env     = "dev"
+  tags = {
+    project = "ecliptix"
+    env     = "dev"
+    region  = "eu-central-1"
+  }
+}
+

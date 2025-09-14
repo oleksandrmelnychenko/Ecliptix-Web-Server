@@ -32,11 +32,26 @@ resource "aws_subnet" "private" {
   })
 }
 
-# --- Private Gateway --- 
+# --- Internal Gateway --- 
 
 resource "aws_internet_gateway" "this" {
   vpc_id = aws_vpc.this.id
   tags   = merge(var.tags, { Name = "${var.tags["project"]}-igw" })
+}
+
+# --- NAT Gateway ---
+resource "aws_eip" "nat" {
+  domain = "vpc"
+  tags   = { Name = "ecliptix-nat-eip" }
+}
+
+resource "aws_nat_gateway" "this" {
+  allocation_id = aws_eip.nat.allocation_id
+  subnet_id     = aws_subnet.public[0].id
+
+  tags = { Name = "ecliptix-nat-gateway" }
+
+  depends_on = [aws_internet_gateway.this]
 }
 
 # --- Route Tables ---
