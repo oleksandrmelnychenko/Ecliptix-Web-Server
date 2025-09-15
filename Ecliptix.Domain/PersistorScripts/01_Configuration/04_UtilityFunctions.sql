@@ -22,7 +22,7 @@ Created: 2024-08-24
 */
 
 -- Use target database
-USE [memberships]; -- Replace with your actual database name
+USE [EcliptixMemberships]; -- Replace with your actual database name
 GO
 
 SET NOCOUNT ON;

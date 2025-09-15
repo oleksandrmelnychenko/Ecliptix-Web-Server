@@ -152,7 +152,6 @@ try
         };
     });
     
-    DbMigrator.ApplyMaster(builder.Configuration);
    
     app.UseRateLimiter();
     app.UseMiddleware<SecurityMiddleware>();

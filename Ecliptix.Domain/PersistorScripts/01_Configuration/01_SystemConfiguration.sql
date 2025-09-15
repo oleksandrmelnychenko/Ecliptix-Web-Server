@@ -1,5 +1,5 @@
-USE [memberships];
-USE [memberships];
+USE [EcliptixMemberships];
+USE [EcliptixMemberships];
 GO
 
 SET NOCOUNT ON;
