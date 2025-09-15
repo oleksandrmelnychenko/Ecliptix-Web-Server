@@ -2,6 +2,10 @@ module "global" {
   source = "../../global"
 }
 
+module "iam" {
+  source = "../../modules/iam"
+}
+
 module "network" {
   source = "../../modules/network"
 
@@ -112,8 +116,8 @@ resource "null_resource" "ecs_service_depends" {
   ]
 }
 
-module "iam" {
-  source = "../../modules/iam"
+module "ecr" {
+  source = "../../modules/ecr"
 }
 
 module "ecs_task_memberships" {
@@ -125,7 +129,7 @@ module "ecs_task_memberships" {
   execution_role_arn = module.iam.ecs_task_execution_role_arn
   task_role_arn      = module.iam.ecs_task_role_arn
   container_name     = "memberships"
-  image_url          = module.ecr.memberships_repo_url
+  image_url          = module.ecr.memberships_repository_url
 
   port_mappings = [
     { containerPort = 5051, protocol = "tcp" },
