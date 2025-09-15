@@ -123,7 +123,6 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         }
         catch (OperationCanceledException)
         {
-            // Silent cancellation - this is expected when users cancel the verification flow
             activity?.SetTag("cancelled", true);
             return Result<Unit, FailureBase>.Ok(Unit.Value);
         }
