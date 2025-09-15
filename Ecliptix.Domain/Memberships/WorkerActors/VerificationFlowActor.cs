@@ -163,8 +163,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                     }));
             }
 
-            if (failure.FailureType == VerificationFlowFailureType.NotFound ||
-                failure.FailureType == VerificationFlowFailureType.Generic)
+            if (failure.FailureType is VerificationFlowFailureType.NotFound or VerificationFlowFailureType.Generic)
             {
                 await CompleteWithError(failure);
             }
