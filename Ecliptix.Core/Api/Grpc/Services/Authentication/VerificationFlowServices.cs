@@ -206,41 +206,48 @@ public class VerificationFlowServices(
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        await foreach (Result<VerificationCountdownUpdate, VerificationFlowFailure> updateResult in reader.ReadAllAsync(
-                           context.CancellationToken))
+        try
         {
-            CipherPayload payload;
-
-            if (updateResult.IsErr)
+            await foreach (Result<VerificationCountdownUpdate, VerificationFlowFailure> updateResult in reader.ReadAllAsync(
+                               context.CancellationToken))
             {
-                payload = await grpcCipherService.CreateFailureResponse(updateResult.UnwrapErr(), connectId, context);
-            }
-            else
-            {
-                VerificationCountdownUpdate update = updateResult.Unwrap();
+                CipherPayload payload;
 
-                Result<CipherPayload, FailureBase> encryptResult =
-                    await grpcCipherService.EncryptPayload(update.ToByteArray(), connectId, context);
-
-                if (encryptResult.IsErr)
+                if (updateResult.IsErr)
                 {
-                    payload = await grpcCipherService.CreateFailureResponse(encryptResult.UnwrapErr(), connectId,
-                        context);
+                    payload = await grpcCipherService.CreateFailureResponse(updateResult.UnwrapErr(), connectId, context);
                 }
                 else
                 {
-                    payload = encryptResult.Unwrap();
+                    VerificationCountdownUpdate update = updateResult.Unwrap();
 
-                    if (update.Status == VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired)
+                    Result<CipherPayload, FailureBase> encryptResult =
+                        await grpcCipherService.EncryptPayload(update.ToByteArray(), connectId, context);
+
+                    if (encryptResult.IsErr)
                     {
-                        ActorSystem actorSystem =
-                            context.GetHttpContext().RequestServices.GetRequiredService<ActorSystem>();
-                        actorSystem.EventStream.Publish(new SessionExpiredMessageDeliveredEvent(connectId));
+                        payload = await grpcCipherService.CreateFailureResponse(encryptResult.UnwrapErr(), connectId,
+                            context);
+                    }
+                    else
+                    {
+                        payload = encryptResult.Unwrap();
+
+                        if (update.Status == VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired)
+                        {
+                            ActorSystem actorSystem =
+                                context.GetHttpContext().RequestServices.GetRequiredService<ActorSystem>();
+                            actorSystem.EventStream.Publish(new SessionExpiredMessageDeliveredEvent(connectId));
+                        }
                     }
                 }
-            }
 
-            await responseStream.WriteAsync(payload);
+                await responseStream.WriteAsync(payload);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Silent cancellation 
         }
     }
 

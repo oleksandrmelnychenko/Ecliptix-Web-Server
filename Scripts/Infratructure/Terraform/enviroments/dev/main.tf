@@ -105,12 +105,15 @@ module "ecs_service" {
   }
 }
 
-
 resource "null_resource" "ecs_service_depends" {
   depends_on = [
     module.alb.memberships_https_listener,
     module.alb.memberships_grpc_listener
   ]
+}
+
+module "iam" {
+  source = "../../modules/iam"
 }
 
 module "ecs_task_memberships" {

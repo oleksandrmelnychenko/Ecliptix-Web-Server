@@ -514,9 +514,9 @@ BEGIN TRY
             -- Create new verification flow
             SET @NewFlowUniqueId = NEWID();
             DECLARE @DefaultExpirationMinutes INT = CAST(dbo.GetConfigValue('VerificationFlow.DefaultExpirationMinutes') AS INT);
-            -- Ensure minimum expiration time of 5 minutes if config value is invalid or missing
+            -- Ensure minimum expiration time of 1 minute if config value is invalid or missing
             IF @DefaultExpirationMinutes IS NULL OR @DefaultExpirationMinutes <= 0
-                SET @DefaultExpirationMinutes = 5;
+                SET @DefaultExpirationMinutes = 1;
             SET @ExpiresAt = DATEADD(MINUTE, @DefaultExpirationMinutes, GETUTCDATE());
             
             INSERT INTO dbo.VerificationFlows (
@@ -732,7 +732,7 @@ BEGIN TRY
     -- Add configuration values if they don''t exist
     IF NOT EXISTS (SELECT 1 FROM dbo.SystemConfiguration WHERE ConfigKey = 'VerificationFlow.DefaultExpirationMinutes')
         INSERT INTO dbo.SystemConfiguration (ConfigKey, ConfigValue, DataType, Description, Category) 
-        VALUES ('VerificationFlow.DefaultExpirationMinutes', '5', 'int', 'Default verification flow expiration in minutes', 'Security');
+        VALUES ('VerificationFlow.DefaultExpirationMinutes', '1', 'int', 'Default verification flow expiration in minutes', 'Security');
 
     IF NOT EXISTS (SELECT 1 FROM dbo.SystemConfiguration WHERE ConfigKey = 'OTP.EnableRateLimitTracking')
         INSERT INTO dbo.SystemConfiguration (ConfigKey, ConfigValue, DataType, Description, Category) 

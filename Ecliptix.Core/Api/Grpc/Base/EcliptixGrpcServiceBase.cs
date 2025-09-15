@@ -100,7 +100,8 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
             uint connectId = ExtractConnectionId(context);
             ValidateConnectionId(connectId);
 
-            Result<TRequest, FailureBase> decryptResult = await DecryptRequestAsync<TRequest>(encryptedRequest, connectId, context);
+            Result<TRequest, FailureBase> decryptResult =
+                await DecryptRequestAsync<TRequest>(encryptedRequest, connectId, context);
             if (decryptResult.IsErr)
             {
                 activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, false);
@@ -118,7 +119,13 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         catch (RpcException)
         {
             activity?.SetTag(GrpcServiceConstants.ActivityTags.Error, true);
-            throw; 
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            // Silent cancellation - this is expected when users cancel the verification flow
+            activity?.SetTag("cancelled", true);
+            return Result<Unit, FailureBase>.Ok(Unit.Value);
         }
         catch (Exception ex)
         {
