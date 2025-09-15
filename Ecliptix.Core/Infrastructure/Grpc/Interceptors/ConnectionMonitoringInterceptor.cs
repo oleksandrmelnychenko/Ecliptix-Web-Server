@@ -137,8 +137,8 @@ public class ConnectionMonitoringInterceptor : Interceptor
 
         ConnectionInfo connectionInfo = ActiveConnections.AddOrUpdate(connectId, 
             _ => {
-                ConnectionsEstablished.Add(1);
-                Log.Debug("New connection tracked: {ConnectId} - Method: {Method}", 
+                ConnectionsEstablished.Add(InterceptorConstants.Numbers.One);
+                Log.Debug(InterceptorConstants.LogMessages.ConnectionTracked,
                     connectId, method);
 
                 return new ConnectionInfo
@@ -148,7 +148,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
                     UserAgent = userAgent,
                     FirstSeen = DateTime.UtcNow,
                     LastActivity = DateTime.UtcNow,
-                    RequestCount = 1,
+                    RequestCount = InterceptorConstants.Numbers.One,
                     IsStreaming = isStreaming,
                     CurrentMethod = method
                 };
@@ -161,9 +161,9 @@ public class ConnectionMonitoringInterceptor : Interceptor
                 return existing;
             });
 
-        if (connectionInfo.RequestCount % InterceptorConstants.Limits.ConnectionLogFrequency == 0)
+        if (connectionInfo.RequestCount % InterceptorConstants.Limits.ConnectionLogFrequency == InterceptorConstants.Numbers.Zero)
         {
-            Log.Information("Connection {ConnectId} active: {RequestCount} requests over {Duration:mm\\:ss}", 
+            Log.Information(InterceptorConstants.LogMessages.ConnectionActive,
                 connectId, connectionInfo.RequestCount, DateTime.UtcNow - connectionInfo.FirstSeen);
         }
     }
@@ -184,7 +184,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
             info.LastError = error.Message;
             info.ErrorCount++;
 
-            Log.Warning("Connection {ConnectId} error #{ErrorCount}: {Error}", 
+            Log.Warning(InterceptorConstants.LogMessages.ConnectionError,
                 connectId, info.ErrorCount, error.Message);
         }
     }
@@ -193,10 +193,10 @@ public class ConnectionMonitoringInterceptor : Interceptor
     {
         if (ActiveConnections.TryRemove(connectId, out ConnectionInfo? info))
         {
-            ConnectionsClosed.Add(1);
+            ConnectionsClosed.Add(InterceptorConstants.Numbers.One);
             TimeSpan duration = DateTime.UtcNow - info.FirstSeen;
 
-            Log.Information("Connection {ConnectId} closed after {Duration:mm\\:ss} - {RequestCount} requests, {ErrorCount} errors - Reason: {Reason}", 
+            Log.Information(InterceptorConstants.LogMessages.ConnectionClosed,
                 connectId, duration, info.RequestCount, info.ErrorCount, reason);
         }
     }
@@ -207,9 +207,9 @@ public class ConnectionMonitoringInterceptor : Interceptor
         {
             string clientIp = context.GetHttpContext().Connection.RemoteIpAddress?.ToString() ?? InterceptorConstants.Connections.Unknown;
             string userAgent = context.GetHttpContext().Request.Headers.UserAgent.ToString();
-            string combined = $"{clientIp}:{userAgent}";
+            string combined = $"{clientIp}{InterceptorConstants.Characters.Colon}{userAgent}";
 
-            return Math.Abs(combined.GetHashCode()).ToString("X8");
+            return Math.Abs(combined.GetHashCode()).ToString(InterceptorConstants.Formatting.HashFormat);
         }
         catch
         {
@@ -222,7 +222,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
         if (string.IsNullOrEmpty(userAgent) || userAgent.Length > InterceptorConstants.Limits.MaxUserAgentLength)
             return InterceptorConstants.Connections.Sanitized;
 
-        return userAgent.Split(' ')[0]; 
+        return userAgent.Split(InterceptorConstants.Characters.Space)[InterceptorConstants.Numbers.FirstIndex]; 
     }
 
     public static ConnectionStatistics GetConnectionStatistics()
@@ -238,7 +238,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
                 ? TimeSpan.FromTicks((long)connections.Average(c => (now - c.FirstSeen).Ticks))
                 : TimeSpan.Zero,
             StreamingConnectionCount = connections.Count(c => c.IsStreaming),
-            ConnectionsWithErrors = connections.Count(c => c.ErrorCount > 0),
+            ConnectionsWithErrors = connections.Count(c => c.ErrorCount > InterceptorConstants.Numbers.Zero),
             OldestConnection = connections.Any() 
                 ? connections.Min(c => c.FirstSeen)
                 : (DateTime?)null

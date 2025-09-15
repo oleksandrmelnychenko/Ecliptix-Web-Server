@@ -38,9 +38,9 @@ public class TelemetryInterceptor : Interceptor, IDisposable
         try
         {
             LogRateLimited($"{InterceptorConstants.LogPrefixes.GrpcStart}{methodName}", 
-                () => Log.Debug("Starting gRPC call {Method}", methodName));
+                () => Log.Debug(InterceptorConstants.LogMessages.GrpcCallStart, methodName));
 
-            RequestsTotal.Add(1);
+            RequestsTotal.Add(InterceptorConstants.Numbers.One);
             TResponse response = await continuation(request, context);
 
             stopwatch.Stop();
@@ -51,12 +51,12 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             activity?.SetTag(InterceptorConstants.Tags.GrpcResponseSize, EstimateResponseSize(response));
 
             LogRateLimited($"{InterceptorConstants.LogPrefixes.GrpcSuccess}{methodName}", 
-                () => Log.Information("Completed gRPC call {Method} in {Duration}ms - Status: OK", 
+                () => Log.Information(InterceptorConstants.LogMessages.GrpcCallCompleted,
                     methodName, duration));
 
             if (duration > InterceptorConstants.Thresholds.SlowRequestThresholdMs)
             {
-                Log.Warning("Slow gRPC call detected: {Method} took {Duration}ms", 
+                Log.Warning(InterceptorConstants.LogMessages.SlowGrpcCall,
                     methodName, duration);
             }
 
@@ -71,7 +71,7 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
             activity?.SetTag(InterceptorConstants.Tags.GrpcError, true);
 
-            Log.Warning("gRPC call {Method} failed with {StatusCode} in {Duration}ms: {Message}", 
+            Log.Warning(InterceptorConstants.LogMessages.GrpcCallFailed,
                 methodName, rpcEx.StatusCode, duration, rpcEx.Message);
 
             throw;
@@ -85,7 +85,7 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
             activity?.SetTag(InterceptorConstants.Tags.GrpcError, true);
 
-            Log.Error(ex, "Unexpected error in gRPC call {Method} after {Duration}ms", 
+            Log.Error(ex, InterceptorConstants.LogMessages.GrpcCallUnexpectedError,
                 methodName, duration);
 
             throw;
@@ -111,7 +111,7 @@ public class TelemetryInterceptor : Interceptor, IDisposable
 
         try
         {
-            Log.Debug("Starting gRPC streaming call {Method} from client {ClientHash}", methodName, clientHash);
+            Log.Debug(InterceptorConstants.LogMessages.GrpcStreamingStart, methodName, clientHash);
 
             TelemetryServerStreamWriter<TResponse> wrappedStream = new TelemetryServerStreamWriter<TResponse>(responseStream, activity);
 
@@ -124,7 +124,7 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
             activity?.SetTag(InterceptorConstants.Tags.GrpcMessagesSent, wrappedStream.MessagesSent);
 
-            Log.Information("Completed gRPC streaming call {Method} in {Duration}ms from client {ClientHash} - Messages: {Count}", 
+            Log.Information(InterceptorConstants.LogMessages.GrpcStreamingCompleted,
                 methodName, duration, clientHash, wrappedStream.MessagesSent);
         }
         catch (Exception ex)
@@ -135,7 +135,7 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             activity?.SetTag(InterceptorConstants.Tags.GrpcError, true);
             activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
 
-            Log.Error(ex, "Error in gRPC streaming call {Method} after {Duration}ms from client {ClientHash}", 
+            Log.Error(ex, InterceptorConstants.LogMessages.GrpcStreamingError,
                 methodName, duration, clientHash);
 
             throw;
@@ -149,12 +149,12 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             return request switch
             {
                 Google.Protobuf.IMessage message => message.CalculateSize(),
-                _ => 0
+                _ => InterceptorConstants.Numbers.Zero
             };
         }
         catch
         {
-            return 0;
+            return InterceptorConstants.Numbers.Zero;
         }
     }
 
@@ -165,12 +165,12 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             return response switch
             {
                 Google.Protobuf.IMessage message => message.CalculateSize(),
-                _ => 0
+                _ => InterceptorConstants.Numbers.Zero
             };
         }
         catch
         {
-            return 0;
+            return InterceptorConstants.Numbers.Zero;
         }
     }
 
@@ -206,9 +206,9 @@ public class TelemetryInterceptor : Interceptor, IDisposable
         {
             string clientIp = context.GetHttpContext().Connection.RemoteIpAddress?.ToString() ?? InterceptorConstants.Connections.Unknown;
             string userAgent = context.GetHttpContext().Request.Headers.UserAgent.ToString();
-            string combined = $"{clientIp}:{userAgent}";
+            string combined = $"{clientIp}{InterceptorConstants.Characters.Colon}{userAgent}";
 
-            return Math.Abs(combined.GetHashCode()).ToString("X8");
+            return Math.Abs(combined.GetHashCode()).ToString(InterceptorConstants.Formatting.HashFormat);
         }
         catch
         {
@@ -221,7 +221,7 @@ public class TelemetryInterceptor : Interceptor, IDisposable
         if (string.IsNullOrEmpty(userAgent) || userAgent.Length > InterceptorConstants.Limits.MaxUserAgentLength)
             return InterceptorConstants.Connections.Sanitized;
 
-        return userAgent.Split(' ')[0];
+        return userAgent.Split(InterceptorConstants.Characters.Space)[InterceptorConstants.Numbers.FirstIndex];
     }
 
     public void Dispose()
@@ -231,7 +231,7 @@ public class TelemetryInterceptor : Interceptor, IDisposable
 
 internal class TelemetryServerStreamWriter<T>(IServerStreamWriter<T> inner, Activity? activity) : IServerStreamWriter<T>
 {
-    private int _messagesSent = 0;
+    private int _messagesSent = InterceptorConstants.Numbers.Zero;
 
     public int MessagesSent => _messagesSent;
 

@@ -47,7 +47,7 @@ public class FailureHandlingInterceptor : Interceptor
             case GrpcFailureException ex:
                 Log.Warning(
                     ex,
-                    "gRPC call {Method} terminated by a handled domain failure. Status: {StatusCode}. Details: {@LogPayload}",
+                    InterceptorConstants.LogMessages.GrpcDomainFailure,
                     context.Method,
                     ex.GrpcStatus.StatusCode,
                     ex.StructuredLogPayload
@@ -56,12 +56,12 @@ public class FailureHandlingInterceptor : Interceptor
 
             case RpcException ex:
                 Log.Warning(ex,
-                    "gRPC call {Method} failed with a pre-existing RpcException. Status: {StatusCode}.",
+                    InterceptorConstants.LogMessages.GrpcPreExistingException,
                     context.Method, ex.Status.StatusCode);
                 return ex;
 
             default:
-                Log.Error(exception, "An unhandled exception was thrown during gRPC call {Method}.",
+                Log.Error(exception, InterceptorConstants.LogMessages.GrpcUnhandledException,
                     context.Method);
                 Status status = new(StatusCode.Internal, InterceptorConstants.StatusMessages.UnexpectedInternalServerError);
                 return new RpcException(status, exception.Message);

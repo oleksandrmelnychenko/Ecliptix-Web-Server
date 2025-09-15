@@ -2,6 +2,8 @@ using System.Linq;
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
+using Ecliptix.Core.Domain.Actors;
+using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Protocol;
 using Ecliptix.Domain.Utilities;
@@ -9,39 +11,19 @@ using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.ProtocolState;
 using Unit = Ecliptix.Domain.Utilities.Unit;
-using Ecliptix.Domain.Memberships.WorkerActors;
 
 namespace Ecliptix.Core.Domain.Actors;
-
-public record DeriveSharedSecretActorEvent(uint ConnectId, PubKeyExchange PubKeyExchange);
-
-public record DeriveSharedSecretReply(PubKeyExchange PubKeyExchange);
-
-public record CleanupProtocolForTypeActorEvent(PubKeyExchangeType ExchangeType);
-
-public sealed record KeepAlive
-{
-    public static readonly KeepAlive Instance = new();
-
-    private KeepAlive()
-    {
-    }
-}
-
-public sealed record RetryRecoveryMessage;
-
-public sealed record DelayedTerminationMessage;
 
 public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWithTimers
 {
     public ITimerScheduler Timers { get; set; } = null!;
 
-    public override string PersistenceId { get; } = $"connect-{connectId}";
-    private const int SnapshotInterval = Constants.SnapshotInterval;
-    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(1);
-    private const int MaxRecoveryRetries = 3;
+    public override string PersistenceId { get; } = $"{ActorConstants.ActorNamePrefixes.Connect}{connectId}";
+    private const int SnapshotInterval = ActorConstants.Constants.SnapshotInterval;
+    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(ActorConstants.Timeouts.IdleTimeoutMinutes);
+    private const int MaxRecoveryRetries = ActorConstants.Recovery.MaxRetries;
 
-    private const string RecoveryRetryTimerKey = "recovery-retry";
+    private const string RecoveryRetryTimerKey = ActorConstants.Recovery.RetryTimerKey;
 
     private EcliptixSessionState? _state;
     private readonly Dictionary<PubKeyExchangeType, EcliptixProtocolSystem> _protocolSystems = new();
@@ -65,7 +47,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 _state = state;
                 return true;
             case RecoveryCompleted:
-                Context.GetLogger().Info($"[RecoveryCompleted] Recovery finished for actor {Self.Path.Name}");
+                Context.GetLogger().Info(ActorConstants.LogMessages.RecoveryCompleted, Self.Path.Name);
                 if (_state != null)
                 {
                     AttemptSystemRecreation();
@@ -73,7 +55,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 else
                 {
                     Context.GetLogger()
-                        .Info($"[RecoveryCompleted] No previous session state found for connectId {connectId}");
+                        .Info(ActorConstants.LogMessages.NoSessionState, connectId);
                 }
 
                 return true;
@@ -84,10 +66,9 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
     protected override bool ReceiveCommand(object message)
     {
-        // Reset timeout on each message to keep connection alive during activity
         if (_currentExchangeType == PubKeyExchangeType.ServerStreaming)
         {
-            Context.SetReceiveTimeout(TimeSpan.FromMinutes(6));
+            Context.SetReceiveTimeout(TimeSpan.FromMinutes(ActorConstants.Timeouts.StreamingTimeoutMinutes));
         }
         else if (_currentExchangeType != null)
         {
@@ -120,7 +101,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 AttemptSystemRecreation();
                 return true;
             case DelayedTerminationMessage:
-                Context.GetLogger().Info("[SESSION_CLEANUP] Grace period expired - marking for termination ConnectId: {0}", connectId);
+                Context.GetLogger().Info(ActorConstants.LogMessages.SessionCleanupGracePeriod, connectId);
                 _markedForTermination = true;
                 return true;
 
@@ -128,24 +109,21 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 SaveFinalSnapshot();
                 return true;
             case ClientDisconnectedActorEvent:
-                Context.GetLogger().Info("Client disconnected for ConnectId: {0}", connectId);
+                Context.GetLogger().Info(ActorConstants.LogMessages.ClientDisconnected, connectId);
                 
-                // If marked for termination, stop now that gRPC stream is complete
                 if (_markedForTermination)
                 {
-                    Context.GetLogger().Info("Stopping actor after final message processing for ConnectId: {0}", connectId);
+                    Context.GetLogger().Info(ActorConstants.LogMessages.StoppingAfterFinalMessage, connectId);
                     Context.Stop(Self);
                     return true;
                 }
                 
-                // Analyze what protocol systems are active to make proper cleanup decision
                 bool hasStreaming = _protocolSystems.ContainsKey(PubKeyExchangeType.ServerStreaming);
                 bool hasPersistent = _protocolSystems.Keys.Any(t => t != PubKeyExchangeType.ServerStreaming);
                 
                 if (hasStreaming && !hasPersistent)
                 {
-                    // Only streaming protocols - immediate ephemeral cleanup
-                    Context.GetLogger().Info("Immediate cleanup for pure ServerStreaming connection - ConnectId: {0}", connectId);
+                    Context.GetLogger().Info(ActorConstants.LogMessages.ImmediateCleanupStreaming, connectId);
                     DisposeAllSystems();
                     _state = null;
                     _currentExchangeType = null;
@@ -153,21 +131,18 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 }
                 else if (hasStreaming && hasPersistent)
                 {
-                    // Mixed protocols - dispose streaming only, persist the rest
-                    Context.GetLogger().Info("Mixed protocol cleanup - disposing streaming, persisting others - ConnectId: {0}", connectId);
+                    Context.GetLogger().Info(ActorConstants.LogMessages.MixedProtocolCleanup, connectId);
                     if (_protocolSystems.TryGetValue(PubKeyExchangeType.ServerStreaming, out EcliptixProtocolSystem? streamingSystem))
                     {
                         streamingSystem?.Dispose();
                         _protocolSystems.Remove(PubKeyExchangeType.ServerStreaming);
                     }
-                    // Update current exchange type to remaining persistent type
                     _currentExchangeType = _protocolSystems.Keys.FirstOrDefault();
                     SaveFinalSnapshot();
                 }
                 else
                 {
-                    // Only persistent protocols - normal cleanup with persistence
-                    Context.GetLogger().Info("Standard cleanup for persistent protocols - ConnectId: {0}", connectId);
+                    Context.GetLogger().Info(ActorConstants.LogMessages.StandardCleanup, connectId);
                     SaveFinalSnapshot();
                 }
                 return true;
@@ -175,7 +150,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             case SaveSnapshotSuccess success:
                 if (_savingFinalSnapshot)
                 {
-                    Context.GetLogger().Info("Final snapshot saved successfully. Initiating cleanup operation.");
+                    Context.GetLogger().Info(ActorConstants.LogMessages.FinalSnapshotSaved);
                     _pendingMessageDeletion = true;
                     _pendingSnapshotDeletion = true;
                 }
@@ -206,16 +181,15 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
     private void HandleRestoreSecrecyChannelState()
     {
-        // SERVER_STREAMING connections must not be restored - always require fresh handshake
         if (_currentExchangeType == PubKeyExchangeType.ServerStreaming)
         {
-            Context.GetLogger().Info("SERVER_STREAMING session restoration prevented - fresh handshake required");
+            Context.GetLogger().Info(ActorConstants.LogMessages.SessionRestorationPrevented);
             
             RestoreSecrecyChannelResponse streamingReply = new()
             {
                 Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
-                ReceivingChainLength = 0,
-                SendingChainLength = 0
+                ReceivingChainLength = ActorConstants.Constants.Zero,
+                SendingChainLength = ActorConstants.Constants.Zero
             };
 
             Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(streamingReply));
@@ -228,8 +202,8 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             RestoreSecrecyChannelResponse notFoundReply = new()
             {
                 Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
-                ReceivingChainLength = 0,
-                SendingChainLength = 0
+                ReceivingChainLength = ActorConstants.Constants.Zero,
+                SendingChainLength = ActorConstants.Constants.Zero
             };
 
             Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(notFoundReply));
@@ -239,14 +213,14 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         Result<Unit, EcliptixProtocolFailure> stateValidation = ValidateRecoveredStateIntegrity();
         if (stateValidation.IsErr)
         {
-            Context.GetLogger().Warning("State integrity validation failed: {Error}. Clearing session.",
+            Context.GetLogger().Warning(ActorConstants.LogMessages.StateIntegrityValidationFailed,
                 stateValidation.UnwrapErr().Message);
 
             RestoreSecrecyChannelResponse failureReply = new()
             {
                 Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
-                ReceivingChainLength = 0,
-                SendingChainLength = 0
+                ReceivingChainLength = ActorConstants.Constants.Zero,
+                SendingChainLength = ActorConstants.Constants.Zero
             };
 
             Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(failureReply));
@@ -264,14 +238,13 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         catch (InvalidOperationException)
         {
             Context.GetLogger()
-                .Warning(
-                    "Live system connection was cleared (likely due to fresh handshake detection). Clearing actor state.");
+                .Warning(ActorConstants.LogMessages.LiveConnectionCleared);
 
             RestoreSecrecyChannelResponse freshHandshakeReply = new()
             {
                 Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
-                ReceivingChainLength = 0,
-                SendingChainLength = 0
+                ReceivingChainLength = ActorConstants.Constants.Zero,
+                SendingChainLength = ActorConstants.Constants.Zero
             };
 
             Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(freshHandshakeReply));
@@ -292,7 +265,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         };
 
         Context.GetLogger().Info(
-            "Session restored - ConnectId: {ConnectId}, Sending: {SendingIdx}, Receiving: {ReceivingIdx}, LastPersist: {LastPersist}",
+            ActorConstants.LogMessages.SessionRestored,
             connectId, reply.SendingChainLength, reply.ReceivingChainLength, lastPersistTime);
 
         Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(reply));
@@ -302,59 +275,59 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
     {
         if (_state?.RatchetState == null)
             return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.ActorStateNotFound("Ratchet state missing"));
+                EcliptixProtocolFailure.ActorStateNotFound(ActorConstants.ErrorMessages.RatchetStateMissing));
 
         uint sendingIdx = _state.RatchetState.SendingStep.CurrentIndex;
         uint receivingIdx = _state.RatchetState.ReceivingStep.CurrentIndex;
 
-        if (sendingIdx > 10_000_000 || receivingIdx > 10_000_000)
+        if (sendingIdx > ActorConstants.Validation.MaxChainIndex || receivingIdx > ActorConstants.Validation.MaxChainIndex)
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic(
                     $"Chain indices appear corrupted: sending={sendingIdx}, receiving={receivingIdx}"));
 
         if (_state.RatchetState.RootKey.IsEmpty)
             return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Root key missing from recovered state"));
+                EcliptixProtocolFailure.Generic(ActorConstants.ErrorMessages.RootKeyMissing));
 
         if (_state.RatchetState.SendingStep.ChainKey.IsEmpty ||
             _state.RatchetState.ReceivingStep.ChainKey.IsEmpty)
             return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Chain keys missing from recovered state"));
+                EcliptixProtocolFailure.Generic(ActorConstants.ErrorMessages.ChainKeysMissing));
 
         Google.Protobuf.ByteString sendingDhKey = _state.RatchetState.SendingStep.DhPublicKey;
-        if (!sendingDhKey.IsEmpty && sendingDhKey.Length != 32)
+        if (!sendingDhKey.IsEmpty && sendingDhKey.Length != ActorConstants.Validation.ExpectedDhKeySize)
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic($"Invalid DH key size: {sendingDhKey.Length}"));
 
-        if (_state.RatchetState.NonceCounter > uint.MaxValue - Constants.NonceCounterWarningThreshold)
+        if (_state.RatchetState.NonceCounter > uint.MaxValue - ActorConstants.Constants.NonceCounterWarningThreshold)
             return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Nonce counter near overflow"));
+                EcliptixProtocolFailure.Generic(ActorConstants.ErrorMessages.NonceCounterOverflow));
 
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
     private DateTime GetLastPersistenceTime()
     {
-        return DateTime.UtcNow.AddMinutes(-((SnapshotSequenceNr % Constants.SnapshotModulus) * Constants.SnapshotMinuteMultiplier));
+        return DateTime.UtcNow.AddMinutes(-((SnapshotSequenceNr % ActorConstants.Constants.SnapshotModulus) * ActorConstants.Constants.SnapshotMinuteMultiplier));
     }
 
     private static RatchetConfig GetRatchetConfigForExchangeType(PubKeyExchangeType exchangeType)
     {
-        Context.GetLogger().Info($"[ACTOR] Selecting ratchet config for exchange type: {exchangeType}");
+        Context.GetLogger().Info(ActorConstants.LogMessages.SelectingRatchetConfig, exchangeType);
 
         return exchangeType switch
         {
             PubKeyExchangeType.DataCenterEphemeralConnect => new RatchetConfig
             {
-                DhRatchetEveryNMessages = 10,
-                MaxChainAge = TimeSpan.FromHours(6),
-                MaxMessagesWithoutRatchet = 200
+                DhRatchetEveryNMessages = ActorConstants.Constants.RatchetMessagesInterval10,
+                MaxChainAge = TimeSpan.FromHours(ActorConstants.Constants.MaxChainAge6Hours),
+                MaxMessagesWithoutRatchet = ActorConstants.Constants.MaxMessagesWithoutRatchet200
             },
             PubKeyExchangeType.ServerStreaming => new RatchetConfig
             {
-                DhRatchetEveryNMessages = 20,  
-                MaxChainAge = TimeSpan.FromMinutes(5),
-                MaxMessagesWithoutRatchet = 100
+                DhRatchetEveryNMessages = ActorConstants.Constants.RatchetMessagesInterval20,  
+                MaxChainAge = TimeSpan.FromMinutes(ActorConstants.Constants.MaxChainAge5Minutes),
+                MaxMessagesWithoutRatchet = ActorConstants.Constants.MaxMessagesWithoutRatchet100
             },
             _ => RatchetConfig.Default
         };
@@ -372,7 +345,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         if (_protocolSystems.TryGetValue(exchangeType, out EcliptixProtocolSystem? existingSystem) && _state != null)
         {
             Context.GetLogger()
-                .Info($"[HandleInitialKeyExchange] Using existing recovered session for connectId {cmd.ConnectId}, type: {exchangeType}");
+                .Info(ActorConstants.LogMessages.UsingExistingSession, cmd.ConnectId, exchangeType);
             Result<PubKeyExchange, EcliptixProtocolFailure> existingReplyResult =
                 existingSystem.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.PubKeyExchange);
 
@@ -384,7 +357,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             catch (InvalidOperationException)
             {
                 Context.GetLogger()
-                    .Info("[HandleInitialKeyExchange] System detected fresh handshake - clearing actor state");
+                    .Info(ActorConstants.LogMessages.SystemDetectedFreshHandshake);
                 DisposeAllSystems();
                 _state = null;
                 sessionStillValid = false;
@@ -403,12 +376,11 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                         Persist(_state, _ => { });
                     }
 
-                    // Set timeout based on exchange type for existing sessions
                     _currentExchangeType = exchangeType;
                     if (exchangeType == PubKeyExchangeType.ServerStreaming)
                     {
-                        Context.SetReceiveTimeout(TimeSpan.FromMinutes(6));
-                        Context.GetLogger().Info("[EXISTING] Set 6-minute timeout for SERVER_STREAMING - ConnectId: {ConnectId}", cmd.ConnectId);
+                        Context.SetReceiveTimeout(TimeSpan.FromMinutes(ActorConstants.Timeouts.StreamingTimeoutMinutes));
+                        Context.GetLogger().Info(ActorConstants.LogMessages.SetStreamingTimeout, cmd.ConnectId);
                     }
                     else
                     {
@@ -435,14 +407,14 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             }
         }
 
-        Context.GetLogger().Info($"[HandleInitialKeyExchange] Creating new session for connectId {cmd.ConnectId}, type: {exchangeType}");
+        Context.GetLogger().Info(ActorConstants.LogMessages.CreatingNewSession, cmd.ConnectId, exchangeType);
 
-        EcliptixSystemIdentityKeys identityKeys = EcliptixSystemIdentityKeys.Create(10).Unwrap();
+        EcliptixSystemIdentityKeys identityKeys = EcliptixSystemIdentityKeys.Create(ActorConstants.Constants.IdentityKeySize).Unwrap();
 
         RatchetConfig ratchetConfig = GetRatchetConfigForExchangeType(exchangeType);
         EcliptixProtocolSystem system = new(identityKeys, ratchetConfig);
 
-        Context.GetLogger().Info("[ACTOR] Created protocol with DH interval {0} for type {1}",
+        Context.GetLogger().Info(ActorConstants.LogMessages.CreatedProtocolWithInterval,
             ratchetConfig.DhRatchetEveryNMessages, exchangeType);
         Result<PubKeyExchange, EcliptixProtocolFailure> replyResult =
             system.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.PubKeyExchange);
@@ -473,10 +445,9 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             _protocolSystems[exchangeType] = system;
             _currentExchangeType = exchangeType;
             
-            // Set timeout based on exchange type
             if (exchangeType == PubKeyExchangeType.ServerStreaming)
             {
-                Context.SetReceiveTimeout(TimeSpan.FromMinutes(6));
+                Context.SetReceiveTimeout(TimeSpan.FromMinutes(ActorConstants.Timeouts.StreamingTimeoutMinutes));
                 Context.GetLogger().Info("[INIT] Set 6-minute timeout for SERVER_STREAMING - ConnectId: {ConnectId}", connectId);
             }
             else
@@ -517,7 +488,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         (EcliptixSessionState newState, CipherPayload ciphertext) = (newStateResult.Unwrap(), result.Unwrap());
         IActorRef? originalSender = Sender;
 
-        // For ServerStreaming, never persist - connections must be ephemeral
         bool shouldPersist = cmd.PubKeyExchangeType != PubKeyExchangeType.ServerStreaming;
 
         if (shouldPersist)
@@ -531,7 +501,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         }
         else
         {
-            // Update state in memory only, no persistence
             _state = newState;
             originalSender.Tell(Result<CipherPayload, EcliptixProtocolFailure>.Ok(ciphertext));
         }
@@ -577,7 +546,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         (EcliptixSessionState newState, byte[] plaintext) = (newStateResult.Unwrap(), result.Unwrap());
         IActorRef? originalSender = Sender;
 
-        // For ServerStreaming, never persist - connections must be ephemeral
         bool shouldPersist = actorEvent.PubKeyExchangeType != PubKeyExchangeType.ServerStreaming;
 
         if (shouldPersist)
@@ -591,7 +559,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         }
         else
         {
-            // Update state in memory only, no persistence
             _state = newState;
             originalSender.Tell(Result<byte[], EcliptixProtocolFailure>.Ok(plaintext));
         }
@@ -616,20 +583,17 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
     private void HandleProtocolCleanupRequired(ProtocolCleanupRequiredEvent evt)
     {
-        // Only handle cleanup event if it's for this specific connectId
         if (evt.ConnectId != connectId)
             return;
 
         Context.GetLogger().Info("[SESSION_CLEANUP] Received cleanup request for verification session expiry - ConnectId: {0}", connectId);
 
-        // Clean up streaming protocol if it exists
         if (_protocolSystems.TryGetValue(PubKeyExchangeType.ServerStreaming, out EcliptixProtocolSystem? streamingSystem))
         {
             Context.GetLogger().Info("[SESSION_CLEANUP] Disposing SERVER_STREAMING protocol system for ConnectId: {0}", connectId);
             streamingSystem?.Dispose();
             _protocolSystems.Remove(PubKeyExchangeType.ServerStreaming);
 
-            // Clear streaming exchange type if it was active
             if (_currentExchangeType == PubKeyExchangeType.ServerStreaming)
             {
                 _currentExchangeType = null;
@@ -637,12 +601,10 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             }
         }
 
-        // If no other protocols are active, schedule delayed termination to allow final message processing
         if (_protocolSystems.Count == 0)
         {
             Context.GetLogger().Info("[SESSION_CLEANUP] No remaining protocols - scheduling delayed termination after grace period for ConnectId: {0}", connectId);
             
-            // Schedule delayed marking for termination to allow any pending encryption requests to complete
             Timers.StartSingleTimer(
                 "delayed-termination",
                 new DelayedTerminationMessage(),
