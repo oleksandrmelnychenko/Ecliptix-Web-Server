@@ -21,7 +21,7 @@ Created: 2024-08-24
 */
 
 -- Use target database
-USE [EcliptixDatabase]; -- Replace with your actual database name
+USE [EcliptixMemberships]; -- Replace with your actual database name
 GO
 
 SET NOCOUNT ON;
@@ -320,7 +320,6 @@ BEGIN TRY
     -- LoginMembership: Advanced login with comprehensive security
         CREATE PROCEDURE dbo.LoginMembership
         @PhoneNumber NVARCHAR(18),
-        @SecureKey VARBINARY(MAX),
         @IpAddress NVARCHAR(45) = NULL,
         @UserAgent NVARCHAR(500) = NULL,
         @SessionContext NVARCHAR(200) = NULL
@@ -382,18 +381,6 @@ BEGIN TRY
                 GOTO LogFailedAttempt;
             END
             
-            -- Validate secure key
-            IF @SecureKey IS NULL OR DATALENGTH(@SecureKey) = 0
-            BEGIN
-                SET @Outcome = 'secure_key_missing';
-                GOTO LogFailedAttempt;
-            END
-            
-            IF DATALENGTH(@SecureKey) < 32
-            BEGIN
-                SET @Outcome = 'secure_key_too_short';
-                GOTO LogFailedAttempt;
-            END
             
             -- Validate IP address if provided
             IF @IpAddress IS NOT NULL AND dbo.ValidateIpAddress(@IpAddress) = 0
@@ -562,12 +549,6 @@ BEGIN TRY
                 GOTO LogFailedAttempt;
             END
             
-            -- Validate secure key (simplified comparison - in production, use proper cryptographic comparison)
-            IF @StoredSecureKey != @SecureKey
-            BEGIN
-                SET @Outcome = 'invalid_secure_key';
-                GOTO LogFailedAttempt;
-            END
             
             -- ================================================================
             -- SUCCESS PATH

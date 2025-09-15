@@ -5,18 +5,16 @@ using System.Net;
 using System.Text.Json;
 using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware.Models;
+using Ecliptix.Core.Configuration;
+using AppConstants = Ecliptix.Core.Configuration.ApplicationConstants;
 
 namespace Ecliptix.Core.Middleware;
 
 public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cache)
 {
     private static readonly ConcurrentDictionary<string, ThrottleInfo> ThrottleData = new();
-    private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(ThrottlingConstants.CleanupIntervalMinutes);
     private static DateTime _lastCleanup = DateTime.UtcNow;
-
-    private const int MaxRequestsPerMinute = 60;
-    private const int MaxFailuresBeforeBlock = 5;
-    private const int BlockDurationMinutes = 15;
 
     public async Task InvokeAsync(HttpContext context)
     {
@@ -40,7 +38,7 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
         {
             await next(context);
 
-            TrackRequest(clientIp, success: context.Response.StatusCode < 400);
+            TrackRequest(clientIp, success: context.Response.StatusCode < SecurityConstants.StatusCodes.BadRequestThreshold);
         }
         catch (Exception)
         {
@@ -51,28 +49,28 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
 
     private static string GetClientIpAddress(HttpContext context)
     {
-        string? forwardedFor = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        string? forwardedFor = context.Request.Headers[SecurityConstants.HttpHeaders.XForwardedFor].FirstOrDefault();
         if (!string.IsNullOrEmpty(forwardedFor))
         {
             string[] ips = forwardedFor.Split(',', StringSplitOptions.RemoveEmptyEntries);
-            if (ips.Length > 0)
+            if (ips.Length > AppConstants.Arrays.InitialValue)
             {
-                string firstIp = ips[0].Trim();
+                string firstIp = ips[AppConstants.Arrays.FirstIndex].Trim();
                 if (IPAddress.TryParse(firstIp, out _))
                     return firstIp;
             }
         }
 
-        string? realIp = context.Request.Headers["X-Real-IP"].FirstOrDefault();
+        string? realIp = context.Request.Headers[SecurityConstants.HttpHeaders.XRealIP].FirstOrDefault();
         if (!string.IsNullOrEmpty(realIp) && IPAddress.TryParse(realIp, out _))
             return realIp;
 
-        return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return context.Connection.RemoteIpAddress?.ToString() ?? SecurityConstants.SecurityValues.UnknownIpAddress;
     }
 
     private async Task<bool> IsIpBlocked(string clientIp)
     {
-        string key = $"blocked_ip:{clientIp}";
+        string key = $"{ThrottlingConstants.CacheKeys.BlockedIpPrefix}{clientIp}";
         string? blockedData = await cache.GetStringAsync(key);
 
         if (blockedData == null) return false;
@@ -95,16 +93,16 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
         {
             DateTime now = DateTime.UtcNow;
 
-            if (now - throttleInfo.WindowStart >= TimeSpan.FromMinutes(1))
+            if (now - throttleInfo.WindowStart >= TimeSpan.FromMinutes(AppConstants.Arrays.SingleMinute))
             {
-                throttleInfo.RequestCount = 0;
+                throttleInfo.RequestCount = AppConstants.Arrays.WindowResetValue;
                 throttleInfo.WindowStart = now;
             }
 
             throttleInfo.RequestCount++;
             throttleInfo.LastRequest = now;
 
-            return throttleInfo.RequestCount <= MaxRequestsPerMinute;
+            return throttleInfo.RequestCount <= ThrottlingConstants.MaxRequestsPerMinute;
         }
     }
 
@@ -119,9 +117,9 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
                 throttleInfo.FailureCount++;
                 throttleInfo.LastFailure = DateTime.UtcNow;
 
-                if (throttleInfo.FailureCount >= MaxFailuresBeforeBlock)
+                if (throttleInfo.FailureCount >= ThrottlingConstants.MaxFailuresBeforeBlock)
                 {
-                    _ = Task.Run(async () => await BlockIp(clientIp, BlockDurationMinutes));
+                    _ = Task.Run(async () => await BlockIp(clientIp, ThrottlingConstants.BlockDurationMinutes));
                 }
             }
         }
@@ -130,7 +128,7 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
             if (!ThrottleData.TryGetValue(clientIp, out ThrottleInfo? throttleInfo)) return;
             lock (throttleInfo)
             {
-                throttleInfo.FailureCount = Math.Max(0, throttleInfo.FailureCount - 1);
+                throttleInfo.FailureCount = Math.Max(AppConstants.Arrays.InitialValue, throttleInfo.FailureCount - 1);
             }
         }
     }
@@ -142,10 +140,10 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
             IpAddress = clientIp,
             BlockedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(durationMinutes),
-            Reason = "Too many failed requests"
+            Reason = ThrottlingConstants.Messages.TooManyFailedRequests
         };
 
-        string key = $"blocked_ip:{clientIp}";
+        string key = $"{ThrottlingConstants.CacheKeys.BlockedIpPrefix}{clientIp}";
         string serializedData = JsonSerializer.Serialize(blockInfo, AppJsonSerializerContext.Default.BlockInfo);
         DistributedCacheEntryOptions options = new()
         {
@@ -154,28 +152,28 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
 
         await cache.SetStringAsync(key, serializedData, options);
 
-        Log.Warning("IP address {IpAddress} blocked for {Duration} minutes due to {Reason}",
+        Log.Warning(ThrottlingConstants.Messages.IpBlocked,
             clientIp, durationMinutes, blockInfo.Reason);
     }
 
     private async Task HandleBlockedRequest(HttpContext context, string clientIp)
     {
         context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-        context.Response.Headers["Retry-After"] = "900";
+        context.Response.Headers[SecurityConstants.HttpHeaders.RetryAfter] = ThrottlingConstants.RetryAfterBlocked;
 
-        Log.Warning("Blocked request from {IpAddress}", clientIp);
+        Log.Warning(ThrottlingConstants.Messages.BlockedRequest, clientIp);
 
-        await context.Response.WriteAsync("IP address temporarily blocked due to suspicious activity");
+        await context.Response.WriteAsync(ThrottlingConstants.Messages.IpTemporarilyBlocked);
     }
 
     private static async Task HandleRateLimitExceeded(HttpContext context, string clientIp)
     {
         context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-        context.Response.Headers["Retry-After"] = "60";
+        context.Response.Headers[SecurityConstants.HttpHeaders.RetryAfter] = ThrottlingConstants.RetryAfterRateLimit;
 
-        Log.Information("Rate limit exceeded for {IpAddress}", clientIp);
+        Log.Information(ThrottlingConstants.Messages.RateLimitExceededLog, clientIp);
 
-        await context.Response.WriteAsync("Rate limit exceeded. Please try again later.");
+        await context.Response.WriteAsync(ThrottlingConstants.Messages.RateLimitExceeded);
     }
 
     private static void PerformCleanupIfNeeded()
@@ -186,11 +184,11 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
 
         _lastCleanup = now;
 
-        DateTime cutoff = now.AddMinutes(-30);
+        DateTime cutoff = now.AddMinutes(-ThrottlingConstants.CleanupInactiveEntriesAfterMinutes);
         List<string> toRemove = ThrottleData
             .Where(kvp => kvp.Value.LastRequest < cutoff)
             .Select(kvp => kvp.Key)
-            .Take(1000)
+            .Take(ThrottlingConstants.MaxCleanupBatchSize)
             .ToList();
 
         foreach (string key in toRemove)
@@ -198,9 +196,9 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
             ThrottleData.TryRemove(key, out _);
         }
 
-        if (toRemove.Count > 0)
+        if (toRemove.Count > AppConstants.Arrays.InitialValue)
         {
-            Log.Debug("Cleaned up {Count} old throttle entries", toRemove.Count);
+            Log.Debug(ThrottlingConstants.Messages.CleanupEntries, toRemove.Count);
         }
     }
 }

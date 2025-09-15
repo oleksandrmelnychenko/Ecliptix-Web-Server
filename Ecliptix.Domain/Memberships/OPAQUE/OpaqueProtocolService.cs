@@ -212,38 +212,16 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         if (encryptResult.IsErr)
             return Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(OpaqueFailure.EncryptFailed());
 
-        ByteString maskedRegistrationRecord;
+        ByteString registrationRecord = ByteString.CopyFrom(queryRecord.RegistrationRecord);
 
-        if (RfcCompliance.EnableMasking)
-        {
-            Result<byte[], OpaqueFailure> stretchResult = OpaqueCryptoUtilities.StretchOprfOutput(oprfResponse);
-            if (stretchResult.IsErr)
-                return Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(stretchResult.UnwrapErr());
-
-            byte[] stretchedOprfKey = stretchResult.Unwrap();
-
-            byte[] maskingKey =
-                OpaqueCryptoUtilities.DeriveKey(stretchedOprfKey.AsSpan(), ReadOnlySpan<byte>.Empty, MaskingKeyInfo, DefaultKeyLength);
-
-            Result<byte[], OpaqueFailure> maskRecordResult =
-                OpaqueCryptoUtilities.MaskResponse(queryRecord.RegistrationRecord, maskingKey);
-            if (maskRecordResult.IsErr)
-                return Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(maskRecordResult.UnwrapErr());
-            maskedRegistrationRecord = ByteString.CopyFrom(maskRecordResult.Unwrap());
-
-            CryptographicOperations.ZeroMemory(maskingKey);
-            CryptographicOperations.ZeroMemory(stretchedOprfKey);
-        }
-        else
-        {
-            maskedRegistrationRecord = ByteString.CopyFrom(queryRecord.RegistrationRecord);
-        }
+        Serilog.Log.Debug("🔐 OPAQUE Server InitiateSignIn: oprfResponse: {OprfResponse}", Convert.ToHexString(oprfResponse));
+        Serilog.Log.Debug("🔐 OPAQUE Server InitiateSignIn: registrationRecord (from DB): {RegistrationRecord}", Convert.ToHexString(queryRecord.RegistrationRecord));
 
         return Result<OpaqueSignInInitResponse, OpaqueFailure>.Ok(new OpaqueSignInInitResponse
         {
             ServerOprfResponse = ByteString.CopyFrom(oprfResponse),
             ServerEphemeralPublicKey = serverState.ServerEphemeralPublicKey,
-            RegistrationRecord = maskedRegistrationRecord,
+            RegistrationRecord = registrationRecord,
             ServerStateToken = ByteString.CopyFrom(encryptResult.Unwrap()),
             Result = OpaqueSignInInitResponse.Types.SignInResult.Succeeded
         });
@@ -307,6 +285,8 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             serverStaticPublicKeyBytes,
             serverState.ServerEphemeralPublicKey.Span);
 
+        Serilog.Log.Debug("🔐 SERVER AKE RESULT: AkeResult={AkeResult}",
+            Convert.ToHexString(akeResult));
         Result<(byte[] SessionKey, byte[] ClientMacKey, byte[] ServerMacKey), OpaqueFailure> keysResult =
             DeriveFinalKeys(akeResult, transcriptHash);
         if (keysResult.IsErr) return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Err(keysResult.UnwrapErr());
@@ -314,8 +294,15 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         (byte[] _, byte[] clientMacKey, byte[] serverMacKey) = keysResult.Unwrap();
         byte[] expectedClientMac = CreateMac(clientMacKey, transcriptHash);
 
+        Serilog.Log.Debug("🔐 SERVER MAC VERIFICATION: ClientMacKey={ClientMacKey}, TranscriptHash={TranscriptHash}",
+            Convert.ToHexString(clientMacKey), Convert.ToHexString(transcriptHash));
+        Serilog.Log.Debug("🔐 SERVER MAC COMPARISON: Expected={Expected}, Received={Received}",
+            Convert.ToHexString(expectedClientMac), Convert.ToHexString(request.ClientMac.Span));
+
         if (!CryptographicOperations.FixedTimeEquals(expectedClientMac, request.ClientMac.Span))
         {
+            Serilog.Log.Warning("❌ MAC VERIFICATION FAILED: Expected={Expected}, Received={Received}",
+                Convert.ToHexString(expectedClientMac), Convert.ToHexString(request.ClientMac.Span));
             return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(new OpaqueSignInFinalizeResponse
             {
                 Result = OpaqueSignInFinalizeResponse.Types.SignInResult.InvalidCredentials,
@@ -338,8 +325,8 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         ECPoint ephCPub)
     {
         ECPoint dh1 = ephCPub.Multiply(((ECPrivateKeyParameters)ephS.Private).D).Normalize();
-        ECPoint dh2 = ephCPub.Multiply(statS.D).Normalize();
-        ECPoint dh3 = statCPub.Multiply(((ECPrivateKeyParameters)ephS.Private).D).Normalize();
+        ECPoint dh2 = statCPub.Multiply(((ECPrivateKeyParameters)ephS.Private).D).Normalize();
+        ECPoint dh3 = ephCPub.Multiply(statS.D).Normalize();
 
         byte[] result = new byte[CompressedPublicKeyLength * ProtocolIndices.DhTripleCount];
         dh1.GetEncoded(CryptographicFlags.CompressedPointEncoding)
@@ -392,11 +379,13 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         transcriptHash.CopyTo(infoBuffer[SessionKeyInfo.Length..]);
         byte[] sessionKey = OpaqueCryptoUtilities.HkdfExpand(prk, infoBuffer, MacKeyLength);
 
+        infoBuffer.Clear();
         ClientMacKeyInfo.CopyTo(infoBuffer);
-        byte[] clientMacKey = OpaqueCryptoUtilities.HkdfExpand(prk, infoBuffer, MacKeyLength);
+        byte[] clientMacKey = OpaqueCryptoUtilities.HkdfExpand(prk, infoBuffer[..ClientMacKeyInfo.Length], MacKeyLength);
 
+        infoBuffer.Clear();
         ServerMacKeyInfo.CopyTo(infoBuffer);
-        byte[] serverMacKey = OpaqueCryptoUtilities.HkdfExpand(prk, infoBuffer, MacKeyLength);
+        byte[] serverMacKey = OpaqueCryptoUtilities.HkdfExpand(prk, infoBuffer[..ServerMacKeyInfo.Length], MacKeyLength);
 
         return Result<(byte[], byte[], byte[]), OpaqueFailure>.Ok((sessionKey, clientMacKey, serverMacKey));
     }
@@ -429,8 +418,6 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
                 MobileNumberId = mobileNumberId,
                 ExpiresAt = expiresAt
             };
-
-            CryptographicOperations.ZeroMemory(contextToken);
 
             return Result<AuthContextTokenResponse, OpaqueFailure>.Ok(response);
         }

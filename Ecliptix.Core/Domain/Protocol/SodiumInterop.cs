@@ -8,10 +8,10 @@ namespace Ecliptix.Core.Domain.Protocol;
 
 public static class SodiumInterop
 {
-    private const string LibSodium = "libsodium";
+    private const string LibSodium = ProtocolConstants.SodiumInterop.LibSodiumName;
 
-    private const int MaxBufferSize = 1_000_000_000;
-    private const int SmallBufferThreshold = 64;
+    private const int MaxBufferSize = ProtocolConstants.SodiumInterop.MaxBufferSize;
+    private const int SmallBufferThreshold = ProtocolConstants.SodiumInterop.SmallBufferThreshold;
 
     private static readonly Result<Unit, SodiumFailure> InitializationResult;
 
@@ -43,18 +43,18 @@ public static class SodiumInterop
             () =>
             {
                 int result = sodium_init();
-                const int dllImportSuccess = 0;
+                const int dllImportSuccess = ProtocolConstants.SodiumInterop.DllImportSuccess;
                 if (result < dllImportSuccess)
-                    throw new InvalidOperationException(SodiumFailureMessages.SodiumInitFailed);
+                    throw new InvalidOperationException(ProtocolConstants.Messages.SodiumInitFailed);
             },
             ex => ex switch
             {
                 DllNotFoundException dllEx => SodiumFailure.LibraryNotFound(
                     string.Format(SodiumFailureMessages.LibraryLoadFailed, LibSodium), dllEx),
-                InvalidOperationException opEx when opEx.Message.Contains(SodiumExceptionMessagePatterns
+                InvalidOperationException opEx when opEx.Message.Contains(ProtocolConstants.ExceptionPatterns
                         .SodiumInitPattern) =>
-                    SodiumFailure.InitializationFailed(SodiumFailureMessages.InitializationFailed, opEx),
-                _ => SodiumFailure.InitializationFailed(SodiumFailureMessages.UnexpectedInitError, ex)
+                    SodiumFailure.InitializationFailed(ProtocolConstants.Messages.InitializationFailed, opEx),
+                _ => SodiumFailure.InitializationFailed(ProtocolConstants.Messages.UnexpectedInitError, ex)
             }
         );
     }
@@ -63,10 +63,10 @@ public static class SodiumInterop
     {
         if (!IsInitialized)
             return Result<Unit, SodiumFailure>.Err(
-                SodiumFailure.InitializationFailed(SodiumFailureMessages.NotInitialized));
+                SodiumFailure.InitializationFailed(ProtocolConstants.Messages.NotInitialized));
 
         return Result<byte[], SodiumFailure>
-            .FromValue(buffer, SodiumFailure.BufferTooSmall(SodiumFailureMessages.BufferNull))
+            .FromValue(buffer, SodiumFailure.BufferTooSmall(ProtocolConstants.Messages.BufferNull))
             .Bind(nonNullBuffer => nonNullBuffer switch
             {
                 { Length: 0 } => Result<Unit, SodiumFailure>.Ok(Unit.Value),

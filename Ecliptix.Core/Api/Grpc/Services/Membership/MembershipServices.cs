@@ -99,7 +99,7 @@ public class MembershipServices(
         ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRegistrationCompleteRequest, OprfRegistrationCompleteResponse>(request, context,
-                async (message, connectId, ct) =>
+                async (message, _, ct) =>
                 {
                     CompleteRegistrationRecordActorEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
@@ -121,7 +121,7 @@ public class MembershipServices(
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRecoverySecretKeyCompleteRequest, OprfRecoverySecretKeyCompleteResponse>(
             request, context,
-            async (message, connectId, ct) =>
+            async (message, _, ct) =>
             {
                 OprfCompleteRecoverySecureKeyEvent @event = new(
                     Helpers.FromByteStringToGuid(message.MembershipIdentifier),
@@ -143,7 +143,7 @@ public class MembershipServices(
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRegistrationInitRequest, OprfRegistrationInitResponse>(
                 request, context,
-                async (message, connectId, ct) =>
+                async (message, _, ct) =>
                 {
                     GenerateMembershipOprfRegistrationRequestEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
@@ -163,7 +163,7 @@ public class MembershipServices(
     public override async Task<CipherPayload> OpaqueRecoverySecretKeyInitRequest(CipherPayload request, ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRecoverySecureKeyInitRequest, OprfRecoverySecureKeyInitResponse>(request, context,
-                async (message, connectId, ct) =>
+                async (message, _, ct) =>
                 {
                     OprfInitRecoverySecureKeyEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),

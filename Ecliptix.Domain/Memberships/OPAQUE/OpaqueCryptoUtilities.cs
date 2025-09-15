@@ -115,8 +115,12 @@ public static class OpaqueCryptoUtilities
 
         try
         {
-            byte[] saltBytes = new byte[Pbkdf2SaltLength];
             byte[] oprfBytes = oprfOutput.ToArray();
+            byte[] saltBytes = HkdfExpand(oprfOutput, HkdfInfoStrings.OpaqueSalt, Pbkdf2SaltLength);
+
+            Serilog.Log.Debug("🔐 OPAQUE Server StretchOprfOutput: oprfOutput: {OprfOutput}", Convert.ToHexString(oprfBytes));
+            Serilog.Log.Debug("🔐 OPAQUE Server StretchOprfOutput: derivedSalt: {Salt}", Convert.ToHexString(saltBytes));
+            Serilog.Log.Debug("🔐 OPAQUE Server StretchOprfOutput: iterations: {Iterations}", Pbkdf2Iterations);
 
             using Rfc2898DeriveBytes pbkdf2 = new(
                 oprfBytes,
@@ -125,6 +129,8 @@ public static class OpaqueCryptoUtilities
                 HashAlgorithmName.SHA256);
 
             byte[] stretched = pbkdf2.GetBytes(HashLength);
+
+            Serilog.Log.Debug("🔐 OPAQUE Server StretchOprfOutput: stretchedKey: {StretchedKey}", Convert.ToHexString(stretched));
 
             CryptographicOperations.ZeroMemory(saltBytes);
             CryptographicOperations.ZeroMemory(oprfBytes);
@@ -264,7 +270,6 @@ public static class OpaqueCryptoUtilities
             nonce.CopyTo(result.AsSpan(0, AesGcmNonceLengthBytes));
 
             byte[] plaintextBuffer = plaintext.ToArray();
-            plaintext.CopyTo(plaintextBuffer);
 
             int len = cipher.ProcessBytes(plaintextBuffer, 0, plaintext.Length, result, AesGcmNonceLengthBytes);
             cipher.DoFinal(result, AesGcmNonceLengthBytes + len);
@@ -329,36 +334,4 @@ public static class OpaqueCryptoUtilities
         }
     }
 
-    public static Result<byte[], OpaqueFailure> MaskResponse(
-        ReadOnlySpan<byte> response,
-        ReadOnlySpan<byte> maskingKey)
-    {
-        try
-        {
-            Span<byte> nonce = stackalloc byte[NonceLength];
-            RandomNumberGenerator.Fill(nonce);
-
-            byte[] pad = HkdfExpand(maskingKey, nonce, response.Length);
-
-            byte[] masked = new byte[response.Length];
-            for (int i = 0; i < response.Length; i++)
-            {
-                masked[i] = (byte)(response[i] ^ pad[i]);
-            }
-
-            byte[] result = new byte[NonceLength + response.Length];
-            nonce.CopyTo(result.AsSpan(0, NonceLength));
-            masked.CopyTo(result.AsSpan(NonceLength));
-
-            CryptographicOperations.ZeroMemory(pad);
-            CryptographicOperations.ZeroMemory(nonce);
-            CryptographicOperations.ZeroMemory(masked);
-
-            return Result<byte[], OpaqueFailure>.Ok(result);
-        }
-        catch (Exception ex)
-        {
-            return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.MaskingFailed($"{ErrorMessages.ResponseMaskingFailed}{ex.Message}", ex));
-        }
-    }
 }

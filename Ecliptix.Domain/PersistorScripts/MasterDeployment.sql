@@ -101,7 +101,7 @@ BEGIN CATCH
     SET @TotalErrors += 1;
     
     PRINT CONCAT('❌ Layer ', @CurrentLayer, ' FAILED: ', @ErrorMessage);
-    GOTO DeploymentFailed;
+    THROW;
 END CATCH
 
 /*
@@ -146,7 +146,7 @@ BEGIN CATCH
     SET @TotalErrors += 1;
     
     PRINT CONCAT('❌ Layer ', @CurrentLayer, ' FAILED: ', @ErrorMessage);
-    GOTO DeploymentFailed;
+    THROW;
 END CATCH
 
 /*
@@ -180,7 +180,7 @@ BEGIN CATCH
     SET @TotalErrors += 1;
     
     PRINT CONCAT('❌ Layer ', @CurrentLayer, ' FAILED: ', @ErrorMessage);
-    GOTO DeploymentFailed;
+    THROW;
 END CATCH
 
 /*
@@ -214,7 +214,7 @@ BEGIN CATCH
     SET @TotalErrors += 1;
     
     PRINT CONCAT('❌ Layer ', @CurrentLayer, ' FAILED: ', @ErrorMessage);
-    GOTO DeploymentFailed;
+    THROW;
 END CATCH
 
 /*
@@ -258,7 +258,7 @@ BEGIN CATCH
     SET @TotalErrors += 1;
     
     PRINT CONCAT('❌ Layer ', @CurrentLayer, ' FAILED: ', @ErrorMessage);
-    GOTO DeploymentFailed;
+    THROW;
 END CATCH
 
 /*
@@ -296,7 +296,7 @@ BEGIN CATCH
     SET @TotalErrors += 1;
     
     PRINT CONCAT('❌ Layer ', @CurrentLayer, ' FAILED: ', @ErrorMessage);
-    GOTO DeploymentFailed;
+    THROW;
 END CATCH
 
 /*
@@ -337,7 +337,7 @@ BEGIN CATCH
     SET @TotalErrors += 1;
     
     PRINT CONCAT('❌ Layer ', @CurrentLayer, ' FAILED: ', @ErrorMessage);
-    GOTO DeploymentFailed;
+    THROW;
 END CATCH
 
 /*
@@ -375,7 +375,7 @@ BEGIN CATCH
     SET @TotalErrors += 1;
     
     PRINT CONCAT('❌ Layer ', @CurrentLayer, ' FAILED: ', @ErrorMessage);
-    GOTO DeploymentFailed;
+    THROW;
 END CATCH
 
 /*
@@ -475,49 +475,15 @@ PRINT '#########################################################################
 PRINT '#                     DATABASE IS READY FOR PRODUCTION USE                    #';
 PRINT '################################################################################';
 
-GOTO DeploymentComplete;
+-- Deployment completed successfully
 
 /*
 ================================================================================
-DEPLOYMENT FAILURE HANDLING
+DEPLOYMENT COMPLETE
 ================================================================================
 */
-DeploymentFailed:
-
-PRINT '################################################################################';
-PRINT '#                                                                              #';
-PRINT '#                         DEPLOYMENT FAILED                                   #';
-PRINT '#                                                                              #';
-PRINT '################################################################################';
-PRINT '';
-PRINT '❌ ECLIPTIX DATABASE DEPLOYMENT FAILED';
-PRINT '================================================================================';
-PRINT CONCAT('💥 Failed at Layer ', @CurrentLayer, ': ', @ErrorMessage);
-PRINT CONCAT('⏱️  Elapsed Time: ', DATEDIFF(SECOND, @MasterStartTime, GETUTCDATE()), ' seconds');
-PRINT CONCAT('📅 Failed At: ', FORMAT(GETUTCDATE(), 'yyyy-MM-dd HH:mm:ss UTC'));
-PRINT '';
-
-PRINT '🔍 TROUBLESHOOTING STEPS:';
-PRINT '   1. Review the error message above for specific failure details';
-PRINT '   2. Check SQL Server error log for additional information';
-PRINT '   3. Verify database permissions and disk space availability';
-PRINT '   4. Ensure SQL Server version compatibility (2016+)';
-PRINT '   5. Review layer dependencies and execution order';
-PRINT '';
-
-PRINT '🛠️  RECOVERY OPTIONS:';
-PRINT '   1. Fix the reported issue and re-run the complete deployment';
-PRINT '   2. Restore database from backup and retry deployment';
-PRINT '   3. Contact support with error details and environment information';
-PRINT '';
-
-PRINT '################################################################################';
-
--- Don't throw error in master script - we want to see the failure summary
--- THROW;
-
-DeploymentComplete:
 
 -- Final cleanup and resource release
 SET @MasterDeploymentId = NULL;
 SET @ErrorMessage = NULL;
+GO

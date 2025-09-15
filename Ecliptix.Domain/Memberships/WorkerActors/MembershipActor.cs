@@ -176,24 +176,19 @@ public class MembershipActor : ReceiveActor
     {
         byte[] oprfResponse = _opaqueProtocolService.ProcessOprfRequest(@event.OprfRequest);
 
-        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, oprfResponse);
-        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
-
-        Result<OprfRegistrationInitResponse, VerificationFlowFailure> finalResult =
-            persistorResult.Map(record => new OprfRegistrationInitResponse
+        OprfRegistrationInitResponse response = new OprfRegistrationInitResponse
+        {
+            Membership = new Membership
             {
-                Membership = new Membership
-                {
-                    UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
-                    Status = record.ActivityStatus,
-                    CreationStatus = record.CreationStatus
-                },
-                PeerOprf = ByteString.CopyFrom(oprfResponse),
-                Result = OprfRegistrationInitResponse.Types.UpdateResult.Succeeded
-            });
+                UniqueIdentifier = Helpers.GuidToByteString(@event.MembershipIdentifier),
+                Status = Membership.Types.ActivityStatus.Inactive,
+                CreationStatus = Membership.Types.CreationStatus.OtpVerified
+            },
+            PeerOprf = ByteString.CopyFrom(oprfResponse),
+            Result = OprfRegistrationInitResponse.Types.UpdateResult.Succeeded
+        };
 
-        Sender.Tell(finalResult);
+        Sender.Tell(Result<OprfRegistrationInitResponse, VerificationFlowFailure>.Ok(response));
     }
 
     private async Task HandleCreateMembership(CreateMembershipActorEvent @event)

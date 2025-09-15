@@ -19,7 +19,7 @@ Created: 2024-08-24
 ================================================================================
 */
 
-USE [memberships];
+USE [EcliptixMemberships];
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 GO

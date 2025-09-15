@@ -1,27 +1,9 @@
 using Akka.Actor;
-using Ecliptix.Domain.Memberships.WorkerActors;
+using Ecliptix.Core.Domain.Events;
 using Ecliptix.Domain.Utilities;
-using Ecliptix.Protobuf.Common;
-using Ecliptix.Protobuf.Protocol;
 using Serilog;
 
 namespace Ecliptix.Core.Domain.Actors;
-
-public record BeginAppDeviceEphemeralConnectActorEvent(PubKeyExchange PubKeyExchange, uint UniqueConnectId);
-
-public record DecryptCipherPayloadActorEvent(
-    PubKeyExchangeType PubKeyExchangeType,
-    CipherPayload CipherPayload);
-
-public record EncryptPayloadActorEvent(
-    PubKeyExchangeType PubKeyExchangeType,
-    byte[] Payload);
-
-public record ClientDisconnectedActorEvent(uint ConnectId);
-
-public record ForwardToConnectActorEvent(uint ConnectId, object Payload);
-
-public record RestoreAppDeviceSecrecyChannelState;
 
 public class EcliptixProtocolSystemActor : ReceiveActor
 {
@@ -37,13 +19,12 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         ReceiveAsync<ForwardToConnectActorEvent>(ProcessForwarding);
         Receive<Terminated>(t =>
         {
-            Log.Warning("Supervised session actor {ActorPath} has terminated. Its resources are released",
-                t.ActorRef.Path);
+            Log.Warning(ActorConstants.LogMessages.SupervisedActorTerminated, t.ActorRef.Path);
         });
 
         Receive<ClientDisconnectedActorEvent>(cmd =>
         {
-            string actorName = $"connect-{cmd.ConnectId}";
+            string actorName = $"{ActorConstants.ActorNamePrefixes.Connect}{cmd.ConnectId}";
             IActorRef connectActor = Context.Child(actorName);
             if (!connectActor.IsNobody())
             {
@@ -53,12 +34,12 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
         Receive<ProtocolCleanupRequiredEvent>(cmd =>
         {
-            string actorName = $"connect-{cmd.ConnectId}";
+            string actorName = $"{ActorConstants.ActorNamePrefixes.Connect}{cmd.ConnectId}";
             IActorRef connectActor = Context.Child(actorName);
             if (!connectActor.IsNobody())
             {
                 connectActor.Tell(new ClientDisconnectedActorEvent(cmd.ConnectId), ActorRefs.NoSender);
-                Log.Information("Triggered protocol cleanup for ConnectId {ConnectId} due to session expiration", cmd.ConnectId);
+                Log.Information(ActorConstants.LogMessages.ProtocolCleanupTriggered, cmd.ConnectId);
             }
         });
     }
@@ -85,7 +66,7 @@ public class EcliptixProtocolSystemActor : ReceiveActor
     private async Task ProcessForwarding(ForwardToConnectActorEvent message)
     {
         uint connectId = message.ConnectId;
-        string actorName = $"connect-{connectId}";
+        string actorName = $"{ActorConstants.ActorNamePrefixes.Connect}{connectId}";
         IActorRef connectActor = Context.Child(actorName);
 
         if (connectActor.IsNobody() && message.Payload is not KeepAlive)
@@ -112,7 +93,7 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 
     private Result<IActorRef, EcliptixProtocolFailure> GetOrCreateConnectActor(uint connectId)
     {
-        string actorName = $"connect-{connectId}";
+        string actorName = $"{ActorConstants.ActorNamePrefixes.Connect}{connectId}";
         IActorRef connectActor = Context.Child(actorName);
 
         if (connectActor.IsNobody())
@@ -126,7 +107,7 @@ public class EcliptixProtocolSystemActor : ReceiveActor
             catch (Exception ex)
             {
                 return Result<IActorRef, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.ActorNotCreated($"Failed to create actor for connectId: {connectId}", ex));
+                    EcliptixProtocolFailure.ActorNotCreated($"{ActorConstants.ErrorMessages.FailedToCreateActor}{connectId}", ex));
             }
         }
 
@@ -136,8 +117,8 @@ public class EcliptixProtocolSystemActor : ReceiveActor
     protected override SupervisorStrategy SupervisorStrategy()
     {
         return new OneForOneStrategy(
-            maxNrOfRetries: 3,
-            withinTimeRange: TimeSpan.FromMinutes(5),
+            maxNrOfRetries: ActorConstants.Supervision.MaxRetries,
+            withinTimeRange: TimeSpan.FromMinutes(ActorConstants.Supervision.TimeoutMinutes),
             decider: Decider.From(ChildFailureDecider));
     }
 
@@ -146,47 +127,47 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         switch (ex)
         {
             case ActorInitializationException initEx:
-                Log.Error(initEx, "Protocol connect actor failed during initialization. Stopping to prevent further issues");
+                Log.Error(initEx, ActorConstants.LogMessages.InitializationFailed);
                 return Directive.Stop;
 
             case TimeoutException timeoutEx:
-                Log.Warning(timeoutEx, "Protocol connect actor encountered timeout. Restarting");
+                Log.Warning(timeoutEx, ActorConstants.LogMessages.TimeoutEncountered);
                 return Directive.Restart;
 
             case UnauthorizedAccessException unauthorizedEx:
-                Log.Error(unauthorizedEx, "Protocol connect actor encountered authorization failure. Stopping");
+                Log.Error(unauthorizedEx, ActorConstants.LogMessages.AuthorizationFailure);
                 return Directive.Stop;
 
             case ArgumentException argEx:
-                Log.Error(argEx, "Protocol connect actor failed with invalid arguments. Stopping to prevent repeated failures");
+                Log.Error(argEx, ActorConstants.LogMessages.InvalidArguments);
                 return Directive.Stop;
 
-            case InvalidOperationException invalidOpEx when invalidOpEx.Message.Contains("cryptographic"):
-                Log.Error(invalidOpEx, "Protocol connect actor encountered cryptographic error. Restarting");
+            case InvalidOperationException invalidOpEx when invalidOpEx.Message.Contains(ActorConstants.ErrorMessages.Cryptographic):
+                Log.Error(invalidOpEx, ActorConstants.LogMessages.CryptographicError);
                 return Directive.Restart;
 
             case InvalidOperationException invalidOpEx:
-                Log.Warning(invalidOpEx, "Protocol connect actor encountered invalid operation. Restarting");
+                Log.Warning(invalidOpEx, ActorConstants.LogMessages.InvalidOperation);
                 return Directive.Restart;
 
             case IOException ioEx:
-                Log.Warning(ioEx, "Protocol connect actor encountered IO error. Restarting");
+                Log.Warning(ioEx, ActorConstants.LogMessages.IoError);
                 return Directive.Restart;
 
             case System.Net.NetworkInformation.NetworkInformationException netEx:
-                Log.Warning(netEx, "Protocol connect actor encountered network error. Restarting");
+                Log.Warning(netEx, ActorConstants.LogMessages.NetworkError);
                 return Directive.Restart;
 
             case OutOfMemoryException memEx:
-                Log.Error(memEx, "Protocol connect actor out of memory. Escalating to parent");
+                Log.Error(memEx, ActorConstants.LogMessages.OutOfMemory);
                 return Directive.Escalate;
 
             case StackOverflowException stackEx:
-                Log.Error(stackEx, "Protocol connect actor stack overflow. Escalating to parent");
+                Log.Error(stackEx, ActorConstants.LogMessages.StackOverflow);
                 return Directive.Escalate;
 
             default:
-                Log.Error(ex, "Protocol connect actor encountered unhandled exception of type {ExceptionType}. Stopping to prevent cascading failures", ex.GetType().Name);
+                Log.Error(ex, ActorConstants.LogMessages.UnhandledException, ex.GetType().Name);
                 return Directive.Stop;
         }
     }

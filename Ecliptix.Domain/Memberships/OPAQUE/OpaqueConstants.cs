@@ -29,7 +29,6 @@ public static class OpaqueConstants
     public const int Argon2idTimeCost = 3;
     public const int Argon2idParallelism = 1;
 
-    public static ReadOnlySpan<byte> MaskingKeyInfo => "MaskingKey"u8;
     public static ReadOnlySpan<byte> ExportKeyInfo => "ExportKey"u8;
     public static ReadOnlySpan<byte> AuthKeyInfo => "AuthKey"u8;
     public static ReadOnlySpan<byte> PrivateKeyInfo => "PrivateKey"u8;
@@ -56,7 +55,6 @@ public static class OpaqueConstants
 
     public static class RfcCompliance
     {
-        public const bool EnableMasking = true;
         public const bool EnableOprfMasking = false;
         public const bool EnableRegistrationRecordMasking = true;
         public const bool EnableStretching = true;
@@ -78,11 +76,8 @@ public static class OpaqueConstants
         public const string SubgroupCheckFailed = "Point not in main subgroup";
         public const string OprfOutputEmpty = "OPRF output cannot be empty";
         public const string EnvelopeTooShort = "Envelope too short";
-        public const string MaskedResponseTooShort = "Masked response too short";
         public const string MacEnvelopeCreationFailed = "MAC envelope creation failed: ";
         public const string MacVerificationFailed = "MAC verification failed: ";
-        public const string ResponseMaskingFailed = "Response masking failed: ";
-        public const string ResponseUnmaskingFailed = "Response unmasking failed: ";
         public const string ExportKeyDerivationFailed = "Export key derivation failed: ";
         public const string Pbkdf2Failed = "PBKDF2 failed: ";
         public const string PasswordChangeFailed = "Password change failed: ";

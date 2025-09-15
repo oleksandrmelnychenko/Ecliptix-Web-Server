@@ -4,30 +4,31 @@ using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Protocol;
 using Grpc.Core;
 using Ecliptix.Core.Infrastructure.Grpc.Constants;
+using Ecliptix.Core.Configuration;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 
 public static class GrpcMetadataHandler
 {
-    private const string RequestIdKey = "request-id";
-    private const string DateTimeKey = "request-date";
+    private const string RequestIdKey = MetadataConstants.Keys.RequestId;
+    private const string DateTimeKey = MetadataConstants.Keys.DateTime;
 
-    private const string LocalIpAddressKey = "local-ip-address";
-    private const string PublicIpAddressKey = "public-ip-address";
+    private const string LocalIpAddressKey = MetadataConstants.Keys.LocalIpAddress;
+    private const string PublicIpAddressKey = MetadataConstants.Keys.PublicIpAddress;
 
-    private const string LocaleKey = "lang";
-    private const string LinkIdKey = "fetch-link";
-    private const string ApplicationInstanceIdKey = "application-identifier";
+    private const string LocaleKey = MetadataConstants.Keys.Locale;
+    private const string LinkIdKey = MetadataConstants.Keys.LinkId;
+    private const string ApplicationInstanceIdKey = MetadataConstants.Keys.ApplicationInstanceId;
 
-    private const string AppDeviceId = "d-identifier";
-    private const string KeyExchangeContextTypeValue = "JmTGdGilMka07zyg5hz6Q";
-    private const string KeyExchangeContextTypeKey = "oiwfT6c5kOQsZozxhTBg";
+    private const string AppDeviceId = MetadataConstants.Keys.AppDeviceId;
+    private static string KeyExchangeContextTypeValue => MetadataConstants.SecurityKeys.KeyExchangeContextTypeValue;
+    private static string KeyExchangeContextTypeKey => MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey;
 
     public const string UniqueConnectId = InterceptorConstants.Connections.UniqueConnectIdKey;
 
-    private const string ConnectionContextId = "c-context-id";
+    private const string ConnectionContextId = MetadataConstants.Keys.ConnectionContextId;
 
-    private const string OperationContextId = "o-context-id";
+    private const string OperationContextId = MetadataConstants.Keys.OperationContextId;
 
     private static readonly List<string> AllowedKeyExchangeContextTypes = [KeyExchangeContextTypeValue];
 
@@ -66,7 +67,7 @@ public static class GrpcMetadataHandler
         if (!Guid.TryParse(appInstanceIdResult.Unwrap(), out Guid appInstanceId))
         {
             return Result<uint, MetaDataSystemFailure>.Err(
-                MetaDataSystemFailure.ComponentNotFound($"Invalid Guid format for key '{ApplicationInstanceIdKey}'"));
+                MetaDataSystemFailure.ComponentNotFound(string.Format(MetadataConstants.ErrorMessages.InvalidGuidFormat, ApplicationInstanceIdKey)));
         }
 
         Result<string, MetaDataSystemFailure> appDeviceIdResult = requestHeaders.GetValueAsResult(AppDeviceId);
@@ -75,7 +76,7 @@ public static class GrpcMetadataHandler
         if (!Guid.TryParse(appDeviceIdResult.Unwrap(), out Guid appDeviceId))
         {
             return Result<uint, MetaDataSystemFailure>.Err(
-                MetaDataSystemFailure.ComponentNotFound($"Invalid Guid format for key '{AppDeviceId}'"));
+                MetaDataSystemFailure.ComponentNotFound(string.Format(MetadataConstants.ErrorMessages.InvalidGuidFormat, AppDeviceId)));
         }
 
         Result<string, MetaDataSystemFailure> connectionContextIdResult = requestHeaders.GetValueAsResult(ConnectionContextId);
@@ -85,7 +86,7 @@ public static class GrpcMetadataHandler
             !Enum.IsDefined(contextType))
         {
             return Result<uint, MetaDataSystemFailure>.Err(
-                MetaDataSystemFailure.ComponentNotFound($"Invalid PubKeyExchangeType for key '{ConnectionContextId}'"));
+                MetaDataSystemFailure.ComponentNotFound(string.Format(MetadataConstants.ErrorMessages.InvalidPubKeyExchangeType, ConnectionContextId)));
         }
 
         Guid? opContextId = null;
@@ -111,10 +112,10 @@ public static class GrpcMetadataHandler
         if (BitConverter.IsLittleEndian) Array.Reverse(contextTypeBytes);
 
         int totalLength = appInstanceIdBytes.Length + appDeviceIdBytes.Length + contextTypeBytes.Length;
-        if (opContextId.HasValue) totalLength += 16;
+        if (opContextId.HasValue) totalLength += MetadataConstants.ByteLengths.GuidByteLength;
 
         byte[] combined = new byte[totalLength];
-        int offset = 0;
+        int offset = MetadataConstants.ByteLengths.InitialOffset;
         Buffer.BlockCopy(appInstanceIdBytes, 0, combined, offset, appInstanceIdBytes.Length);
         offset += appInstanceIdBytes.Length;
         Buffer.BlockCopy(appDeviceIdBytes, 0, combined, offset, appDeviceIdBytes.Length);
@@ -128,7 +129,7 @@ public static class GrpcMetadataHandler
         }
 
         byte[] hash = SHA256.HashData(combined);
-        return BinaryPrimitives.ReadUInt32BigEndian(hash.AsSpan(0, 4));
+        return BinaryPrimitives.ReadUInt32BigEndian(hash.AsSpan(MetadataConstants.ByteLengths.InitialOffset, MetadataConstants.ByteLengths.HashSpanLength));
     }
 
     public static string GetRequestedLocale(Metadata requestHeaders)

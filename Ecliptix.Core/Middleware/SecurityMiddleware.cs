@@ -1,6 +1,7 @@
 using Grpc.Core;
 using Microsoft.Extensions.Primitives;
 using Serilog;
+using Ecliptix.Core.Configuration;
 
 namespace Ecliptix.Core.Middleware;
 
@@ -8,29 +9,29 @@ public class SecurityMiddleware(RequestDelegate next)
 {
     private static readonly HashSet<string> AllowedContentTypes =
     [
-        "application/grpc",
-        "application/grpc+proto",
-        "application/json"
+        SecurityConstants.ContentTypes.ApplicationGrpc,
+        SecurityConstants.ContentTypes.ApplicationGrpcProto,
+        SecurityConstants.ContentTypes.ApplicationJson
     ];
 
     public async Task InvokeAsync(HttpContext context)
     {
         AddSecurityHeaders(context);
 
-        if (context.Request.Path.StartsWithSegments("/grpc") ||
-            context.Request.ContentType?.StartsWith("application/grpc") == true)
+        if (context.Request.Path.StartsWithSegments(SecurityConstants.Paths.Grpc) ||
+            context.Request.ContentType?.StartsWith(SecurityConstants.ContentTypes.ApplicationGrpc) == true)
         {
             if (!ValidateContentType(context))
             {
                 context.Response.StatusCode = StatusCodes.Status415UnsupportedMediaType;
-                await context.Response.WriteAsync("Unsupported content type");
+                await context.Response.WriteAsync(SecurityConstants.StatusMessages.UnsupportedContentType);
                 return;
             }
 
             if (!ValidateHeaders(context))
             {
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                await context.Response.WriteAsync("Invalid headers");
+                await context.Response.WriteAsync(SecurityConstants.StatusMessages.InvalidHeaders);
                 return;
             }
         }
@@ -43,13 +44,13 @@ public class SecurityMiddleware(RequestDelegate next)
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.ResourceExhausted)
         {
-            Log.Warning("Resource exhaustion detected from {IpAddress}: {Message}",
+            Log.Warning(SecurityConstants.StatusMessages.ResourceExhaustionDetected,
                 context.Connection.RemoteIpAddress?.ToString(), ex.Message);
             throw;
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Unhandled exception in security middleware from {IpAddress}",
+            Log.Error(ex, SecurityConstants.StatusMessages.UnhandledException,
                 context.Connection.RemoteIpAddress?.ToString());
             throw;
         }
@@ -59,13 +60,13 @@ public class SecurityMiddleware(RequestDelegate next)
     {
         IHeaderDictionary headers = context.Response.Headers;
 
-        headers["X-Content-Type-Options"] = "nosniff";
-        headers["X-Frame-Options"] = "DENY";
-        headers["X-XSS-Protection"] = "1; mode=block";
-        headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-        headers["X-Robots-Tag"] = "noindex, nofollow";
+        headers["X-Content-Type-Options"] = SecurityConstants.SecurityValues.NoSniff;
+        headers["X-Frame-Options"] = SecurityConstants.SecurityValues.DenyFrameOptions;
+        headers["X-XSS-Protection"] = SecurityConstants.SecurityValues.XssProtectionValue;
+        headers["Referrer-Policy"] = SecurityConstants.SecurityValues.StrictOriginWhenCrossOrigin;
+        headers["X-Robots-Tag"] = SecurityConstants.SecurityValues.NoIndexNoFollow;
 
-        headers.Remove("Server");
+        headers.Remove(SecurityConstants.SecurityValues.ServerHeaderName);
     }
 
     private static bool ValidateContentType(HttpContext context)
@@ -81,14 +82,14 @@ public class SecurityMiddleware(RequestDelegate next)
 
         foreach (KeyValuePair<string, StringValues> header in headers)
         {
-            if (header.Value.Any(v => v != null && v.Length > 8192))
+            if (header.Value.Any(v => v != null && v.Length > SecurityConstants.Limits.MaxHeaderLengthBytes))
             {
-                Log.Warning("Suspicious header detected - excessive length: {HeaderName}", header.Key);
+                Log.Warning(SecurityConstants.StatusMessages.SuspiciousHeaderLength, header.Key);
                 return false;
             }
 
             if (!ContainsSuspiciousContent(header.Key)) continue;
-            Log.Warning("Suspicious header name detected: {HeaderName}", header.Key);
+            Log.Warning(SecurityConstants.StatusMessages.SuspiciousHeaderName, header.Key);
             return false;
         }
 
@@ -101,13 +102,13 @@ public class SecurityMiddleware(RequestDelegate next)
             return false;
 
         string lowerValue = value.ToLowerInvariant();
-        return lowerValue.Contains("script") ||
-               lowerValue.Contains("<") ||
-               lowerValue.Contains(">") ||
-               lowerValue.Contains("javascript") ||
-               lowerValue.Contains("vbscript") ||
-               lowerValue.Contains("onload") ||
-               lowerValue.Contains("onerror");
+        return lowerValue.Contains(SecurityConstants.SuspiciousContent.Script) ||
+               lowerValue.Contains(SecurityConstants.SuspiciousContent.LessThan) ||
+               lowerValue.Contains(SecurityConstants.SuspiciousContent.GreaterThan) ||
+               lowerValue.Contains(SecurityConstants.SuspiciousContent.Javascript) ||
+               lowerValue.Contains(SecurityConstants.SuspiciousContent.VbScript) ||
+               lowerValue.Contains(SecurityConstants.SuspiciousContent.OnLoad) ||
+               lowerValue.Contains(SecurityConstants.SuspiciousContent.OnError);
     }
 
     private static void LogSecurityInfo(HttpContext context)
@@ -124,6 +125,6 @@ public class SecurityMiddleware(RequestDelegate next)
             Timestamp = DateTimeOffset.UtcNow
         };
 
-        Log.Debug("Security middleware processing request: {@RequestInfo}", info);
+        Log.Debug(SecurityConstants.StatusMessages.SecurityMiddlewareProcessing, info);
     }
 }

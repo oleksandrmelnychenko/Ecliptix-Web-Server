@@ -178,4 +178,51 @@ public static class InterceptorConstants
 
         public const string Twilio = "twilio";
     }
+
+    public static class LogMessages
+    {
+        public const string ConnectionTracked = "New connection tracked: {ConnectId} - Method: {Method}";
+        public const string ConnectionActive = "Connection {ConnectId} active: {RequestCount} requests over {Duration:mm\\:ss}";
+        public const string ConnectionError = "Connection {ConnectId} error #{ErrorCount}: {Error}";
+        public const string ConnectionClosed = "Connection {ConnectId} closed after {Duration:mm\\:ss} - {RequestCount} requests, {ErrorCount} errors - Reason: {Reason}";
+
+        public const string GrpcCallStart = "Starting gRPC call {Method}";
+        public const string GrpcCallCompleted = "Completed gRPC call {Method} in {Duration}ms - Status: OK";
+        public const string SlowGrpcCall = "Slow gRPC call detected: {Method} took {Duration}ms";
+        public const string GrpcCallFailed = "gRPC call {Method} failed with {StatusCode} in {Duration}ms: {Message}";
+        public const string GrpcCallUnexpectedError = "Unexpected error in gRPC call {Method} after {Duration}ms";
+        public const string GrpcStreamingStart = "Starting gRPC streaming call {Method} from client {ClientHash}";
+        public const string GrpcStreamingCompleted = "Completed gRPC streaming call {Method} in {Duration}ms from client {ClientHash} - Messages: {Count}";
+        public const string GrpcStreamingError = "Error in gRPC streaming call {Method} after {Duration}ms from client {ClientHash}";
+
+        public const string RequestTimingValidationFailed = "Request timing validation failed for {ClientIp} on {Method}";
+        public const string ConnectIdValidationFailed = "ConnectId validation failed for {ClientIp} on {Method}";
+        public const string UnexpectedSecurityError = "Unexpected error in security interceptor for {ClientIp} on {Method}";
+        public const string InvalidConnectIdFormat = "Invalid ConnectId format: {ConnectId}";
+        public const string ConnectIdOutOfRange = "ConnectId out of valid range: {ConnectId}";
+        public const string ErrorValidatingConnectId = "Error validating ConnectId";
+        public const string SecurityEvent = "Security Event: {EventType} | Method: {Method} | Client: {ClientIp} | UserAgent: {UserAgent}";
+
+        public const string GrpcDomainFailure = "gRPC call {Method} terminated by a handled domain failure. Status: {StatusCode}. Details: {@LogPayload}";
+        public const string GrpcPreExistingException = "gRPC call {Method} failed with a pre-existing RpcException. Status: {StatusCode}.";
+        public const string GrpcUnhandledException = "An unhandled exception was thrown during gRPC call {Method}.";
+    }
+
+    public static class Formatting
+    {
+        public const string HashFormat = "X8";
+    }
+
+    public static class Characters
+    {
+        public const string Colon = ":";
+        public const char Space = ' ';
+    }
+
+    public static class Numbers
+    {
+        public const int Zero = 0;
+        public const int One = 1;
+        public const int FirstIndex = 0;
+    }
 }
