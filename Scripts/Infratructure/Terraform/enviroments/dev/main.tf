@@ -81,7 +81,7 @@ module "ecs_service" {
   project                 = "ecliptix"
   env                     = "dev"
   cluster_id              = module.ecs_cluster.cluster_id
-  task_definition_arn     = module.ecs_task.task_definition_arn
+  task_definition_arn     = module.ecs_task_memberships.task_definition_arn
   private_subnet_ids      = module.network.private_subnets
   ecs_sg_id               = module.security.ecs_sg_id
 
@@ -110,5 +110,30 @@ resource "null_resource" "ecs_service_depends" {
   depends_on = [
     module.alb.memberships_https_listener,
     module.alb.memberships_grpc_listener
+  ]
+}
+
+module "ecs_task_memberships" {
+  source = "../../modules/ecs/ecs_task"
+
+  family            = "ecliptix-memberships"
+  cpu               = "256"
+  memory            = "512"
+  execution_role_arn = module.iam.ecs_task_execution_role_arn
+  task_role_arn      = module.iam.ecs_task_role_arn
+  container_name     = "memberships"
+  image_url          = module.ecr.memberships_repo_url
+
+  port_mappings = [
+    { containerPort = 5051, protocol = "tcp" },
+    { containerPort = 8080, protocol = "tcp" }
+  ]
+
+  environment = [
+    { name = "DOTNET_ENVIRONMENT", value = "Production" },
+    {
+      name  = "ConnectionStrings__EcliptixMemberships"
+      value = "Server=${module.rds.memberships_address};Database=memberships;User Id=${module.secrets.memberships_username};Password=${module.secrets.memberships_password};Encrypt=True;TrustServerCertificate=True;"
+    }
   ]
 }
