@@ -10,7 +10,7 @@ resource "aws_lb" "this" {
 
 # --- Target group for HTTP/1 (8080) ---
 
-resource "aws_lb_target_group" "http" {
+resource "aws_lb_target_group" "memberships_http" {
   name        = "${var.project}-${var.env}-http-tg"
   port        = 8080
   protocol    = "HTTP"
@@ -34,7 +34,7 @@ resource "aws_lb_target_group" "http" {
 
 # --- Target group for GRPC (5051) ---
 
-resource "aws_lb_target_group" "grpc" {
+resource "aws_lb_target_group" "memberships_grpc" {
   name             = "${var.project}-${var.env}-grpc-tg"
   port             = 5051
   protocol         = "HTTP"
@@ -59,7 +59,7 @@ resource "aws_lb_target_group" "grpc" {
 
 # --- HTTPS Listener for memberships 8080 ---
 
-resource "aws_lb_listener" "http" {
+resource "aws_lb_listener" "memberships_http" {
   load_balancer_arn = aws_lb.this.arn
   port              = "8080"
   protocol          = "HTTPS"
@@ -68,13 +68,13 @@ resource "aws_lb_listener" "http" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.http.arn
+    target_group_arn = aws_lb_target_group.memberships_http.arn
   }
 }
 
 # --- HTTPS Listener for memberships 5051 ---
 
-resource "aws_lb_listener" "grpc" {
+resource "aws_lb_listener" "memberships_grpc" {
   load_balancer_arn = aws_lb.this.arn
   port              = 5051
   protocol          = "HTTPS"
@@ -83,6 +83,6 @@ resource "aws_lb_listener" "grpc" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.grpc.arn
+    target_group_arn = aws_lb_target_group.memberships_grpc.arn
   }
 }

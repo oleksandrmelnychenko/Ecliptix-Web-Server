@@ -23,16 +23,36 @@ module "network" {
   }
 }
 
+module "subnet_group" {
+  source = "../../modules/network/subnet_group"
+
+  memberships_subnet_group_name = "dev-memberships-subnet-group"
+  private_subnet_ids            = module.network.private_subnets
+
+  tags = {
+    project = "ecliptix"
+    env     = "dev"
+    region  = "eu-central-1"
+  }
+}
+
 module "security" {
-  source   = "../../modules/security"
+  source = "../../modules/security"
   
-  vpc_id   = module.network.vpc_id
+  vpc_id = module.network.vpc_id
 
   alb_ports         = [5051, 8080]
   allowed_ssh_cidrs = ["0.0.0.0/0"]
   allowed_vpc_cidr  = "10.2.0.0/16"
 }
 
+module "ecliptix_control" {
+  source = "../../modules/ec2"
+
+  ecliptix_control_subnet_id = module.network.public_subnets[0]
+  ecliptix_key_name          = aws_key_pair.ecliptix_key.key_name
+  ecliptix_control_sg_id     = module.security.control_sg_id
+}
 
 module "vpc_endpoints" {
   source = "../../modules/vpc_endpoints"
@@ -120,6 +140,22 @@ module "ecr" {
   source = "../../modules/ecr"
 }
 
+module "rds" {
+  source = "../../modules/rds"
+
+  mssql_secret_name        = "dev/ecliptix/memberships/mssql"
+  mssql_identifier         = "dev-memberships-mssql"
+  mssql_engine_version     = "15.00.4435.7.v1"
+  mssql_allocated_storage  = 20
+  mssql_instance_class     = "db.t3.micro"
+  mssql_subnet_group_name  = module.subnet_group.mssql_subnet_group_name
+  mssql_sg_id              = module.security.mssql_sg_id
+
+  ecliptix_control_id       = module.ecliptix_control.ecliptix_control_id
+  ecliptix_control_public_ip = module.ecliptix_control.ecliptix_control_public_ip
+  ecliptix_private_key      = module.ecliptix_control.ecliptix_private_key
+}
+
 module "ecs_task_memberships" {
   source = "../../modules/ecs/ecs_task"
 
@@ -140,7 +176,8 @@ module "ecs_task_memberships" {
     { name = "DOTNET_ENVIRONMENT", value = "Production" },
     {
       name  = "ConnectionStrings__EcliptixMemberships"
-      value = "Server=${module.rds.memberships_address};Database=memberships;User Id=${module.secrets.memberships_username};Password=${module.secrets.memberships_password};Encrypt=True;TrustServerCertificate=True;"
+      value = "Server=${module.rds.memberships_mssql_address};Database=memberships;User Id=${module.secrets.memberships_username};Password=${module.secrets.memberships_password};Encrypt=True;TrustServerCertificate=True;"
     }
   ]
 }
+

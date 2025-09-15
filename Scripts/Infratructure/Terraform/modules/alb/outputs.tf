@@ -18,7 +18,7 @@ output "memberships_grpc_tg_arn" {
 
 output "memberships_https_listener" {
   description = "HTTPS listener for memberships 8080"
-  value       = aws_lb_listener.memberships_https.arn
+  value       = aws_lb_listener.memberships_http.arn
 }
 
 output "memberships_grpc_listener" {
