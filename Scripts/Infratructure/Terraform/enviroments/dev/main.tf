@@ -6,6 +6,11 @@ module "iam" {
   source = "../../modules/iam"
 }
 
+module "keypair" {
+  source = "../../modules/ec2/keypair"
+  ecliptix_key_name = "ecliptix-control-key"
+}
+
 module "network" {
   source = "../../modules/network"
 
@@ -50,7 +55,7 @@ module "ecliptix_control" {
   source = "../../modules/ec2"
 
   ecliptix_control_subnet_id = module.network.public_subnets[0]
-  ecliptix_key_name          = aws_key_pair.ecliptix_key.key_name
+  ecliptix_key_name          = module.keypair.ecliptix_key.key_name
   ecliptix_control_sg_id     = module.security.control_sg_id
 }
 
@@ -151,9 +156,9 @@ module "rds" {
   mssql_subnet_group_name  = module.subnet_group.mssql_subnet_group_name
   mssql_sg_id              = module.security.mssql_sg_id
 
-  ecliptix_control_id       = module.ecliptix_control.ecliptix_control_id
+  ecliptix_control_id        = module.ecliptix_control.ecliptix_control_id
   ecliptix_control_public_ip = module.ecliptix_control.ecliptix_control_public_ip
-  ecliptix_private_key      = module.ecliptix_control.ecliptix_private_key
+  ecliptix_private_key       = module.keypair.ecliptix_private_key
 }
 
 module "ecs_task_memberships" {
