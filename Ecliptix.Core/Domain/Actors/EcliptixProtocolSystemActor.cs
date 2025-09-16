@@ -9,7 +9,6 @@ public class EcliptixProtocolSystemActor : ReceiveActor
 {
     public EcliptixProtocolSystemActor()
     {
-        Context.System.EventStream.Subscribe(Self, typeof(ProtocolCleanupRequiredEvent));
         Become(Ready);
     }
 
@@ -22,26 +21,7 @@ public class EcliptixProtocolSystemActor : ReceiveActor
             Log.Warning(ActorConstants.LogMessages.SupervisedActorTerminated, t.ActorRef.Path);
         });
 
-        Receive<ClientDisconnectedActorEvent>(cmd =>
-        {
-            string actorName = $"{ActorConstants.ActorNamePrefixes.Connect}{cmd.ConnectId}";
-            IActorRef connectActor = Context.Child(actorName);
-            if (!connectActor.IsNobody())
-            {
-                connectActor.Forward(cmd);
-            }
-        });
 
-        Receive<ProtocolCleanupRequiredEvent>(cmd =>
-        {
-            string actorName = $"{ActorConstants.ActorNamePrefixes.Connect}{cmd.ConnectId}";
-            IActorRef connectActor = Context.Child(actorName);
-            if (!connectActor.IsNobody())
-            {
-                connectActor.Tell(new ClientDisconnectedActorEvent(cmd.ConnectId), ActorRefs.NoSender);
-                Log.Information(ActorConstants.LogMessages.ProtocolCleanupTriggered, cmd.ConnectId);
-            }
-        });
     }
 
     private async Task ProcessNewSessionRequest(BeginAppDeviceEphemeralConnectActorEvent actorEvent)

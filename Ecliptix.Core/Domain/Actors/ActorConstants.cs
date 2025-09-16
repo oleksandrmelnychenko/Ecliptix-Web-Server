@@ -16,20 +16,13 @@ public static class ActorConstants
     public static class Recovery
     {
         public const int MaxRetries = 3;
-        public const int BaseDelaySeconds = 5;
         public const string RetryTimerKey = "recovery-retry";
     }
 
     public static class Timeouts
     {
         public const int IdleTimeoutMinutes = 1;
-        public const int StreamingTimeoutMinutes = 6;
-        public const int DelayedTerminationMs = 300;
-    }
-
-    public static class Snapshots
-    {
-        public const int Interval = 100;
+        public const int StreamingTimeoutMinutes = 1;
     }
 
     public static class Constants

@@ -21,6 +21,16 @@ public record FallbackCleanupEvent();
 
 public class VerificationFlowActor : ReceiveActor, IWithStash
 {
+    private static readonly TimeSpan SessionTimeout = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan OtpUpdateInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan MembershipCreationTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ResendOtpCheckTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan CreateOtpTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan UpdateOtpStatusTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ChannelWriteTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan FallbackCleanupDelay = TimeSpan.FromSeconds(10);
+    private const int MaxSmsRetries = 3;
+
     private readonly uint _connectId;
     private readonly string _cultureName;
     private readonly ILocalizationProvider _localizationProvider;
@@ -103,21 +113,23 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                         }));
                 }
 
-                if (verificationFlowFailure.FailureType == VerificationFlowFailureType.NotFound ||
-                    verificationFlowFailure.FailureType == VerificationFlowFailureType.InvalidOpaque)
+                if (verificationFlowFailure.FailureType is VerificationFlowFailureType.NotFound
+                    or VerificationFlowFailureType.InvalidOpaque)
                 {
                     await CompleteWithError(verificationFlowFailure);
                 }
                 else
                 {
+                    CancelOtpTimer();
                     Become(OtpExpiredWaitingForSession);
                 }
+
                 return;
             }
 
             VerificationFlowQueryRecord currentFlow = result.Unwrap();
             _verificationFlow = Option<VerificationFlowQueryRecord>.Some(currentFlow);
-            _sessionDeadline = currentFlow.ExpiresAt;
+            _sessionDeadline = DateTime.UtcNow.Add(SessionTimeout);
 
             if (currentFlow.Status == VerificationFlowStatus.Verified)
             {
@@ -169,6 +181,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             }
             else
             {
+                CancelOtpTimer();
                 Become(OtpExpiredWaitingForSession);
                 Stash.UnstashAll();
             }
@@ -285,7 +298,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         {
             Result<MembershipQueryRecord, VerificationFlowFailure> result =
                 await _membershipActor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(
-                    createEvent, TimeSpan.FromSeconds(10));
+                    createEvent, MembershipCreationTimeout);
 
             result.Switch(
                 membership => { Sender.Tell(CreateSuccessResponse(membership)); },
@@ -304,7 +317,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 VerificationFlowFailure.Generic("Failed to create membership due to system error")));
         }
 
-        await TerminateActor(graceful: true, publishCleanupEvent: false);
+        await TerminateActor(graceful: true, publishCleanupEvent: true);
     }
 
     private async Task HandleFailedVerification(string cultureName)
@@ -347,7 +360,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         Result<string, VerificationFlowFailure> checkResult =
             await _persistor.Ask<Result<string, VerificationFlowFailure>>(
-                new RequestResendOtpActorEvent(_verificationFlow.Value!.UniqueIdentifier), TimeSpan.FromSeconds(15));
+                new RequestResendOtpActorEvent(_verificationFlow.Value!.UniqueIdentifier), ResendOtpCheckTimeout);
         if (checkResult.IsErr)
         {
             VerificationFlowFailure failure = checkResult.UnwrapErr();
@@ -466,6 +479,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
     private void StartOtpTimer()
     {
+        CancelOtpTimer();
+
         if (_activeOtp?.IsActive != true)
         {
             Log.Warning("OTP timer not started: OTP is not active. IsActive={IsActive} for ConnectId {ConnectId}",
@@ -480,7 +495,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         if (_activeOtpRemainingSeconds > 0)
         {
             _otpTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(TimeSpan.Zero,
-                TimeSpan.FromSeconds(1), Self, new VerificationCountdownUpdate(), ActorRefs.NoSender);
+                OtpUpdateInterval, Self, new VerificationCountdownUpdate(), ActorRefs.NoSender);
 
             PauseSessionTimer();
             Become(OtpActive);
@@ -581,7 +596,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         _isCompleting = true;
 
         _cleanupFallbackTimer = Context.System.Scheduler.ScheduleTellOnceCancelable(
-            TimeSpan.FromSeconds(10), Self, new FallbackCleanupEvent(), ActorRefs.NoSender);
+            FallbackCleanupDelay, Self, new FallbackCleanupEvent(), ActorRefs.NoSender);
     }
 
     private async Task HandleFallbackCleanup(FallbackCleanupEvent _)
@@ -647,7 +662,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         Result<CreateOtpResult, VerificationFlowFailure> createResult =
             await _persistor.Ask<Result<CreateOtpResult, VerificationFlowFailure>>(
-                new CreateOtpActorEvent(otpRecord), TimeSpan.FromSeconds(20));
+                new CreateOtpActorEvent(otpRecord), CreateOtpTimeout);
 
         if (createResult.IsErr) return Result<Unit, VerificationFlowFailure>.Err(createResult.UnwrapErr());
 
@@ -666,11 +681,10 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             _localizationProvider.Localize(VerificationFlowMessageKeys.AuthenticationCodeIs, cultureName);
         StringBuilder messageBuilder = new(localizedString + ": " + plainOtp);
 
-        const int maxSmsRetries = 3;
         int smsAttempt = 0;
         SmsDeliveryResult? smsResult = null;
 
-        while (smsAttempt < maxSmsRetries)
+        while (smsAttempt < MaxSmsRetries)
         {
             smsAttempt++;
             smsResult = await _smsProvider.SendOtpAsync(phoneNumberQueryRecord.PhoneNumber, messageBuilder.ToString());
@@ -682,9 +696,9 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
             Log.Warning(
                 "SMS sending failed on attempt {Attempt}/{MaxAttempts} for ConnectId {ConnectId}, Status: {Status}, Error: {ErrorMessage}",
-                smsAttempt, maxSmsRetries, _connectId, smsResult.Status, smsResult.ErrorMessage);
+                smsAttempt, MaxSmsRetries, _connectId, smsResult.Status, smsResult.ErrorMessage);
 
-            if (smsAttempt >= maxSmsRetries) continue;
+            if (smsAttempt >= MaxSmsRetries) continue;
             int delayMs = (int)Math.Pow(2, smsAttempt - 1) * 1000;
             await Task.Delay(delayMs);
         }
@@ -702,7 +716,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
             return Result<Unit, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.SmsSendFailed(
-                    $"Failed to send SMS after {maxSmsRetries} attempts: {smsResult?.ErrorMessage}"));
+                    $"Failed to send SMS after {MaxSmsRetries} attempts: {smsResult?.ErrorMessage}"));
         }
 
         return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
@@ -732,7 +746,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             _activeOtp = null;
         }
 
-        _otpTimer?.Cancel();
+        CancelOtpTimer();
         ResumeSessionTimer();
     }
 
@@ -740,7 +754,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
     {
         if (_activeOtp != null)
             await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
-                new UpdateOtpStatusActorEvent(_activeOtp.UniqueIdentifier, status), TimeSpan.FromSeconds(10));
+                new UpdateOtpStatusActorEvent(_activeOtp.UniqueIdentifier, status), UpdateOtpStatusTimeout);
     }
 
     private static uint CalculateRemainingSeconds(DateTime expiresAt)
@@ -798,13 +812,14 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         if (publishCleanupEvent)
         {
+            Log.Information("[VERIFICATION_CLEANUP] Publishing ProtocolCleanupRequiredEvent for ConnectId {ConnectId}",
+                _connectId);
             Context.System.EventStream.Publish(new ProtocolCleanupRequiredEvent(_connectId));
         }
 
         if (graceful)
         {
             Context.Parent.Tell(new FlowCompletedGracefullyActorEvent(Self));
-            Context.Unwatch(Self);
         }
 
         Context.Stop(Self);
@@ -882,7 +897,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         try
         {
-            using CancellationTokenSource timeoutCts = new(TimeSpan.FromSeconds(5));
+            using CancellationTokenSource timeoutCts = new(ChannelWriteTimeout);
             await writer.WriteAsync(update, timeoutCts.Token);
         }
         catch (InvalidOperationException)

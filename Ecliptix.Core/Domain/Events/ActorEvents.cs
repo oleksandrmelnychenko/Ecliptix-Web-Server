@@ -13,8 +13,6 @@ public record EncryptPayloadActorEvent(
     PubKeyExchangeType PubKeyExchangeType,
     byte[] Payload);
 
-public record ClientDisconnectedActorEvent(uint ConnectId);
-
 public record ForwardToConnectActorEvent(uint ConnectId, object Payload);
 
 public record RestoreAppDeviceSecrecyChannelState;
@@ -35,7 +33,3 @@ public sealed record KeepAlive
 }
 
 public sealed record RetryRecoveryMessage;
-
-public sealed record DelayedTerminationMessage;
-
-public record ProtocolCleanupRequiredEvent(uint ConnectId);
