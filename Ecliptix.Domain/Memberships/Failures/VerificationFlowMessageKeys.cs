@@ -33,26 +33,6 @@ public static class VerificationFlowMessageKeys
     public const string Validation = "validation_failed";
 
     public const string InvalidCredentials = "invalid_credentials";
-    public const string PasswordComplexityRequirements = "password_complexity_requirements";
-    public const string PasswordEmpty = "password_empty";
-    public const string PasswordHashInputEmpty = "password_hash_input_empty";
-    public const string PasswordInvalidChars = "password_invalid_chars";
-    public const string PasswordManagerConfigHashAlgorithm = "password_config_hash_algorithm_unsupported";
-    public const string PasswordManagerConfigIterations = "password_config_iterations_invalid";
-    public const string PasswordManagerConfigSaltSize = "password_config_salt_size_invalid";
-    public const string PasswordMissingDigit = "password_missing_digit";
-    public const string PasswordMissingLowercase = "password_missing_lowercase";
-    public const string PasswordMissingSpecialChar = "password_missing_special_char";
-    public const string PasswordMissingUppercase = "password_missing_uppercase";
-    public const string PasswordTooShort = "password_too_short";
-    public const string PasswordVerifyBase64Error = "password_verify_base64_error";
-    public const string PasswordVerifyHashSizeMismatch = "password_verify_hash_size_mismatch";
-    public const string PasswordVerifyInputEmpty = "password_verify_input_empty";
-    public const string PasswordVerifyInvalidFormat = "password_verify_invalid_format";
-    public const string PasswordVerifyMismatch = "password_verify_mismatch";
-    public const string PasswordVerifySaltSizeMismatch = "password_verify_salt_size_mismatch";
-    public const string PasswordVerifyStoredHashEmpty = "password_verify_stored_hash_empty";
-
     public const string InactiveMembership = "inactive_membership";
     public const string InvalidSecureKey = "invalid_secure_key";
     public const string MembershipAlreadyExists = "membership_already_exists";

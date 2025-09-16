@@ -390,18 +390,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
                 CancelTimers();
                 _writer?.TryComplete();
                 _writer = actorEvent.ChannelWriter;
+                _sessionDeadline = DateTime.UtcNow.Add(SessionTimeout);
                 await ContinueWithOtp();
-                break;
-            case VerificationFlowMessageKeys.VerificationFlowExpired:
-                await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
-                    new VerificationCountdownUpdate
-                    {
-                        SecondsRemaining = 0,
-                        SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value.UniqueIdentifier),
-                        Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired,
-                        Message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowExpired,
-                            actorEvent.CultureName)
-                    }));
                 break;
             case VerificationFlowMessageKeys.OtpMaxAttemptsReached:
                 await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(

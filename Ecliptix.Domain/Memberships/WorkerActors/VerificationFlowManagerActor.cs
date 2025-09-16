@@ -84,6 +84,7 @@ public class VerificationFlowManagerActor : ReceiveActor
         {
             if (!childActor.IsNobody())
             {
+                _flowWriters[childActor] = actorEvent.ChannelWriter;
                 childActor.Forward(actorEvent);
             }
             else

@@ -332,13 +332,15 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                     _currentExchangeType = exchangeType;
                     if (exchangeType == PubKeyExchangeType.ServerStreaming)
                     {
-                        Context.SetReceiveTimeout(
-                            TimeSpan.FromMinutes(ActorConstants.Timeouts.StreamingTimeoutMinutes));
-                        Context.GetLogger().Info(ActorConstants.LogMessages.SetStreamingTimeout, cmd.ConnectId);
+                        // No timeout for ServerStreaming - controlled by VerificationFlow
+                        Context.SetReceiveTimeout(null);
+                        Context.GetLogger().Info("[PROTOCOL] ServerStreaming - no timeout, controlled by VerificationFlow for ConnectId {0}", cmd.ConnectId);
                     }
                     else
                     {
+                        // All other types (DataCenterEphemeralConnect, etc.) use timeout
                         Context.SetReceiveTimeout(IdleTimeout);
+                        Context.GetLogger().Info("[PROTOCOL] {0} - using idle timeout for ConnectId {1}", exchangeType, cmd.ConnectId);
                     }
 
                     if (existingReplyResult.IsOk)
@@ -404,9 +406,15 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             _protocolSystems[exchangeType] = system;
             _currentExchangeType = exchangeType;
 
-            Context.SetReceiveTimeout(exchangeType == PubKeyExchangeType.ServerStreaming
-                ? TimeSpan.FromMinutes(ActorConstants.Timeouts.StreamingTimeoutMinutes)
-                : IdleTimeout);
+            // Set timeout based on exchange type
+            if (exchangeType == PubKeyExchangeType.ServerStreaming)
+            {
+                Context.SetReceiveTimeout(null); // No timeout for ServerStreaming
+            }
+            else
+            {
+                Context.SetReceiveTimeout(IdleTimeout); // Timeout for DataCenterEphemeralConnect and others
+            }
 
             originalSender.Tell(
                 Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(new DeriveSharedSecretReply(reply)));
