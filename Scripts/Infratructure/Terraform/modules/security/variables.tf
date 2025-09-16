@@ -15,4 +15,9 @@ variable "allowed_ssh_cidrs" {
 
 variable "allowed_vpc_cidr" {
   type    = string
-} 
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}

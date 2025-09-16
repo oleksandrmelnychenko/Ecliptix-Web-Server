@@ -4,17 +4,35 @@ module "global" {
 
 module "iam" {
   source = "../../modules/iam"
+
+  tags = {
+    project = "ecliptix"
+    env     = "dev"
+    region  = "eu-central-1"
+  }
 }
 
 module "keypair" {
   source = "../../modules/ec2/keypair"
   ecliptix_key_name = "ecliptix-control-key"
+
+  tags = {
+    project = "ecliptix"
+    env     = "dev"
+    region  = "eu-central-1"
+  }
 }
 
 module "cloudwatch" {
   source = "../../modules/monitoring/cloudwatch"
 
   memberships_logs_name = "ecliptix-memberships-logs"
+
+  tags = {
+    project = "ecliptix"
+    env     = "dev"
+    region  = "eu-central-1"
+  }
 }
 
 module "secrets" {
@@ -61,6 +79,12 @@ module "security" {
   alb_ports         = [5051, 8080]
   allowed_ssh_cidrs = ["0.0.0.0/0"]
   allowed_vpc_cidr  = "10.2.0.0/16"
+
+  tags = {
+    project = "ecliptix"
+    env     = "dev"
+    region  = "eu-central-1"
+  }
 }
 
 module "ecliptix_control" {
@@ -97,6 +121,7 @@ module "alb" {
 
   project = "ecliptix"
   env     = "dev"
+
   tags = {
     project = "ecliptix"
     env     = "dev"
@@ -109,6 +134,7 @@ module "ecs_cluster" {
 
   project = "ecliptix"
   env     = "dev"
+
   tags = {
     project = "ecliptix"
     env     = "dev"
@@ -171,6 +197,12 @@ module "rds" {
   ecliptix_control_id        = module.ecliptix_control.ecliptix_control_id
   ecliptix_control_public_ip = module.ecliptix_control.ecliptix_control_public_ip
   ecliptix_private_key       = module.keypair.ecliptix_private_key
+
+  tags = {
+    project = "ecliptix"
+    env     = "dev"
+    region  = "eu-central-1"
+  }
 }
 
 module "ecs_task_memberships" {
@@ -196,6 +228,12 @@ module "ecs_task_memberships" {
       value = "Server=${module.rds.memberships_mssql_address};Database=memberships;User Id=${module.secrets.memberships_username};Password=${module.secrets.memberships_password};Encrypt=True;TrustServerCertificate=True;"
     }
   ]
+
+  tags = {
+    project = "ecliptix"
+    env     = "dev"
+    region  = "eu-central-1"
+  }
 }
 
 module "ansible" {

@@ -7,3 +7,8 @@ variable "ecliptix_key_name" {
   type        = string
   description = "Key pair name for ecliptix-control"
 }
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}

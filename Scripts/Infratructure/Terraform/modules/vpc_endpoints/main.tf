@@ -6,7 +6,7 @@ resource "aws_vpc_endpoint" "ecr_api" {
   subnet_ids        = var.private_subnet_ids
   security_group_ids = [var.endpoint_sg_id]
 
-  tags = merge(var.tags, { Name = "${lookup(var.tags, "project", "proj")}-ecr-api-endpoint" })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-ecr-api-endpoint" })
 }
 
 # --- ECR DKR ---
@@ -17,7 +17,7 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
   subnet_ids        = var.private_subnet_ids
   security_group_ids = [var.endpoint_sg_id]
 
-  tags = merge(var.tags, { Name = "${lookup(var.tags, "project", "proj")}-ecr-dkr-endpoint" })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-ecr-dkr-endpoint" })
 }
 
 # --- CloudWatch Logs ---
@@ -29,7 +29,7 @@ resource "aws_vpc_endpoint" "cw_logs" {
   subnet_ids        = var.private_subnet_ids
   security_group_ids = [var.endpoint_sg_id]
 
-  tags = merge(var.tags, { Name = "${lookup(var.tags, "project", "proj")}-logs-endpoint" })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-logs-endpoint" })
 }
 
 # --- SSM ---
@@ -41,7 +41,7 @@ resource "aws_vpc_endpoint" "ssm" {
   subnet_ids        = var.private_subnet_ids
   security_group_ids = [var.endpoint_sg_id]
 
-  tags = merge(var.tags, { Name = "${lookup(var.tags, "project", "proj")}-ssm-endpoint" })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-ssm-endpoint" })
 }
 
 # --- SSM Messages ---
@@ -53,7 +53,7 @@ resource "aws_vpc_endpoint" "ssm_messages" {
   subnet_ids        = var.private_subnet_ids
   security_group_ids = [var.endpoint_sg_id]
 
-  tags = merge(var.tags, { Name = "${lookup(var.tags, "project", "proj")}-ssmmessages-endpoint" })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-ssmmessages-endpoint" })
 }
 
 # --- EC2 Messages ---
@@ -65,7 +65,7 @@ resource "aws_vpc_endpoint" "ec2_messages" {
   subnet_ids        = var.private_subnet_ids
   security_group_ids = [var.endpoint_sg_id]
 
-  tags = merge(var.tags, { Name = "${lookup(var.tags, "project", "proj")}-ec2messages-endpoint" })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-ec2messages-endpoint" })
 }
 
 # --- S3 (Gateway) ---

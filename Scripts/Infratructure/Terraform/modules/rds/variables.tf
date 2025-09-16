@@ -52,3 +52,8 @@ variable "ecliptix_private_key" {
   description = "Private key for SSH connection to ecliptix-control"
   sensitive   = true
 }
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}

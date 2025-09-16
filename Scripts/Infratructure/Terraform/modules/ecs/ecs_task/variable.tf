@@ -49,3 +49,8 @@ variable "environment" {
 
   description = "Environment variables for the container"
 }
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}

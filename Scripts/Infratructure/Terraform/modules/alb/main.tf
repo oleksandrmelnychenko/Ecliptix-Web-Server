@@ -5,7 +5,7 @@ resource "aws_lb" "this" {
   security_groups    = [var.alb_sg_id]
   subnets            = var.public_subnet_ids
 
-  tags = merge(var.tags, { Name = "${var.project}-${var.env}-alb" })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-alb" })
 }
 
 # --- Target group for HTTP/1 (8080) ---
@@ -29,7 +29,7 @@ resource "aws_lb_target_group" "memberships_http" {
     port                = "traffic-port"
   }
 
-  tags = merge(var.tags, { Name = "${var.project}-${var.env}-http-tg" })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-http-tg" })
 }
 
 # --- Target group for GRPC (5051) ---
@@ -54,7 +54,7 @@ resource "aws_lb_target_group" "memberships_grpc" {
     port                = "traffic-port"
   }
 
-  tags = merge(var.tags, { Name = "${var.project}-${var.env}-grpc-tg" })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-grpc-tg" })
 }
 
 # --- HTTPS Listener for memberships 8080 ---

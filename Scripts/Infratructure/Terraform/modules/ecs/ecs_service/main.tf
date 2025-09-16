@@ -25,5 +25,5 @@ resource "aws_ecs_service" "this" {
     ignore_changes = [task_definition]
   }
   
-  tags = merge(var.tags, { Name = "${var.project}-${var.env}-ecs_service" })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-ecs_service" })
 }

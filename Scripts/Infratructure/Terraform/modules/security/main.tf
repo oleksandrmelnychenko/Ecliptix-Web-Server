@@ -22,7 +22,7 @@ resource "aws_security_group" "alb_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "ecliptix-alb-sg" }
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-alb-sg" })
 }
 
 # --- ECS tasks SG (private, allow only ALB) ---
@@ -52,7 +52,7 @@ resource "aws_security_group" "ecs_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "ecliptix-ecs-sg"}
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-ecs-sg" })
 }
 
 # --- SSH SG for Control Instances ---
@@ -98,7 +98,7 @@ resource "aws_security_group" "control_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "ecliptix-control-sg" }
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-control-sg" })
 }
 
 # --- SG for VPC Endpoints ---
@@ -147,6 +147,6 @@ resource "aws_security_group" "mssql_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "ecliptix-mssql-sg" }
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-mssql-sg" })
 }
 

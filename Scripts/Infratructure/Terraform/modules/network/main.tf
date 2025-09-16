@@ -2,7 +2,7 @@
 
 resource "aws_vpc" "this" {
   cidr_block = var.vpc_cidr
-  tags       = merge(var.tags, { Name = "${var.tags["project"]}-vpc" })
+  tags       = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-vpc" })
 }
 
 # --- Public Subnets ---
@@ -14,9 +14,7 @@ resource "aws_subnet" "public" {
   availability_zone      = var.availability_zones[count.index]
   map_public_ip_on_launch = true
 
-  tags = merge(var.tags, {
-    Name = "${var.tags["project"]}-public-${var.availability_zones[count.index]}"
-  })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-public-${var.availability_zones[count.index]}" })
 }
 
 # --- Private Subnets ---
@@ -27,29 +25,27 @@ resource "aws_subnet" "private" {
   cidr_block         = var.private_cidrs[count.index]
   availability_zone = var.availability_zones[count.index]
 
-  tags = merge(var.tags, {
-    Name = "${var.tags["project"]}-private-${var.availability_zones[count.index]}"
-  })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-private-${var.availability_zones[count.index]}" })
 }
 
 # --- Internal Gateway --- 
 
 resource "aws_internet_gateway" "this" {
   vpc_id = aws_vpc.this.id
-  tags   = merge(var.tags, { Name = "${var.tags["project"]}-igw" })
+  tags   = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-igw" })
 }
 
 # --- NAT Gateway ---
 resource "aws_eip" "nat" {
   domain = "vpc"
-  tags   = { Name = "ecliptix-nat-eip" }
+  tags   = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-nat-eip" })
 }
 
 resource "aws_nat_gateway" "this" {
   allocation_id = aws_eip.nat.allocation_id
   subnet_id     = aws_subnet.public[0].id
 
-  tags = { Name = "ecliptix-nat-gateway" }
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-nat-gateway" })
 
   depends_on = [aws_internet_gateway.this]
 }
@@ -63,7 +59,7 @@ resource "aws_route_table" "public" {
     gateway_id = aws_internet_gateway.this.id
   }
 
-  tags =  merge(var.tags, { Name = "${var.tags["project"]}-public-rt" })
+  tags =  merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-public-rt" })
 }
 
 resource "aws_route_table" "private" {
@@ -72,7 +68,7 @@ resource "aws_route_table" "private" {
     cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.this.id
   }
-  tags = merge(var.tags, { Name = "${var.tags["project"]}-private-rt" })
+  tags = merge(var.tags, { Name = "${var.tags["project"]}-${var.tags["env"]}-private-rt" })
 }
 
 # --- Route Table Associations ---
