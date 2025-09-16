@@ -17,6 +17,12 @@ module "cloudwatch" {
   memberships_logs_name = "ecliptix-memberships-logs"
 }
 
+module "secrets" {
+  source = "../../modules/secrets"
+
+  memberships_secret_name = "dev/ecliptix/memberships/mssql"
+}
+
 module "network" {
   source = "../../modules/network"
 
