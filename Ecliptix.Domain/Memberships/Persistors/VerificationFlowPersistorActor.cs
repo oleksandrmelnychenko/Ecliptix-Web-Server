@@ -79,7 +79,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             "phone_not_found" => Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.NotFound(result.Outcome)),
             "global_rate_limit_exceeded" => Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.RateLimitExceeded(result.Outcome)),
+                VerificationFlowFailure.RateLimitExceeded(VerificationFlowMessageKeys.GlobalRateLimitExceeded)),
             _ => MapToVerificationFlowRecord(result)
         };
     }

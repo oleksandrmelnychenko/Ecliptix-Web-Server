@@ -7,6 +7,7 @@ public static class VerificationFlowMessageKeys
     public const string CreateMembershipVerificationFlowNotFound = "verification_session_not_found";
 
     public const string InvalidOtp = "otp_invalid";
+    public const string GlobalRateLimitExceeded = "global_rate_limit_exceeded";
     public const string OtpGenerationFailed = "otp_generation_failed";
     public const string OtpMaxAttemptsReached = "max_otp_attempts_reached";
     public const string ResendAllowed = "resend_allowed";
