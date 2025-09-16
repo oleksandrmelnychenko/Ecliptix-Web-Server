@@ -11,6 +11,12 @@ module "keypair" {
   ecliptix_key_name = "ecliptix-control-key"
 }
 
+module "cloudwatch" {
+  source = "../../modules/monitoring/cloudwatch"
+
+  memberships_logs_name = "ecliptix-memberships-logs"
+}
+
 module "network" {
   source = "../../modules/network"
 
