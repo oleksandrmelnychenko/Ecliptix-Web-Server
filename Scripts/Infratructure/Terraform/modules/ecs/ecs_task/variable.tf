@@ -4,12 +4,12 @@ variable "family" {
 }
 
 variable "cpu" {
-  type        = string
+  type        = number
   description = "CPU units for the task"
 }
 
 variable "memory" {
-  type        = string
+  type        = number
   description = "Memory for the task"
 }
 

@@ -4,9 +4,9 @@ resource "aws_iam_role" "ecs_task_execution" {
   name = "ecliptix-ecs-exec"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statment = [{
+    Statement = [{
       Action = "sts:AssumeRole"
-      Effect = "Allov"
+      Effect = "Allow"
       Principal = {
         Service = "ecs-tasks.amazonaws.com"
       }

@@ -1,7 +1,6 @@
 variable "mssql_secret_name" {
   type        = string
   description = "Name of the secret in Secrets Manager for MSSQL credentials"
-  default     = "prod/ecliptix/memberships/mssql"
 }
 
 variable "mssql_identifier" {

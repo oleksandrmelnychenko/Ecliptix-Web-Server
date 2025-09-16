@@ -27,7 +27,7 @@ module "network" {
   source = "../../modules/network"
 
   vpc_cidr           = "10.2.0.0/24"
-  availability_zones = ["eu-central-1a", "eu-central-1b", "eu-cental-1c"]
+  availability_zones = ["eu-central-1a", "eu-central-1b", "eu-central-1c"]
   public_cidrs       = ["10.2.0.0/27", "10.2.0.32/27", "10.2.0.64/27"]
   private_cidrs      = ["10.2.0.160/27", "10.2.0.192/27", "10.2.0.224/27"]
 
@@ -198,3 +198,12 @@ module "ecs_task_memberships" {
   ]
 }
 
+module "ansible" {
+  source = "../../modules/ansible"
+
+  aws_region                 = "eu-central-1"
+  control_instance_public_ip = module.ecliptix_control.ecliptix_control_public_ip
+  ecr_repo                   = module.ecr.memberships_repository_url
+  ecs_cluster                = module.ecs_cluster.cluster_name
+  ecs_memberships_service    = module.ecs_service.service_name
+}
