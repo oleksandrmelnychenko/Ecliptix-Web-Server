@@ -1,5 +1,10 @@
-module "global" {
-  source = "../../global"
+data "terraform_remote_state" "global" {
+  backend = "s3"
+  config = {
+    bucket = "ecliptix-terraform-state"
+    key    = "ecliptix-global/terraform.tfstate"
+    region = "eu-central-1"
+  }
 }
 
 module "iam" {
@@ -179,10 +184,6 @@ resource "null_resource" "ecs_service_depends" {
   ]
 }
 
-module "ecr" {
-  source = "../../modules/ecr"
-}
-
 module "rds" {
   source = "../../modules/rds"
 
@@ -214,7 +215,7 @@ module "ecs_task_memberships" {
   execution_role_arn = module.iam.ecs_task_execution_role_arn
   task_role_arn      = module.iam.ecs_task_role_arn
   container_name     = "memberships"
-  image_url          = module.ecr.memberships_repository_url
+  image_url          = data.terraform_remote_state.global.outputs.memberships_repository_url
 
   port_mappings = [
     { containerPort = 5051, protocol = "tcp" },
@@ -241,7 +242,7 @@ module "ansible" {
 
   aws_region                 = "eu-central-1"
   control_instance_public_ip = module.ecliptix_control.ecliptix_control_public_ip
-  ecr_repo                   = module.ecr.memberships_repository_url
+  ecr_repo                   = data.terraform_remote_state.global.outputs.memberships_repository_url
   ecs_cluster                = module.ecs_cluster.cluster_name
   ecs_memberships_service    = module.ecs_service.service_name
 }
