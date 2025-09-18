@@ -9,8 +9,10 @@ data "terraform_remote_state" "global" {
 
 module "keypair" {
   source = "../../modules/ec2/keypair"
+  
   ecliptix_key_name = "ecliptix-${var.env}-control-key"
-
+  env               = var.env
+  
   tags = {
     project = "ecliptix"
     env     = "dev"

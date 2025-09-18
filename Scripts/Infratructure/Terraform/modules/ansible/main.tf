@@ -1,7 +1,7 @@
 resource "local_file" "ansible_inventory" {
   content = <<EOT
 [jenkins]
-${var.control_instance_public_ip} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/ecliptix-control-key.pem
+${var.control_instance_public_ip} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/ecliptix-${var.env}-control-key.pem
 EOT
   filename = "${path.module}/../../../Ansible/inventory-${var.env}.ini"
 }
