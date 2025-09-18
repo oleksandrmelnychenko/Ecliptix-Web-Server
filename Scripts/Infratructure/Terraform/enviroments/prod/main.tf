@@ -7,16 +7,6 @@ data "terraform_remote_state" "global" {
   }
 }
 
-module "iam" {
-  source = "../../modules/iam"
-
-  tags = {
-    project = "ecliptix"
-    env     = "prod"
-    region  = "eu-central-1"
-  }
-}
-
 module "keypair" {
   source = "../../modules/ec2/keypair"
   ecliptix_key_name = "ecliptix-control-key"
@@ -212,8 +202,8 @@ module "ecs_task_memberships" {
   family            = "ecliptix-memberships"
   cpu               = "256"
   memory            = "512"
-  execution_role_arn = module.iam.ecs_task_execution_role_arn
-  task_role_arn      = module.iam.ecs_task_role_arn
+  execution_role_arn = data.terraform_remote_state.global.outputs.ecs_task_execution_role_arn
+  task_role_arn      = data.terraform_remote_state.global.outputs.ecs_task_role_arn
   container_name     = "memberships"
   image_url          = data.terraform_remote_state.global.outputs.memberships_repository_url
 
