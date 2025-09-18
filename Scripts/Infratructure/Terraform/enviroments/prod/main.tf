@@ -230,6 +230,7 @@ module "ecs_task_memberships" {
 module "ansible" {
   source = "../../modules/ansible"
 
+  env                        = var.env
   aws_region                 = "eu-central-1"
   control_instance_public_ip = module.ecliptix_control.ecliptix_control_public_ip
   ecr_repo                   = data.terraform_remote_state.global.outputs.memberships_repository_url

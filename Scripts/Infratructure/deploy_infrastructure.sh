@@ -14,6 +14,6 @@ cd ../enviroments/dev
 terraform init  
 terraform apply -auto-approve | tee -a "../../../Logs/${current_datetime}-log.txt"
 
-cd ../enviroments/prod
+cd ../prod
 terraform init
 terraform apply -auto-approve | tee -a "../../../Logs/${current_datetime}-log.txt"

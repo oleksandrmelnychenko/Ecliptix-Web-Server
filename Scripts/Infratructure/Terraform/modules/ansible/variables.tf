@@ -22,3 +22,8 @@ variable "ecs_memberships_service" {
   type        = string
   description = "ECS memberships service name"
 }
+
+variable "env" {
+  type        = string
+  description = "Environment name"
+}

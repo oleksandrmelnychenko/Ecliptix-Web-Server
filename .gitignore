@@ -18,7 +18,10 @@ Scripts/Infratructure/Logs/
 .terraform/
 
 # Ansible
-inventory.ini
+inventory-dev.ini
+inventory-prod.ini
+all-dev.yml
+all-prod.yml
 
 # User-specific files
 *.rsuser
