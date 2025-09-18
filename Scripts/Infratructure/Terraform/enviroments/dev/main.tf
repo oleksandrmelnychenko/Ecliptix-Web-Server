@@ -9,7 +9,7 @@ data "terraform_remote_state" "global" {
 
 module "keypair" {
   source = "../../modules/ec2/keypair"
-  ecliptix_key_name = "ecliptix-control-key"
+  ecliptix_key_name = "ecliptix-${var.env}-control-key"
 
   tags = {
     project = "ecliptix"
@@ -21,7 +21,7 @@ module "keypair" {
 module "cloudwatch" {
   source = "../../modules/monitoring/cloudwatch"
 
-  memberships_logs_name = "ecliptix-memberships-logs"
+  memberships_logs_name = "ecliptix-${var.env}-memberships-logs"
 
   tags = {
     project = "ecliptix"
@@ -213,7 +213,7 @@ module "ecs_task_memberships" {
   ]
 
   environment = [
-    { name = "DOTNET_ENVIRONMENT", value = "Production" },
+    { name = "DOTNET_ENVIRONMENT", value = "Development" },
     {
       name  = "ConnectionStrings__EcliptixMemberships"
       value = "Server=${module.rds.memberships_mssql_address};Database=memberships;User Id=${module.secrets.memberships_username};Password=${module.secrets.memberships_password};Encrypt=True;TrustServerCertificate=True;"

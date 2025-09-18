@@ -9,7 +9,7 @@ data "terraform_remote_state" "global" {
 
 module "keypair" {
   source = "../../modules/ec2/keypair"
-  ecliptix_key_name = "ecliptix-control-key"
+  ecliptix_key_name = "ecliptix-${var.env}-control-key"
 
   tags = {
     project = "ecliptix"
@@ -21,7 +21,7 @@ module "keypair" {
 module "cloudwatch" {
   source = "../../modules/monitoring/cloudwatch"
 
-  memberships_logs_name = "ecliptix-memberships-logs"
+  memberships_logs_name = "ecliptix-${var.env}-memberships-logs"
 
   tags = {
     project = "ecliptix"
