@@ -18,8 +18,10 @@ public class SessionKeepAliveInterceptor(IEcliptixActorRegistry actorRegistry) :
         UnaryServerMethod<TRequest, TResponse> continuation)
     {
         uint connectId = (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
+
         ForwardToConnectActorEvent keepAliveForwarder = new(connectId, KeepAlive.Instance);
         _protocolSystemActor.Value.Tell(keepAliveForwarder);
+
 
         return await continuation(request, context);
     }

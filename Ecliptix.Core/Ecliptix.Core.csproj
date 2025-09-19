@@ -47,6 +47,9 @@
         <PackageReference Include="Serilog.Sinks.ApplicationInsights" Version="4.0.0" />
         <PackageReference Include="Serilog.Sinks.AwsCloudWatch" Version="4.4.42" />
         <PackageReference Include="Sodium.Core" Version="1.4.0" />
+        <!-- Redis packages for session management -->
+        <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.0" />
+        <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
     </ItemGroup>
 
     <!-- AOT Trimming Warnings Suppressions for Third-Party Libraries -->

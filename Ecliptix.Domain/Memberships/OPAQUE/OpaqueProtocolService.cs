@@ -19,7 +19,7 @@ public record MembershipOpaqueQueryRecord(string MobileNumber, byte[] Registrati
 
 public record AuthContextTokenResponse
 {
-    public byte[] ContextToken { get; init; } = Array.Empty<byte>();
+    public byte[] ContextToken { get; init; } = [];
     public Guid MembershipId { get; init; }
     public Guid MobileNumberId { get; init; }
     public DateTime ExpiresAt { get; init; }
@@ -172,6 +172,46 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         return ((ECPublicKeyParameters)_serverStaticKeyPair.Public).Q.GetEncoded(CryptographicFlags.CompressedPointEncoding);
     }
 
+    /// <summary>
+    /// Generates a secure session key for registration completion
+    /// </summary>
+    private static byte[] GenerateRegistrationSessionKey()
+    {
+        byte[] sessionKey = new byte[32]; // 256-bit session key
+        RandomNumberGenerator.Fill(sessionKey);
+        return sessionKey;
+    }
+
+    /// <summary>
+    /// Completes registration and generates a session key for the new user
+    /// </summary>
+    public Result<byte[], OpaqueFailure> CompleteRegistrationWithSessionKey(byte[] peerRegistrationRecord)
+    {
+        try
+        {
+            // First validate the registration record using existing logic
+            Result<Unit, OpaqueFailure> validationResult = CompleteRegistration(peerRegistrationRecord);
+            if (validationResult.IsErr)
+            {
+                // Note: No logging here as it may contain sensitive info
+                return Result<byte[], OpaqueFailure>.Err(validationResult.UnwrapErr());
+            }
+
+            // Generate a secure session key for the new user
+            byte[] sessionKey = GenerateRegistrationSessionKey();
+
+            // Log successful session key generation (without the key itself for security)
+            Console.WriteLine($"🔑 Session key generated for new user registration (length: {sessionKey.Length} bytes)");
+
+            return Result<byte[], OpaqueFailure>.Ok(sessionKey);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Failed to generate session key during registration: {ex.Message}");
+            return Result<byte[], OpaqueFailure>.Err(OpaqueFailure.CalculateRegistrationRecord(ex.Message));
+        }
+    }
+
     public Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(OpaqueSignInInitRequest request,
         MembershipOpaqueQueryRecord queryRecord)
     {
@@ -213,9 +253,6 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             return Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(OpaqueFailure.EncryptFailed());
 
         ByteString registrationRecord = ByteString.CopyFrom(queryRecord.RegistrationRecord);
-
-        Serilog.Log.Debug("🔐 OPAQUE Server InitiateSignIn: oprfResponse: {OprfResponse}", Convert.ToHexString(oprfResponse));
-        Serilog.Log.Debug("🔐 OPAQUE Server InitiateSignIn: registrationRecord (from DB): {RegistrationRecord}", Convert.ToHexString(queryRecord.RegistrationRecord));
 
         return Result<OpaqueSignInInitResponse, OpaqueFailure>.Ok(new OpaqueSignInInitResponse
         {
@@ -285,24 +322,15 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
             serverStaticPublicKeyBytes,
             serverState.ServerEphemeralPublicKey.Span);
 
-        Serilog.Log.Debug("🔐 SERVER AKE RESULT: AkeResult={AkeResult}",
-            Convert.ToHexString(akeResult));
         Result<(byte[] SessionKey, byte[] ClientMacKey, byte[] ServerMacKey), OpaqueFailure> keysResult =
             DeriveFinalKeys(akeResult, transcriptHash);
         if (keysResult.IsErr) return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Err(keysResult.UnwrapErr());
 
-        (byte[] _, byte[] clientMacKey, byte[] serverMacKey) = keysResult.Unwrap();
+        (byte[] sessionKey, byte[] clientMacKey, byte[] serverMacKey) = keysResult.Unwrap();
         byte[] expectedClientMac = CreateMac(clientMacKey, transcriptHash);
-
-        Serilog.Log.Debug("🔐 SERVER MAC VERIFICATION: ClientMacKey={ClientMacKey}, TranscriptHash={TranscriptHash}",
-            Convert.ToHexString(clientMacKey), Convert.ToHexString(transcriptHash));
-        Serilog.Log.Debug("🔐 SERVER MAC COMPARISON: Expected={Expected}, Received={Received}",
-            Convert.ToHexString(expectedClientMac), Convert.ToHexString(request.ClientMac.Span));
 
         if (!CryptographicOperations.FixedTimeEquals(expectedClientMac, request.ClientMac.Span))
         {
-            Serilog.Log.Warning("❌ MAC VERIFICATION FAILED: Expected={Expected}, Received={Received}",
-                Convert.ToHexString(expectedClientMac), Convert.ToHexString(request.ClientMac.Span));
             return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(new OpaqueSignInFinalizeResponse
             {
                 Result = OpaqueSignInFinalizeResponse.Types.SignInResult.InvalidCredentials,
@@ -317,6 +345,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
         return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(new OpaqueSignInFinalizeResponse
         {
             ServerMac = ByteString.CopyFrom(serverMac),
+            SessionKey = ByteString.CopyFrom(sessionKey),
             Result = OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded
         });
     }
@@ -411,7 +440,7 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
 
             DateTime expiresAt = DateTime.UtcNow.AddHours(24);
 
-            AuthContextTokenResponse response = new AuthContextTokenResponse
+            AuthContextTokenResponse response = new()
             {
                 ContextToken = contextToken,
                 MembershipId = membershipId,
@@ -427,5 +456,4 @@ public sealed class OpaqueProtocolService(byte[] secretKeySeed) : IOpaqueProtoco
                 OpaqueFailure.InvalidInput($"Authentication context generation failed: {ex.Message}"));
         }
     }
-
 }

@@ -144,7 +144,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
     {
         using Activity? activity = ActivitySource.StartActivity(GrpcServiceConstants.Activities.DecryptRequest);
         activity?.SetTag(GrpcServiceConstants.ActivityTags.ConnectId, connectId);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.PayloadSize, encryptedPayload.Cipher.Length);
+        activity?.SetTag(GrpcServiceConstants.ActivityTags.PayloadSize, encryptedPayload.Payload.Length);
 
         Result<byte[], FailureBase> decryptResult = await cipherService.DecryptPayload(encryptedPayload, connectId, context);
 
@@ -196,7 +196,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         }
 
         activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, true);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptedSize, encryptResult.Unwrap().Cipher.Length);
+        activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptedSize, encryptResult.Unwrap().Payload.Length);
 
         return encryptResult.Unwrap();
     }

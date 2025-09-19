@@ -26,7 +26,11 @@ using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler
 using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Resources;
+using Ecliptix.Core.Services;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
+using StackExchange.Redis;
 using Ecliptix.Domain;
+using Ecliptix.Domain.Abstractions;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Memberships.OPAQUE;
@@ -119,6 +123,22 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService>();
+    // Configure Redis for distributed session key caching
+    string? redisConnectionString = builder.Configuration.GetConnectionString("Redis");
+    if (string.IsNullOrEmpty(redisConnectionString))
+        throw new InvalidOperationException("Redis connection string is required for session key management.");
+
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = redisConnectionString;
+        options.InstanceName = "Ecliptix";
+    });
+
+    builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+        ConnectionMultiplexer.Connect(redisConnectionString));
+
+    builder.Services.AddDataProtection();
+    builder.Services.AddSingleton<ISessionKeyService, DistributedSessionKeyService>();
 
     builder.Services.AddSingleton<ObjectPool<StringBuilder>>(_ =>
     {
@@ -335,7 +355,6 @@ static void RegisterGrpc(IServiceCollection services)
 
 static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, IServiceProvider serviceProvider)
 {
-    ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
     ISmsProvider snsProvider = serviceProvider.GetRequiredService<ISmsProvider>();
 
     ILocalizationProvider localizationProvider =
@@ -344,10 +363,8 @@ static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, 
     IOpaqueProtocolService opaqueProtocolService =
         serviceProvider.GetRequiredService<IOpaqueProtocolService>();
 
-    using (LogContext.PushProperty("ActorSystemName", system.Name))
-    {
-        logger.LogInformation("Actor system {ActorSystemName} is starting up", system.Name);
-    }
+    ISessionKeyService sessionKeyService =
+        serviceProvider.GetRequiredService<ISessionKeyService>();
 
     IDbConnectionFactory dbDataSource = serviceProvider.GetRequiredService<IDbConnectionFactory>();
 
@@ -376,7 +393,7 @@ static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, 
         AppConstants.ActorNames.AuthenticationStateManager);
 
     IActorRef membershipActor = system.ActorOf(
-        MembershipActor.Build(membershipPersistorActor, authContextPersistorActor, opaqueProtocolService, localizationProvider, authenticationStateManager),
+        MembershipActor.Build(membershipPersistorActor, authContextPersistorActor, opaqueProtocolService, localizationProvider, authenticationStateManager, sessionKeyService),
         AppConstants.ActorNames.MembershipActor);
 
     IActorRef verificationFlowManagerActor = system.ActorOf(
@@ -390,9 +407,6 @@ static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, 
     registry.Register(ActorIds.VerificationFlowManagerActor, verificationFlowManagerActor);
     registry.Register(ActorIds.MembershipPersistorActor, membershipPersistorActor);
     registry.Register(ActorIds.MembershipActor, membershipActor);
-
-    logger.LogInformation("Registered top-level actors: {ProtocolActorPath}, {PersistorActorPath}",
-        protocolSystemActor.Path, appDevicePersistor.Path);
 }
 
 internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedService

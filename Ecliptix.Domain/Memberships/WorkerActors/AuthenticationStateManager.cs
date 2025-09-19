@@ -93,8 +93,6 @@ public class AuthenticationStateManager : ReceiveActor
 
             if (_activeContexts.Count >= MaxConcurrentContexts)
             {
-                Log.Warning("Approaching memory limit ({Current}/{Max}) - evicting oldest idle contexts", 
-                    _activeContexts.Count, MaxConcurrentContexts);
                 EvictOldestIdleActors(100); 
             }
 

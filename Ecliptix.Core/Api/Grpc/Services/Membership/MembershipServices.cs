@@ -86,7 +86,7 @@ public class MembershipServices(
                 {
                     Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure> finalizeSignInResult =
                         await _membershipActor.Ask<Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>>(
-                            new SignInComplete(connectId, message), ct);
+                            new SignInCompleteEvent(connectId, message), ct);
 
                     return finalizeSignInResult.Match(
                         ok: Result<OpaqueSignInFinalizeResponse, FailureBase>.Ok,
@@ -99,11 +99,12 @@ public class MembershipServices(
         ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRegistrationCompleteRequest, OprfRegistrationCompleteResponse>(request, context,
-                async (message, _, ct) =>
+                async (message, connectId, ct) =>
                 {
                     CompleteRegistrationRecordActorEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
-                        Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory));
+                        Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory),
+                        connectId);
 
                     Result<OprfRegistrationCompleteResponse, VerificationFlowFailure> completeRegistrationRecordResult =
                         await _membershipActor.Ask<Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>>(

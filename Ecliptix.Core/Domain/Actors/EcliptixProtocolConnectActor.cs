@@ -78,6 +78,12 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             case DecryptCipherPayloadActorEvent cmd:
                 HandleDecrypt(cmd);
                 return true;
+            case EncryptPayloadComponentsActorEvent cmd:
+                HandleEncryptComponents(cmd);
+                return true;
+            case DecryptPayloadWithHeaderActorEvent cmd:
+                HandleDecryptWithHeader(cmd);
+                return true;
             case CleanupProtocolForTypeActorEvent cmd:
                 HandleCleanupProtocolForType(cmd);
                 return true;
@@ -733,6 +739,117 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         }
 
         return _protocolSystems.Values.FirstOrDefault();
+    }
+
+    private void HandleEncryptComponents(EncryptPayloadComponentsActorEvent cmd)
+    {
+        if (!_protocolSystems.TryGetValue(cmd.ExchangeType, out EcliptixProtocolSystem? system))
+        {
+            system = GetDefaultProtocolSystem();
+            if (system == null || _state == null)
+            {
+                Sender.Tell(
+                    Result<(CipherHeader Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.Generic(
+                            $"No protocol system found for exchange type {cmd.ExchangeType}")));
+                return;
+            }
+        }
+
+        Context.GetLogger().Info("[ENCRYPT_COMPONENTS] Using protocol system for type {0}", cmd.ExchangeType);
+        Result<(CipherHeader Header, byte[] EncryptedPayload), EcliptixProtocolFailure> result =
+            system.ProduceOutboundMessageComponents(cmd.Payload);
+
+        if (result.IsErr)
+        {
+            Sender.Tell(Result<(CipherHeader Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(result.UnwrapErr()));
+            return;
+        }
+
+        Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
+            EcliptixProtocol.CreateStateFromSystem(_state ?? new EcliptixSessionState(), system);
+        (EcliptixSessionState newState, (CipherHeader Header, byte[] EncryptedPayload) components) =
+            (newStateResult.Unwrap(), result.Unwrap());
+        IActorRef? originalSender = Sender;
+
+        bool shouldPersist = cmd.ExchangeType != PubKeyExchangeType.ServerStreaming;
+
+        if (shouldPersist)
+        {
+            Persist(newState, state =>
+            {
+                _state = state;
+                originalSender.Tell(Result<(CipherHeader Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Ok(components));
+                MaybeSaveSnapshot();
+            });
+        }
+        else
+        {
+            _state = newState;
+            originalSender.Tell(Result<(CipherHeader Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Ok(components));
+        }
+    }
+
+    private void HandleDecryptWithHeader(DecryptPayloadWithHeaderActorEvent cmd)
+    {
+        if (!_protocolSystems.TryGetValue(cmd.ExchangeType, out EcliptixProtocolSystem? system))
+        {
+            system = GetDefaultProtocolSystem();
+            if (system == null || _state == null)
+            {
+                Sender.Tell(
+                    Result<byte[], EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.Generic(
+                            $"No protocol system found for exchange type {cmd.ExchangeType}")));
+                return;
+            }
+        }
+
+        Context.GetLogger().Info("[DECRYPT_WITH_HEADER] Using protocol system for type {0}", cmd.ExchangeType);
+        Result<byte[], EcliptixProtocolFailure> result =
+            system.ProcessInboundMessageFromComponents(cmd.Header, cmd.EncryptedPayload);
+
+        if (result.IsErr)
+        {
+            EcliptixProtocolFailure error = result.UnwrapErr();
+            if (error.FailureType == EcliptixProtocolFailureType.StateMissing &&
+                error.Message.Contains("Session authentication failed"))
+            {
+                Context.GetLogger()
+                    .Warning(
+                        "AD compatibility strategies exhausted - this indicates client-server cryptographic context mismatch. Clearing session to force fresh handshake.");
+                DisposeAllSystems();
+                _state = null;
+                _currentExchangeType = null;
+
+                SaveSnapshot(new EcliptixSessionState());
+            }
+
+            Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(error));
+            return;
+        }
+
+        Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
+            EcliptixProtocol.CreateStateFromSystem(_state ?? new EcliptixSessionState(), system);
+        (EcliptixSessionState newState, byte[] plaintext) = (newStateResult.Unwrap(), result.Unwrap());
+        IActorRef? originalSender = Sender;
+
+        bool shouldPersist = cmd.ExchangeType == PubKeyExchangeType.DataCenterEphemeralConnect;
+
+        if (shouldPersist)
+        {
+            Persist(newState, state =>
+            {
+                _state = state;
+                originalSender.Tell(Result<byte[], EcliptixProtocolFailure>.Ok(plaintext));
+                MaybeSaveSnapshot();
+            });
+        }
+        else
+        {
+            _state = newState;
+            originalSender.Tell(Result<byte[], EcliptixProtocolFailure>.Ok(plaintext));
+        }
     }
 
     public static Props Build(uint connectId) => Props.Create(() => new EcliptixProtocolConnectActor(connectId));

@@ -13,6 +13,15 @@ public record EncryptPayloadActorEvent(
     PubKeyExchangeType PubKeyExchangeType,
     byte[] Payload);
 
+public record EncryptPayloadComponentsActorEvent(
+    PubKeyExchangeType ExchangeType,
+    byte[] Payload);
+
+public record DecryptPayloadWithHeaderActorEvent(
+    PubKeyExchangeType ExchangeType,
+    CipherHeader Header,
+    byte[] EncryptedPayload);
+
 public record ForwardToConnectActorEvent(uint ConnectId, object Payload);
 
 public record RestoreAppDeviceSecrecyChannelState;

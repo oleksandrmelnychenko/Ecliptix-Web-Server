@@ -17,5 +17,7 @@ public interface IOpaqueProtocolService
     Result<Unit, OpaqueFailure> CompleteRegistration(
         byte[] peerRegistrationRecord);
 
+    Result<byte[], OpaqueFailure> CompleteRegistrationWithSessionKey(byte[] peerRegistrationRecord);
+
     Result<AuthContextTokenResponse, OpaqueFailure> GenerateAuthenticationContext(Guid membershipId, Guid mobileNumberId);
 }

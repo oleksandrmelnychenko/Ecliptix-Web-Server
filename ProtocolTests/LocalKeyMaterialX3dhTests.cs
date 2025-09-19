@@ -65,10 +65,18 @@ public class ShieldProDoubleRatchetTests
             if (cipherResult.IsErr) Assert.Fail($"Alice failed to produce message {i}: {cipherResult.UnwrapErr()}");
             CipherPayload cipher = cipherResult.Unwrap();
 
-            if (!cipher.DhPublicKey.IsEmpty)
+            try
             {
-                ratchetTriggered = true;
-                WriteLine($"Ratchet triggered at message {i}");
+                CipherHeader header = CipherHeader.Parser.ParseFrom(cipher.Header);
+                if (!header.DhPublicKey.IsEmpty)
+                {
+                    ratchetTriggered = true;
+                    WriteLine($"Ratchet triggered at message {i}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Assert.Fail($"Failed to parse cipher header: {ex.Message}");
             }
 
             Result<byte[], EcliptixProtocolFailure> decryptResult = _bobEcliptixProtocolSystem.ProcessInboundMessage(cipher);
@@ -143,7 +151,15 @@ public class ShieldProDoubleRatchetTests
                             $"[Session {testSessionId}] Alice failed to encrypt msg {j + 1}: {aliceCipherResult.UnwrapErr()}");
                     CipherPayload aliceCipher = aliceCipherResult.Unwrap();
 
-                    if (!aliceCipher.DhPublicKey.IsEmpty) aliceDhRatchets++;
+                    try
+                    {
+                        CipherHeader aliceHeader = CipherHeader.Parser.ParseFrom(aliceCipher.Header);
+                        if (!aliceHeader.DhPublicKey.IsEmpty) aliceDhRatchets++;
+                    }
+                    catch (Exception ex)
+                    {
+                        Assert.Fail($"Failed to parse Alice cipher header: {ex.Message}");
+                    }
 
                     Result<byte[], EcliptixProtocolFailure> bobPlaintextResult = bob.ProcessInboundMessage(aliceCipher);
                     if (bobPlaintextResult.IsErr)
@@ -158,7 +174,15 @@ public class ShieldProDoubleRatchetTests
                             $"[Session {testSessionId}] Bob failed to encrypt msg {j + 1}: {bobCipherResult.UnwrapErr()}");
                     CipherPayload bobCipher = bobCipherResult.Unwrap();
 
-                    if (!bobCipher.DhPublicKey.IsEmpty) bobDhRatchets++;
+                    try
+                    {
+                        CipherHeader bobHeader = CipherHeader.Parser.ParseFrom(bobCipher.Header);
+                        if (!bobHeader.DhPublicKey.IsEmpty) bobDhRatchets++;
+                    }
+                    catch (Exception ex)
+                    {
+                        Assert.Fail($"Failed to parse Bob cipher header: {ex.Message}");
+                    }
 
                     Result<byte[], EcliptixProtocolFailure> alicePlaintextResult = alice.ProcessInboundMessage(bobCipher);
                     if (alicePlaintextResult.IsErr)
@@ -202,7 +226,15 @@ public class ShieldProDoubleRatchetTests
                 Assert.Fail($"[Iteration {i}] Alice failed to produce message: {alicePayloadResult.UnwrapErr()}");
             CipherPayload alicePayload = alicePayloadResult.Unwrap();
 
-            if (!alicePayload.DhPublicKey.IsEmpty) aliceDhRatchets++;
+            try
+            {
+                CipherHeader aliceHeader = CipherHeader.Parser.ParseFrom(alicePayload.Header);
+                if (!aliceHeader.DhPublicKey.IsEmpty) aliceDhRatchets++;
+            }
+            catch (Exception ex)
+            {
+                Assert.Fail($"Failed to parse Alice cipher header: {ex.Message}");
+            }
 
             Result<byte[], EcliptixProtocolFailure> bobDecryptedResult = _bobEcliptixProtocolSystem.ProcessInboundMessage(alicePayload);
             if (bobDecryptedResult.IsErr)
@@ -216,7 +248,15 @@ public class ShieldProDoubleRatchetTests
                 Assert.Fail($"[Iteration {i}] Bob failed to produce response: {bobPayloadResult.UnwrapErr()}");
             CipherPayload bobPayload = bobPayloadResult.Unwrap();
 
-            if (!bobPayload.DhPublicKey.IsEmpty) bobDhRatchets++;
+            try
+            {
+                CipherHeader bobHeader = CipherHeader.Parser.ParseFrom(bobPayload.Header);
+                if (!bobHeader.DhPublicKey.IsEmpty) bobDhRatchets++;
+            }
+            catch (Exception ex)
+            {
+                Assert.Fail($"Failed to parse Bob cipher header: {ex.Message}");
+            }
 
             Result<byte[], EcliptixProtocolFailure> aliceDecryptedResult = _aliceEcliptixProtocolSystem.ProcessInboundMessage(bobPayload);
             if (aliceDecryptedResult.IsErr)
