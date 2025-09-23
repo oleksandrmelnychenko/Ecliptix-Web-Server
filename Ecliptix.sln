@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProtocolTests", "ProtocolTe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Security.SSL.Native", "Ecliptix.Security.SSL.Native\Ecliptix.Security.SSL.Native.csproj", "{B1870C97-9D0D-419E-97FD-F65B6929EB58}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Security.Opaque", "Ecliptix.Security.Opaque\Ecliptix.Security.Opaque.csproj", "{DF0AA2A1-306E-48CA-AEAB-44FB2E1ACE93}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -43,5 +45,9 @@ Global
 		{B1870C97-9D0D-419E-97FD-F65B6929EB58}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B1870C97-9D0D-419E-97FD-F65B6929EB58}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B1870C97-9D0D-419E-97FD-F65B6929EB58}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DF0AA2A1-306E-48CA-AEAB-44FB2E1ACE93}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DF0AA2A1-306E-48CA-AEAB-44FB2E1ACE93}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DF0AA2A1-306E-48CA-AEAB-44FB2E1ACE93}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DF0AA2A1-306E-48CA-AEAB-44FB2E1ACE93}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

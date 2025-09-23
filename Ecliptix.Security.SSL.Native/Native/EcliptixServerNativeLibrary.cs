@@ -1,9 +1,3 @@
-/*
- * Ecliptix Security SSL Native Library
- * P/Invoke wrapper for the Ecliptix server security library
- * Author: Oleksandr Melnychenko
- */
-
 using System.Runtime.InteropServices;
 using System.Reflection;
 
@@ -11,7 +5,7 @@ namespace Ecliptix.Security.SSL.Native.Native;
 
 internal static unsafe class EcliptixServerNativeLibrary
 {
-    private const string LibraryName = "libecliptix_server_security";
+    private const string LibraryName = "libecliptix.server";
 
     static EcliptixServerNativeLibrary()
     {
@@ -36,39 +30,52 @@ internal static unsafe class EcliptixServerNativeLibrary
         return IntPtr.Zero;
     }
 
-    #region Library Management
-
     [DllImport(LibraryName, EntryPoint = "ecliptix_server_init", CallingConvention = CallingConvention.Cdecl)]
-    public static extern EcliptixServerResult Initialize();
+    public static extern int Initialize();
+
+    [DllImport(LibraryName, EntryPoint = "ecliptix_server_init_with_key", CallingConvention = CallingConvention.Cdecl)]
+    public static extern int InitializeWithKey(byte* privateKeyPem, nuint keySize);
+
+    [DllImport(LibraryName, EntryPoint = "ecliptix_server_init_with_keys", CallingConvention = CallingConvention.Cdecl)]
+    public static extern int InitializeWithKeys(
+        byte* serverPrivatePem, nuint serverKeySize,
+        byte* clientPublicPem, nuint clientPubSize);
 
     [DllImport(LibraryName, EntryPoint = "ecliptix_server_cleanup", CallingConvention = CallingConvention.Cdecl)]
     public static extern void Cleanup();
 
-    [DllImport(LibraryName, EntryPoint = "ecliptix_server_get_error_message", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(LibraryName, EntryPoint = "ecliptix_server_get_error", CallingConvention = CallingConvention.Cdecl)]
     public static extern byte* GetErrorMessage();
 
-    #endregion
+    [DllImport(LibraryName, EntryPoint = "ecliptix_server_encrypt", CallingConvention = CallingConvention.Cdecl)]
+    public static extern int Encrypt(
+        byte* plaintext, nuint plainLen,
+        byte* ciphertext, nuint* cipherLen);
 
-    #region RSA Encryption/Decryption
+    [DllImport(LibraryName, EntryPoint = "ecliptix_server_decrypt", CallingConvention = CallingConvention.Cdecl)]
+    public static extern int Decrypt(
+        byte* ciphertext, nuint cipherLen,
+        byte* plaintext, nuint* plainLen);
 
-    [DllImport(LibraryName, EntryPoint = "ecliptix_server_encrypt_rsa", CallingConvention = CallingConvention.Cdecl)]
-    public static extern EcliptixServerResult EncryptRSA(
-        byte* plaintext, nuint plaintextSize,
-        byte* publicKeyPem, nuint publicKeySize,
-        byte* ciphertext, nuint* ciphertextSize);
+    [DllImport(LibraryName, EntryPoint = "ecliptix_server_sign", CallingConvention = CallingConvention.Cdecl)]
+    public static extern int Sign(
+        byte* data, nuint dataLen,
+        byte* signature, nuint* sigLen);
 
-    [DllImport(LibraryName, EntryPoint = "ecliptix_server_decrypt_rsa", CallingConvention = CallingConvention.Cdecl)]
-    public static extern EcliptixServerResult DecryptRSA(
-        byte* ciphertext, nuint ciphertextSize,
-        byte* plaintext, nuint* plaintextSize);
-
-    #endregion
-
-    #region Digital Signature Creation
+    [DllImport(LibraryName, EntryPoint = "ecliptix_server_generate_ed25519_keypair", CallingConvention = CallingConvention.Cdecl)]
+    public static extern EcliptixServerResult GenerateEd25519Keypair(
+        byte* publicKey,
+        byte* privateKey);
 
     [DllImport(LibraryName, EntryPoint = "ecliptix_server_sign_ed25519", CallingConvention = CallingConvention.Cdecl)]
     public static extern EcliptixServerResult SignEd25519(
-        byte* message, nuint messageSize, byte* signature);
+        byte* message, nuint messageLen,
+        byte* privateKey,
+        byte* signature);
 
-    #endregion
+    [DllImport(LibraryName, EntryPoint = "ecliptix_server_verify_ed25519", CallingConvention = CallingConvention.Cdecl)]
+    public static extern EcliptixServerResult VerifyEd25519(
+        byte* message, nuint messageLen,
+        byte* signature,
+        byte* publicKey);
 }

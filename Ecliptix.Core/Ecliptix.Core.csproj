@@ -110,10 +110,16 @@
         <Content Include="akka.conf">
             <CopyToPublishDirectory>Always</CopyToPublishDirectory>
         </Content>
+        <Content Include="server_private.pem">
+            <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Ecliptix.Domain\Ecliptix.Domain.csproj" />
+        <ProjectReference Include="..\Ecliptix.Security.SSL.Native\Ecliptix.Security.SSL.Native.csproj" />
+        <ProjectReference Include="..\Ecliptix.Security.Opaque\Ecliptix.Security.Opaque.csproj" />
     </ItemGroup>
 
     <!-- Commented out: Using AOT-safe hardcoded FrozenDictionary instead of ResourceManager

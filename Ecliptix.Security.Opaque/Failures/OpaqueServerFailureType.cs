@@ -1,12 +1,12 @@
+namespace Ecliptix.Security.Opaque.Failures;
 
-namespace Ecliptix.Security.SSL.Native.Failures;
-
-public enum ServerSecurityFailureType
+public enum OpaqueServerFailureType
 {
     ServiceNotInitialized,
     ServiceDisposed,
     LibraryInitializationFailed,
     InitializationException,
     InvalidInput,
-    CryptographicFailure
+    CryptographicFailure,
+    StorageFailure
 }

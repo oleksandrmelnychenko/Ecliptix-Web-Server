@@ -1,7 +1,3 @@
-/*
- * Ecliptix Security SSL Native Library
- * Author: Oleksandr Melnychenko
- */
 
 namespace Ecliptix.Security.SSL.Native.Failures;
 
@@ -28,49 +24,61 @@ public sealed class ServerSecurityFailure
         new(ServerSecurityFailureType.LibraryInitializationFailed, $"Library initialization failed: {error}");
 
     public static ServerSecurityFailure InitializationException(Exception ex) =>
-        new(ServerSecurityFailureType.InitializationException, "Exception during initialization", ex);
+        new(ServerSecurityFailureType.InitializationException, "Initialization exception occurred", ex);
 
-    public static ServerSecurityFailure PlaintextRequired() =>
-        new(ServerSecurityFailureType.PlaintextRequired, "Plaintext data is required");
-
-    public static ServerSecurityFailure PlaintextTooLarge() =>
-        new(ServerSecurityFailureType.PlaintextTooLarge, "Plaintext data is too large for RSA encryption");
+    public static ServerSecurityFailure PrivateKeyRequired() =>
+        new(ServerSecurityFailureType.InvalidInput, "Private key is required");
 
     public static ServerSecurityFailure PublicKeyRequired() =>
-        new(ServerSecurityFailureType.PublicKeyRequired, "Public key is required for encryption");
+        new(ServerSecurityFailureType.InvalidInput, "Public key is required");
 
-    public static ServerSecurityFailure RsaEncryptionFailed(string error) =>
-        new(ServerSecurityFailureType.RsaEncryptionFailed, $"RSA encryption failed: {error}");
-
-    public static ServerSecurityFailure RsaEncryptionException(Exception ex) =>
-        new(ServerSecurityFailureType.RsaEncryptionException, "Exception during RSA encryption", ex);
+    public static ServerSecurityFailure PlaintextRequired() =>
+        new(ServerSecurityFailureType.InvalidInput, "Plaintext is required");
 
     public static ServerSecurityFailure CiphertextRequired() =>
-        new(ServerSecurityFailureType.CiphertextRequired, "Ciphertext data is required");
+        new(ServerSecurityFailureType.InvalidInput, "Ciphertext is required");
 
-    public static ServerSecurityFailure RsaDecryptionFailed(string error) =>
-        new(ServerSecurityFailureType.RsaDecryptionFailed, $"RSA decryption failed: {error}");
+    public static ServerSecurityFailure DataRequired() =>
+        new(ServerSecurityFailureType.InvalidInput, "Data is required");
 
-    public static ServerSecurityFailure RsaDecryptionException(Exception ex) =>
-        new(ServerSecurityFailureType.RsaDecryptionException, "Exception during RSA decryption", ex);
+    public static ServerSecurityFailure EncryptionFailed(string error) =>
+        new(ServerSecurityFailureType.CryptographicFailure, $"Encryption failed: {error}");
+
+    public static ServerSecurityFailure EncryptionException(Exception ex) =>
+        new(ServerSecurityFailureType.CryptographicFailure, "Encryption exception occurred", ex);
+
+    public static ServerSecurityFailure DecryptionFailed(string error) =>
+        new(ServerSecurityFailureType.CryptographicFailure, $"Decryption failed: {error}");
+
+    public static ServerSecurityFailure DecryptionException(Exception ex) =>
+        new(ServerSecurityFailureType.CryptographicFailure, "Decryption exception occurred", ex);
+
+    public static ServerSecurityFailure SigningFailed(string error) =>
+        new(ServerSecurityFailureType.CryptographicFailure, $"Signing failed: {error}");
+
+    public static ServerSecurityFailure SigningException(Exception ex) =>
+        new(ServerSecurityFailureType.CryptographicFailure, "Signing exception occurred", ex);
+
+    public static ServerSecurityFailure KeyGenerationFailed(string error) =>
+        new(ServerSecurityFailureType.CryptographicFailure, $"Key generation failed: {error}");
+
+    public static ServerSecurityFailure KeyGenerationException(Exception ex) =>
+        new(ServerSecurityFailureType.CryptographicFailure, "Key generation exception occurred", ex);
 
     public static ServerSecurityFailure MessageRequired() =>
-        new(ServerSecurityFailureType.MessageRequired, "Message data is required for signing");
+        new(ServerSecurityFailureType.InvalidInput, "Message is required");
 
-    public static ServerSecurityFailure Ed25519SigningFailed(string error) =>
-        new(ServerSecurityFailureType.Ed25519SigningFailed, $"Ed25519 signing failed: {error}");
+    public static ServerSecurityFailure InvalidPrivateKey() =>
+        new(ServerSecurityFailureType.InvalidInput, "Invalid private key format or size");
 
-    public static ServerSecurityFailure Ed25519SigningException(Exception ex) =>
-        new(ServerSecurityFailureType.Ed25519SigningException, "Exception during Ed25519 signing", ex);
+    public static ServerSecurityFailure InvalidPublicKey() =>
+        new(ServerSecurityFailureType.InvalidInput, "Invalid public key format or size");
 
-    public static ServerSecurityFailure PrivateKeyLoadFailed(string error) =>
-        new(ServerSecurityFailureType.PrivateKeyLoadFailed, $"Private key load failed: {error}");
+    public static ServerSecurityFailure InvalidSignature() =>
+        new(ServerSecurityFailureType.InvalidInput, "Invalid signature format or size");
 
-    public static ServerSecurityFailure KeyLoadException(Exception ex) =>
-        new(ServerSecurityFailureType.KeyLoadException, "Exception during private key loading", ex);
-
-    public static ServerSecurityFailure LibraryCleanupError() =>
-        new(ServerSecurityFailureType.LibraryCleanupError, "Error during library cleanup");
+    public static ServerSecurityFailure VerificationException(Exception ex) =>
+        new(ServerSecurityFailureType.CryptographicFailure, "Verification exception occurred", ex);
 
     public override string ToString() => Message;
 }

@@ -1,15 +1,8 @@
-/*
- * Ecliptix Security SSL Native Library
- * Server-side security service providing RSA encryption/decryption and Ed25519 digital signatures
- * Author: Oleksandr Melnychenko
- */
-
 using System.Runtime.InteropServices;
 using System.Text;
+using Ecliptix.Domain.Utilities;
 using Ecliptix.Security.SSL.Native.Native;
-using Ecliptix.Security.SSL.Native.Resources;
 using Ecliptix.Security.SSL.Native.Failures;
-using Ecliptix.Security.SSL.Native.Common;
 
 namespace Ecliptix.Security.SSL.Native.Services;
 
@@ -27,6 +20,16 @@ public sealed class ServerSecurityService : IDisposable
         return Task.Run(InitializeSync);
     }
 
+    public Task<Result<Unit, ServerSecurityFailure>> InitializeWithKeyAsync(string privateKeyPem)
+    {
+        return Task.Run(() => InitializeWithKeySync(privateKeyPem));
+    }
+
+    public Task<Result<Unit, ServerSecurityFailure>> InitializeWithKeysAsync(string serverPrivateKeyPem, string clientPublicKeyPem)
+    {
+        return Task.Run(() => InitializeWithKeysSync(serverPrivateKeyPem, clientPublicKeyPem));
+    }
+
     private Result<Unit, ServerSecurityFailure> InitializeSync()
     {
         if (_disposed)
@@ -37,16 +40,49 @@ public sealed class ServerSecurityService : IDisposable
 
         try
         {
+            int result = EcliptixServerNativeLibrary.Initialize();
+
+            if (result != 0)
+            {
+                string error = GetErrorString();
+                return Result<Unit, ServerSecurityFailure>.Err(ServerSecurityFailure.LibraryInitializationFailed(error));
+            }
+
+            _isInitialized = true;
+            return Result<Unit, ServerSecurityFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, ServerSecurityFailure>.Err(ServerSecurityFailure.InitializationException(ex));
+        }
+    }
+
+    private Result<Unit, ServerSecurityFailure> InitializeWithKeySync(string privateKeyPem)
+    {
+        if (_disposed)
+            return Result<Unit, ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceDisposed());
+
+        if (_isInitialized)
+            return Result<Unit, ServerSecurityFailure>.Ok(Unit.Value);
+
+        if (string.IsNullOrEmpty(privateKeyPem))
+            return Result<Unit, ServerSecurityFailure>.Err(ServerSecurityFailure.PrivateKeyRequired());
+
+        try
+        {
             unsafe
             {
-                SavePrivateKeysToTempLocation();
+                byte[] keyBytes = Encoding.UTF8.GetBytes(privateKeyPem);
 
-                EcliptixServerResult result = EcliptixServerNativeLibrary.Initialize();
-
-                if (result != EcliptixServerResult.Success)
+                fixed (byte* keyPtr = keyBytes)
                 {
-                    string error = GetErrorString(result);
-                    return Result<Unit, ServerSecurityFailure>.Err(ServerSecurityFailure.LibraryInitializationFailed(error));
+                    int result = EcliptixServerNativeLibrary.InitializeWithKey(keyPtr, (nuint)keyBytes.Length);
+
+                    if (result != 0)
+                    {
+                        string error = GetErrorString();
+                        return Result<Unit, ServerSecurityFailure>.Err(ServerSecurityFailure.LibraryInitializationFailed(error));
+                    }
                 }
             }
 
@@ -59,81 +95,57 @@ public sealed class ServerSecurityService : IDisposable
         }
     }
 
-    private void SavePrivateKeysToTempLocation()
+    private Result<Unit, ServerSecurityFailure> InitializeWithKeysSync(string serverPrivateKeyPem, string clientPublicKeyPem)
     {
-        string tempKeysDir = "/Users/oleksandrmelnychenko/RiderProjects/Ecliptix/server-keys";
-        Directory.CreateDirectory(tempKeysDir);
-
-        var ed25519Key = EmbeddedResourceLoader.LoadEd25519PrivateKey();
-        var rsaKey = EmbeddedResourceLoader.LoadRsaServerPrivateKey();
-
-        File.WriteAllText(Path.Combine(tempKeysDir, "ecliptix_ed25519_private.pem"), ed25519Key);
-        File.WriteAllText(Path.Combine(tempKeysDir, "ecliptix_server_private.pem"), rsaKey);
-    }
-
-    public Task<Result<byte[], ServerSecurityFailure>> EncryptRsaAsync(byte[] plaintext, byte[] publicKeyPem)
-    {
-        return Task.Run(() => EncryptRsaSync(plaintext, publicKeyPem));
-    }
-
-    private Result<byte[], ServerSecurityFailure> EncryptRsaSync(byte[] plaintext, byte[] publicKeyPem)
-    {
-        if (!_isInitialized)
-            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceNotInitialized());
-
         if (_disposed)
-            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceDisposed());
+            return Result<Unit, ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceDisposed());
 
-        if (plaintext == null || plaintext.Length == 0)
-            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.PlaintextRequired());
+        if (_isInitialized)
+            return Result<Unit, ServerSecurityFailure>.Ok(Unit.Value);
 
-        if (publicKeyPem == null || publicKeyPem.Length == 0)
-            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.PublicKeyRequired());
+        if (string.IsNullOrEmpty(serverPrivateKeyPem))
+            return Result<Unit, ServerSecurityFailure>.Err(ServerSecurityFailure.PrivateKeyRequired());
 
-        const int maxPlaintextSize = EcliptixServerConstants.RsaMaxPlaintextSize;
-        if (plaintext.Length > maxPlaintextSize)
-            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.PlaintextTooLarge());
+        if (string.IsNullOrEmpty(clientPublicKeyPem))
+            return Result<Unit, ServerSecurityFailure>.Err(ServerSecurityFailure.PublicKeyRequired());
 
         try
         {
             unsafe
             {
-                const int rsaKeySize = EcliptixServerConstants.RsaCiphertextSize;
-                byte[] ciphertext = new byte[rsaKeySize];
-                nuint ciphertextSize = (nuint)rsaKeySize;
+                byte[] serverKeyBytes = Encoding.UTF8.GetBytes(serverPrivateKeyPem);
+                byte[] clientKeyBytes = Encoding.UTF8.GetBytes(clientPublicKeyPem);
 
-                fixed (byte* plaintextPtr = plaintext)
-                fixed (byte* publicKeyPtr = publicKeyPem)
-                fixed (byte* ciphertextPtr = ciphertext)
+                fixed (byte* serverKeyPtr = serverKeyBytes)
+                fixed (byte* clientKeyPtr = clientKeyBytes)
                 {
-                    EcliptixServerResult result = EcliptixServerNativeLibrary.EncryptRSA(
-                        plaintextPtr, (nuint)plaintext.Length,
-                        publicKeyPtr, (nuint)publicKeyPem.Length,
-                        ciphertextPtr, &ciphertextSize);
+                    int result = EcliptixServerNativeLibrary.InitializeWithKeys(
+                        serverKeyPtr, (nuint)serverKeyBytes.Length,
+                        clientKeyPtr, (nuint)clientKeyBytes.Length);
 
-                    if (result != EcliptixServerResult.Success)
+                    if (result != 0)
                     {
-                        string error = GetErrorString(result);
-                        return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.RsaEncryptionFailed(error));
+                        string error = GetErrorString();
+                        return Result<Unit, ServerSecurityFailure>.Err(ServerSecurityFailure.LibraryInitializationFailed(error));
                     }
                 }
-
-                Array.Resize(ref ciphertext, (int)ciphertextSize);
-                return Result<byte[], ServerSecurityFailure>.Ok(ciphertext);
             }
+
+            _isInitialized = true;
+            return Result<Unit, ServerSecurityFailure>.Ok(Unit.Value);
         }
         catch (Exception ex)
         {
-            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.RsaEncryptionException(ex));
+            return Result<Unit, ServerSecurityFailure>.Err(ServerSecurityFailure.InitializationException(ex));
         }
     }
 
-    public Task<Result<byte[], ServerSecurityFailure>> DecryptRsaAsync(byte[] ciphertext)
+    public Task<Result<byte[], ServerSecurityFailure>> EncryptAsync(byte[] plaintext)
     {
-        return Task.Run(() => DecryptRsaSync(ciphertext));
+        return Task.Run(() => EncryptSync(plaintext));
     }
 
-    private Result<byte[], ServerSecurityFailure> DecryptRsaSync(byte[] ciphertext)
+    private Result<byte[], ServerSecurityFailure> EncryptSync(byte[] plaintext)
     {
         if (!_isInitialized)
             return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceNotInitialized());
@@ -141,47 +153,108 @@ public sealed class ServerSecurityService : IDisposable
         if (_disposed)
             return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceDisposed());
 
-        if (ciphertext == null || ciphertext.Length == 0)
+        if (plaintext.Length == 0)
+            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.PlaintextRequired());
+
+        try
+        {
+            unsafe
+            {
+                byte[] ciphertext = new byte[EcliptixServerConstants.MaxCiphertextSize];
+                nuint ciphertextLen = (nuint)ciphertext.Length;
+
+                fixed (byte* plaintextPtr = plaintext)
+                fixed (byte* ciphertextPtr = ciphertext)
+                {
+                    int result = EcliptixServerNativeLibrary.Encrypt(
+                        plaintextPtr, (nuint)plaintext.Length,
+                        ciphertextPtr, &ciphertextLen);
+
+                    if (result != 0)
+                    {
+                        string error = GetErrorString();
+                        return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.EncryptionFailed(error));
+                    }
+                }
+
+                Array.Resize(ref ciphertext, (int)ciphertextLen);
+                return Result<byte[], ServerSecurityFailure>.Ok(ciphertext);
+            }
+        }
+        catch (Exception ex)
+        {
+            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.EncryptionException(ex));
+        }
+    }
+
+    public Task<Result<byte[], ServerSecurityFailure>> DecryptAsync(byte[] ciphertext)
+    {
+        return Task.Run(() => DecryptSync(ciphertext));
+    }
+
+    private Result<byte[], ServerSecurityFailure> DecryptSync(byte[] ciphertext)
+    {
+        if (!_isInitialized)
+            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceNotInitialized());
+
+        if (_disposed)
+            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceDisposed());
+
+        if (ciphertext.Length == 0)
             return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.CiphertextRequired());
 
         try
         {
             unsafe
             {
-                const int maxPlaintextSize = EcliptixServerConstants.RsaMaxPlaintextSize;
-                byte[] plaintext = new byte[maxPlaintextSize];
-                nuint plaintextSize = (nuint)maxPlaintextSize;
+                byte[] plaintext = new byte[EcliptixServerConstants.MaxPlaintextSize];
+                nuint plaintextLen = (nuint)plaintext.Length;
 
                 fixed (byte* ciphertextPtr = ciphertext)
                 fixed (byte* plaintextPtr = plaintext)
                 {
-                    EcliptixServerResult result = EcliptixServerNativeLibrary.DecryptRSA(
+                    int result = EcliptixServerNativeLibrary.Decrypt(
                         ciphertextPtr, (nuint)ciphertext.Length,
-                        plaintextPtr, &plaintextSize);
+                        plaintextPtr, &plaintextLen);
 
-                    if (result != EcliptixServerResult.Success)
+                    if (result != 0)
                     {
-                        string error = GetErrorString(result);
-                        return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.RsaDecryptionFailed(error));
+                        string error = GetErrorString();
+                        return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.DecryptionFailed(error));
                     }
                 }
 
-                Array.Resize(ref plaintext, (int)plaintextSize);
+                Array.Resize(ref plaintext, (int)plaintextLen);
                 return Result<byte[], ServerSecurityFailure>.Ok(plaintext);
             }
         }
         catch (Exception ex)
         {
-            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.RsaDecryptionException(ex));
+            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.DecryptionException(ex));
         }
     }
 
-    public Task<Result<byte[], ServerSecurityFailure>> SignEd25519Async(byte[] message)
+    public Task<Result<(byte[], byte[]), ServerSecurityFailure>> GenerateEd25519KeypairAsync()
     {
-        return Task.Run(() => SignEd25519Sync(message));
+        return Task.Run(GenerateEd25519KeypairSync);
     }
 
-    private Result<byte[], ServerSecurityFailure> SignEd25519Sync(byte[] message)
+    public Task<Result<byte[], ServerSecurityFailure>> SignEd25519Async(byte[] message, byte[] privateKey)
+    {
+        return Task.Run(() => SignEd25519Sync(message, privateKey));
+    }
+
+    public Task<Result<bool, ServerSecurityFailure>> VerifyEd25519Async(byte[] message, byte[] signature, byte[] publicKey)
+    {
+        return Task.Run(() => VerifyEd25519Sync(message, signature, publicKey));
+    }
+
+    public Task<Result<byte[], ServerSecurityFailure>> SignAsync(byte[] data)
+    {
+        return Task.Run(() => SignSync(data));
+    }
+
+    private Result<byte[], ServerSecurityFailure> SignSync(byte[] data)
     {
         if (!_isInitialized)
             return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceNotInitialized());
@@ -189,8 +262,91 @@ public sealed class ServerSecurityService : IDisposable
         if (_disposed)
             return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceDisposed());
 
-        if (message == null || message.Length == 0)
+        if (data.Length == 0)
+            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.DataRequired());
+
+        try
+        {
+            unsafe
+            {
+                byte[] signature = new byte[EcliptixServerConstants.MaxSignatureSize];
+
+                fixed (byte* dataPtr = data)
+                fixed (byte* signaturePtr = signature)
+                {
+                    nuint signatureLen = (nuint)signature.Length; 
+                    int result = EcliptixServerNativeLibrary.Sign(
+                        dataPtr, (nuint)data.Length,
+                        signaturePtr, &signatureLen);
+
+                    if (result != 0)
+                    {
+                        string error = GetErrorString();
+                        return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.SigningFailed(error));
+                    }
+
+                    Array.Resize(ref signature, (int)signatureLen);
+                }
+
+                return Result<byte[], ServerSecurityFailure>.Ok(signature);
+            }
+        }
+        catch (Exception ex)
+        {
+            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.SigningException(ex));
+        }
+    }
+
+    private Result<(byte[], byte[]), ServerSecurityFailure> GenerateEd25519KeypairSync()
+    {
+        if (!_isInitialized)
+            return Result<(byte[], byte[]), ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceNotInitialized());
+
+        if (_disposed)
+            return Result<(byte[], byte[]), ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceDisposed());
+
+        try
+        {
+            unsafe
+            {
+                byte[] publicKey = new byte[EcliptixServerConstants.Ed25519PublicKeySize];
+                byte[] privateKey = new byte[EcliptixServerConstants.Ed25519PrivateKeySize];
+
+                fixed (byte* publicKeyPtr = publicKey)
+                fixed (byte* privateKeyPtr = privateKey)
+                {
+                    EcliptixServerResult result = EcliptixServerNativeLibrary.GenerateEd25519Keypair(
+                        publicKeyPtr, privateKeyPtr);
+
+                    if (result != EcliptixServerResult.Success)
+                    {
+                        string error = GetErrorString();
+                        return Result<(byte[], byte[]), ServerSecurityFailure>.Err(ServerSecurityFailure.KeyGenerationFailed(error));
+                    }
+                }
+
+                return Result<(byte[], byte[]), ServerSecurityFailure>.Ok((publicKey, privateKey));
+            }
+        }
+        catch (Exception ex)
+        {
+            return Result<(byte[], byte[]), ServerSecurityFailure>.Err(ServerSecurityFailure.KeyGenerationException(ex));
+        }
+    }
+
+    private Result<byte[], ServerSecurityFailure> SignEd25519Sync(byte[] message, byte[] privateKey)
+    {
+        if (!_isInitialized)
+            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceNotInitialized());
+
+        if (_disposed)
+            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceDisposed());
+
+        if (message.Length == 0)
             return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.MessageRequired());
+
+        if (privateKey.Length != EcliptixServerConstants.Ed25519PrivateKeySize)
+            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.InvalidPrivateKey());
 
         try
         {
@@ -199,15 +355,18 @@ public sealed class ServerSecurityService : IDisposable
                 byte[] signature = new byte[EcliptixServerConstants.Ed25519SignatureSize];
 
                 fixed (byte* messagePtr = message)
-                fixed (byte* sigPtr = signature)
+                fixed (byte* privateKeyPtr = privateKey)
+                fixed (byte* signaturePtr = signature)
                 {
                     EcliptixServerResult result = EcliptixServerNativeLibrary.SignEd25519(
-                        messagePtr, (nuint)message.Length, sigPtr);
+                        messagePtr, (nuint)message.Length,
+                        privateKeyPtr,
+                        signaturePtr);
 
                     if (result != EcliptixServerResult.Success)
                     {
-                        string error = GetErrorString(result);
-                        return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.Ed25519SigningFailed(error));
+                        string error = GetErrorString();
+                        return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.SigningFailed(error));
                     }
                 }
 
@@ -216,25 +375,68 @@ public sealed class ServerSecurityService : IDisposable
         }
         catch (Exception ex)
         {
-            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.Ed25519SigningException(ex));
+            return Result<byte[], ServerSecurityFailure>.Err(ServerSecurityFailure.SigningException(ex));
         }
     }
 
-    private unsafe string GetErrorString(EcliptixServerResult result)
+    private Result<bool, ServerSecurityFailure> VerifyEd25519Sync(byte[] message, byte[] signature, byte[] publicKey)
+    {
+        if (!_isInitialized)
+            return Result<bool, ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceNotInitialized());
+
+        if (_disposed)
+            return Result<bool, ServerSecurityFailure>.Err(ServerSecurityFailure.ServiceDisposed());
+
+        if (message.Length == 0)
+            return Result<bool, ServerSecurityFailure>.Err(ServerSecurityFailure.MessageRequired());
+
+        if (signature.Length != EcliptixServerConstants.Ed25519SignatureSize)
+            return Result<bool, ServerSecurityFailure>.Err(ServerSecurityFailure.InvalidSignature());
+
+        if (publicKey.Length != EcliptixServerConstants.Ed25519PublicKeySize)
+            return Result<bool, ServerSecurityFailure>.Err(ServerSecurityFailure.InvalidPublicKey());
+
+        try
+        {
+            unsafe
+            {
+                fixed (byte* messagePtr = message)
+                fixed (byte* signaturePtr = signature)
+                fixed (byte* publicKeyPtr = publicKey)
+                {
+                    EcliptixServerResult result = EcliptixServerNativeLibrary.VerifyEd25519(
+                        messagePtr, (nuint)message.Length,
+                        signaturePtr,
+                        publicKeyPtr);
+
+                    return result == EcliptixServerResult.Success
+                        ? Result<bool, ServerSecurityFailure>.Ok(true)
+                        : Result<bool, ServerSecurityFailure>.Ok(false);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            return Result<bool, ServerSecurityFailure>.Err(ServerSecurityFailure.VerificationException(ex));
+        }
+    }
+
+    private static unsafe string GetErrorString()
     {
         try
         {
             byte* errorPtr = EcliptixServerNativeLibrary.GetErrorMessage();
             if (errorPtr != null)
             {
-                return Marshal.PtrToStringUTF8((IntPtr)errorPtr) ?? $"Unknown error: {result}";
+                return Marshal.PtrToStringUTF8((IntPtr)errorPtr) ?? "Unknown error";
             }
         }
         catch
         {
+            // ignored
         }
 
-        return $"Error code: {result}";
+        return "Error occurred";
     }
 
     public void Dispose()
@@ -251,6 +453,7 @@ public sealed class ServerSecurityService : IDisposable
         }
         catch (Exception)
         {
+            // ignored
         }
         finally
         {
