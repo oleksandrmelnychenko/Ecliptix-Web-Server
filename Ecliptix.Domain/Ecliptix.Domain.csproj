@@ -35,7 +35,7 @@
 
     <ItemGroup>
         <!-- Core proto files - minimal set to get building -->
-        <Protobuf Include="Protobuf\common\cipher_payload.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+        <Protobuf Include="Protobuf\common\secure_envelope.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
         <Protobuf Include="Protobuf\common\health_check.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
         <Protobuf Include="Protobuf\protocol\key_exchange.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
         <Protobuf Include="Protobuf\protocol\protocol_state.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />

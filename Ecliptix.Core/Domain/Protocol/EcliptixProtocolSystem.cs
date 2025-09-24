@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using Ecliptix.Core.Domain.Protocol.Failures;
+using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Core.Protocol;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Common;
@@ -471,17 +472,17 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         }
     }
 
-    public Result<CipherPayload, EcliptixProtocolFailure> ProduceOutboundMessage(byte[] plainPayload)
+    public Result<SecureEnvelope, EcliptixProtocolFailure> ProduceOutboundMessage(byte[] plainPayload)
     {
         EcliptixProtocolConnection? connection = GetConnectionSafe();
         if (connection == null)
-            return Result<CipherPayload, EcliptixProtocolFailure>.Err(
+            return Result<SecureEnvelope, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Protocol connection not initialized"));
 
         return ProduceSingleMessage(plainPayload, connection);
     }
 
-    private Result<CipherPayload, EcliptixProtocolFailure> ProduceSingleMessage(byte[] plainPayload,
+    private Result<SecureEnvelope, EcliptixProtocolFailure> ProduceSingleMessage(byte[] plainPayload,
         EcliptixProtocolConnection connection)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -497,16 +498,16 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         {
             Result<(EcliptixMessageKey MessageKey, bool IncludeDhKey), EcliptixProtocolFailure> prepResult =
                 connection.PrepareNextSendMessage();
-            if (prepResult.IsErr) return Result<CipherPayload, EcliptixProtocolFailure>.Err(prepResult.UnwrapErr());
+            if (prepResult.IsErr) return Result<SecureEnvelope, EcliptixProtocolFailure>.Err(prepResult.UnwrapErr());
 
             (EcliptixMessageKey MessageKey, bool IncludeDhKey) prep = prepResult.Unwrap();
 
             Result<byte[], EcliptixProtocolFailure> nonceResult = connection.GenerateNextNonce();
-            if (nonceResult.IsErr) return Result<CipherPayload, EcliptixProtocolFailure>.Err(nonceResult.UnwrapErr());
+            if (nonceResult.IsErr) return Result<SecureEnvelope, EcliptixProtocolFailure>.Err(nonceResult.UnwrapErr());
             nonce = nonceResult.Unwrap();
 
             Result<byte[], EcliptixProtocolFailure> dhKeyResult = GetOptionalSenderDhKey(prep.IncludeDhKey);
-            if (dhKeyResult.IsErr) return Result<CipherPayload, EcliptixProtocolFailure>.Err(dhKeyResult.UnwrapErr());
+            if (dhKeyResult.IsErr) return Result<SecureEnvelope, EcliptixProtocolFailure>.Err(dhKeyResult.UnwrapErr());
             newSenderDhPublicKey = dhKeyResult.Unwrap();
 
             if (prep.IncludeDhKey && newSenderDhPublicKey.Length > 0)
@@ -516,12 +517,12 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             }
 
             Result<EcliptixMessageKey, EcliptixProtocolFailure> cloneResult = CloneMessageKey(prep.MessageKey);
-            if (cloneResult.IsErr) return Result<CipherPayload, EcliptixProtocolFailure>.Err(cloneResult.UnwrapErr());
+            if (cloneResult.IsErr) return Result<SecureEnvelope, EcliptixProtocolFailure>.Err(cloneResult.UnwrapErr());
             messageKeyClone = cloneResult.Unwrap();
 
             Result<CorePublicKeyBundle, EcliptixProtocolFailure> peerBundleResult = connection.GetPeerBundle();
             if (peerBundleResult.IsErr)
-                return Result<CipherPayload, EcliptixProtocolFailure>.Err(peerBundleResult.UnwrapErr());
+                return Result<SecureEnvelope, EcliptixProtocolFailure>.Err(peerBundleResult.UnwrapErr());
             CorePublicKeyBundle peerBundle = peerBundleResult.Unwrap();
 
             bool debugIsInitiator = connection.IsInitiator();
@@ -553,31 +554,25 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             Result<byte[], EcliptixProtocolFailure> encryptResult =
                 Encrypt(messageKeyClone!, nonce, plainPayload, ad, connection);
             if (encryptResult.IsErr)
-                return Result<CipherPayload, EcliptixProtocolFailure>.Err(encryptResult.UnwrapErr());
+                return Result<SecureEnvelope, EcliptixProtocolFailure>.Err(encryptResult.UnwrapErr());
             encrypted = encryptResult.Unwrap();
 
-            CipherHeader header = new()
-            {
-                RequestId = GenerateRequestId(),
-                Nonce = ByteString.CopyFrom(nonce.AsSpan()),
-                RatchetIndex = messageKeyClone!.Index,
-                DhPublicKey = newSenderDhPublicKey.Length > 0
-                    ? ByteString.CopyFrom(newSenderDhPublicKey.AsSpan())
-                    : ByteString.Empty
-            };
+            EnvelopeMetadata metadata = ProtocolMigrationHelper.CreateEnvelopeMetadata(
+                GenerateRequestId(),
+                ByteString.CopyFrom(nonce.AsSpan()),
+                messageKeyClone!.Index,
+                newSenderDhPublicKey.Length > 0 ? ByteString.CopyFrom(newSenderDhPublicKey.AsSpan()) : null);
 
-            CipherPayload payload = new()
-            {
-                Header = ByteString.CopyFrom(header.ToByteArray()),
-                Payload = ByteString.CopyFrom(encrypted.AsSpan()),
-                CreatedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow)
-            };
+            SecureEnvelope payload = ProtocolMigrationHelper.CreateSecureEnvelope(
+                metadata,
+                ByteString.CopyFrom(encrypted.AsSpan()),
+                Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow));
 
             stopwatch.Stop();
             _metricsCollector.RecordOutboundMessage(stopwatch.Elapsed.TotalMilliseconds);
             _metricsCollector.RecordEncryption();
 
-            return Result<CipherPayload, EcliptixProtocolFailure>.Ok(payload);
+            return Result<SecureEnvelope, EcliptixProtocolFailure>.Ok(payload);
         }
         finally
         {
@@ -589,7 +584,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         }
     }
 
-    public Result<byte[], EcliptixProtocolFailure> ProcessInboundMessage(CipherPayload cipherPayloadProto)
+    public Result<byte[], EcliptixProtocolFailure> ProcessInboundMessage(SecureEnvelope cipherPayloadProto)
     {
         EcliptixProtocolConnection? connection = GetConnectionSafe();
         if (connection == null)
@@ -599,54 +594,48 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         return ProcessSingleInboundMessage(cipherPayloadProto, connection);
     }
 
-    public Result<(CipherHeader Header, byte[] EncryptedPayload), EcliptixProtocolFailure> ProduceOutboundMessageComponents(byte[] plainPayload)
+    public Result<(EnvelopeMetadata Metadata, byte[] EncryptedPayload), EcliptixProtocolFailure> ProduceOutboundMessageComponents(byte[] plainPayload)
     {
         EcliptixProtocolConnection? connection = GetConnectionSafe();
         if (connection == null)
-            return Result<(CipherHeader Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(
+            return Result<(EnvelopeMetadata Metadata, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Protocol connection not initialized"));
 
-        Result<CipherPayload, EcliptixProtocolFailure> payloadResult = ProduceSingleMessage(plainPayload, connection);
+        Result<SecureEnvelope, EcliptixProtocolFailure> payloadResult = ProduceSingleMessage(plainPayload, connection);
         if (payloadResult.IsErr)
-            return Result<(CipherHeader Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(payloadResult.UnwrapErr());
+            return Result<(EnvelopeMetadata Metadata, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(payloadResult.UnwrapErr());
 
-        CipherPayload payload = payloadResult.Unwrap();
+        SecureEnvelope payload = payloadResult.Unwrap();
 
-        try
-        {
-            CipherHeader header = CipherHeader.Parser.ParseFrom(payload.Header);
-            byte[] encryptedPayload = payload.Payload.ToByteArray();
+        Result<EnvelopeMetadata, EcliptixProtocolFailure> metadataResult = ProtocolMigrationHelper.ParseEnvelopeMetadata(payload.MetaData);
+        if (metadataResult.IsErr)
+            return Result<(EnvelopeMetadata Metadata, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(metadataResult.UnwrapErr());
 
-            return Result<(CipherHeader Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Ok((header, encryptedPayload));
-        }
-        catch (Exception ex)
-        {
-            return Result<(CipherHeader Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Failed to parse cipher components", ex));
-        }
+        EnvelopeMetadata metadata = metadataResult.Unwrap();
+        byte[] encryptedPayload = payload.EncryptedPayload.ToByteArray();
+
+        return Result<(EnvelopeMetadata Metadata, byte[] EncryptedPayload), EcliptixProtocolFailure>.Ok((metadata, encryptedPayload));
     }
 
-    public Result<byte[], EcliptixProtocolFailure> ProcessInboundMessageFromComponents(CipherHeader header, byte[] encryptedPayload)
+    public Result<byte[], EcliptixProtocolFailure> ProcessInboundMessageFromComponents(EnvelopeMetadata metadata, byte[] encryptedPayload)
     {
         try
         {
-            CipherPayload payload = new()
-            {
-                Header = ByteString.CopyFrom(header.ToByteArray()),
-                Payload = ByteString.CopyFrom(encryptedPayload),
-                CreatedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow)
-            };
+            SecureEnvelope payload = ProtocolMigrationHelper.CreateSecureEnvelope(
+                metadata,
+                ByteString.CopyFrom(encryptedPayload),
+                Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow));
 
             return ProcessInboundMessage(payload);
         }
         catch (Exception ex)
         {
             return Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Failed to reconstruct cipher payload from components", ex));
+                EcliptixProtocolFailure.Generic("Failed to reconstruct secure envelope from components", ex));
         }
     }
 
-    private Result<byte[], EcliptixProtocolFailure> ProcessSingleInboundMessage(CipherPayload cipherPayloadProto,
+    private Result<byte[], EcliptixProtocolFailure> ProcessSingleInboundMessage(SecureEnvelope cipherPayloadProto,
         EcliptixProtocolConnection connection)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -656,33 +645,40 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         EcliptixMessageKey? messageKeyClone = null;
         try
         {
-            Result<Unit, EcliptixProtocolFailure> validationResult = ValidateIncomingMessage(cipherPayloadProto);
-            if (validationResult.IsErr)
-            {
-                Log.Information("[SERVER] Message validation failed: {Message}",
-                    validationResult.UnwrapErr().Message);
-                _metricsCollector.RecordError();
-                Monitoring.ProtocolHealthCheck.RecordConnectionState(_connectSession?.ConnectId ?? 0, false, true);
-                return Result<byte[], EcliptixProtocolFailure>.Err(validationResult.UnwrapErr());
-            }
-
             byte[]? incomingDhKey = null;
-            CipherHeader header;
+            EnvelopeMetadata metadata;
             try
             {
-                header = CipherHeader.Parser.ParseFrom(cipherPayloadProto.Header);
-                if (header.DhPublicKey.Length > 0)
+                Result<EnvelopeMetadata, EcliptixProtocolFailure> metadataResult = ProtocolMigrationHelper.ParseEnvelopeMetadata(cipherPayloadProto.MetaData);
+                if (metadataResult.IsErr)
                 {
-                    ReadOnlySpan<byte> dhKeySpan = header.DhPublicKey.Span;
+                    Log.Error("[SERVER] Failed to parse envelope metadata: {Error}", metadataResult.UnwrapErr().Message);
+                    return Result<byte[], EcliptixProtocolFailure>.Err(metadataResult.UnwrapErr());
+                }
+                metadata = metadataResult.Unwrap();
+
+                Result<Unit, EcliptixProtocolFailure> validationResult = ValidateIncomingMessage(cipherPayloadProto, metadata);
+                if (validationResult.IsErr)
+                {
+                    Log.Information("[SERVER] Message validation failed: {Message}",
+                        validationResult.UnwrapErr().Message);
+                    _metricsCollector.RecordError();
+                    Monitoring.ProtocolHealthCheck.RecordConnectionState(_connectSession?.ConnectId ?? 0, false, true);
+                    return Result<byte[], EcliptixProtocolFailure>.Err(validationResult.UnwrapErr());
+                }
+
+                if (metadata.DhPublicKey.Length > 0)
+                {
+                    ReadOnlySpan<byte> dhKeySpan = metadata.DhPublicKey.Span;
                     incomingDhKey = new byte[dhKeySpan.Length];
                     dhKeySpan.CopyTo(incomingDhKey);
                 }
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "[SERVER] Failed to parse cipher header for DH key extraction");
+                Log.Error(ex, "[SERVER] Failed to parse envelope metadata for DH key extraction");
                 return Result<byte[], EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic("Failed to parse cipher header", ex));
+                    EcliptixProtocolFailure.Generic("Failed to parse envelope metadata", ex));
             }
 
             if (incomingDhKey != null)
@@ -692,7 +688,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             }
 
             Result<Unit, EcliptixProtocolFailure> replayCheckResult =
-                connection.CheckReplayProtection(header.Nonce.Span, header.RatchetIndex);
+                connection.CheckReplayProtection(metadata.Nonce.Span, metadata.RatchetIndex);
             if (replayCheckResult.IsErr)
             {
                 Log.Information("[SERVER] Replay protection check failed: {Message}",
@@ -750,7 +746,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                 Convert.ToHexString(associatedData)[..32]);
             Log.Information("[DECRYPT] Message key index: {Index}", messageKeyClone.Index);
             Log.Information("[DECRYPT] Nonce: {Nonce}...",
-                Convert.ToHexString(header.Nonce.Span)[..24]);
+                Convert.ToHexString(metadata.Nonce.Span)[..24]);
 
             byte[] keyMaterial = new byte[Constants.AesKeySize];
             Result<Unit, EcliptixProtocolFailure> keyReadResult = messageKeyClone.ReadKeyMaterial(keyMaterial);
@@ -890,10 +886,10 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         }
     }
 
-    private static Result<byte[], EcliptixProtocolFailure> Decrypt(EcliptixMessageKey key, CipherPayload payload,
+    private static Result<byte[], EcliptixProtocolFailure> Decrypt(EcliptixMessageKey key, SecureEnvelope payload,
         byte[] ad, EcliptixProtocolConnection? connection = null)
     {
-        ReadOnlySpan<byte> fullCipherSpan = payload.Payload.Span;
+        ReadOnlySpan<byte> fullCipherSpan = payload.EncryptedPayload.Span;
         const int tagSize = Constants.AesGcmTagSize;
         int cipherLength = fullCipherSpan.Length - tagSize;
 
@@ -912,18 +908,14 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
             ReadOnlySpan<byte> ciphertextSpan = fullCipherSpan[..cipherLength];
             ReadOnlySpan<byte> tagSpan = fullCipherSpan[cipherLength..];
-            // Parse header to get the nonce
-            CipherHeader header;
-            try
+            // Parse metadata to get the nonce
+            Result<EnvelopeMetadata, EcliptixProtocolFailure> metadataResult = ProtocolMigrationHelper.ParseEnvelopeMetadata(payload.MetaData);
+            if (metadataResult.IsErr)
             {
-                header = CipherHeader.Parser.ParseFrom(payload.Header);
+                return Result<byte[], EcliptixProtocolFailure>.Err(metadataResult.UnwrapErr());
             }
-            catch (Exception ex)
-            {
-                return Result<byte[], EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic("Failed to parse cipher header for decryption", ex));
-            }
-            ReadOnlySpan<byte> nonceSpan = header.Nonce.Span;
+            EnvelopeMetadata metadata = metadataResult.Unwrap();
+            ReadOnlySpan<byte> nonceSpan = metadata.Nonce.Span;
 
             plaintext = new byte[cipherLength];
             Span<byte> plaintextSpan = plaintext.AsSpan();
@@ -953,44 +945,39 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         }
     }
 
-    private Result<Unit, EcliptixProtocolFailure> ValidateIncomingMessage(CipherPayload payload)
+    private Result<Unit, EcliptixProtocolFailure> ValidateIncomingMessage(SecureEnvelope payload, EnvelopeMetadata metadata)
     {
-        if (payload.Header.IsEmpty || payload.Payload.IsEmpty)
+        if (payload.MetaData.IsEmpty || payload.EncryptedPayload.IsEmpty)
             return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Invalid payload - missing header or payload"));
+                EcliptixProtocolFailure.Generic("Invalid payload - missing metadata or payload"));
 
-        try
-        {
-            CipherHeader header = CipherHeader.Parser.ParseFrom(payload.Header);
-
-            if (header.Nonce.IsEmpty)
-                return Result<Unit, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic("Invalid payload - missing nonce"));
-
-            if (header.Nonce.Length != Constants.AesGcmNonceSize)
-                return Result<Unit, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic(
-                        $"Invalid nonce size: {header.Nonce.Length}, expected: {Constants.AesGcmNonceSize}"));
-
-            Log.Information("[SERVER] Processing message with ratchet index: {RatchetIndex}", header.RatchetIndex);
-
-            return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
-        }
-        catch (Exception ex)
-        {
+        if (metadata.Nonce.IsEmpty)
             return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Failed to parse cipher header", ex));
-        }
+                EcliptixProtocolFailure.Generic("Invalid payload - missing nonce"));
+
+        if (metadata.Nonce.Length != Constants.AesGcmNonceSize)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic(
+                    $"Invalid nonce size: {metadata.Nonce.Length}, expected: {Constants.AesGcmNonceSize}"));
+
+        Log.Information("[SERVER] Processing message with ratchet index: {RatchetIndex}", metadata.RatchetIndex);
+
+        return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
     private Result<EcliptixMessageKey, EcliptixProtocolFailure> AttemptMessageProcessingWithRecovery(
-        CipherPayload payload, byte[]? receivedDhKey, EcliptixProtocolConnection connection)
+        SecureEnvelope payload, byte[]? receivedDhKey, EcliptixProtocolConnection connection)
     {
         try
         {
-            CipherHeader header = CipherHeader.Parser.ParseFrom(payload.Header);
+            Result<EnvelopeMetadata, EcliptixProtocolFailure> metadataResult = ProtocolMigrationHelper.ParseEnvelopeMetadata(payload.MetaData);
+            if (metadataResult.IsErr)
+            {
+                return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(metadataResult.UnwrapErr());
+            }
+            EnvelopeMetadata metadata = metadataResult.Unwrap();
             Result<EcliptixMessageKey, EcliptixProtocolFailure> normalResult =
-                connection.ProcessReceivedMessage(header.RatchetIndex);
+                connection.ProcessReceivedMessage(metadata.RatchetIndex);
             if (normalResult.IsOk)
             {
                 Log.Information("[SERVER] Normal message processing succeeded");
@@ -999,7 +986,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
             Log.Information("[SERVER] Normal processing failed: {Message}", normalResult.UnwrapErr().Message);
 
-            if (receivedDhKey != null && header.RatchetIndex <= 5)
+            if (receivedDhKey != null && metadata.RatchetIndex <= 5)
             {
                 Log.Information("[SERVER] Attempting recovery with DH ratchet");
                 Result<Unit, EcliptixProtocolFailure>
@@ -1007,7 +994,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                 if (ratchetResult.IsOk)
                 {
                     Result<EcliptixMessageKey, EcliptixProtocolFailure> retryResult =
-                        connection.ProcessReceivedMessage(header.RatchetIndex);
+                        connection.ProcessReceivedMessage(metadata.RatchetIndex);
                     if (retryResult.IsOk)
                     {
                         Log.Information("[SERVER] Recovery with DH ratchet succeeded");
@@ -1025,14 +1012,14 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             Log.Information("[SERVER] Attempting RatchetRecovery for out-of-order message");
 
             Result<Option<EcliptixMessageKey>, EcliptixProtocolFailure> recoveryResult =
-                connection.TryRecoverMessageKey(header.RatchetIndex);
+                connection.TryRecoverMessageKey(metadata.RatchetIndex);
             if (recoveryResult.IsOk)
             {
                 Option<EcliptixMessageKey> optionResult = recoveryResult.Unwrap();
                 if (optionResult.HasValue)
                 {
                     Log.Information("[SERVER] Successfully recovered message key for index {RatchetIndex}",
-                        header.RatchetIndex);
+                        metadata.RatchetIndex);
                     return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(optionResult.Value!);
                 }
             }

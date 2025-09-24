@@ -3,7 +3,7 @@ using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
 using System.Globalization;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.SecureEnvelopeHandler;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
@@ -29,8 +29,8 @@ public class VerificationFlowServices(
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
 
     public override async Task InitiateVerification(
-        CipherPayload request,
-        IServerStreamWriter<CipherPayload> responseStream,
+        SecureEnvelope request,
+        IServerStreamWriter<SecureEnvelope> responseStream,
         ServerCallContext context)
     {
         Result<Unit, FailureBase> result =
@@ -75,13 +75,13 @@ public class VerificationFlowServices(
 
         if (result.IsErr)
         {
-            CipherPayload payload = await grpcCipherService.CreateFailureResponse(result.UnwrapErr(),
+            SecureEnvelope payload = await grpcCipherService.CreateFailureResponse(result.UnwrapErr(),
                 ServiceUtilities.ExtractConnectId(context), context);
             await responseStream.WriteAsync(payload);
         }
     }
 
-    public override async Task<CipherPayload> ValidatePhoneNumber(CipherPayload request, ServerCallContext context) =>
+    public override async Task<SecureEnvelope> ValidatePhoneNumber(SecureEnvelope request, ServerCallContext context) =>
         await _baseService.ExecuteEncryptedOperationAsync<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(
             request, context,
             async (message, _, ct) =>
@@ -132,7 +132,7 @@ public class VerificationFlowServices(
                 }
             });
 
-    public override async Task<CipherPayload> RecoverySecretKeyPhoneVerification(CipherPayload request,
+    public override async Task<SecureEnvelope> RecoverySecretKeyPhoneVerification(SecureEnvelope request,
         ServerCallContext context) =>
         await _baseService.ExecuteEncryptedOperationAsync<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(
             request, context,
@@ -183,7 +183,7 @@ public class VerificationFlowServices(
                 }
             });
 
-    public override async Task<CipherPayload> VerifyOtp(CipherPayload request, ServerCallContext context) =>
+    public override async Task<SecureEnvelope> VerifyOtp(SecureEnvelope request, ServerCallContext context) =>
         await _baseService.ExecuteEncryptedOperationAsync<VerifyCodeRequest, VerifyCodeResponse>(request, context,
             async (message, _, ct) =>
             {
@@ -200,7 +200,7 @@ public class VerificationFlowServices(
             });
 
     private async Task StreamCountdownUpdatesAsync(
-        IServerStreamWriter<CipherPayload> responseStream,
+        IServerStreamWriter<SecureEnvelope> responseStream,
         ChannelReader<Result<VerificationCountdownUpdate, VerificationFlowFailure>> reader,
         ServerCallContext context)
     {
@@ -211,7 +211,7 @@ public class VerificationFlowServices(
             await foreach (Result<VerificationCountdownUpdate, VerificationFlowFailure> updateResult in reader.ReadAllAsync(
                                context.CancellationToken))
             {
-                CipherPayload payload;
+                SecureEnvelope payload;
 
                 if (updateResult.IsErr)
                 {
@@ -221,7 +221,7 @@ public class VerificationFlowServices(
                 {
                     VerificationCountdownUpdate update = updateResult.Unwrap();
 
-                    Result<CipherPayload, FailureBase> encryptResult =
+                    Result<SecureEnvelope, FailureBase> encryptResult =
                         await grpcCipherService.EncryptPayload(update.ToByteArray(), connectId, context);
 
                     if (encryptResult.IsErr)

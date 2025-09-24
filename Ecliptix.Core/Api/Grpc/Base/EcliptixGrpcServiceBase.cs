@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.SecureEnvelopeHandler;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Common;
 using Google.Protobuf;
@@ -16,8 +16,8 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
 {
     private static readonly ActivitySource ActivitySource = new(GrpcServiceConstants.Activities.ServiceSource);
 
-    public async Task<CipherPayload> ExecuteEncryptedOperationAsync<TRequest, TResponse>(
-        CipherPayload encryptedRequest,
+    public async Task<SecureEnvelope> ExecuteEncryptedOperationAsync<TRequest, TResponse>(
+        SecureEnvelope encryptedRequest,
         ServerCallContext context,
         Func<TRequest, uint, CancellationToken, Task<Result<TResponse, FailureBase>>> handler,
         [CallerMemberName] string operationName = "")
@@ -52,7 +52,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
                 return await CreateFailureResponseAsync<TResponse>(handlerResult.UnwrapErr(), connectId, context);
             }
 
-            CipherPayload response = await EncryptResponseAsync(handlerResult.Unwrap(), connectId, context);
+            SecureEnvelope response = await EncryptResponseAsync(handlerResult.Unwrap(), connectId, context);
 
             stopwatch.Stop();
             activity?.SetTag(GrpcServiceConstants.ActivityTags.Success, true);
@@ -83,7 +83,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
     }
 
     public async Task<Result<Unit, FailureBase>> ExecuteEncryptedStreamingOperationAsync<TRequest, TFailure>(
-        CipherPayload encryptedRequest,
+        SecureEnvelope encryptedRequest,
         ServerCallContext context,
         Func<TRequest, uint, CancellationToken, Task<Result<Unit, TFailure>>> handler,
         [CallerMemberName] string operationName = "")
@@ -137,14 +137,14 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
     }
 
     private async Task<Result<TRequest, FailureBase>> DecryptRequestAsync<TRequest>(
-        CipherPayload encryptedPayload,
+        SecureEnvelope encryptedPayload,
         uint connectId,
         ServerCallContext context)
         where TRequest : class, IMessage<TRequest>, new()
     {
         using Activity? activity = ActivitySource.StartActivity(GrpcServiceConstants.Activities.DecryptRequest);
         activity?.SetTag(GrpcServiceConstants.ActivityTags.ConnectId, connectId);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.PayloadSize, encryptedPayload.Payload.Length);
+        activity?.SetTag(GrpcServiceConstants.ActivityTags.PayloadSize, encryptedPayload.EncryptedPayload.Length);
 
         Result<byte[], FailureBase> decryptResult = await cipherService.DecryptPayload(encryptedPayload, connectId, context);
 
@@ -173,7 +173,7 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         }
     }
 
-    private async Task<CipherPayload> EncryptResponseAsync<TResponse>(
+    private async Task<SecureEnvelope> EncryptResponseAsync<TResponse>(
         TResponse response,
         uint connectId,
         ServerCallContext context)
@@ -185,23 +185,23 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         byte[]? responseBytes = response.ToByteArray();
         activity?.SetTag(GrpcServiceConstants.ActivityTags.ResponseSize, responseBytes.Length);
 
-        Result<CipherPayload, FailureBase> encryptResult = await cipherService.EncryptPayload(responseBytes, connectId, context);
+        Result<SecureEnvelope, FailureBase> encryptResult = await cipherService.EncryptPayload(responseBytes, connectId, context);
 
         if (encryptResult.IsErr)
         {
             activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, false);
             Log.Error(GrpcServiceConstants.LogMessages.FailedToEncryptResponse,
                 connectId, encryptResult.UnwrapErr().Message);
-            return new CipherPayload();
+            return new SecureEnvelope();
         }
 
         activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, true);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptedSize, encryptResult.Unwrap().Payload.Length);
+        activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptedSize, encryptResult.Unwrap().EncryptedPayload.Length);
 
         return encryptResult.Unwrap();
     }
 
-    private async Task<CipherPayload> CreateFailureResponseAsync<TResponse>(
+    private async Task<SecureEnvelope> CreateFailureResponseAsync<TResponse>(
         FailureBase failure,
         uint connectId,
         ServerCallContext context)

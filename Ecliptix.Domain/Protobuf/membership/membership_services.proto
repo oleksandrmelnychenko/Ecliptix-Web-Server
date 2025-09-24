@@ -1,14 +1,14 @@
 syntax = "proto3";
-import "common/cipher_payload.proto";
+import "common/secure_envelope.proto";
 
 package ecliptix.proto.membership;
 option csharp_namespace = "Ecliptix.Protobuf.Membership";
 
 service MembershipServices {
-  rpc OpaqueRegistrationInitRequest(ecliptix.proto.common.CipherPayload) returns (ecliptix.proto.common.CipherPayload);
-  rpc OpaqueRegistrationCompleteRequest(ecliptix.proto.common.CipherPayload) returns (ecliptix.proto.common.CipherPayload);
-  rpc OpaqueRecoverySecretKeyInitRequest(ecliptix.proto.common.CipherPayload) returns (ecliptix.proto.common.CipherPayload);
-  rpc OpaqueRecoverySecretKeyCompleteRequest(ecliptix.proto.common.CipherPayload) returns (ecliptix.proto.common.CipherPayload);
-  rpc OpaqueSignInInitRequest(ecliptix.proto.common.CipherPayload) returns (ecliptix.proto.common.CipherPayload);
-  rpc OpaqueSignInCompleteRequest(ecliptix.proto.common.CipherPayload) returns (ecliptix.proto.common.CipherPayload);
+  rpc OpaqueRegistrationInitRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc OpaqueRegistrationCompleteRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc OpaqueRecoverySecretKeyInitRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc OpaqueRecoverySecretKeyCompleteRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc OpaqueSignInInitRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc OpaqueSignInCompleteRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
 }

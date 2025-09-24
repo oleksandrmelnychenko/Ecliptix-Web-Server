@@ -4,6 +4,7 @@ using Ecliptix.Core.Protocol;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Domain.Protocol.Failures;
+using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Common;
 using Google.Protobuf.WellKnownTypes;
@@ -61,13 +62,13 @@ public class ShieldProDoubleRatchetTests
         {
             byte[] msg = Encoding.UTF8.GetBytes($"Msg {i}");
 
-            Result<CipherPayload, EcliptixProtocolFailure> cipherResult = _aliceEcliptixProtocolSystem.ProduceOutboundMessage(msg);
+            Result<SecureEnvelope, EcliptixProtocolFailure> cipherResult = _aliceEcliptixProtocolSystem.ProduceOutboundMessage(msg);
             if (cipherResult.IsErr) Assert.Fail($"Alice failed to produce message {i}: {cipherResult.UnwrapErr()}");
-            CipherPayload cipher = cipherResult.Unwrap();
+            SecureEnvelope cipher = cipherResult.Unwrap();
 
             try
             {
-                CipherHeader header = CipherHeader.Parser.ParseFrom(cipher.Header);
+                EnvelopeMetadata header = ProtocolMigrationHelper.ParseEnvelopeMetadata(cipher.MetaData).Unwrap();
                 if (!header.DhPublicKey.IsEmpty)
                 {
                     ratchetTriggered = true;
@@ -145,15 +146,15 @@ public class ShieldProDoubleRatchetTests
                 for (uint j = 0; j < messagesPerSession; j++)
                 {
                     byte[] aliceMsg = Encoding.UTF8.GetBytes($"Session {testSessionId}: Alice msg {j + 1}");
-                    Result<CipherPayload, EcliptixProtocolFailure> aliceCipherResult = alice.ProduceOutboundMessage(aliceMsg);
+                    Result<SecureEnvelope, EcliptixProtocolFailure> aliceCipherResult = alice.ProduceOutboundMessage(aliceMsg);
                     if (aliceCipherResult.IsErr)
                         throw new AssertFailedException(
                             $"[Session {testSessionId}] Alice failed to encrypt msg {j + 1}: {aliceCipherResult.UnwrapErr()}");
-                    CipherPayload aliceCipher = aliceCipherResult.Unwrap();
+                    SecureEnvelope aliceCipher = aliceCipherResult.Unwrap();
 
                     try
                     {
-                        CipherHeader aliceHeader = CipherHeader.Parser.ParseFrom(aliceCipher.Header);
+                        EnvelopeMetadata aliceHeader = ProtocolMigrationHelper.ParseEnvelopeMetadata(aliceCipher.MetaData).Unwrap();
                         if (!aliceHeader.DhPublicKey.IsEmpty) aliceDhRatchets++;
                     }
                     catch (Exception ex)
@@ -168,15 +169,15 @@ public class ShieldProDoubleRatchetTests
                     CollectionAssert.AreEqual(aliceMsg, bobPlaintextResult.Unwrap());
 
                     byte[] bobMsg = Encoding.UTF8.GetBytes($"Session {testSessionId}: Bob msg {j + 1}");
-                    Result<CipherPayload, EcliptixProtocolFailure> bobCipherResult = bob.ProduceOutboundMessage(bobMsg);
+                    Result<SecureEnvelope, EcliptixProtocolFailure> bobCipherResult = bob.ProduceOutboundMessage(bobMsg);
                     if (bobCipherResult.IsErr)
                         throw new AssertFailedException(
                             $"[Session {testSessionId}] Bob failed to encrypt msg {j + 1}: {bobCipherResult.UnwrapErr()}");
-                    CipherPayload bobCipher = bobCipherResult.Unwrap();
+                    SecureEnvelope bobCipher = bobCipherResult.Unwrap();
 
                     try
                     {
-                        CipherHeader bobHeader = CipherHeader.Parser.ParseFrom(bobCipher.Header);
+                        EnvelopeMetadata bobHeader = ProtocolMigrationHelper.ParseEnvelopeMetadata(bobCipher.MetaData).Unwrap();
                         if (!bobHeader.DhPublicKey.IsEmpty) bobDhRatchets++;
                     }
                     catch (Exception ex)
@@ -221,14 +222,14 @@ public class ShieldProDoubleRatchetTests
         {
             string aliceMessage = $"Message {i} from Alice";
             byte[] alicePlaintextBytes = Encoding.UTF8.GetBytes(aliceMessage);
-            Result<CipherPayload, EcliptixProtocolFailure> alicePayloadResult = _aliceEcliptixProtocolSystem.ProduceOutboundMessage(alicePlaintextBytes);
+            Result<SecureEnvelope, EcliptixProtocolFailure> alicePayloadResult = _aliceEcliptixProtocolSystem.ProduceOutboundMessage(alicePlaintextBytes);
             if (alicePayloadResult.IsErr)
                 Assert.Fail($"[Iteration {i}] Alice failed to produce message: {alicePayloadResult.UnwrapErr()}");
-            CipherPayload alicePayload = alicePayloadResult.Unwrap();
+            SecureEnvelope alicePayload = alicePayloadResult.Unwrap();
 
             try
             {
-                CipherHeader aliceHeader = CipherHeader.Parser.ParseFrom(alicePayload.Header);
+                EnvelopeMetadata aliceHeader = ProtocolMigrationHelper.ParseEnvelopeMetadata(alicePayload.MetaData).Unwrap();
                 if (!aliceHeader.DhPublicKey.IsEmpty) aliceDhRatchets++;
             }
             catch (Exception ex)
@@ -243,14 +244,14 @@ public class ShieldProDoubleRatchetTests
 
             string bobMessage = $"Response {i} from Bob";
             byte[] bobPlaintextBytes = Encoding.UTF8.GetBytes(bobMessage);
-            Result<CipherPayload, EcliptixProtocolFailure> bobPayloadResult = _bobEcliptixProtocolSystem.ProduceOutboundMessage(bobPlaintextBytes);
+            Result<SecureEnvelope, EcliptixProtocolFailure> bobPayloadResult = _bobEcliptixProtocolSystem.ProduceOutboundMessage(bobPlaintextBytes);
             if (bobPayloadResult.IsErr)
                 Assert.Fail($"[Iteration {i}] Bob failed to produce response: {bobPayloadResult.UnwrapErr()}");
-            CipherPayload bobPayload = bobPayloadResult.Unwrap();
+            SecureEnvelope bobPayload = bobPayloadResult.Unwrap();
 
             try
             {
-                CipherHeader bobHeader = CipherHeader.Parser.ParseFrom(bobPayload.Header);
+                EnvelopeMetadata bobHeader = ProtocolMigrationHelper.ParseEnvelopeMetadata(bobPayload.MetaData).Unwrap();
                 if (!bobHeader.DhPublicKey.IsEmpty) bobDhRatchets++;
             }
             catch (Exception ex)

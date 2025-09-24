@@ -1,6 +1,6 @@
 using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.SecureEnvelopeHandler;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
@@ -32,7 +32,7 @@ public class MembershipServices(
     private readonly IActorRef _membershipActor = actorRegistry.Get(ActorIds.MembershipActor);
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
 
-    public override async Task<CipherPayload> OpaqueSignInInitRequest(CipherPayload request, ServerCallContext context)
+    public override async Task<SecureEnvelope> OpaqueSignInInitRequest(SecureEnvelope request, ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OpaqueSignInInitRequest, OpaqueSignInInitResponse>(request, context,
             async (message, connectId, ct) =>
@@ -77,7 +77,7 @@ public class MembershipServices(
             });
     }
 
-    public override async Task<CipherPayload> OpaqueSignInCompleteRequest(CipherPayload request,
+    public override async Task<SecureEnvelope> OpaqueSignInCompleteRequest(SecureEnvelope request,
         ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OpaqueSignInFinalizeRequest, OpaqueSignInFinalizeResponse>(
@@ -95,7 +95,7 @@ public class MembershipServices(
                 });
     }
 
-    public override async Task<CipherPayload> OpaqueRegistrationCompleteRequest(CipherPayload request,
+    public override async Task<SecureEnvelope> OpaqueRegistrationCompleteRequest(SecureEnvelope request,
         ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRegistrationCompleteRequest, OprfRegistrationCompleteResponse>(request, context,
@@ -117,7 +117,7 @@ public class MembershipServices(
                 });
     }
 
-    public override async Task<CipherPayload> OpaqueRecoverySecretKeyCompleteRequest(CipherPayload request,
+    public override async Task<SecureEnvelope> OpaqueRecoverySecretKeyCompleteRequest(SecureEnvelope request,
         ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRecoverySecretKeyCompleteRequest, OprfRecoverySecretKeyCompleteResponse>(
@@ -139,7 +139,7 @@ public class MembershipServices(
             });
     }
 
-    public override async Task<CipherPayload> OpaqueRegistrationInitRequest(CipherPayload request,
+    public override async Task<SecureEnvelope> OpaqueRegistrationInitRequest(SecureEnvelope request,
         ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRegistrationInitRequest, OprfRegistrationInitResponse>(
@@ -161,7 +161,7 @@ public class MembershipServices(
                 });
     }
 
-    public override async Task<CipherPayload> OpaqueRecoverySecretKeyInitRequest(CipherPayload request, ServerCallContext context)
+    public override async Task<SecureEnvelope> OpaqueRecoverySecretKeyInitRequest(SecureEnvelope request, ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRecoverySecureKeyInitRequest, OprfRecoverySecureKeyInitResponse>(request, context,
                 async (message, _, ct) =>

@@ -5,9 +5,9 @@ namespace Ecliptix.Core.Domain.Events;
 
 public record BeginAppDeviceEphemeralConnectActorEvent(PubKeyExchange PubKeyExchange, uint UniqueConnectId);
 
-public record DecryptCipherPayloadActorEvent(
+public record DecryptSecureEnvelopeActorEvent(
     PubKeyExchangeType PubKeyExchangeType,
-    CipherPayload CipherPayload);
+    SecureEnvelope SecureEnvelope);
 
 public record EncryptPayloadActorEvent(
     PubKeyExchangeType PubKeyExchangeType,
@@ -19,7 +19,7 @@ public record EncryptPayloadComponentsActorEvent(
 
 public record DecryptPayloadWithHeaderActorEvent(
     PubKeyExchangeType ExchangeType,
-    CipherHeader Header,
+    EnvelopeMetadata Metadata,
     byte[] EncryptedPayload);
 
 public record ForwardToConnectActorEvent(uint ConnectId, object Payload);

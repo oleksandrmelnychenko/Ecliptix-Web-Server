@@ -3,7 +3,7 @@ using Ecliptix.Core.Api.Grpc.Base;
 using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.SecureEnvelopeHandler;
 using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Failures;
 using Ecliptix.Domain.Utilities;
@@ -27,7 +27,7 @@ public class DeviceGrpcService(
     private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
     private readonly IActorRef _appDevicePersistorActor = actorRegistry.Get(ActorIds.AppDevicePersistorActor);
 
-    public override async Task<CipherPayload> RegisterDevice(CipherPayload request, ServerCallContext context)
+    public override async Task<SecureEnvelope> RegisterDevice(SecureEnvelope request, ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<AppDevice, AppDeviceRegisteredStateReply>(
             request, context, async (appDevice, _, cancellationToken) =>

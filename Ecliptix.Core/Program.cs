@@ -20,7 +20,7 @@ using Ecliptix.Core.Api.Grpc.Services.Membership;
 using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Domain.Protocol.Monitoring;
 using Ecliptix.Core.Infrastructure.Grpc.Interceptors;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.SecureEnvelopeHandler;
 using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Resources;
