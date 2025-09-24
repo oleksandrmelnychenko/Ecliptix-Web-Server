@@ -10,7 +10,6 @@
     <ItemGroup>
         <PackageReference Include="Akka" Version="1.5.48" />
         <PackageReference Include="Akka.Persistence.Sql" Version="1.5.44" />
-        <PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
         <PackageReference Include="Dapper" Version="2.1.66" />
         <PackageReference Include="Grpc.AspNetCore.Server" Version="2.71.0" />
         <PackageReference Include="libphonenumber-csharp" Version="9.0.12" />

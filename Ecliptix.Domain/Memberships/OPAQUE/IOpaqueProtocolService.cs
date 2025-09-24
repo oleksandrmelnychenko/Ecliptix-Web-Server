@@ -8,9 +8,7 @@ public interface IOpaqueProtocolService
     byte[] ProcessOprfRequest(byte[] oprfRequest);
     byte[] ProcessOprfRequest(ReadOnlySpan<byte> oprfRequest);
 
-    byte[] GetPublicKey();
-
-    Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(OpaqueSignInInitRequest request,MembershipOpaqueQueryRecord queryRecord);
+    Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(OpaqueSignInInitRequest request, MembershipOpaqueQueryRecord queryRecord);
 
     Result<OpaqueSignInFinalizeResponse, OpaqueFailure> FinalizeSignIn(OpaqueSignInFinalizeRequest request);
 

@@ -83,10 +83,4 @@ internal static class OpaqueServerNative
         nuint user_id_length,
         [Out] byte[] credentials_data,
         nuint credentials_buffer_size);
-
-    [DllImport(ServerLibrary, CallingConvention = CallingConvention.Cdecl)]
-    public static extern int opaque_server_create_default(out nint handle);
-
-    [DllImport(ServerLibrary, CallingConvention = CallingConvention.Cdecl)]
-    public static extern nint opaque_server_get_version();
 }

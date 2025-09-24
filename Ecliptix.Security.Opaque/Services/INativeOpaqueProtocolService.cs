@@ -5,7 +5,7 @@ using Ecliptix.Domain.Utilities;
 
 namespace Ecliptix.Security.Opaque.Services;
 
-public interface IOpaqueProtocolService
+public interface INativeOpaqueProtocolService
 {
     Task<Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure>> CreateRegistrationResponseAsync(RegistrationRequest request);
 

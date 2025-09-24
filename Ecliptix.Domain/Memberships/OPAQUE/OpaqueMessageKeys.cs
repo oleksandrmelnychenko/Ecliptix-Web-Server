@@ -1,15 +1,12 @@
 namespace Ecliptix.Domain.Memberships.OPAQUE;
 
+/// <summary>
+/// Message keys for OPAQUE error messages
+/// </summary>
 public static class OpaqueMessageKeys
 {
-    public const string InputKeyingMaterialCannotBeNullOrEmpty =
-        "Opaque input keying material (ikm) cannot be null or empty";
-
-    public const string HashingValidPointFailed =
-        "Opaque Failed to hash input to a valid curve point after 255 attempts.";
-
-    public const string DecryptFailed = " Opaque decryption failed";
-
-    public const string EncryptFailed = "Opaque encryption failed";
-    public const string TokenExpired = "Opaque token has expired";
+    public const string TokenExpired = "Token has expired";
+    public const string DecryptFailed = "Decryption failed";
+    public const string EncryptFailed = "Encryption failed";
+    public const string InputKeyingMaterialCannotBeNullOrEmpty = "Input keying material cannot be null or empty";
 }

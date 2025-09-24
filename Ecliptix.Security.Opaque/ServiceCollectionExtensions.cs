@@ -7,6 +7,6 @@ public static class ServiceCollectionExtensions
 {
     public static void AddOpaqueProtocol(this IServiceCollection services)
     {
-        services.AddSingleton<IOpaqueProtocolService, OpaqueProtocolService>();
+        services.AddSingleton<INativeOpaqueProtocolService, OpaqueProtocolService>();
     }
 }

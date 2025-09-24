@@ -29,7 +29,6 @@
         <PackageReference Include="Akka.Hosting" Version="1.5.48" />
         <PackageReference Include="Akka.Persistence" Version="1.5.48" />
         <PackageReference Include="Akka.Persistence.Sql" Version="1.5.44" />
-        <PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
         <PackageReference Include="Dapper" Version="2.1.66" />
         <PackageReference Include="dbup" Version="5.0.41" />
         <PackageReference Include="Grpc.AspNetCore.Server" Version="2.71.0" />
@@ -68,8 +67,6 @@
         <!-- Suppress warnings for protobuf-net (uses reflection) -->
         <TrimmerRootAssembly Include="protobuf-net" />
         
-        <!-- Suppress warnings for BouncyCastle (cryptographic library with reflection) -->
-        <TrimmerRootAssembly Include="BouncyCastle.NetCore" />
         
         <!-- Suppress warnings for Sodium.Core (native library wrapper) -->
         <TrimmerRootAssembly Include="Sodium.Core" />

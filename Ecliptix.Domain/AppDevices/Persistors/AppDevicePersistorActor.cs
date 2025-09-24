@@ -22,14 +22,11 @@ public class AppDeviceRegisterResult
 
 public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 {
-    private readonly IOpaqueProtocolService _opaqueProtocolService;
-
     private const string RegisterAppDeviceSp = "dbo.RegisterAppDeviceIfNotExists";
 
-    public AppDevicePersistorActor(IDbConnectionFactory connectionFactory, IOpaqueProtocolService opaqueProtocolService)
+    public AppDevicePersistorActor(IDbConnectionFactory connectionFactory)
         : base(connectionFactory)
     {
-        _opaqueProtocolService = opaqueProtocolService;
         Become(Ready);
     }
 
@@ -37,14 +34,14 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
     {
         Receive<RegisterAppDeviceIfNotExistActorEvent>(args =>
             ExecuteWithConnection(
-                    conn => RegisterAppDeviceAsync(conn, args.AppDevice, _opaqueProtocolService.GetPublicKey()),
+                    conn => RegisterAppDeviceAsync(conn, args.AppDevice),
                     "RegisterAppDevice",
                     RegisterAppDeviceSp)
                 .PipeTo(Sender));
     }
 
     private static async Task<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>> RegisterAppDeviceAsync(
-        IDbConnection connection, AppDevice appDevice, byte[] opaqueProtocolPublicKey)
+        IDbConnection connection, AppDevice appDevice)
     {
         DynamicParameters parameters = new DynamicParameters();
         parameters.Add("@AppInstanceId", Helpers.FromByteStringToGuid(appDevice.AppInstanceId));
@@ -82,7 +79,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
         {
             Status = currentStatus,
             UniqueId = Helpers.GuidToByteString(result.UniqueId),
-            ServerPublicKey = ByteString.CopyFrom(opaqueProtocolPublicKey)
+            ServerPublicKey = ByteString.Empty
         });
     }
 
@@ -111,8 +108,8 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
         return PersistorSupervisorStrategy.CreateStrategy();
     }
 
-    public static Props Build(IDbConnectionFactory connectionFactory, IOpaqueProtocolService opaqueProtocolService)
+    public static Props Build(IDbConnectionFactory connectionFactory)
     {
-        return Props.Create(() => new AppDevicePersistorActor(connectionFactory, opaqueProtocolService));
+        return Props.Create(() => new AppDevicePersistorActor(connectionFactory));
     }
 }

@@ -50,7 +50,7 @@ public sealed class ActorSystemInitializationService : IHostedService
             ApplicationConstants.ActorNames.ProtocolSystem);
 
         IActorRef appDevicePersistor = _actorSystem.ActorOf(
-            AppDevicePersistorActor.Build(dbConnectionFactory, opaqueProtocolService),
+            AppDevicePersistorActor.Build(dbConnectionFactory),
             ApplicationConstants.ActorNames.AppDevicePersistor);
 
         IActorRef verificationFlowPersistorActor = _actorSystem.ActorOf(

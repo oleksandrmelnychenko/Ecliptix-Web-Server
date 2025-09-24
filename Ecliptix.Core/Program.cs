@@ -51,17 +51,17 @@ try
     ConfigureMiddleware(app);
     ConfigureEndpoints(app);
 
-    Log.Information("Starting Ecliptix application host");
+    Log.Information(AppConstants.LogMessages.StartingApplication);
     app.Run();
 }
 catch (Exception ex)
 {
-    Log.Fatal(ex, "Ecliptix application host terminated unexpectedly");
+    Log.Fatal(ex, AppConstants.LogMessages.ApplicationTerminatedUnexpectedly);
     throw;
 }
 finally
 {
-    Log.Information("Shutting down Ecliptix application host");
+    Log.Information(AppConstants.LogMessages.ShuttingDownApplication);
     Log.CloseAndFlush();
 }
 
@@ -111,9 +111,9 @@ static void ConfigureServices(WebApplicationBuilder builder)
 
     IConfigurationSection securityKeysSection =
         builder.Configuration.GetSection(AppConstants.Configuration.SecurityKeys);
-    MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey = securityKeysSection["KeyExchangeContextTypeKey"] ??
+    MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey = securityKeysSection[AppConstants.ConfigurationKeys.KeyExchangeContextTypeKey] ??
                                                                MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey;
-    MetadataConstants.SecurityKeys.KeyExchangeContextTypeValue = securityKeysSection["KeyExchangeContextTypeValue"] ??
+    MetadataConstants.SecurityKeys.KeyExchangeContextTypeValue = securityKeysSection[AppConstants.ConfigurationKeys.KeyExchangeContextTypeValue] ??
                                                                  MetadataConstants.SecurityKeys
                                                                      .KeyExchangeContextTypeValue;
 
@@ -128,14 +128,14 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService>();
     // Configure Redis for distributed session key caching
-    string? redisConnectionString = builder.Configuration.GetConnectionString("Redis");
+    string? redisConnectionString = builder.Configuration.GetConnectionString(AppConstants.Redis.ConnectionStringKey);
     if (string.IsNullOrEmpty(redisConnectionString))
-        throw new InvalidOperationException("Redis connection string is required for session key management.");
+        throw new InvalidOperationException(AppConstants.Redis.RequiredConnectionStringMessage);
 
     builder.Services.AddStackExchangeRedisCache(options =>
     {
         options.Configuration = redisConnectionString;
-        options.InstanceName = "Ecliptix";
+        options.InstanceName = AppConstants.Redis.InstanceName;
     });
 
     builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
@@ -151,6 +151,13 @@ static void ConfigureServices(WebApplicationBuilder builder)
     });
 
     builder.Services.AddOpaqueProtocol();
+
+    builder.Services.AddSingleton<IOpaqueProtocolService>(serviceProvider =>
+    {
+        Ecliptix.Security.Opaque.Services.INativeOpaqueProtocolService nativeService = serviceProvider.GetRequiredService<Ecliptix.Security.Opaque.Services.INativeOpaqueProtocolService>();
+        return new OpaqueProtocolAdapter(nativeService);
+    });
+
     builder.Services.AddSingleton<ServerSecurityService>();
 
     builder.Services.AddHealthChecks()
@@ -180,18 +187,18 @@ static void ConfigureMiddleware(WebApplication app)
         options.MessageTemplate = AppConstants.Logging.HttpRequestTemplate;
         options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
         {
-            diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value!);
-            diagnosticContext.Set("UserAgent", httpContext.Request.Headers["User-Agent"].ToString());
-            diagnosticContext.Set("Protocol", httpContext.Request.Protocol);
+            diagnosticContext.Set(AppConstants.DiagnosticContext.RequestHost, httpContext.Request.Host.Value!);
+            diagnosticContext.Set(AppConstants.DiagnosticContext.UserAgent, httpContext.Request.Headers[AppConstants.HttpHeaders.UserAgent].ToString());
+            diagnosticContext.Set(AppConstants.DiagnosticContext.Protocol, httpContext.Request.Protocol);
 
-            if (httpContext.Request.Headers.TryGetValue("X-Connect-Id", out StringValues connectId))
+            if (httpContext.Request.Headers.TryGetValue(AppConstants.HttpHeaders.ConnectId, out StringValues connectId))
             {
-                diagnosticContext.Set("ConnectId", connectId.ToString());
+                diagnosticContext.Set(AppConstants.DiagnosticContext.ConnectId, connectId.ToString());
             }
 
             if (httpContext.Request.ContentLength.HasValue)
             {
-                diagnosticContext.Set("RequestSize", httpContext.Request.ContentLength.Value);
+                diagnosticContext.Set(AppConstants.DiagnosticContext.RequestSize, httpContext.Request.ContentLength.Value);
             }
         };
     });
@@ -219,8 +226,6 @@ static void ConfigureEndpoints(WebApplication app)
         try
         {
             ActorSystem actorSystem = services.GetRequiredService<ActorSystem>();
-            IOpaqueProtocolService opaqueProtocolService = services.GetRequiredService<IOpaqueProtocolService>();
-            byte[] t = opaqueProtocolService.GetPublicKey();
             ProtocolHealthCheck healthCheck = new(actorSystem);
 
             HealthCheckResult healthResult = await healthCheck.CheckHealthAsync(new HealthCheckContext());
@@ -231,9 +236,9 @@ static void ConfigureEndpoints(WebApplication app)
                     healthResult.Data?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
                 ),
                 new ProtocolMetrics(
-                    "Available",
-                    "Protocol metrics collection active",
-                    "Full metrics available via actor messages"
+                    AppConstants.StatusMessages.Available,
+                    AppConstants.StatusMessages.ProtocolMetricsActive,
+                    AppConstants.StatusMessages.FullMetricsAvailable
                 ),
                 DateTime.UtcNow
             );
@@ -248,7 +253,7 @@ static void ConfigureEndpoints(WebApplication app)
     });
 
     app.MapGet(AppConstants.Endpoints.Root,
-        () => Results.Ok(new { Status = "Success", Message = "Server is up and running" }));
+        () => Results.Ok(new { Status = AppConstants.StatusMessages.Success, Message = AppConstants.StatusMessages.ServerRunning }));
 }
 
 static void RegisterLocalization(IServiceCollection services)
@@ -273,7 +278,7 @@ static void RegisterSecurity(IServiceCollection services)
     {
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
             RateLimitPartition.GetSlidingWindowLimiter(
-                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? AppConstants.FallbackValues.UnknownIpAddress,
                 factory: _ => new SlidingWindowRateLimiterOptions
                 {
                     PermitLimit = RateLimit.PermitLimit,
@@ -286,8 +291,8 @@ static void RegisterSecurity(IServiceCollection services)
         options.OnRejected = (context, _) =>
         {
             context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            Log.Warning("Rate limit exceeded for {IpAddress}",
-                context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+            Log.Warning(AppConstants.LogMessages.RateLimitExceeded,
+                context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? AppConstants.FallbackValues.UnknownIpAddress);
             return ValueTask.CompletedTask;
         };
     });
@@ -339,7 +344,7 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        Log.Information("Actor system hosted service started - {ActorSystemName}", actorSystem.Name);
+        Log.Information(AppConstants.LogMessages.ActorSystemStarted, actorSystem.Name);
 
         RegisterShutdownHooks();
 
@@ -348,7 +353,7 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        Log.Information("Actor system hosted service initiating graceful shutdown...");
+        Log.Information(AppConstants.LogMessages.ActorSystemInitiatingShutdown);
 
         try
         {
@@ -359,46 +364,46 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
             CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(actorSystem);
             await coordinatedShutdown.Run(CoordinatedShutdown.ClrExitReason.Instance);
 
-            Log.Information("Actor system coordinated shutdown completed successfully");
+            Log.Information(AppConstants.LogMessages.ActorSystemShutdownCompleted);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            Log.Warning("Shutdown was cancelled by host, forcing actor system termination");
+            Log.Warning(AppConstants.LogMessages.ShutdownCancelledForcing);
             await actorSystem.Terminate();
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Error during actor system shutdown, forcing termination");
+            Log.Error(ex, AppConstants.LogMessages.ErrorDuringShutdownForcing);
             await actorSystem.Terminate();
         }
 
-        Log.Information("Actor system hosted service shutdown complete");
+        Log.Information(AppConstants.LogMessages.ActorSystemShutdownComplete);
     }
 
     private void RegisterShutdownHooks()
     {
         CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(actorSystem);
 
-        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeServiceUnbind, "stop-accepting-new-connections",
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeServiceUnbind, AppConstants.ActorSystemTasks.StopAcceptingNewConnections,
             () =>
             {
-                Log.Information("Phase: Stop accepting new connections");
+                Log.Information(AppConstants.LogMessages.PhaseStopAcceptingConnections);
                 return Task.FromResult(Done.Instance);
             });
 
-        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone, "drain-active-requests", async () =>
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone, AppConstants.ActorSystemTasks.DrainActiveRequests, async () =>
         {
-            Log.Information("Phase: Draining active requests");
+            Log.Information(AppConstants.LogMessages.PhaseDrainingActiveRequests);
 
             await Task.Delay(TimeSpan.FromSeconds(Timeouts.DrainActiveRequestsSeconds));
 
-            Log.Information("Active request draining completed");
+            Log.Information(AppConstants.LogMessages.ActiveRequestDrainingCompleted);
             return Done.Instance;
         });
 
-        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate, "cleanup-resources", () =>
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate, AppConstants.ActorSystemTasks.CleanupResources, () =>
         {
-            Log.Information("Phase: Cleaning up application resources");
+            Log.Information(AppConstants.LogMessages.PhaseCleanupResources);
 
             return Task.FromResult(Done.Instance);
         });

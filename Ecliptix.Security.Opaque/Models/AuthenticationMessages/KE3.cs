@@ -16,12 +16,9 @@ public sealed class KE3
 
     public static Result<KE3, OpaqueServerFailure> Create(byte[] data)
     {
-        if (data == null)
-            return Result<KE3, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages.KE3DataRequired));
-
-        if (data.Length != OpaqueConstants.KE3_LENGTH)
-            return Result<KE3, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput($"KE3 must be {OpaqueConstants.KE3_LENGTH} bytes"));
-
-        return Result<KE3, OpaqueServerFailure>.Ok(new KE3(data));
+        return data.Length != OpaqueConstants.KE3_LENGTH
+            ? Result<KE3, OpaqueServerFailure>.Err(
+                OpaqueServerFailure.InvalidInput($"KE3 must be {OpaqueConstants.KE3_LENGTH} bytes"))
+            : Result<KE3, OpaqueServerFailure>.Ok(new KE3(data));
     }
 }

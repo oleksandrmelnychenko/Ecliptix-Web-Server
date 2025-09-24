@@ -16,13 +16,10 @@ public sealed class SessionKey
 
     public static Result<SessionKey, OpaqueServerFailure> Create(byte[] data)
     {
-        if (data == null)
-            return Result<SessionKey, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput("Session key data is required"));
-
-        if (data.Length != OpaqueConstants.HASH_LENGTH)
-            return Result<SessionKey, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput($"Session key must be {OpaqueConstants.HASH_LENGTH} bytes"));
-
-        return Result<SessionKey, OpaqueServerFailure>.Ok(new SessionKey(data));
+        return data.Length != OpaqueConstants.HASH_LENGTH
+            ? Result<SessionKey, OpaqueServerFailure>.Err(
+                OpaqueServerFailure.InvalidInput($"Session key must be {OpaqueConstants.HASH_LENGTH} bytes"))
+            : Result<SessionKey, OpaqueServerFailure>.Ok(new SessionKey(data));
     }
 
     ~SessionKey()

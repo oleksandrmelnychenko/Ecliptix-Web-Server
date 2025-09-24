@@ -10,7 +10,7 @@ using Serilog;
 
 namespace Ecliptix.Security.Opaque.Services;
 
-public sealed class OpaqueProtocolService : IOpaqueProtocolService, IDisposable
+public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDisposable
 {
     private nint _server;
     private nint _credentialStore;
@@ -30,17 +30,24 @@ public sealed class OpaqueProtocolService : IOpaqueProtocolService, IDisposable
     {
         try
         {
-            OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_create_default(out _server);
+            OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_keypair_generate(out nint serverKeyPair);
             if (result != OpaqueResult.Success)
+                return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.LibraryInitializationFailed($"{OpaqueServerConstants.ErrorMessages.FailedToGenerateServerKeyPair}: {result}"));
+
+            result = (OpaqueResult)OpaqueServerNative.opaque_server_create(serverKeyPair, out _server);
+            if (result != OpaqueResult.Success)
+            {
+                OpaqueServerNative.opaque_server_keypair_destroy(serverKeyPair);
                 return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.LibraryInitializationFailed($"{OpaqueServerConstants.ErrorMessages.FailedToCreateServer}: {result}"));
+            }
+
+            OpaqueServerNative.opaque_server_keypair_destroy(serverKeyPair);
 
             result = (OpaqueResult)OpaqueServerNative.opaque_credential_store_create(out _credentialStore);
             if (result != OpaqueResult.Success)
                 return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.LibraryInitializationFailed($"{OpaqueServerConstants.ErrorMessages.FailedToCreateCredentialStore}: {result}"));
 
-            nint versionPtr = OpaqueServerNative.opaque_server_get_version();
-            string version = System.Runtime.InteropServices.Marshal.PtrToStringAnsi(versionPtr) ?? "unknown";
-            Log.Information(OpaqueServerConstants.LogMessages.ServerInitialized, version);
+            Log.Information("OPAQUE server service initialized successfully");
 
             return Result<Unit, OpaqueServerFailure>.Ok(Unit.Value);
         }

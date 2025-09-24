@@ -1,13 +1,14 @@
 namespace Ecliptix.Domain.Memberships.OPAQUE;
 
+/// <summary>
+/// Types of failures that can occur during OPAQUE cryptographic operations
+/// </summary>
 public enum OpaqueCryptoFailureType
 {
-    HashingValidPointFailed,
-    DecryptFailure,
-    EncryptFailure,
     InvalidInput,
-    HashingFailure,
-    InvalidKeySignature,
+    CalculateRegistrationRecord,
     TokenExpired,
-    CalculateRegistrationRecord
+    InvalidKeySignature,
+    DecryptFailure,
+    EncryptFailure
 }

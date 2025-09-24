@@ -76,4 +76,64 @@ public static class ApplicationConstants
         public const int SingleMinute = 1;
         public const string DefaultCultureFallback = "en-US";
     }
+
+    public static class LogMessages
+    {
+        public const string StartingApplication = "Starting Ecliptix application host";
+        public const string ApplicationTerminatedUnexpectedly = "Ecliptix application host terminated unexpectedly";
+        public const string ShuttingDownApplication = "Shutting down Ecliptix application host";
+        public const string ActorSystemStarted = "Actor system hosted service started - {ActorSystemName}";
+        public const string ActorSystemInitiatingShutdown = "Actor system hosted service initiating graceful shutdown...";
+        public const string ActorSystemShutdownCompleted = "Actor system coordinated shutdown completed successfully";
+        public const string ShutdownCancelledForcing = "Shutdown was cancelled by host, forcing actor system termination";
+        public const string ErrorDuringShutdownForcing = "Error during actor system shutdown, forcing termination";
+        public const string ActorSystemShutdownComplete = "Actor system hosted service shutdown complete";
+        public const string PhaseStopAcceptingConnections = "Phase: Stop accepting new connections";
+        public const string PhaseDrainingActiveRequests = "Phase: Draining active requests";
+        public const string ActiveRequestDrainingCompleted = "Active request draining completed";
+        public const string PhaseCleanupResources = "Phase: Cleaning up application resources";
+        public const string RateLimitExceeded = "Rate limit exceeded for {IpAddress}";
+    }
+
+    public static class Redis
+    {
+        public const string ConnectionStringKey = "Redis";
+        public const string InstanceName = "Ecliptix";
+        public const string RequiredConnectionStringMessage = "Redis connection string is required for session key management.";
+    }
+
+    public static class HttpHeaders
+    {
+        public const string UserAgent = "User-Agent";
+        public const string ConnectId = "X-Connect-Id";
+    }
+
+    public static class DiagnosticContext
+    {
+        public const string RequestHost = "RequestHost";
+        public const string UserAgent = "UserAgent";
+        public const string Protocol = "Protocol";
+        public const string ConnectId = "ConnectId";
+        public const string RequestSize = "RequestSize";
+    }
+
+    public static class StatusMessages
+    {
+        public const string Available = "Available";
+        public const string ProtocolMetricsActive = "Protocol metrics collection active";
+        public const string FullMetricsAvailable = "Full metrics available via actor messages";
+        public const string Success = "Success";
+        public const string ServerRunning = "Server is up and running";
+    }
+
+    public static class FallbackValues
+    {
+        public const string UnknownIpAddress = "unknown";
+    }
+
+    public static class ConfigurationKeys
+    {
+        public const string KeyExchangeContextTypeKey = "KeyExchangeContextTypeKey";
+        public const string KeyExchangeContextTypeValue = "KeyExchangeContextTypeValue";
+    }
 }

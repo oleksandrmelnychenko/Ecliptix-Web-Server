@@ -18,6 +18,7 @@ public static class OpaqueServerConstants
         public const string FailedToFinishAuthentication = "Failed to finish authentication";
         public const string FailedToStoreCredentials = "Failed to store credentials for user";
         public const string FailedToRetrieveCredentials = "Failed to retrieve credentials for user";
+        public const string FailedToGenerateServerKeyPair = "Failed to generate server keypair";
     }
 
     public static class ValidationMessages

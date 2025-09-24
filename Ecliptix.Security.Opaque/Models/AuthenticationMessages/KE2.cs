@@ -16,12 +16,9 @@ public sealed class KE2
 
     public static Result<KE2, OpaqueServerFailure> Create(byte[] data)
     {
-        if (data == null)
-            return Result<KE2, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput("KE2 data is required"));
-
-        if (data.Length != OpaqueConstants.KE2_LENGTH)
-            return Result<KE2, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput($"KE2 must be {OpaqueConstants.KE2_LENGTH} bytes"));
-
-        return Result<KE2, OpaqueServerFailure>.Ok(new KE2(data));
+        return data.Length != OpaqueConstants.KE2_LENGTH
+            ? Result<KE2, OpaqueServerFailure>.Err(
+                OpaqueServerFailure.InvalidInput($"KE2 must be {OpaqueConstants.KE2_LENGTH} bytes"))
+            : Result<KE2, OpaqueServerFailure>.Ok(new KE2(data));
     }
 }
