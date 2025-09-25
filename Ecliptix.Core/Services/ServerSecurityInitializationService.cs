@@ -1,6 +1,6 @@
 using Ecliptix.Domain.Utilities;
-using Ecliptix.Security.SSL.Native.Services;
-using Ecliptix.Security.SSL.Native.Failures;
+using Ecliptix.Security.Certificate.Pinning.Failures;
+using Ecliptix.Security.Certificate.Pinning.Services;
 using Serilog;
 
 namespace Ecliptix.Core.Services;

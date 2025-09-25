@@ -121,7 +121,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Ecliptix.Domain\Ecliptix.Domain.csproj" />
-        <ProjectReference Include="..\Ecliptix.Security.SSL.Native\Ecliptix.Security.SSL.Native.csproj" />
+        <ProjectReference Include="..\Ecliptix.Security.Certificate.Pinning\Ecliptix.Security.Certificate.Pinning.csproj" />
         <ProjectReference Include="..\Ecliptix.Security.Opaque\Ecliptix.Security.Opaque.csproj" />
     </ItemGroup>
 

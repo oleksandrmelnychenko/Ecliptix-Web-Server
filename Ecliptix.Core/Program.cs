@@ -29,11 +29,12 @@ using StackExchange.Redis;
 using Ecliptix.Domain;
 using Ecliptix.Domain.Abstractions;
 using Ecliptix.Domain.DbConnectionFactory;
+using Ecliptix.Domain.Utilities;
 using Ecliptix.Domain.Memberships.OPAQUE;
-using Ecliptix.Security.SSL.Native.Services;
 using Ecliptix.Security.Opaque;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Ecliptix.Domain.Providers.Twilio;
+using Ecliptix.Security.Certificate.Pinning.Services;
 using static Ecliptix.Core.Configuration.NetworkConstants;
 using AppConstants = Ecliptix.Core.Configuration.ApplicationConstants;
 using HealthStatus = Ecliptix.Core.Json.HealthStatus;
@@ -47,6 +48,9 @@ try
     ConfigureActorSystem(builder);
 
     WebApplication app = builder.Build();
+
+    // Initialize OPAQUE service
+    await InitializeOpaqueServiceAsync(app);
 
     ConfigureMiddleware(app);
     ConfigureEndpoints(app);
@@ -342,6 +346,31 @@ static void RegisterGrpc(IServiceCollection services)
     });
 }
 
+static async Task InitializeOpaqueServiceAsync(WebApplication app)
+{
+    try
+    {
+        var opaqueService = app.Services.GetRequiredService<Ecliptix.Security.Opaque.Services.INativeOpaqueProtocolService>();
+
+        // Try to initialize - this will fail gracefully if native library is missing
+        if (opaqueService is Ecliptix.Security.Opaque.Services.OpaqueProtocolService opaqueProtocolService)
+        {
+            var initResult = await opaqueProtocolService.InitializeAsync();
+            if (initResult.IsErr)
+            {
+                Log.Warning("OPAQUE service initialization failed - service will be unavailable: {Error}",
+                    initResult.UnwrapErr().Message);
+                return;
+            }
+
+            Log.Information("OPAQUE service initialized successfully");
+        }
+    }
+    catch (Exception ex)
+    {
+        Log.Warning(ex, "OPAQUE service initialization failed - service will be unavailable");
+    }
+}
 
 internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedService
 {

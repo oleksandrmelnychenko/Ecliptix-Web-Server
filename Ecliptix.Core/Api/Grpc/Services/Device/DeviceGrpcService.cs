@@ -11,14 +11,14 @@ using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Device;
 using Ecliptix.Protobuf.Protocol;
-using Ecliptix.Security.SSL.Native.Services;
-using Ecliptix.Security.SSL.Native.Failures;
 using Google.Protobuf;
 using Grpc.Core;
 using GrpcStatus = Grpc.Core.Status;
 using GrpcStatusCode = Grpc.Core.StatusCode;
 using Serilog;
 using Ecliptix.Core.Api.Grpc;
+using Ecliptix.Security.Certificate.Pinning.Failures;
+using Ecliptix.Security.Certificate.Pinning.Services;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Device;
 

@@ -1,0 +1,11 @@
+namespace Ecliptix.Security.Certificate.Pinning.NativeResolver;
+
+internal static class EcliptixServerConstants
+{
+    public const int MaxSignatureSize = 512;
+    public const int MaxCiphertextSize = 256;  
+    public const int MaxPlaintextSize = 256;  
+    public const int Ed25519PublicKeySize = 32;
+    public const int Ed25519PrivateKeySize = 32;
+    public const int Ed25519SignatureSize = 64;
+}

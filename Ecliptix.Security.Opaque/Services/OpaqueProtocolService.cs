@@ -15,15 +15,11 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
     private nint _server;
     private nint _credentialStore;
     private nint _currentServerState;
-
-    public OpaqueProtocolService()
+    private volatile bool _isInitialized;
+  
+    public async Task<Result<Unit, OpaqueServerFailure>> InitializeAsync()
     {
-        Result<Unit, OpaqueServerFailure> initResult = Initialize();
-        if (initResult.IsErr)
-        {
-            Log.Fatal(OpaqueServerConstants.LogMessages.InitializationFailed, initResult.UnwrapErr().Message);
-            throw new InvalidOperationException($"OPAQUE server initialization failed: {initResult.UnwrapErr()}");
-        }
+        return await Task.Run(Initialize);
     }
 
     private Result<Unit, OpaqueServerFailure> Initialize()
@@ -47,6 +43,7 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
             if (result != OpaqueResult.Success)
                 return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.LibraryInitializationFailed($"{OpaqueServerConstants.ErrorMessages.FailedToCreateCredentialStore}: {result}"));
 
+            _isInitialized = true;
             Log.Information("OPAQUE server service initialized successfully");
 
             return Result<Unit, OpaqueServerFailure>.Ok(Unit.Value);
@@ -60,6 +57,9 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
     public async Task<Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure>> CreateRegistrationResponseAsync(RegistrationRequest request)
     {
         await Task.Yield();
+
+        if (!_isInitialized)
+            return Result<(RegistrationResponse, byte[]), OpaqueServerFailure>.Err(OpaqueServerFailure.ServiceNotInitialized());
 
         try
         {
@@ -93,12 +93,15 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
     {
         await Task.Yield();
 
+        if (!_isInitialized)
+            return Result<KE2, OpaqueServerFailure>.Err(OpaqueServerFailure.ServiceNotInitialized());
+
         try
         {
             if (ke1?.Data == null || ke1.Data.Length == 0)
                 return Result<KE2, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages.KE1DataRequired));
 
-            if (storedCredentials == null || storedCredentials.Length == 0)
+            if (storedCredentials.Length == 0)
                 return Result<KE2, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages.StoredCredentialsRequired));
 
             byte[] ke2Buffer = new byte[OpaqueConstants.KE2_LENGTH];
@@ -139,6 +142,9 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
     public async Task<Result<SessionKey, OpaqueServerFailure>> FinishAuthenticationAsync(KE3 ke3)
     {
         await Task.Yield();
+
+        if (!_isInitialized)
+            return Result<SessionKey, OpaqueServerFailure>.Err(OpaqueServerFailure.ServiceNotInitialized());
 
         try
         {
@@ -181,12 +187,15 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
     {
         await Task.Yield();
 
+        if (!_isInitialized)
+            return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.ServiceNotInitialized());
+
         try
         {
             if (string.IsNullOrEmpty(userId))
                 return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages.UserIdRequired));
 
-            if (credentials == null || credentials.Length == 0)
+            if (credentials.Length == 0)
                 return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages.CredentialsRequired));
 
             byte[] userIdBytes = Encoding.UTF8.GetBytes(userId);
@@ -208,6 +217,9 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
     public async Task<Result<byte[], OpaqueServerFailure>> RetrieveUserCredentialsAsync(string userId)
     {
         await Task.Yield();
+
+        if (!_isInitialized)
+            return Result<byte[], OpaqueServerFailure>.Err(OpaqueServerFailure.ServiceNotInitialized());
 
         try
         {

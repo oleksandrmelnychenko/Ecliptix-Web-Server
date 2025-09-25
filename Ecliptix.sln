@@ -19,7 +19,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Domain", "Ecliptix
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProtocolTests", "ProtocolTests\ProtocolTests.csproj", "{31CB96A6-7EE9-4358-8DEB-56F8EE246EBB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Security.SSL.Native", "Ecliptix.Security.SSL.Native\Ecliptix.Security.SSL.Native.csproj", "{B1870C97-9D0D-419E-97FD-F65B6929EB58}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Security.Certificate.Pinning", "Ecliptix.Security.Certificate.Pinning\Ecliptix.Security.Certificate.Pinning.csproj", "{B1870C97-9D0D-419E-97FD-F65B6929EB58}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Security.Opaque", "Ecliptix.Security.Opaque\Ecliptix.Security.Opaque.csproj", "{DF0AA2A1-306E-48CA-AEAB-44FB2E1ACE93}"
 EndProject

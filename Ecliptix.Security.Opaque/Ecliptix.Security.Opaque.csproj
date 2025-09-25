@@ -11,16 +11,19 @@
     <PlatformTarget Condition="$([MSBuild]::IsOSPlatform('Windows'))">x64</PlatformTarget>
   </PropertyGroup>
 
-  <!-- Native OPAQUE server library -->
+  <!-- Native OPAQUE server library - Optional -->
   <ItemGroup>
-    <Content Include="libopaque_server.dylib" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <Content Include="NativeLibraries\macos\libopaque_server.dylib" Condition="$([MSBuild]::IsOSPlatform('OSX')) AND Exists('NativeLibraries\macos\libopaque_server.dylib')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>libopaque_server.dylib</TargetPath>
     </Content>
-    <Content Include="libopaque_server.so" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <Content Include="NativeLibraries\linux\libopaque_server.so" Condition="$([MSBuild]::IsOSPlatform('Linux')) AND Exists('NativeLibraries\linux\libopaque_server.so')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>libopaque_server.so</TargetPath>
     </Content>
-    <Content Include="opaque_server.dll" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <Content Include="NativeLibraries\windows\libopaque_server.dll" Condition="$([MSBuild]::IsOSPlatform('Windows')) AND Exists('NativeLibraries\windows\libopaque_server.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>libopaque_server.dll</TargetPath>
     </Content>
   </ItemGroup>
 
@@ -31,6 +34,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ecliptix.Domain\Ecliptix.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="NativeLibraries\linux\" />
+    <Folder Include="NativeLibraries\windows\" />
   </ItemGroup>
 
 </Project>
