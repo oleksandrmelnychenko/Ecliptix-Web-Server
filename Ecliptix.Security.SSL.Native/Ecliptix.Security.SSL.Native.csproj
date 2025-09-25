@@ -7,6 +7,8 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <AssemblyName>Ecliptix.Security.SSL.Native</AssemblyName>
         <RootNamespace>Ecliptix.Security.SSL.Native</RootNamespace>
+        <PlatformTarget Condition="$([MSBuild]::IsOSPlatform('OSX'))">arm64</PlatformTarget>
+        <PlatformTarget Condition="$([MSBuild]::IsOSPlatform('Windows'))">x64</PlatformTarget>
     </PropertyGroup>
 
 

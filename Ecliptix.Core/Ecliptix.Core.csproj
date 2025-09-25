@@ -7,14 +7,16 @@
         <RunAOTCompilation>true</RunAOTCompilation>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        
+        <PlatformTarget Condition="$([MSBuild]::IsOSPlatform('OSX'))">arm64</PlatformTarget>
+        <PlatformTarget Condition="$([MSBuild]::IsOSPlatform('Windows'))">x64</PlatformTarget>
+
         <!-- AOT Configuration - Conservative settings for compatibility -->
         <PublishTrimmed>false</PublishTrimmed>
         <TrimMode>partial</TrimMode>
         <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
         <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
         <IlcOptimizationPreference>Size</IlcOptimizationPreference>
-        
+
         <!-- AOT-safe optimizations only -->
         <PublishSingleFile>false</PublishSingleFile>
         <DebuggerSupport>false</DebuggerSupport>

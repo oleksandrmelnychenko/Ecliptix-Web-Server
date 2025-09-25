@@ -7,6 +7,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>Ecliptix.Security.Opaque</AssemblyName>
     <RootNamespace>Ecliptix.Security.Opaque</RootNamespace>
+    <PlatformTarget Condition="$([MSBuild]::IsOSPlatform('OSX'))">arm64</PlatformTarget>
+    <PlatformTarget Condition="$([MSBuild]::IsOSPlatform('Windows'))">x64</PlatformTarget>
   </PropertyGroup>
 
   <!-- Native OPAQUE server library -->
