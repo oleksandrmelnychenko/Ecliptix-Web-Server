@@ -297,6 +297,9 @@ static void RegisterSecurity(IServiceCollection services)
         };
     });
 
+    // Register SSL/RSA server security service
+    services.AddSingleton<ServerSecurityService>();
+
     services.Configure<KestrelServerOptions>(options =>
     {
         options.Limits.MaxRequestBodySize = Limits.MaxRequestBodySizeBytes;

@@ -1,5 +1,4 @@
 syntax = "proto3";
-import "protocol/key_exchange.proto";
 import "common/secure_envelope.proto";
 
 package ecliptix.proto.device;
@@ -7,7 +6,7 @@ option csharp_namespace = "Ecliptix.Protobuf.Device";
 
 service DeviceService {
   rpc RegisterDevice(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
-  rpc EstablishSecureChannel(ecliptix.proto.protocol.PubKeyExchange) returns (ecliptix.proto.protocol.PubKeyExchange);
+  rpc EstablishSecureChannel(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
   rpc RestoreSecureChannel(RestoreChannelRequest) returns (RestoreChannelResponse);
 }
 
