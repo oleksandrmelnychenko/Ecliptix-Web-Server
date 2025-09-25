@@ -20,7 +20,7 @@
         <Content Include="libecliptix.server.so" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
-        <Content Include="libecliptix.server.dll" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+        <Content Include="ecliptix.server.dll" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
 
