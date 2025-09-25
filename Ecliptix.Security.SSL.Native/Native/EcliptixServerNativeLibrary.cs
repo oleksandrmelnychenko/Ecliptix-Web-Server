@@ -16,18 +16,85 @@ internal static unsafe class EcliptixServerNativeLibrary
     {
         if (libraryName == LibraryName)
         {
-            string extension = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".dll" :
-                              RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? ".dylib" : ".so";
+            string extension;
+            string fileName;
 
-            string libPath = Path.Combine(AppContext.BaseDirectory, $"{LibraryName}{extension}");
-
-            if (File.Exists(libPath))
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                return NativeLibrary.Load(libPath);
+                extension = ".dll";
+                fileName = "ecliptix.server.dll"; 
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                extension = ".dylib";
+                fileName = $"{LibraryName}{extension}";
+            }
+            else
+            {
+                extension = ".so";
+                fileName = $"{LibraryName}{extension}";
+            }
+
+            string[] searchPaths =
+            [
+                Path.Combine(AppContext.BaseDirectory, fileName),
+                Path.Combine(AppContext.BaseDirectory, "runtimes", GetRuntimeIdentifier(), "native", fileName),
+                Path.Combine(Path.GetDirectoryName(assembly.Location) ?? "", fileName)
+            ];
+
+            foreach (string libPath in searchPaths)
+            {
+                if (File.Exists(libPath))
+                {
+                    try
+                    {
+                        return NativeLibrary.Load(libPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to load library at {libPath}: {ex.Message}");
+                    }
+                }
             }
         }
 
         return IntPtr.Zero;
+    }
+
+    private static string GetRuntimeIdentifier()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return RuntimeInformation.ProcessArchitecture switch
+            {
+                Architecture.X64 => "win-x64",
+                Architecture.X86 => "win-x86",
+                Architecture.Arm64 => "win-arm64",
+                _ => "win-x64"
+            };
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            return RuntimeInformation.ProcessArchitecture switch
+            {
+                Architecture.X64 => "linux-x64",
+                Architecture.Arm64 => "linux-arm64",
+                _ => "linux-x64"
+            };
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            return RuntimeInformation.ProcessArchitecture switch
+            {
+                Architecture.X64 => "osx-x64",
+                Architecture.Arm64 => "osx-arm64",
+                _ => "osx-arm64"
+            };
+        }
+
+        return "unknown";
     }
 
     [DllImport(LibraryName, EntryPoint = "ecliptix_server_init", CallingConvention = CallingConvention.Cdecl)]

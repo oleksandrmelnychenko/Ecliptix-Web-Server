@@ -7,8 +7,12 @@
         <RunAOTCompilation>true</RunAOTCompilation>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <PlatformTarget Condition="$([MSBuild]::IsOSPlatform('OSX'))">arm64</PlatformTarget>
-        <PlatformTarget Condition="$([MSBuild]::IsOSPlatform('Windows'))">x64</PlatformTarget>
+        <!-- Remove conditional PlatformTarget to allow cross-platform builds -->
+        <!-- <PlatformTarget Condition="$([MSBuild]::IsOSPlatform('OSX'))">arm64</PlatformTarget> -->
+        <!-- <PlatformTarget Condition="$([MSBuild]::IsOSPlatform('Windows'))">x64</PlatformTarget> -->
+
+        <!-- Runtime identifiers for Docker deployment -->
+        <RuntimeIdentifiers>win-x64;linux-x64;osx-arm64</RuntimeIdentifiers>
 
         <!-- AOT Configuration - Conservative settings for compatibility -->
         <PublishTrimmed>false</PublishTrimmed>
