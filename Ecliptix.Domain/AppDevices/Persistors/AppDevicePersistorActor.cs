@@ -43,7 +43,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
     private static async Task<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>> RegisterAppDeviceAsync(
         IDbConnection connection, AppDevice appDevice)
     {
-        DynamicParameters parameters = new DynamicParameters();
+        DynamicParameters parameters = new();
         parameters.Add("@AppInstanceId", Helpers.FromByteStringToGuid(appDevice.AppInstanceId));
         parameters.Add("@DeviceId", Helpers.FromByteStringToGuid(appDevice.DeviceId));
         parameters.Add("@DeviceType", (int)appDevice.DeviceType);
@@ -55,8 +55,6 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 
         if (result == null)
         {
-            Log.Error("Stored procedure {StoredProcedure} returned null result for AppInstanceId {AppInstanceId}, DeviceId {DeviceId}",
-                RegisterAppDeviceSp, parameters.Get<Guid>("@AppInstanceId"), parameters.Get<Guid>("@DeviceId"));
             return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Err(
                 AppDeviceFailure.InfrastructureFailure("Database operation returned no result"));
         }
@@ -71,7 +69,6 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 
         static AppDeviceRegisteredStateReply.Types.Status LogAndReturnInternalError(int status)
         {
-            Log.Warning("Unexpected status code {StatusCode} returned from {StoredProcedure}", status, RegisterAppDeviceSp);
             return AppDeviceRegisteredStateReply.Types.Status.FailureInternalError;
         }
 

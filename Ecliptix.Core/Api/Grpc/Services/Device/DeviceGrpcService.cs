@@ -19,13 +19,16 @@ using Serilog;
 using Ecliptix.Core.Api.Grpc;
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.Security.Certificate.Pinning.Services;
+using Ecliptix.Security.Opaque.Services;
+using Ecliptix.Security.Opaque.Failures;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Device;
 
 public class DeviceGrpcService(
     IGrpcCipherService cipherService,
     IEcliptixActorRegistry actorRegistry,
-    ServerSecurityService serverSecurityService)
+    ServerSecurityService serverSecurityService,
+    INativeOpaqueProtocolService opaqueService)
     : DeviceService.DeviceServiceBase
 {
     private readonly EcliptixGrpcServiceBase _baseService = new(cipherService);
@@ -42,10 +45,18 @@ public class DeviceGrpcService(
                     await _appDevicePersistorActor.Ask<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>>(
                         registerEvent, cancellationToken);
 
-                return registerResult.Match(
-                    Result<AppDeviceRegisteredStateReply, FailureBase>.Ok,
-                    Result<AppDeviceRegisteredStateReply, FailureBase>.Err
-                );
+                if (registerResult.IsOk)
+                {
+                    Result<byte[], OpaqueServerFailure> serverPublicKey =
+                        ((OpaqueProtocolService)opaqueService).GetServerPublicKey();
+
+                    AppDeviceRegisteredStateReply reply = registerResult.Unwrap();
+                    reply.ServerPublicKey = ByteString.CopyFrom(serverPublicKey.Unwrap());
+
+                    return Result<AppDeviceRegisteredStateReply, FailureBase>.Ok(reply);
+                }
+
+                return Result<AppDeviceRegisteredStateReply, FailureBase>.Err(registerResult.UnwrapErr());
             });
     }
 
@@ -54,7 +65,7 @@ public class DeviceGrpcService(
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
         byte[] combinedEncryptedData = request.EncryptedPayload.ToByteArray();
-        const int rsaEncryptedChunkSize = 256; 
+        const int rsaEncryptedChunkSize = 256;
 
         List<byte> decryptedData = [];
 
@@ -94,7 +105,7 @@ public class DeviceGrpcService(
         PubKeyExchange responsePubKeyExchange = reply.Unwrap().PubKeyExchange;
 
         byte[] responseData = responsePubKeyExchange.ToByteArray();
-        const int rsaMaxChunkSize = 120; 
+        const int rsaMaxChunkSize = 120;
 
         List<byte[]> encryptedResponseChunks = [];
 
