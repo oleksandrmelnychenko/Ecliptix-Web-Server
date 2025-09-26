@@ -1,4 +1,5 @@
 using System.Text;
+using System.Security.Cryptography;
 using Ecliptix.Security.Opaque.Models;
 using Ecliptix.Security.Opaque.Models.AuthenticationMessages;
 using Ecliptix.Security.Opaque.Models.RegistrationMessages;
@@ -13,35 +14,64 @@ namespace Ecliptix.Security.Opaque.Services;
 public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDisposable
 {
     private nint _server;
-    private nint _credentialStore;
     private nint _currentServerState;
     private volatile bool _isInitialized;
-  
-    public async Task<Result<Unit, OpaqueServerFailure>> InitializeAsync()
+    private string? _secretKeySeed;
+    private DerivedServerKeys? _serverKeys;
+
+    private class DerivedServerKeys
     {
-        return await Task.Run(Initialize);
+        public byte[] PrivateKey { get; set; } = new byte[OpaqueConstants.PRIVATE_KEY_LENGTH];
+        public byte[] PublicKey { get; set; } = new byte[OpaqueConstants.PUBLIC_KEY_LENGTH];
+    }
+  
+    public async Task<Result<Unit, OpaqueServerFailure>> InitializeAsync(string? secretKeySeed = null)
+    {
+        return await Task.Run(() => Initialize(secretKeySeed));
     }
 
-    private Result<Unit, OpaqueServerFailure> Initialize()
+    private Result<Unit, OpaqueServerFailure> Initialize(string? secretKeySeed = null)
     {
         try
         {
-            OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_keypair_generate(out nint serverKeyPair);
-            if (result != OpaqueResult.Success)
-                return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.LibraryInitializationFailed($"{OpaqueServerConstants.ErrorMessages.FailedToGenerateServerKeyPair}: {result}"));
+            _secretKeySeed = secretKeySeed;
+            OpaqueResult result;
 
-            result = (OpaqueResult)OpaqueServerNative.opaque_server_create(serverKeyPair, out _server);
-            if (result != OpaqueResult.Success)
+            if (!string.IsNullOrEmpty(secretKeySeed))
             {
-                OpaqueServerNative.opaque_server_keypair_destroy(serverKeyPair);
-                return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.LibraryInitializationFailed($"{OpaqueServerConstants.ErrorMessages.FailedToCreateServer}: {result}"));
+                Log.Information("OPAQUE server initializing with deterministic keys from seed");
+
+                Result<DerivedServerKeys, OpaqueServerFailure> keyResult = DeriveKeysFromSeed(secretKeySeed);
+                if (keyResult.IsErr)
+                    return Result<Unit, OpaqueServerFailure>.Err(keyResult.UnwrapErr());
+
+                _serverKeys = keyResult.Unwrap();
+
+                result = (OpaqueResult)OpaqueServerNative.opaque_server_create_with_keys(
+                    _serverKeys.PrivateKey, (nuint)_serverKeys.PrivateKey.Length,
+                    _serverKeys.PublicKey, (nuint)_serverKeys.PublicKey.Length,
+                    out _server);
+
+                if (result != OpaqueResult.Success)
+                {
+                    Array.Clear(_serverKeys.PrivateKey, 0, _serverKeys.PrivateKey.Length);
+                    _serverKeys = null;
+                    return Result<Unit, OpaqueServerFailure>.Err(
+                        OpaqueServerFailure.LibraryInitializationFailed($"Failed to create server with derived keys: {result}"));
+                }
+
+                Log.Information("OPAQUE server initialized with static keys for consistent server identity");
+            }
+            else
+            {
+                Log.Information("OPAQUE server initializing with default hardcoded keys");
+                result = (OpaqueResult)OpaqueServerNative.opaque_server_create_default(out _server);
+
+                if (result != OpaqueResult.Success)
+                    return Result<Unit, OpaqueServerFailure>.Err(
+                        OpaqueServerFailure.LibraryInitializationFailed($"{OpaqueServerConstants.ErrorMessages.FailedToCreateServer}: {result}"));
             }
 
-            OpaqueServerNative.opaque_server_keypair_destroy(serverKeyPair);
-
-            result = (OpaqueResult)OpaqueServerNative.opaque_credential_store_create(out _credentialStore);
-            if (result != OpaqueResult.Success)
-                return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.LibraryInitializationFailed($"{OpaqueServerConstants.ErrorMessages.FailedToCreateCredentialStore}: {result}"));
 
             _isInitialized = true;
             Log.Information("OPAQUE server service initialized successfully");
@@ -183,80 +213,23 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
         }
     }
 
-    public async Task<Result<Unit, OpaqueServerFailure>> StoreUserCredentialsAsync(string userId, byte[] credentials)
-    {
-        await Task.Yield();
-
-        if (!_isInitialized)
-            return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.ServiceNotInitialized());
-
-        try
-        {
-            if (string.IsNullOrEmpty(userId))
-                return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages.UserIdRequired));
-
-            if (credentials.Length == 0)
-                return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages.CredentialsRequired));
-
-            byte[] userIdBytes = Encoding.UTF8.GetBytes(userId);
-            OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_credential_store_store(
-                _credentialStore, userIdBytes, (nuint)userIdBytes.Length,
-                credentials, (nuint)credentials.Length);
-
-            if (result != OpaqueResult.Success)
-                return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.CredentialStorageFailed($"{OpaqueServerConstants.ErrorMessages.FailedToStoreCredentials} {userId}: {result}"));
-
-            return Result<Unit, OpaqueServerFailure>.Ok(Unit.Value);
-        }
-        catch (Exception ex)
-        {
-            return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.StorageException(ex));
-        }
-    }
-
-    public async Task<Result<byte[], OpaqueServerFailure>> RetrieveUserCredentialsAsync(string userId)
-    {
-        await Task.Yield();
-
-        if (!_isInitialized)
-            return Result<byte[], OpaqueServerFailure>.Err(OpaqueServerFailure.ServiceNotInitialized());
-
-        try
-        {
-            if (string.IsNullOrEmpty(userId))
-                return Result<byte[], OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages.UserIdRequired));
-
-            byte[] userIdBytes = Encoding.UTF8.GetBytes(userId);
-            byte[] credentialsBuffer = new byte[OpaqueConstants.ENVELOPE_LENGTH + OpaqueConstants.PRIVATE_KEY_LENGTH + OpaqueConstants.PUBLIC_KEY_LENGTH];
-
-            OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_credential_store_retrieve(
-                _credentialStore, userIdBytes, (nuint)userIdBytes.Length,
-                credentialsBuffer, (nuint)credentialsBuffer.Length);
-
-            if (result != OpaqueResult.Success)
-                return Result<byte[], OpaqueServerFailure>.Err(OpaqueServerFailure.CredentialRetrievalFailed($"{OpaqueServerConstants.ErrorMessages.FailedToRetrieveCredentials} {userId}: {result}"));
-
-            return Result<byte[], OpaqueServerFailure>.Ok(credentialsBuffer);
-        }
-        catch (Exception ex)
-        {
-            return Result<byte[], OpaqueServerFailure>.Err(OpaqueServerFailure.StorageException(ex));
-        }
-    }
 
     public void Dispose()
     {
+        if (_serverKeys != null)
+        {
+            Array.Clear(_serverKeys.PrivateKey, 0, _serverKeys.PrivateKey.Length);
+            Array.Clear(_serverKeys.PublicKey, 0, _serverKeys.PublicKey.Length);
+            _serverKeys = null;
+            Log.Information("OPAQUE server keys cleared from memory");
+        }
+
         if (_currentServerState != 0)
         {
             OpaqueServerNative.opaque_server_state_destroy(_currentServerState);
             _currentServerState = 0;
         }
 
-        if (_credentialStore != 0)
-        {
-            OpaqueServerNative.opaque_credential_store_destroy(_credentialStore);
-            _credentialStore = 0;
-        }
 
         if (_server != 0)
         {
@@ -266,4 +239,50 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
 
         Log.Information(OpaqueServerConstants.LogMessages.ServerDisposed);
     }
+
+    public Result<byte[], OpaqueServerFailure> GetServerPublicKey()
+    {
+        if (!_isInitialized)
+            return Result<byte[], OpaqueServerFailure>.Err(
+                OpaqueServerFailure.ServiceNotInitialized());
+
+        if (_serverKeys == null)
+            return Result<byte[], OpaqueServerFailure>.Err(
+                OpaqueServerFailure.InvalidInput("Server keys not available - using default hardcoded keys"));
+
+        byte[] publicKeyCopy = new byte[OpaqueConstants.PUBLIC_KEY_LENGTH];
+        Array.Copy(_serverKeys.PublicKey, publicKeyCopy, OpaqueConstants.PUBLIC_KEY_LENGTH);
+
+        return Result<byte[], OpaqueServerFailure>.Ok(publicKeyCopy);
+    }
+
+    private Result<DerivedServerKeys, OpaqueServerFailure> DeriveKeysFromSeed(string seed)
+    {
+        try
+        {
+            byte[] seedBytes = Encoding.UTF8.GetBytes(seed);
+            DerivedServerKeys keys = new DerivedServerKeys();
+
+            OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_derive_keypair_from_seed(
+                seedBytes, (nuint)seedBytes.Length,
+                keys.PrivateKey, (nuint)keys.PrivateKey.Length,
+                keys.PublicKey, (nuint)keys.PublicKey.Length);
+
+            if (result != OpaqueResult.Success)
+                return Result<DerivedServerKeys, OpaqueServerFailure>.Err(
+                    OpaqueServerFailure.LibraryInitializationFailed($"Failed to derive keys from seed: {result}"));
+
+            byte[] publicKeyHash = SHA256.HashData(keys.PublicKey);
+            Log.Information("OPAQUE server public key hash: {PublicKeyHash}",
+                Convert.ToHexString(publicKeyHash[..8]));
+
+            return Result<DerivedServerKeys, OpaqueServerFailure>.Ok(keys);
+        }
+        catch (Exception ex)
+        {
+            return Result<DerivedServerKeys, OpaqueServerFailure>.Err(
+                OpaqueServerFailure.InitializationException(ex));
+        }
+    }
+
 }

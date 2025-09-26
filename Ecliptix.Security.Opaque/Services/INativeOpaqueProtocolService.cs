@@ -7,13 +7,11 @@ namespace Ecliptix.Security.Opaque.Services;
 
 public interface INativeOpaqueProtocolService
 {
+    Task<Result<Unit, OpaqueServerFailure>> InitializeAsync(string? secretKeySeed = null);
+
     Task<Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure>> CreateRegistrationResponseAsync(RegistrationRequest request);
 
     Task<Result<KE2, OpaqueServerFailure>> GenerateKE2Async(KE1 ke1, byte[] storedCredentials);
 
     Task<Result<SessionKey, OpaqueServerFailure>> FinishAuthenticationAsync(KE3 ke3);
-
-    Task<Result<Unit, OpaqueServerFailure>> StoreUserCredentialsAsync(string userId, byte[] credentials);
-
-    Task<Result<byte[], OpaqueServerFailure>> RetrieveUserCredentialsAsync(string userId);
 }

@@ -10,6 +10,21 @@ internal static class OpaqueServerNative
     public static extern int opaque_server_keypair_generate(out nint handle);
 
     [DllImport(ServerLibrary, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int opaque_server_create_default(out nint handle);
+
+    [DllImport(ServerLibrary, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int opaque_server_create_with_keys(
+        [In] byte[] privateKey, nuint privateKeyLen,
+        [In] byte[] publicKey, nuint publicKeyLen,
+        out nint serverHandle);
+
+    [DllImport(ServerLibrary, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int opaque_server_derive_keypair_from_seed(
+        [In] byte[] seed, nuint seedLen,
+        [Out] byte[] privateKey, nuint privateKeyBufferLen,
+        [Out] byte[] publicKey, nuint publicKeyBufferLen);
+
+    [DllImport(ServerLibrary, CallingConvention = CallingConvention.Cdecl)]
     public static extern void opaque_server_keypair_destroy(nint handle);
 
     [DllImport(ServerLibrary, CallingConvention = CallingConvention.Cdecl)]
@@ -63,24 +78,6 @@ internal static class OpaqueServerNative
         nuint session_key_buffer_size);
 
     [DllImport(ServerLibrary, CallingConvention = CallingConvention.Cdecl)]
-    public static extern int opaque_credential_store_create(out nint handle);
+    public static extern nint opaque_server_get_version();
 
-    [DllImport(ServerLibrary, CallingConvention = CallingConvention.Cdecl)]
-    public static extern void opaque_credential_store_destroy(nint handle);
-
-    [DllImport(ServerLibrary, CallingConvention = CallingConvention.Cdecl)]
-    public static extern int opaque_credential_store_store(
-        nint store_handle,
-        [In] byte[] user_id,
-        nuint user_id_length,
-        [In] byte[] credentials_data,
-        nuint credentials_length);
-
-    [DllImport(ServerLibrary, CallingConvention = CallingConvention.Cdecl)]
-    public static extern int opaque_credential_store_retrieve(
-        nint store_handle,
-        [In] byte[] user_id,
-        nuint user_id_length,
-        [Out] byte[] credentials_data,
-        nuint credentials_buffer_size);
 }
