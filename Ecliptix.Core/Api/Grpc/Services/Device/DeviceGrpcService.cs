@@ -43,8 +43,8 @@ public class DeviceGrpcService(
                         registerEvent, cancellationToken);
 
                 return registerResult.Match(
-                    response => Result<AppDeviceRegisteredStateReply, FailureBase>.Ok(response),
-                    failure => Result<AppDeviceRegisteredStateReply, FailureBase>.Err(failure)
+                    Result<AppDeviceRegisteredStateReply, FailureBase>.Ok,
+                    Result<AppDeviceRegisteredStateReply, FailureBase>.Err
                 );
             });
     }

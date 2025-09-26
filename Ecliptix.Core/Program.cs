@@ -351,11 +351,17 @@ static async Task InitializeOpaqueServiceAsync(WebApplication app)
     try
     {
         var opaqueService = app.Services.GetRequiredService<Ecliptix.Security.Opaque.Services.INativeOpaqueProtocolService>();
+        var securityKeysSettings = app.Services.GetRequiredService<IOptions<SecurityKeysSettings>>().Value;
+
+        Log.Information("OPAQUE initialization - configured seed: '{SeedPreview}' (length: {SeedLength})",
+            string.IsNullOrEmpty(securityKeysSettings.OpaqueSecretKeySeed) ? "null/empty" :
+            securityKeysSettings.OpaqueSecretKeySeed[..Math.Min(8, securityKeysSettings.OpaqueSecretKeySeed.Length)] + "...",
+            securityKeysSettings.OpaqueSecretKeySeed?.Length ?? 0);
 
         // Try to initialize - this will fail gracefully if native library is missing
         if (opaqueService is Ecliptix.Security.Opaque.Services.OpaqueProtocolService opaqueProtocolService)
         {
-            var initResult = await opaqueProtocolService.InitializeAsync();
+            var initResult = await opaqueProtocolService.InitializeAsync(securityKeysSettings.OpaqueSecretKeySeed);
             if (initResult.IsErr)
             {
                 Log.Warning("OPAQUE service initialization failed - service will be unavailable: {Error}",
@@ -363,7 +369,8 @@ static async Task InitializeOpaqueServiceAsync(WebApplication app)
                 return;
             }
 
-            Log.Information("OPAQUE service initialized successfully");
+            Log.Information("OPAQUE service initialized successfully with {KeyType}",
+                string.IsNullOrEmpty(securityKeysSettings.OpaqueSecretKeySeed) ? "random keys" : "configured seed");
         }
     }
     catch (Exception ex)
