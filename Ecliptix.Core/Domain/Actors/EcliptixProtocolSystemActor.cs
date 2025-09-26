@@ -20,8 +20,6 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         {
             Log.Warning(ActorConstants.LogMessages.SupervisedActorTerminated, t.ActorRef.Path);
         });
-
-
     }
 
     private async Task ProcessNewSessionRequest(BeginAppDeviceEphemeralConnectActorEvent actorEvent)

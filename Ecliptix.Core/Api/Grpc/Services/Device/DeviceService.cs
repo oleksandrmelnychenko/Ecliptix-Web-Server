@@ -1,10 +1,8 @@
 using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
-using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.SecureEnvelopeHandler;
 using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Failures;
 using Ecliptix.Domain.Utilities;
@@ -15,8 +13,7 @@ using Google.Protobuf;
 using Grpc.Core;
 using GrpcStatus = Grpc.Core.Status;
 using GrpcStatusCode = Grpc.Core.StatusCode;
-using Serilog;
-using Ecliptix.Core.Api.Grpc;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Security.Opaque.Services;
@@ -24,12 +21,12 @@ using Ecliptix.Security.Opaque.Failures;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Device;
 
-public class DeviceGrpcService(
+public class DeviceService(
     IGrpcCipherService cipherService,
     IEcliptixActorRegistry actorRegistry,
-    ServerSecurityService serverSecurityService,
+    EcliptixCertificatePinningService ecliptixCertificatePinningService,
     INativeOpaqueProtocolService opaqueService)
-    : DeviceService.DeviceServiceBase
+    : Protobuf.Device.DeviceService.DeviceServiceBase
 {
     private readonly EcliptixGrpcServiceBase _baseService = new(cipherService);
     private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
@@ -76,8 +73,8 @@ public class DeviceGrpcService(
             byte[] encryptedChunk = new byte[chunkSize];
             Array.Copy(combinedEncryptedData, offset, encryptedChunk, 0, chunkSize);
 
-            Result<byte[], ServerSecurityFailure> chunkDecryptResult =
-                await serverSecurityService.DecryptAsync(encryptedChunk);
+            Result<byte[], CertificatePinningFailure> chunkDecryptResult =
+                await ecliptixCertificatePinningService.DecryptAsync(encryptedChunk);
 
             if (chunkDecryptResult.IsErr)
             {
@@ -115,8 +112,8 @@ public class DeviceGrpcService(
             byte[] responseChunk = new byte[chunkSize];
             Array.Copy(responseData, offset, responseChunk, 0, chunkSize);
 
-            Result<byte[], ServerSecurityFailure> chunkEncryptResult =
-                await serverSecurityService.EncryptAsync(responseChunk);
+            Result<byte[], CertificatePinningFailure> chunkEncryptResult =
+                await ecliptixCertificatePinningService.EncryptAsync(responseChunk);
 
             if (chunkEncryptResult.IsErr)
             {

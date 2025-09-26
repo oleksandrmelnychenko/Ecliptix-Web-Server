@@ -1,6 +1,6 @@
 namespace Ecliptix.Security.Certificate.Pinning.NativeResolver;
 
-public enum EcliptixServerResult
+public enum CertificatePinningResult
 {
     Success = 0,
     InvalidParams = -1,

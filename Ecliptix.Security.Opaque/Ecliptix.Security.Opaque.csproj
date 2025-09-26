@@ -13,10 +13,6 @@
 
   <!-- Native OPAQUE server library - Optional -->
   <ItemGroup>
-    <Content Include="NativeLibraries\macos\libopaque_server.dylib" Condition="$([MSBuild]::IsOSPlatform('OSX')) AND Exists('NativeLibraries\macos\libopaque_server.dylib')">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <TargetPath>libopaque_server.dylib</TargetPath>
-    </Content>
     <Content Include="NativeLibraries\linux\libopaque_server.so" Condition="$([MSBuild]::IsOSPlatform('Linux')) AND Exists('NativeLibraries\linux\libopaque_server.so')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <TargetPath>libopaque_server.so</TargetPath>
@@ -39,6 +35,13 @@
   <ItemGroup>
     <Folder Include="NativeLibraries\linux\" />
     <Folder Include="NativeLibraries\windows\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="NativeLibraries\macos\libopaque_server.dylib" Condition="$([MSBuild]::IsOSPlatform('OSX')) AND Exists('NativeLibraries\macos\libopaque_server.dylib')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>runtimes/osx-arm64/native/libopaque_server.dylib</TargetPath>
+    </Content>
   </ItemGroup>
 
 </Project>

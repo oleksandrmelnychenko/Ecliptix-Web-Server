@@ -22,7 +22,6 @@ public class SessionKeepAliveInterceptor(IEcliptixActorRegistry actorRegistry) :
         ForwardToConnectActorEvent keepAliveForwarder = new(connectId, KeepAlive.Instance);
         _protocolSystemActor.Value.Tell(keepAliveForwarder);
 
-
         return await continuation(request, context);
     }
 }

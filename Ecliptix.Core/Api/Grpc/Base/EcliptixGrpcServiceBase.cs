@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.SecureEnvelopeHandler;
 using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Common;
 using Google.Protobuf;
@@ -9,6 +8,7 @@ using Grpc.Core;
 using GrpcStatus = Grpc.Core.Status;
 using Serilog;
 using Ecliptix.Core.Infrastructure.Grpc.Constants;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 
 namespace Ecliptix.Core.Api.Grpc.Base;
 
@@ -30,6 +30,8 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
 
         Stopwatch stopwatch = Stopwatch.StartNew();
 
+        //TODO: Need to remove try catch from here and handle it in interceptor.
+        
         try
         {
             uint connectId = ExtractConnectionId(context);

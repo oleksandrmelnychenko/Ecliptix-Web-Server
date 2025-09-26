@@ -7,4 +7,5 @@ internal record LoginMembershipResult
     public string Outcome { get; init; } = string.Empty;
 
     public byte[] SecureKey { get; init; } = [];
+    public byte[] MaskingKey { get; init; } = [];
 }

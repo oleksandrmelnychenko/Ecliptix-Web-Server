@@ -20,7 +20,7 @@ using ByteString = Google.Protobuf.ByteString;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors;
 
-public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey);
+public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey, byte[] MaskingKey);
 
 public record GenerateMembershipOprfRegistrationRequestEvent(Guid MembershipIdentifier, byte[] OprfRequest);
 
@@ -43,8 +43,10 @@ public class MembershipActor : ReceiveActor
 
     private readonly
         Dictionary<uint, (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Membership.Types.ActivityStatus
-            ActivityStatus, Membership.Types.CreationStatus CreationStatus, DateTime CreatedAt)>
+            ActivityStatus, Membership.Types.CreationStatus CreationStatus, DateTime CreatedAt, byte[] ServerMac)>
         _pendingSignIns = new();
+
+    private readonly Dictionary<Guid, byte[]> _pendingMaskingKeys = new();
 
     private static readonly TimeSpan PendingSignInTimeout = TimeSpan.FromMinutes(10);
     private ICancelable? _cleanupTimer;
@@ -88,6 +90,13 @@ public class MembershipActor : ReceiveActor
     {
         _cleanupTimer?.Cancel();
         _pendingSignIns.Clear();
+
+        foreach (byte[] maskingKey in _pendingMaskingKeys.Values)
+        {
+            CryptographicOperations.ZeroMemory(maskingKey);
+        }
+        _pendingMaskingKeys.Clear();
+
         base.PostStop();
     }
 
@@ -105,12 +114,19 @@ public class MembershipActor : ReceiveActor
 
     private async Task HandleCompleteRegistrationRecord(CompleteRegistrationRecordActorEvent @event)
     {
-        // Generate session key during registration completion
+        if (!_pendingMaskingKeys.TryGetValue(@event.MembershipIdentifier, out byte[]? maskingKey))
+        {
+            Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.InvalidOpaque("No masking key found for membership during registration completion")));
+            return;
+        }
+
         Result<byte[], OpaqueFailure> completionResult =
             _opaqueProtocolService.CompleteRegistrationWithSessionKey(@event.PeerRegistrationRecord);
 
         if (completionResult.IsErr)
         {
+            _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
             Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.InvalidOpaque(completionResult.UnwrapErr().Message)));
             return;
@@ -118,17 +134,19 @@ public class MembershipActor : ReceiveActor
 
         byte[] sessionKey = completionResult.Unwrap();
 
-        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRegistrationRecord);
+        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRegistrationRecord, maskingKey);
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
 
         if (persistorResult.IsErr)
         {
+            _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
             Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Err(persistorResult.UnwrapErr()));
             return;
         }
 
-        // Store session key in Redis for future authenticated requests
+        _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
+
         try
         {
             Result<Unit, string> storeResult = await _sessionKeyService.StoreSessionKeyAsync(
@@ -161,32 +179,44 @@ public class MembershipActor : ReceiveActor
                 SessionKey = ByteString.CopyFrom(sessionKey)
             }));
 
-        // Clear session key from memory for security
         CryptographicOperations.ZeroMemory(sessionKey);
     }
 
     private async Task HandleCompleteRecoverySecureKeyEvent(OprfCompleteRecoverySecureKeyEvent @event)
     {
+        if (!_pendingMaskingKeys.TryGetValue(@event.MembershipIdentifier, out byte[]? maskingKey))
+        {
+            Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.InvalidOpaque("No masking key found for membership during recovery completion")));
+            return;
+        }
+
+        /*
         Result<Unit, OpaqueFailure> completionResult =
             _opaqueProtocolService.CompleteRegistration(@event.PeerRecoveryRecord);
 
         if (completionResult.IsErr)
         {
-            Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
+            _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
+            Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.InvalidOpaque(completionResult.UnwrapErr().Message)));
             return;
         }
+        */
 
-        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRecoveryRecord);
+        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRecoveryRecord, maskingKey);
 
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
 
         if (persistorResult.IsErr)
         {
-            Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(persistorResult.UnwrapErr()));
+            _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
+            Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(persistorResult.UnwrapErr()));
             return;
         }
+
+        _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
 
         Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Ok(
             new OprfRecoverySecretKeyCompleteResponse()
@@ -197,9 +227,11 @@ public class MembershipActor : ReceiveActor
 
     private async Task HandleInitRecoveryRequestEvent(OprfInitRecoverySecureKeyEvent @event)
     {
-        byte[] oprfResponse = _opaqueProtocolService.ProcessOprfRequest(@event.OprfRequest);
+        (byte[] oprfResponse, byte[] maskingKey) = _opaqueProtocolService.ProcessOprfRequestWithMaskingKey(@event.OprfRequest);
 
-        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, oprfResponse);
+        _pendingMaskingKeys[@event.MembershipIdentifier] = maskingKey;
+
+        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, oprfResponse, maskingKey);
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
 
@@ -222,9 +254,11 @@ public class MembershipActor : ReceiveActor
     private Task HandleGenerateMembershipOprfRegistrationRecord(
         GenerateMembershipOprfRegistrationRequestEvent @event)
     {
-        byte[] oprfResponse = _opaqueProtocolService.ProcessOprfRequest(@event.OprfRequest);
+        (byte[] oprfResponse, byte[] maskingKey) = _opaqueProtocolService.ProcessOprfRequestWithMaskingKey(@event.OprfRequest);
 
-        OprfRegistrationInitResponse response = new OprfRegistrationInitResponse
+        _pendingMaskingKeys[@event.MembershipIdentifier] = maskingKey;
+
+        OprfRegistrationInitResponse response = new()
         {
             Membership = new Membership
             {
@@ -302,10 +336,10 @@ public class MembershipActor : ReceiveActor
         Result<OpaqueSignInInitResponse, VerificationFlowFailure> finalResult = persistorResult.Match(
             record =>
             {
-                Result<OpaqueSignInInitResponse, OpaqueFailure> initiateSignInResult =
-                    _opaqueProtocolService.InitiateSignIn(
+                Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure> initiateSignInResult =
+                    _opaqueProtocolService.InitiateSignInWithServerMac(
                         @event.OpaqueSignInInitRequest,
-                        new MembershipOpaqueQueryRecord(@event.MobileNumber, record.SecureKey));
+                        new MembershipOpaqueQueryRecord(@event.MobileNumber, record.SecureKey, record.MaskingKey));
 
                 if (initiateSignInResult.IsErr)
                 {
@@ -313,10 +347,12 @@ public class MembershipActor : ReceiveActor
                         .InvalidOpaque());
                 }
 
-                _pendingSignIns[@event.ConnectId] = (record.UniqueIdentifier, Guid.NewGuid(), @event.MobileNumber,
-                    record.ActivityStatus, record.CreationStatus, DateTime.UtcNow);
+                var (response, serverMac) = initiateSignInResult.Unwrap();
 
-                return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(initiateSignInResult.Unwrap());
+                _pendingSignIns[@event.ConnectId] = (record.UniqueIdentifier, Guid.NewGuid(), @event.MobileNumber,
+                    record.ActivityStatus, record.CreationStatus, DateTime.UtcNow, serverMac);
+
+                return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(response);
             },
             failure => TranslateSignInFailure(failure, @event.CultureName));
 
@@ -327,7 +363,7 @@ public class MembershipActor : ReceiveActor
     {
         if (!_pendingSignIns.TryGetValue(@event.ConnectId,
                 out (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Membership.Types.ActivityStatus
-                ActivityStatus, Membership.Types.CreationStatus CreationStatus, DateTime CreatedAt) membershipInfo))
+                ActivityStatus, Membership.Types.CreationStatus CreationStatus, DateTime CreatedAt, byte[] ServerMac) membershipInfo))
         {
             Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.InvalidOpaque("No matching sign-in initiation found for this connection")));
@@ -335,11 +371,11 @@ public class MembershipActor : ReceiveActor
         }
 
         Result<OpaqueSignInFinalizeResponse, OpaqueFailure> opaqueResult =
-            _opaqueProtocolService.FinalizeSignIn(@event.Request);
+            _opaqueProtocolService.FinalizeSignIn(@event.Request, membershipInfo.ServerMac);
 
         if (opaqueResult.IsErr)
         {
-            _pendingSignIns.Remove(@event.ConnectId);
+            SecureRemovePendingSignIn(@event.ConnectId);
             Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.InvalidOpaque(opaqueResult.UnwrapErr().Message)));
             return;
@@ -359,7 +395,7 @@ public class MembershipActor : ReceiveActor
                 {
                     Log.Error("Failed to store session key for connectId {ConnectId}: {Error}",
                         @event.ConnectId, storeResult.UnwrapErr());
-                    _pendingSignIns.Remove(@event.ConnectId);
+                    SecureRemovePendingSignIn(@event.ConnectId);
                     Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
                         VerificationFlowFailure.PersistorAccess($"Failed to store session key: {storeResult.UnwrapErr()}")));
                     return;
@@ -370,7 +406,7 @@ public class MembershipActor : ReceiveActor
             catch (Exception ex)
             {
                 Log.Error(ex, "Error storing session key for connectId {ConnectId}", @event.ConnectId);
-                _pendingSignIns.Remove(@event.ConnectId);
+                SecureRemovePendingSignIn(@event.ConnectId);
                 Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.PersistorAccess($"Failed to store session key: {ex.Message}")));
                 return;
@@ -380,8 +416,7 @@ public class MembershipActor : ReceiveActor
         try
         {
             IActorRef authContextActor = await _authenticationStateManager.Ask<IActorRef>(
-                new GetOrCreateAuthContext(@event.ConnectId, membershipInfo.MobileNumber),
-                TimeSpan.FromSeconds(5));
+                new GetOrCreateAuthContext(@event.ConnectId, membershipInfo.MobileNumber));
 
             Result<AuthContextTokenResponse, OpaqueFailure> contextResult =
                 _opaqueProtocolService.GenerateAuthenticationContext(
@@ -391,7 +426,7 @@ public class MembershipActor : ReceiveActor
 
             if (contextResult.IsErr)
             {
-                _pendingSignIns.Remove(@event.ConnectId);
+                SecureRemovePendingSignIn(@event.ConnectId);
                 Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.InvalidOpaque(
                         $"Failed to generate authentication context: {contextResult.UnwrapErr().Message}")));
@@ -405,7 +440,7 @@ public class MembershipActor : ReceiveActor
                 TimeSpan.FromSeconds(10));
 
             Result<AuthContextQueryResult, VerificationFlowFailure> persistResult =
-                await _authContextPersistor.Ask<Result<Persistors.AuthContextQueryResult, VerificationFlowFailure>>(
+                await _authContextPersistor.Ask<Result<AuthContextQueryResult, VerificationFlowFailure>>(
                     new CreateAuthContextActorEvent(
                         contextData.ContextToken,
                         contextData.MembershipId,
@@ -420,7 +455,7 @@ public class MembershipActor : ReceiveActor
                     persistResult.UnwrapErr().Message);
             }
 
-            _pendingSignIns.Remove(@event.ConnectId);
+            SecureRemovePendingSignIn(@event.ConnectId);
             Log.Information("Authentication context established for connectId {ConnectId}, membershipId {MembershipId}",
                 @event.ConnectId, membershipInfo.MembershipId);
 
@@ -435,10 +470,19 @@ public class MembershipActor : ReceiveActor
         }
         catch (Exception ex)
         {
-            _pendingSignIns.Remove(@event.ConnectId);
+            SecureRemovePendingSignIn(@event.ConnectId);
             Log.Error(ex, "Error during sign-in completion for connectId {ConnectId}", @event.ConnectId);
             Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Authentication context creation failed: {ex.Message}")));
+        }
+    }
+
+    private void SecureRemovePendingSignIn(uint connectId)
+    {
+        if (_pendingSignIns.TryGetValue(connectId, out var membershipInfo))
+        {
+            CryptographicOperations.ZeroMemory(membershipInfo.ServerMac);
+            _pendingSignIns.Remove(connectId);
         }
     }
 
@@ -496,7 +540,7 @@ public class MembershipActor : ReceiveActor
 
         foreach (uint connectId in expiredConnections)
         {
-            _pendingSignIns.Remove(connectId);
+            SecureRemovePendingSignIn(connectId);
         }
 
         if (expiredConnections.Count > 0)

@@ -6,13 +6,12 @@ using Serilog;
 namespace Ecliptix.Core.Services;
 
 public sealed class ServerSecurityInitializationService(
-    ServerSecurityService securityService,
-    IConfiguration configuration)
+    EcliptixCertificatePinningService securityService)
     : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        Result<Unit, ServerSecurityFailure> initResult = await securityService.InitializeAsync();
+        Result<Unit, CertificatePinningFailure> initResult = await securityService.InitializeAsync();
         if (initResult.IsErr)
         {
             Log.Error("Server security initialization failed: {Error}", initResult.UnwrapErr().Message);

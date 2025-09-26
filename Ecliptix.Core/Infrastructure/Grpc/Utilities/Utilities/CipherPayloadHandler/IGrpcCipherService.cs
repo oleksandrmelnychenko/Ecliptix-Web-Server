@@ -2,7 +2,7 @@ using Ecliptix.Domain.Utilities;
 using Ecliptix.Protobuf.Common;
 using Grpc.Core;
 
-namespace Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.SecureEnvelopeHandler;
+namespace Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 
 public interface IGrpcCipherService
 {

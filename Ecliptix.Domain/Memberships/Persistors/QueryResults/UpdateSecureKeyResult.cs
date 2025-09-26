@@ -7,4 +7,5 @@ internal record UpdateSecureKeyResult
     public Guid? MembershipUniqueId { get; init; }
     public string? Status { get; init; }
     public string? CreationStatus { get; init; }
+    public byte[] MaskingKey { get; init; } = [];
 }

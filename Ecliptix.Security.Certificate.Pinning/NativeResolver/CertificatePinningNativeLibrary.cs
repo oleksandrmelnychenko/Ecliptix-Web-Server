@@ -3,13 +3,13 @@ using System.Runtime.InteropServices;
 
 namespace Ecliptix.Security.Certificate.Pinning.NativeResolver;
 
-internal static unsafe class EcliptixServerNativeLibrary
+internal static unsafe class CertificatePinningNativeLibrary
 {
     private const string LibraryName = "libcertificate.pinning.server";
 
-    static EcliptixServerNativeLibrary()
+    static CertificatePinningNativeLibrary()
     {
-        NativeLibrary.SetDllImportResolver(typeof(EcliptixServerNativeLibrary).Assembly, ImportResolver);
+        NativeLibrary.SetDllImportResolver(typeof(CertificatePinningNativeLibrary).Assembly, ImportResolver);
     }
 
     private static IntPtr ImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
@@ -130,18 +130,18 @@ internal static unsafe class EcliptixServerNativeLibrary
         byte* signature, nuint* sigLen);
 
     [DllImport(LibraryName, EntryPoint = "ecliptix_server_generate_ed25519_keypair", CallingConvention = CallingConvention.Cdecl)]
-    public static extern EcliptixServerResult GenerateEd25519Keypair(
+    public static extern CertificatePinningResult GenerateEd25519Keypair(
         byte* publicKey,
         byte* privateKey);
 
     [DllImport(LibraryName, EntryPoint = "ecliptix_server_sign_ed25519", CallingConvention = CallingConvention.Cdecl)]
-    public static extern EcliptixServerResult SignEd25519(
+    public static extern CertificatePinningResult SignEd25519(
         byte* message, nuint messageLen,
         byte* privateKey,
         byte* signature);
 
     [DllImport(LibraryName, EntryPoint = "ecliptix_server_verify_ed25519", CallingConvention = CallingConvention.Cdecl)]
-    public static extern EcliptixServerResult VerifyEd25519(
+    public static extern CertificatePinningResult VerifyEd25519(
         byte* message, nuint messageLen,
         byte* signature,
         byte* publicKey);

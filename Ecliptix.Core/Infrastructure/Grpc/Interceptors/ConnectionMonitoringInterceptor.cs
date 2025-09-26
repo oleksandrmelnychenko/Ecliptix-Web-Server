@@ -241,7 +241,7 @@ public class ConnectionMonitoringInterceptor : Interceptor
             ConnectionsWithErrors = connections.Count(c => c.ErrorCount > InterceptorConstants.Numbers.Zero),
             OldestConnection = connections.Any() 
                 ? connections.Min(c => c.FirstSeen)
-                : (DateTime?)null
+                : null
         };
     }
 }

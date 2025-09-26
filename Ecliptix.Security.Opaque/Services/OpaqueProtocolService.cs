@@ -122,7 +122,7 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
         }
     }
 
-    public async Task<Result<KE2, OpaqueServerFailure>> GenerateKE2Async(KE1 ke1, byte[] storedCredentials)
+    public async Task<Result<KE2, OpaqueServerFailure>> GenerateKE2Async(KE1? ke1, byte[] registrationRecord)
     {
         await Task.Yield();
 
@@ -135,7 +135,7 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
                 return Result<KE2, OpaqueServerFailure>.Err(
                     OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages.KE1DataRequired));
 
-            if (storedCredentials.Length == 0)
+            if (registrationRecord.Length == 0)
                 return Result<KE2, OpaqueServerFailure>.Err(
                     OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages
                         .StoredCredentialsRequired));
@@ -150,7 +150,7 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
 
             result = (OpaqueResult)OpaqueServerNative.opaque_server_generate_ke2(
                 _server, ke1.Data, (nuint)ke1.Data.Length,
-                storedCredentials, (nuint)storedCredentials.Length,
+                registrationRecord, (nuint)registrationRecord.Length,
                 ke2Buffer, (nuint)ke2Buffer.Length, _currentServerState);
 
             if (result != OpaqueResult.Success)
@@ -179,7 +179,7 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
         }
     }
 
-    public async Task<Result<SessionKey, OpaqueServerFailure>> FinishAuthenticationAsync(KE3 ke3)
+    public async Task<Result<SessionKey, OpaqueServerFailure>> FinishAuthenticationAsync(KE3? ke3)
     {
         await Task.Yield();
 
@@ -274,8 +274,12 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
     {
         try
         {
-            byte[] seedBytes = Encoding.UTF8.GetBytes(seed);
-            DerivedServerKeys keys = new();
+            byte[] seedBytes = Convert.FromHexString(seed);
+            DerivedServerKeys keys = new()
+            {
+                PrivateKey = new byte[OpaqueConstants.PRIVATE_KEY_LENGTH],
+                PublicKey = new byte[OpaqueConstants.PUBLIC_KEY_LENGTH]
+            };
 
             OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_derive_keypair_from_seed(
                 seedBytes, (nuint)seedBytes.Length,

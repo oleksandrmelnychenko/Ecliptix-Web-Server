@@ -9,4 +9,5 @@ public record MembershipQueryRecord
     public Membership.Types.CreationStatus CreationStatus { get; init; }
 
     public byte[] SecureKey { get; init; } = [];
+    public byte[] MaskingKey { get; init; } = [];
 }

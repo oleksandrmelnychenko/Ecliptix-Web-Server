@@ -54,7 +54,7 @@ message OpaqueSignInInitResponse {
   optional string message = 5;
   optional int32 minutes_until_retry = 6;
   SignInResult result = 7;
-  
+  bytes server_mac = 8;
   enum SignInResult {
     SUCCEEDED = 0;
     INVALID_CREDENTIALS = 1;

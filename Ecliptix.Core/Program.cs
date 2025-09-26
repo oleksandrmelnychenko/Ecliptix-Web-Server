@@ -20,7 +20,7 @@ using Ecliptix.Core.Api.Grpc.Services.Membership;
 using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Domain.Protocol.Monitoring;
 using Ecliptix.Core.Infrastructure.Grpc.Interceptors;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.SecureEnvelopeHandler;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Resources;
@@ -35,6 +35,8 @@ using Ecliptix.Security.Opaque;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Ecliptix.Domain.Providers.Twilio;
 using Ecliptix.Security.Certificate.Pinning.Services;
+using Ecliptix.Security.Opaque.Failures;
+using Ecliptix.Security.Opaque.Services;
 using static Ecliptix.Core.Configuration.NetworkConstants;
 using AppConstants = Ecliptix.Core.Configuration.ApplicationConstants;
 using HealthStatus = Ecliptix.Core.Json.HealthStatus;
@@ -49,7 +51,6 @@ try
 
     WebApplication app = builder.Build();
 
-    // Initialize OPAQUE service
     await InitializeOpaqueServiceAsync(app);
 
     ConfigureMiddleware(app);
@@ -131,6 +132,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService>();
+    
     // Configure Redis for distributed session key caching
     string? redisConnectionString = builder.Configuration.GetConnectionString(AppConstants.Redis.ConnectionStringKey);
     if (string.IsNullOrEmpty(redisConnectionString))
@@ -158,11 +160,11 @@ static void ConfigureServices(WebApplicationBuilder builder)
 
     builder.Services.AddSingleton<IOpaqueProtocolService>(serviceProvider =>
     {
-        Ecliptix.Security.Opaque.Services.INativeOpaqueProtocolService nativeService = serviceProvider.GetRequiredService<Ecliptix.Security.Opaque.Services.INativeOpaqueProtocolService>();
+        INativeOpaqueProtocolService nativeService = serviceProvider.GetRequiredService<INativeOpaqueProtocolService>();
         return new OpaqueProtocolAdapter(nativeService);
     });
 
-    builder.Services.AddSingleton<ServerSecurityService>();
+    builder.Services.AddSingleton<EcliptixCertificatePinningService>();
 
     builder.Services.AddHealthChecks()
         .AddCheck<ProtocolHealthCheck>(AppConstants.HealthChecks.ProtocolHealth)
@@ -219,7 +221,7 @@ static void ConfigureMiddleware(WebApplication app)
 
 static void ConfigureEndpoints(WebApplication app)
 {
-    app.MapGrpcService<DeviceGrpcService>();
+    app.MapGrpcService<DeviceService>();
     app.MapGrpcService<VerificationFlowServices>();
     app.MapGrpcService<MembershipServices>();
 
@@ -301,8 +303,7 @@ static void RegisterSecurity(IServiceCollection services)
         };
     });
 
-    // Register SSL/RSA server security service
-    services.AddSingleton<ServerSecurityService>();
+    services.AddSingleton<EcliptixCertificatePinningService>();
 
     services.Configure<KestrelServerOptions>(options =>
     {
@@ -350,18 +351,12 @@ static async Task InitializeOpaqueServiceAsync(WebApplication app)
 {
     try
     {
-        var opaqueService = app.Services.GetRequiredService<Ecliptix.Security.Opaque.Services.INativeOpaqueProtocolService>();
-        var securityKeysSettings = app.Services.GetRequiredService<IOptions<SecurityKeysSettings>>().Value;
+        INativeOpaqueProtocolService opaqueService = app.Services.GetRequiredService<INativeOpaqueProtocolService>();
+        SecurityKeysSettings securityKeysSettings = app.Services.GetRequiredService<IOptions<SecurityKeysSettings>>().Value;
 
-        Log.Information("OPAQUE initialization - configured seed: '{SeedPreview}' (length: {SeedLength})",
-            string.IsNullOrEmpty(securityKeysSettings.OpaqueSecretKeySeed) ? "null/empty" :
-            securityKeysSettings.OpaqueSecretKeySeed[..Math.Min(8, securityKeysSettings.OpaqueSecretKeySeed.Length)] + "...",
-            securityKeysSettings.OpaqueSecretKeySeed?.Length ?? 0);
-
-        // Try to initialize - this will fail gracefully if native library is missing
-        if (opaqueService is Ecliptix.Security.Opaque.Services.OpaqueProtocolService opaqueProtocolService)
+        if (opaqueService is OpaqueProtocolService opaqueProtocolService)
         {
-            var initResult = await opaqueProtocolService.InitializeAsync(securityKeysSettings.OpaqueSecretKeySeed);
+            Result<Unit, OpaqueServerFailure> initResult = await opaqueProtocolService.InitializeAsync(securityKeysSettings.OpaqueSecretKeySeed);
             if (initResult.IsErr)
             {
                 Log.Warning("OPAQUE service initialization failed - service will be unavailable: {Error}",

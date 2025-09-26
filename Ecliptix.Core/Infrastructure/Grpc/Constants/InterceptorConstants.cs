@@ -16,12 +16,6 @@ public static class InterceptorConstants
         public const string GrpcUnaryCall = "GrpcUnaryCall";
 
         public const string GrpcServerStreamingCall = "GrpcServerStreamingCall";
-
-        public const string DecryptRequest = "DecryptRequest";
-
-        public const string EncryptResponse = "EncryptResponse";
-
-        public const string CreateFailureResponse = "CreateFailureResponse";
     }
 
     public static class Tags
@@ -37,36 +31,11 @@ public static class InterceptorConstants
 
         public const string GrpcClientHash = "grpc.client_hash";
         public const string GrpcUserAgent = "grpc.user_agent";
-
-        public const string ConnectId = "connect_id";
-        public const string PayloadSize = "payload_size";
-        public const string DecryptSuccess = "decrypt_success";
-        public const string DecryptedSize = "decrypted_size";
-        public const string EncryptSuccess = "encrypt_success";
-        public const string EncryptedSize = "encrypted_size";
-        public const string FailureType = "failure_type";
-
-        public const string ServiceName = "service.name";
-        public const string RpcMethod = "rpc.method";
-        public const string RpcSystem = "rpc.system";
-        public const string EcliptixConnectId = "ecliptix.connect_id";
-
-        public const string ActorType = "actor.type";
-        public const string ActorOperation = "actor.operation";
-
-        public const string DbSystem = "db.system";
-        public const string DbOperation = "db.operation";
-        public const string DbTable = "db.table";
-
-        public const string MessagingSystem = "messaging.system";
-        public const string MessagingOperation = "messaging.operation";
     }
 
     public static class Headers
     {
         public const string ConnectIdKey = "connectid";
-
-        public const string UserAgent = "User-Agent";
     }
 
     public static class StatusMessages

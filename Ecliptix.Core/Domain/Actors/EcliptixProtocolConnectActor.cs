@@ -339,13 +339,11 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                     _currentExchangeType = exchangeType;
                     if (exchangeType == PubKeyExchangeType.ServerStreaming)
                     {
-                        // No timeout for ServerStreaming - controlled by VerificationFlow
                         Context.SetReceiveTimeout(null);
                         Context.GetLogger().Info("[PROTOCOL] ServerStreaming - no timeout, controlled by VerificationFlow for ConnectId {0}", cmd.ConnectId);
                     }
                     else
                     {
-                        // All other types (DataCenterEphemeralConnect, etc.) use timeout
                         Context.SetReceiveTimeout(IdleTimeout);
                         Context.GetLogger().Info("[PROTOCOL] {0} - using idle timeout for ConnectId {1}", exchangeType, cmd.ConnectId);
                     }
@@ -413,14 +411,13 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             _protocolSystems[exchangeType] = system;
             _currentExchangeType = exchangeType;
 
-            // Set timeout based on exchange type
-            if (exchangeType == PubKeyExchangeType.ServerStreaming)
+            if (exchangeType != PubKeyExchangeType.DataCenterEphemeralConnect)
             {
-                Context.SetReceiveTimeout(null); // No timeout for ServerStreaming
+                Context.SetReceiveTimeout(null);
             }
             else
             {
-                Context.SetReceiveTimeout(IdleTimeout); // Timeout for DataCenterEphemeralConnect and others
+                Context.SetReceiveTimeout(IdleTimeout);
             }
 
             originalSender.Tell(
@@ -773,7 +770,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             (newStateResult.Unwrap(), result.Unwrap());
         IActorRef? originalSender = Sender;
 
-        bool shouldPersist = cmd.ExchangeType != PubKeyExchangeType.ServerStreaming;
+        bool shouldPersist = cmd.ExchangeType == PubKeyExchangeType.DataCenterEphemeralConnect;
 
         if (shouldPersist)
         {

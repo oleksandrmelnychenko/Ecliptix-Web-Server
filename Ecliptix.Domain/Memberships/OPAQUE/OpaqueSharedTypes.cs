@@ -3,7 +3,7 @@ namespace Ecliptix.Domain.Memberships.OPAQUE;
 /// <summary>
 /// Query record for membership OPAQUE authentication
 /// </summary>
-public record MembershipOpaqueQueryRecord(string MobileNumber, byte[] RegistrationRecord);
+public record MembershipOpaqueQueryRecord(string MobileNumber, byte[] RegistrationRecord, byte[] MaskingKey);
 
 /// <summary>
 /// Response containing authentication context token information

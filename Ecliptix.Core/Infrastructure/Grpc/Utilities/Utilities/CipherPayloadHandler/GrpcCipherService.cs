@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using Akka.Actor;
-using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Domain.Abstractions;
@@ -9,10 +8,9 @@ using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Google.Protobuf;
 using Grpc.Core;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Serilog;
 
-namespace Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.SecureEnvelopeHandler;
+namespace Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 
 public class GrpcCipherService(IEcliptixActorRegistry actorRegistry, ISessionKeyService sessionKeyService) : IGrpcCipherService
 {
@@ -48,21 +46,20 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry, ISessionKey
 
             (EnvelopeMetadata metadata, byte[] encryptedPayload) = componentsResult.Unwrap();
 
-            // Check if we have a session key to determine encryption strategy
             Result<byte[], string> sessionKeyResult = await sessionKeyService.GetSessionKeyAsync(connectId);
 
             if (sessionKeyResult.IsOk)
             {
-                // We have a session key - use dual-layer encryption (encrypt header with session key)
                 byte[] sessionKey = sessionKeyResult.Unwrap();
 
+                /*
                 if (sessionKey.Length != 32)
                 {
                     return Result<SecureEnvelope, FailureBase>.Err(
                         new EcliptixProtocolFailure(EcliptixProtocolFailureType.StateMissing, "Invalid session key length"));
-                }
+                }*/
 
-                Result<byte[], string> encryptedHeaderResult = EncryptHeader(metadata, sessionKey);
+                /*Result<byte[], string> encryptedHeaderResult = EncryptHeader(metadata, sessionKey);
 
                 CryptographicOperations.ZeroMemory(sessionKey);
 
@@ -70,34 +67,27 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry, ISessionKey
                 {
                     return Result<SecureEnvelope, FailureBase>.Err(
                         new EcliptixProtocolFailure(EcliptixProtocolFailureType.Generic, "Header encryption failed"));
-                }
+                }*/
 
-                // Create a temporary metadata with encrypted header for dual-layer encryption
                 SecureEnvelope dualLayerPayload = new()
                 {
-                    MetaData = ByteString.CopyFrom(encryptedHeaderResult.Unwrap()),
+                    MetaData = ByteString.CopyFrom(metadata.ToByteArray()),
                     EncryptedPayload = ByteString.CopyFrom(encryptedPayload),
                     Timestamp = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(DateTime.UtcNow)
                 };
 
-                Log.Debug("🔒 Using dual-layer encryption (protocol + session key) for connectId {ConnectId}", connectId);
                 return Result<SecureEnvelope, FailureBase>.Ok(dualLayerPayload);
             }
-            else
-            {
-                // No session key - use protocol-only encryption (metadata is not encrypted)
-                SecureEnvelope protocolOnlyPayload = ProtocolMigrationHelper.CreateSecureEnvelope(
-                    metadata,
-                    ByteString.CopyFrom(encryptedPayload),
-                    Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(DateTime.UtcNow));
 
-                Log.Debug("🔒 Using protocol-only encryption (no session key) for connectId {ConnectId}", connectId);
-                return Result<SecureEnvelope, FailureBase>.Ok(protocolOnlyPayload);
-            }
+            SecureEnvelope protocolOnlyPayload = ProtocolMigrationHelper.CreateSecureEnvelope(
+                metadata,
+                ByteString.CopyFrom(encryptedPayload),
+                Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(DateTime.UtcNow));
+
+            return Result<SecureEnvelope, FailureBase>.Ok(protocolOnlyPayload);
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "🔒 Unexpected error during dual-layer encryption for connectId {ConnectId}", connectId);
             return Result<SecureEnvelope, FailureBase>.Err(
                 new EcliptixProtocolFailure(EcliptixProtocolFailureType.Generic, "Dual-layer encryption failed"));
         }
@@ -108,15 +98,13 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry, ISessionKey
     {
         try
         {
-            // First check if we have a session key to determine decryption strategy
             Result<byte[], string> sessionKeyResult = await sessionKeyService.GetSessionKeyAsync(connectId);
-            EnvelopeMetadata decryptedHeader;
-
-            if (sessionKeyResult.IsOk)
+            //EnvelopeMetadata decryptedHeader;
+            Result<EnvelopeMetadata, EcliptixProtocolFailure> metadataResult = ProtocolMigrationHelper.ParseEnvelopeMetadata(request.MetaData);
+            /*f (sessionKeyResult.IsOk)
             {
-                // We have a session key - use dual-layer decryption (decrypt header with session key)
                 byte[] sessionKey = sessionKeyResult.Unwrap();
-                Result<EnvelopeMetadata, string> headerDecryptResult = DecryptHeaderWithKey(request.MetaData.ToByteArray(), sessionKey);
+                /*Result<EnvelopeMetadata, string> headerDecryptResult = DecryptHeaderWithKey(request.MetaData.ToByteArray(), sessionKey);
 
                 if (headerDecryptResult.IsErr)
                 {
@@ -124,14 +112,13 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry, ISessionKey
                         connectId, headerDecryptResult.UnwrapErr());
                     return Result<byte[], FailureBase>.Err(
                         new EcliptixProtocolFailure(EcliptixProtocolFailureType.StateMissing, "Header decryption failed"));
-                }
+                }#1#
 
                 decryptedHeader = headerDecryptResult.Unwrap();
                 Log.Debug("🔒 Using dual-layer decryption (protocol + session key) for connectId {ConnectId}", connectId);
             }
             else
             {
-                // No session key - use protocol-only decryption (metadata is not encrypted)
                 Result<EnvelopeMetadata, EcliptixProtocolFailure> metadataResult = ProtocolMigrationHelper.ParseEnvelopeMetadata(request.MetaData);
                 if (metadataResult.IsErr)
                 {
@@ -143,11 +130,12 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry, ISessionKey
                 decryptedHeader = metadataResult.Unwrap();
                 Log.Debug("🔒 Using protocol-only decryption (no session key) for connectId {ConnectId}", connectId);
             }
+            */
 
             PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
 
             Result<byte[], EcliptixProtocolFailure> decryptionResult =
-                await DecryptPayloadWithHeader(request.EncryptedPayload.ToByteArray(), decryptedHeader, connectId, exchangeType, context);
+                await DecryptPayloadWithHeader(request.EncryptedPayload.ToByteArray(), metadataResult.Unwrap(), connectId, exchangeType, context);
 
             return decryptionResult.IsErr
                 ? Result<byte[], FailureBase>.Err(decryptionResult.UnwrapErr())

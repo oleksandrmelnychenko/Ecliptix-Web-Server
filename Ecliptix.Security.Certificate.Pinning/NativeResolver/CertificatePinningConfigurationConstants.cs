@@ -1,6 +1,6 @@
 namespace Ecliptix.Security.Certificate.Pinning.NativeResolver;
 
-internal static class EcliptixServerConstants
+internal static class CertificatePinningConfigurationConstants
 {
     public const int MaxSignatureSize = 512;
     public const int MaxCiphertextSize = 256;  

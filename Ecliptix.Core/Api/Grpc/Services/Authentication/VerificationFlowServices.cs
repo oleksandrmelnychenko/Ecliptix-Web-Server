@@ -3,7 +3,6 @@ using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
 using System.Globalization;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.SecureEnvelopeHandler;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
@@ -12,9 +11,8 @@ using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
 using Google.Protobuf;
 using Grpc.Core;
-using Serilog;
 using Ecliptix.Domain.Memberships.WorkerActors;
-using Ecliptix.Core.Api.Grpc;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Authentication;
 

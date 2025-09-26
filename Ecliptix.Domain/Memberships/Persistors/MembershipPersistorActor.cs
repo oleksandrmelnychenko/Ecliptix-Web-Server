@@ -83,7 +83,8 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                             UniqueIdentifier = result.MembershipUniqueId.Value,
                             ActivityStatus = status,
                             CreationStatus = Membership.Types.CreationStatus.OtpVerified,
-                            SecureKey = result.SecureKey
+                            SecureKey = result.SecureKey,
+                            MaskingKey = result.MaskingKey
                         }),
                     () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                         VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
@@ -104,6 +105,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         DynamicParameters parameters = new DynamicParameters();
         parameters.Add("@MembershipUniqueId", cmd.MembershipIdentifier);
         parameters.Add("@SecureKey", cmd.SecureKey);
+        parameters.Add("@MaskingKey", cmd.MaskingKey);
 
         UpdateSecureKeyResult? result = await connection.QuerySingleOrDefaultAsync<UpdateSecureKeyResult>(
             "dbo.UpdateMembershipSecureKey",
@@ -141,7 +143,8 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 {
                     UniqueIdentifier = result.MembershipUniqueId.Value,
                     ActivityStatus = status,
-                    CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(result.CreationStatus)
+                    CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(result.CreationStatus),
+                    MaskingKey = result.MaskingKey
                 }),
             () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))

@@ -1,6 +1,5 @@
 using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.SecureEnvelopeHandler;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
@@ -18,6 +17,7 @@ using OprfRegistrationInitRequest = Ecliptix.Protobuf.Membership.OpaqueRegistrat
 using OprfRecoverySecureKeyInitRequest = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitRequest;
 using Grpc.Core;
 using System.Globalization;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Membership;
 

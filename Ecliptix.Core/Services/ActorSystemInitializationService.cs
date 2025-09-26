@@ -16,60 +16,45 @@ using Ecliptix.Core.Configuration;
 
 namespace Ecliptix.Core.Services;
 
-public sealed class ActorSystemInitializationService : IHostedService
+public sealed class ActorSystemInitializationService(
+    ActorSystem actorSystem,
+    IEcliptixActorRegistry registry,
+    IServiceProvider serviceProvider)
+    : IHostedService
 {
-    private readonly ActorSystem _actorSystem;
-    private readonly IEcliptixActorRegistry _registry;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<ActorSystemInitializationService> _logger;
-
-    public ActorSystemInitializationService(
-        ActorSystem actorSystem,
-        IEcliptixActorRegistry registry,
-        IServiceProvider serviceProvider,
-        ILogger<ActorSystemInitializationService> logger)
-    {
-        _actorSystem = actorSystem;
-        _registry = registry;
-        _serviceProvider = serviceProvider;
-        _logger = logger;
-    }
-
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Initializing actor system");
+        IDbConnectionFactory dbConnectionFactory = serviceProvider.GetRequiredService<IDbConnectionFactory>();
+        IOpaqueProtocolService opaqueProtocolService = serviceProvider.GetRequiredService<IOpaqueProtocolService>();
+        ISessionKeyService sessionKeyService = serviceProvider.GetRequiredService<ISessionKeyService>();
+        ISmsProvider smsProvider = serviceProvider.GetRequiredService<ISmsProvider>();
+        ILocalizationProvider localizationProvider = serviceProvider.GetRequiredService<ILocalizationProvider>();
 
-        IDbConnectionFactory dbConnectionFactory = _serviceProvider.GetRequiredService<IDbConnectionFactory>();
-        IOpaqueProtocolService opaqueProtocolService = _serviceProvider.GetRequiredService<IOpaqueProtocolService>();
-        ISessionKeyService sessionKeyService = _serviceProvider.GetRequiredService<ISessionKeyService>();
-        ISmsProvider smsProvider = _serviceProvider.GetRequiredService<ISmsProvider>();
-        ILocalizationProvider localizationProvider = _serviceProvider.GetRequiredService<ILocalizationProvider>();
-
-        IActorRef protocolSystemActor = _actorSystem.ActorOf(
+        IActorRef protocolSystemActor = actorSystem.ActorOf(
             EcliptixProtocolSystemActor.Build(),
             ApplicationConstants.ActorNames.ProtocolSystem);
 
-        IActorRef appDevicePersistor = _actorSystem.ActorOf(
+        IActorRef appDevicePersistor = actorSystem.ActorOf(
             AppDevicePersistorActor.Build(dbConnectionFactory),
             ApplicationConstants.ActorNames.AppDevicePersistor);
 
-        IActorRef verificationFlowPersistorActor = _actorSystem.ActorOf(
+        IActorRef verificationFlowPersistorActor = actorSystem.ActorOf(
             VerificationFlowPersistorActor.Build(dbConnectionFactory),
             ApplicationConstants.ActorNames.VerificationFlowPersistorActor);
 
-        IActorRef membershipPersistorActor = _actorSystem.ActorOf(
+        IActorRef membershipPersistorActor = actorSystem.ActorOf(
             MembershipPersistorActor.Build(dbConnectionFactory),
             ApplicationConstants.ActorNames.MembershipPersistorActor);
 
-        IActorRef authContextPersistorActor = _actorSystem.ActorOf(
+        IActorRef authContextPersistorActor = actorSystem.ActorOf(
             AuthContextPersistorActor.Build(dbConnectionFactory),
             ApplicationConstants.ActorNames.AuthContextPersistorActor);
 
-        IActorRef authenticationStateManager = _actorSystem.ActorOf(
+        IActorRef authenticationStateManager = actorSystem.ActorOf(
             AuthenticationStateManager.Build(),
             ApplicationConstants.ActorNames.AuthenticationStateManager);
 
-        IActorRef membershipActor = _actorSystem.ActorOf(
+        IActorRef membershipActor = actorSystem.ActorOf(
             MembershipActor.Build(
                 membershipPersistorActor,
                 authContextPersistorActor,
@@ -79,7 +64,7 @@ public sealed class ActorSystemInitializationService : IHostedService
                 sessionKeyService),
             ApplicationConstants.ActorNames.MembershipActor);
 
-        IActorRef verificationFlowManagerActor = _actorSystem.ActorOf(
+        IActorRef verificationFlowManagerActor = actorSystem.ActorOf(
             VerificationFlowManagerActor.Build(
                 verificationFlowPersistorActor,
                 membershipActor,
@@ -87,21 +72,18 @@ public sealed class ActorSystemInitializationService : IHostedService
                 localizationProvider),
             ApplicationConstants.ActorNames.VerificationFlowManagerActor);
 
-        _registry.Register(ActorIds.EcliptixProtocolSystemActor, protocolSystemActor);
-        _registry.Register(ActorIds.AppDevicePersistorActor, appDevicePersistor);
-        _registry.Register(ActorIds.VerificationFlowPersistorActor, verificationFlowPersistorActor);
-        _registry.Register(ActorIds.VerificationFlowManagerActor, verificationFlowManagerActor);
-        _registry.Register(ActorIds.MembershipPersistorActor, membershipPersistorActor);
-        _registry.Register(ActorIds.MembershipActor, membershipActor);
-
-        _logger.LogInformation("Actor system initialized with {ActorCount} actors", 6);
+        registry.Register(ActorIds.EcliptixProtocolSystemActor, protocolSystemActor);
+        registry.Register(ActorIds.AppDevicePersistorActor, appDevicePersistor);
+        registry.Register(ActorIds.VerificationFlowPersistorActor, verificationFlowPersistorActor);
+        registry.Register(ActorIds.VerificationFlowManagerActor, verificationFlowManagerActor);
+        registry.Register(ActorIds.MembershipPersistorActor, membershipPersistorActor);
+        registry.Register(ActorIds.MembershipActor, membershipActor);
 
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Shutting down actor system");
         return Task.CompletedTask;
     }
 }
