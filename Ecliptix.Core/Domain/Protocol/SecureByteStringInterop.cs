@@ -1,6 +1,6 @@
 using Ecliptix.Core.Domain.Protocol.Failures;
 using Ecliptix.Core.Protocol;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Google.Protobuf;
 
 namespace Ecliptix.Core.Domain.Protocol;

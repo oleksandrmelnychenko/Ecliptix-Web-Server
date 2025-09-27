@@ -1,5 +1,5 @@
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using PhoneNumbers;
 
 namespace Ecliptix.Domain.Memberships.PhoneNumberValidation;

@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Protocol;
 using Grpc.Core;
 using Ecliptix.Core.Infrastructure.Grpc.Constants;

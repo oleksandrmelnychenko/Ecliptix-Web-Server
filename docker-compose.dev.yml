@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  ecliptix-app:
+    build:
+      context: .
+      dockerfile: Ecliptix.Core/Dockerfile
+      platforms:
+        - linux/amd64
+    ports:
+      - "8080:8080"
+      - "5051:5051"  # gRPC port
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - DOTNET_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080;http://+:5051
+    volumes:
+      - ./logs:/app/logs  # Optional: Mount logs directory
+    restart: unless-stopped
+
+  # Optional Redis for session management (commented out for simplicity)
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   restart: unless-stopped

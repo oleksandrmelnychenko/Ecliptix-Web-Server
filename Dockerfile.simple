@@ -1,0 +1,31 @@
+# Simple Linux Dockerfile for Ecliptix
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
+WORKDIR /app
+EXPOSE 8080
+
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+# Copy project files
+COPY Ecliptix.Core/Ecliptix.Core.csproj Ecliptix.Core/
+COPY Ecliptix.Domain/Ecliptix.Domain.csproj Ecliptix.Domain/
+COPY Ecliptix.Security.SSL.Native/Ecliptix.Security.SSL.Native.csproj Ecliptix.Security.SSL.Native/
+COPY Ecliptix.Security.Opaque/Ecliptix.Security.Opaque.csproj Ecliptix.Security.Opaque/
+
+# Restore packages
+RUN dotnet restore Ecliptix.Core/Ecliptix.Core.csproj
+
+# Copy source code
+COPY . .
+
+# Build and publish
+WORKDIR /src/Ecliptix.Core
+RUN dotnet publish -c Release -o /app/publish --no-restore
+
+# Create a stub native library for demo
+RUN echo "Linux native library placeholder" > /app/publish/libecliptix.server.so
+
+FROM base AS final
+WORKDIR /app
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "Ecliptix.Core.dll"]

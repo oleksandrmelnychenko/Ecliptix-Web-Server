@@ -23,6 +23,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Security.Certifica
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Security.Opaque", "Ecliptix.Security.Opaque\Ecliptix.Security.Opaque.csproj", "{DF0AA2A1-306E-48CA-AEAB-44FB2E1ACE93}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Protobufs", "Ecliptix.Protobufs\Ecliptix.Protobufs.csproj", "{7C8CCFE7-B057-4DAF-861A-F2C3BBEE5B1E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Utilities", "Ecliptix.Utilities\Ecliptix.Utilities.csproj", "{34B9751A-097B-4BE6-AD13-59F20786C5D0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -49,5 +53,13 @@ Global
 		{DF0AA2A1-306E-48CA-AEAB-44FB2E1ACE93}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DF0AA2A1-306E-48CA-AEAB-44FB2E1ACE93}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DF0AA2A1-306E-48CA-AEAB-44FB2E1ACE93}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7C8CCFE7-B057-4DAF-861A-F2C3BBEE5B1E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7C8CCFE7-B057-4DAF-861A-F2C3BBEE5B1E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7C8CCFE7-B057-4DAF-861A-F2C3BBEE5B1E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7C8CCFE7-B057-4DAF-861A-F2C3BBEE5B1E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

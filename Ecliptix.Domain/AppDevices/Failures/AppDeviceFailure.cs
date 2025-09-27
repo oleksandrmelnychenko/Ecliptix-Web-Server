@@ -1,4 +1,4 @@
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Grpc.Core;
 
 namespace Ecliptix.Domain.AppDevices.Failures;

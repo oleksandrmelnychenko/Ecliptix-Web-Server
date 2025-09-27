@@ -5,7 +5,7 @@ using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Failures;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Device;
 using Ecliptix.Protobuf.Protocol;

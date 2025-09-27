@@ -1,5 +1,5 @@
 using System.Data.Common;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Microsoft.Data.SqlClient;
 using Polly;
 using Polly.Retry;

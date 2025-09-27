@@ -6,7 +6,7 @@ using Ecliptix.Security.Opaque.Models.RegistrationMessages;
 using Ecliptix.Security.Opaque.Native;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Constants;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Serilog;
 
 namespace Ecliptix.Security.Opaque.Services;

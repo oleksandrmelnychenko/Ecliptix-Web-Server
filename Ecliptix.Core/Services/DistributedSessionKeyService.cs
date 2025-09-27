@@ -9,7 +9,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using Ecliptix.Domain.Abstractions;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Services;
 

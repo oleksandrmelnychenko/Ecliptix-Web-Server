@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using Ecliptix.Core.Domain.Protocol.Failures;
 using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Core.Protocol;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.ProtocolState;

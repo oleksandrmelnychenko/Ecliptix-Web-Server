@@ -1,0 +1,150 @@
+# Enhanced Windows Container Dockerfile for Ecliptix with Native Library Error Handling
+# NOTE: This requires a Windows Docker host to build and run
+
+# Use Windows Server Core with .NET 9
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-nanoserver-ltsc2022 AS base
+WORKDIR /app
+EXPOSE 8080
+EXPOSE 5051
+
+# Create logs directory for persistent logging
+RUN mkdir C:\app\logs
+
+# Set environment variables for enhanced logging and debugging
+ENV DOTNET_ENVIRONMENT=Production
+ENV ASPNETCORE_ENVIRONMENT=Production
+ENV ASPNETCORE_URLS=http://+:8080;http://+:5051
+ENV ServerSecurity__AllowDegradedMode=true
+ENV ServerSecurity__MaxRetries=5
+ENV ServerSecurity__RetryDelayMs=2000
+ENV Logging__LogLevel__Default=Information
+ENV Logging__LogLevel__Ecliptix=Debug
+
+# Use Windows SDK for build
+FROM mcr.microsoft.com/dotnet/sdk:9.0-nanoserver-ltsc2022 AS build
+ARG BUILD_CONFIGURATION=Release
+WORKDIR /src
+
+# Copy project files
+COPY ["Ecliptix.Core/Ecliptix.Core.csproj", "Ecliptix.Core/"]
+COPY ["Ecliptix.Domain/Ecliptix.Domain.csproj", "Ecliptix.Domain/"]
+COPY ["Ecliptix.Security.SSL.Native/Ecliptix.Security.SSL.Native.csproj", "Ecliptix.Security.SSL.Native/"]
+COPY ["Ecliptix.Security.Opaque/Ecliptix.Security.Opaque.csproj", "Ecliptix.Security.Opaque/"]
+
+# Restore packages with retry logic
+RUN dotnet restore "Ecliptix.Core/Ecliptix.Core.csproj" --verbosity minimal
+
+# Copy source code
+COPY . .
+WORKDIR "/src/Ecliptix.Core"
+
+# Build the application with detailed output
+RUN dotnet build "./Ecliptix.Core.csproj" -c %BUILD_CONFIGURATION% -o /app/build --verbosity normal
+
+# Publish stage
+FROM build AS publish
+ARG BUILD_CONFIGURATION=Release
+
+# Publish with Windows runtime targeting
+RUN dotnet publish "./Ecliptix.Core.csproj" -c %BUILD_CONFIGURATION% -o /app/publish --runtime win-x64 --self-contained false --verbosity normal
+
+# Verify native library exists and copy to multiple locations for redundancy
+RUN dir /src/Ecliptix.Security.SSL.Native/
+RUN if exist "/src/Ecliptix.Security.SSL.Native/ecliptix.server.dll" ( \
+        copy "/src/Ecliptix.Security.SSL.Native/ecliptix.server.dll" "/app/publish/ecliptix.server.dll" && \
+        echo "Primary library copied" \
+    ) else ( \
+        echo "WARNING: ecliptix.server.dll not found in source directory" && \
+        dir "/src/Ecliptix.Security.SSL.Native/" \
+    )
+
+# Create redundant copies in multiple locations
+RUN mkdir /app/publish/native 2>nul || echo "native directory exists"
+RUN if exist "/app/publish/ecliptix.server.dll" ( \
+        copy "/app/publish/ecliptix.server.dll" "/app/publish/native/ecliptix.server.dll" && \
+        echo "Redundant library copy created" \
+    )
+
+# Create runtime-specific directory structure
+RUN mkdir /app/publish/runtimes 2>nul || echo "runtimes directory exists"
+RUN mkdir /app/publish/runtimes/win-x64 2>nul || echo "win-x64 directory exists"
+RUN mkdir /app/publish/runtimes/win-x64/native 2>nul || echo "native directory exists"
+RUN if exist "/app/publish/ecliptix.server.dll" ( \
+        copy "/app/publish/ecliptix.server.dll" "/app/publish/runtimes/win-x64/native/ecliptix.server.dll" && \
+        echo "Runtime-specific library copy created" \
+    )
+
+# Remove any non-Windows native libraries to avoid confusion
+RUN if exist "/app/publish/libecliptix.server.dylib" del "/app/publish/libecliptix.server.dylib"
+RUN if exist "/app/publish/libecliptix.server.so" del "/app/publish/libecliptix.server.so"
+
+# Verify final library placement
+RUN echo "=== NATIVE LIBRARY VERIFICATION ===" && \
+    if exist "/app/publish/ecliptix.server.dll" ( \
+        dir "/app/publish/ecliptix.server.dll" && \
+        echo "Primary library verified" \
+    ) else ( \
+        echo "ERROR: Primary library not found!" \
+    ) && \
+    if exist "/app/publish/native/ecliptix.server.dll" ( \
+        dir "/app/publish/native/ecliptix.server.dll" && \
+        echo "Redundant library verified" \
+    ) && \
+    if exist "/app/publish/runtimes/win-x64/native/ecliptix.server.dll" ( \
+        dir "/app/publish/runtimes/win-x64/native/ecliptix.server.dll" && \
+        echo "Runtime-specific library verified" \
+    ) && \
+    echo "=== END VERIFICATION ==="
+
+# Final stage with enhanced diagnostics
+FROM base AS final
+WORKDIR /app
+
+# Copy published application
+COPY --from=publish /app/publish .
+
+# Copy Docker-specific configuration
+COPY appsettings.Docker.json ./appsettings.Docker.json
+
+# Set comprehensive environment variables
+ENV DOTNET_ENVIRONMENT=Production
+ENV ASPNETCORE_ENVIRONMENT=Production
+ENV ASPNETCORE_URLS=http://+:8080;http://+:5051
+
+# Server Security Configuration
+ENV ServerSecurity__AllowDegradedMode=true
+ENV ServerSecurity__MaxRetries=5
+ENV ServerSecurity__RetryDelayMs=2000
+
+# Logging Configuration
+ENV Serilog__MinimumLevel__Default=Information
+ENV Serilog__MinimumLevel__Override__Ecliptix=Debug
+ENV Serilog__MinimumLevel__Override__Ecliptix.Security.SSL.Native=Verbose
+
+# Additional Windows debugging
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+ENV COMPlus_EnableDiagnostics=1
+
+# Health check that accounts for degraded mode
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD powershell -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:8080/health' -UseBasicParsing -TimeoutSec 5; if ($response.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }"
+
+# Create startup script for additional diagnostics
+RUN echo @echo off > startup.bat && \
+    echo echo Starting Ecliptix with enhanced diagnostics... >> startup.bat && \
+    echo echo System Information: >> startup.bat && \
+    echo systeminfo ^| findstr /C:"OS Name" /C:"OS Version" /C:"System Type" >> startup.bat && \
+    echo echo. >> startup.bat && \
+    echo echo Verifying native library... >> startup.bat && \
+    echo if exist "ecliptix.server.dll" ( >> startup.bat && \
+    echo   echo Found ecliptix.server.dll >> startup.bat && \
+    echo   dir ecliptix.server.dll >> startup.bat && \
+    echo ) else ( >> startup.bat && \
+    echo   echo WARNING: ecliptix.server.dll not found in working directory >> startup.bat && \
+    echo ) >> startup.bat && \
+    echo echo. >> startup.bat && \
+    echo echo Starting application... >> startup.bat && \
+    echo dotnet Ecliptix.Core.dll >> startup.bat
+
+# Set the entry point to use the diagnostic startup script
+ENTRYPOINT ["cmd", "/c", "startup.bat"]

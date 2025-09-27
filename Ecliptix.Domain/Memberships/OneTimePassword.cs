@@ -1,6 +1,6 @@
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using OtpNet;
 
 namespace Ecliptix.Domain.Memberships;

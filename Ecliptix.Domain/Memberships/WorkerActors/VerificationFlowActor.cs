@@ -6,7 +6,7 @@ using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Providers.Twilio;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Google.Protobuf;
 using Serilog;

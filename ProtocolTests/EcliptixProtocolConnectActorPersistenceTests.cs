@@ -8,7 +8,7 @@ using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Core.Domain.Events;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.ProtocolState;
 using Ecliptix.Protobuf.Protocol;

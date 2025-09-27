@@ -1,5 +1,5 @@
 using Ecliptix.Security.Opaque.Constants;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Security.Opaque.Failures;
 
 namespace Ecliptix.Security.Opaque.Models.RegistrationMessages;

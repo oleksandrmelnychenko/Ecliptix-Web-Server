@@ -1,4 +1,4 @@
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Grpc.Core;
 

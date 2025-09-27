@@ -1,0 +1,79 @@
+syntax = "proto3";
+import "membership/membership_core.proto";
+
+package ecliptix.proto.membership;
+option csharp_namespace = "Ecliptix.Protobuf.Membership";
+
+enum VerificationPurpose {
+  REGISTRATION = 0;
+  LOGIN = 1;
+  PASSWORD_RECOVERY = 2;
+}
+
+enum VerificationResult {
+  SUCCEEDED = 0;
+  INVALID_PHONE = 1;
+  INVALID_OTP = 2;
+  EXPIRED = 3;
+}
+
+message InitiateVerificationRequest {
+  enum Type {
+    SEND_OTP = 0;
+    RESEND_OTP = 1;
+  }
+
+  bytes mobile_number_identifier = 1;
+  bytes app_device_identifier = 2;
+  VerificationPurpose purpose = 3;
+  Type type = 4;
+}
+
+message InitiateVerificationResponse {
+  VerificationResult result = 1;
+  string message = 2;
+  bytes session_identifier = 3;
+  VerificationPurpose purpose = 4;
+}
+
+message VerificationCountdownUpdate {
+  uint32 seconds_remaining = 1;
+  bytes session_identifier = 2;
+  bool already_verified = 3;
+
+  enum CountdownUpdateStatus {
+    ACTIVE = 0;
+    EXPIRED = 1;
+    NOT_FOUND = 2; 
+    FAILED = 3; 
+    MAX_ATTEMPTS_REACHED = 4;
+    SESSION_EXPIRED = 5;
+  }
+
+  CountdownUpdateStatus status = 4;
+  optional string message = 5;
+}
+
+message VerifyCodeRequest {
+  bytes app_device_identifier = 1;
+  string code = 2;
+  VerificationPurpose purpose = 3;
+  uint32 stream_connect_id = 4;
+}
+
+message VerifyCodeResponse {
+  VerificationResult result = 1;
+  optional string message = 2;
+  optional ecliptix.proto.membership.Membership membership = 3;
+}
+
+message ValidatePhoneNumberRequest {
+  string mobile_number = 1;
+  bytes app_device_identifier = 2;
+}
+
+message ValidatePhoneNumberResponse {
+  bytes mobile_number_identifier = 1;
+  VerificationResult result = 2;
+  optional string message = 3;
+}

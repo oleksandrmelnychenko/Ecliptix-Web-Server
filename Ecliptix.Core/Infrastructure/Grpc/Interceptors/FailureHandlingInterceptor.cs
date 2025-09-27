@@ -1,4 +1,4 @@
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Ecliptix.Core.Infrastructure.Grpc.Constants;

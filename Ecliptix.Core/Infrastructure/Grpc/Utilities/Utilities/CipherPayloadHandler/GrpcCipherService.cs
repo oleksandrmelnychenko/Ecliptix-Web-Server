@@ -3,7 +3,7 @@ using Akka.Actor;
 using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Domain.Abstractions;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Google.Protobuf;

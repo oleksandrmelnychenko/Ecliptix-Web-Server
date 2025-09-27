@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.Security.Certificate.Pinning.NativeResolver;
 

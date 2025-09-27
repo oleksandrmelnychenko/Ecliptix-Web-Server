@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Ecliptix.Core.Domain.Protocol.Failures;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Domain.Protocol;
 

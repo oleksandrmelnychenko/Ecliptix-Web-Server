@@ -1,5 +1,5 @@
 using Ecliptix.Core.Protocol;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.ProtocolState;
 using Serilog;

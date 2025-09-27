@@ -3,7 +3,7 @@ using System.Data.Common;
 using System.Diagnostics;
 using Akka.Actor;
 using Ecliptix.Domain.DbConnectionFactory;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Serilog;
 
 namespace Ecliptix.Domain.Memberships.Persistors;

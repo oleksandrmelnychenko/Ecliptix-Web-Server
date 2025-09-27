@@ -8,11 +8,11 @@ using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Core.Protocol;
 using Ecliptix.Domain.Memberships.WorkerActors;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.ProtocolState;
-using Unit = Ecliptix.Domain.Utilities.Unit;
+using Unit = Ecliptix.Utilities.Unit;
 
 namespace Ecliptix.Core.Domain.Actors;
 

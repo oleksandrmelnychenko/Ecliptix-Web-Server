@@ -1,5 +1,5 @@
 using System.Threading.Tasks;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Domain.Abstractions;
 

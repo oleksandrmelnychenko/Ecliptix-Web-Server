@@ -123,6 +123,8 @@
         <ProjectReference Include="..\Ecliptix.Domain\Ecliptix.Domain.csproj" />
         <ProjectReference Include="..\Ecliptix.Security.Certificate.Pinning\Ecliptix.Security.Certificate.Pinning.csproj" />
         <ProjectReference Include="..\Ecliptix.Security.Opaque\Ecliptix.Security.Opaque.csproj" />
+        <ProjectReference Include="..\Ecliptix.Utilities\Ecliptix.Utilities.csproj" />
+        <ProjectReference Include="..\Ecliptix.Protobufs\Ecliptix.Protobufs.csproj" />
     </ItemGroup>
 
     <!-- Commented out: Using AOT-safe hardcoded FrozenDictionary instead of ResourceManager

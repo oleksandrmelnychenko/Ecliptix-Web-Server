@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Text;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Domain.Protocol;
 

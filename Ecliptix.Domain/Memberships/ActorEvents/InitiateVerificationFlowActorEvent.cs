@@ -1,6 +1,6 @@
 using System.Threading.Channels;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Membership;
 
 namespace Ecliptix.Domain.Memberships.ActorEvents;

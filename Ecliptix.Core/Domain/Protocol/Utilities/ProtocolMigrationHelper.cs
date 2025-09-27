@@ -1,6 +1,6 @@
 using System;
 using Ecliptix.Protobuf.Common;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 

@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  ecliptix-core:
+    build:
+      context: .
+      dockerfile: Dockerfile.windows
+      args:
+        BUILD_CONFIGURATION: Release
+    image: ecliptix-core-windows:latest
+    container_name: ecliptix-windows
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"  # HTTP
+      - "5051:5051"  # gRPC
+
+    environment:
+      # Core Configuration
+      - ASPNETCORE_ENVIRONMENT=Production
+      - DOTNET_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080;http://+:5051
+
+      # Server Security Configuration (Graceful Degradation)
+      - ServerSecurity__AllowDegradedMode=true
+      - ServerSecurity__MaxRetries=5
+      - ServerSecurity__RetryDelayMs=2000
+      - ServerSecurity__EnableDiagnostics=true
+
+      # Database Connection (adjust as needed)
+      - ECLIPTIX_DB_CONNECTION=Data Source=host.docker.internal;Initial Catalog=EcliptixMemberships;Integrated Security=False;User ID=sa;Password=SecurePassword123!;Connect Timeout=30;Encrypt=False;TrustServerCertificate=True;
+
+      # Redis Connection
+      - REDIS_CONNECTION=host.docker.internal:6379
+
+      # OPAQUE Protocol Keys
+      - OPAQUE_SECRET_KEY=8p3jZ9kX2Q7vL4mPqRtYcF2nW8Bx5zK9hG3aT0uV6jw=
+
+      # Security Keys
+      - KEY_EXCHANGE_TYPE_KEY=oiwfT6c5kOQsZozxhTBg
+      - KEY_EXCHANGE_TYPE_VALUE=JmTGdGilMka07zyg5hz6Q
+
+      # Enhanced Windows debugging
+      - DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+      - COMPlus_EnableDiagnostics=1
+
+      # Logging Configuration for DLL error handling
+      - Serilog__MinimumLevel__Default=Information
+      - Serilog__MinimumLevel__Override__Ecliptix=Debug
+      - Serilog__MinimumLevel__Override__Ecliptix.Security.SSL.Native=Verbose
+      - Logging__LogLevel__Default=Information
+      - Logging__LogLevel__Ecliptix=Debug
+      - Logging__LogLevel__Ecliptix.Security.SSL.Native=Trace
+
+    volumes:
+      # Persistent logs for DLL troubleshooting
+      - type: bind
+        source: .\logs
+        target: C:\app\logs
+      # Optional: mount native library directory for debugging
+      - type: bind
+        source: .\native
+        target: C:\app\native
+        read_only: true
+
+    # Windows container specific settings
+    isolation: process  # Use 'hyperv' for better isolation if needed
+
+    healthcheck:
+      test: ["CMD", "powershell", "-Command", "try { $response = Invoke-WebRequest -Uri 'http://localhost:8080/health' -UseBasicParsing -TimeoutSec 5; if ($response.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# IMPORTANT NOTES:
+# 1. This requires Windows containers mode in Docker Desktop
+# 2. Can only run on Windows hosts (Windows 10/11 or Windows Server)
+# 3. Includes graceful degradation for ecliptix.server.dll loading errors
+# 4. Comprehensive logging for native library troubleshooting
+# 5. Health check reports degraded mode status

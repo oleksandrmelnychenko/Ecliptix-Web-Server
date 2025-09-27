@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package ecliptix.proto.key_materials;
+option csharp_namespace = "Ecliptix.Protobuf.KeyMaterials";
+
+import "google/protobuf/timestamp.proto";
+
+message DeviceKeyMaterial {
+  uint32 version = 10;              // Version of the key format
+  google.protobuf.Timestamp created_at = 11; // Creation timestamp
+  bytes ed25519_secret = 1;         // 32 bytes (encrypt in practice)
+  bytes ed25519_public = 2;         // 32 bytes
+  bytes identity_x25519_secret = 3; // 32 bytes (encrypt in practice)
+  bytes identity_x25519_public = 4; // 32 bytes
+  uint32 signed_pre_key_id = 5;     // Random u32 ID
+  bytes signed_pre_key_secret = 6;  // 32 bytes (encrypt in practice)
+  bytes signed_pre_key_public = 7;  // 32 bytes
+  bytes signed_pre_key_signature = 8; // 64 bytes
+  repeated OneTimePreKeyLocal one_time_pre_keys = 9;
+}
+
+message OneTimePreKeyLocal {
+  uint32 pre_key_id = 1;            // Unique ID
+  bytes secret = 2;                 // 32 bytes (encrypt in practice)
+  bytes public = 3;                 // 32 bytes
+  bool used = 4;                    // Indicates if the key has been used
+  google.protobuf.Timestamp created_at = 5; // Creation timestamp
+}
