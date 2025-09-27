@@ -14,14 +14,10 @@ public sealed class RegistrationRequest
         Array.Copy(data, Data, data.Length);
     }
 
-    public static Result<RegistrationRequest, OpaqueServerFailure> Create(byte[] data)
-    {
-        if (data == null)
-            return Result<RegistrationRequest, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages.RegistrationRequestDataRequired));
-
-        if (data.Length != OpaqueConstants.REGISTRATION_REQUEST_LENGTH)
-            return Result<RegistrationRequest, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput($"Registration request must be {OpaqueConstants.REGISTRATION_REQUEST_LENGTH} bytes"));
-
-        return Result<RegistrationRequest, OpaqueServerFailure>.Ok(new RegistrationRequest(data));
-    }
+    public static Result<RegistrationRequest, OpaqueServerFailure> Create(byte[] data) =>
+        data.Length != OpaqueConstants.REGISTRATION_REQUEST_LENGTH
+            ? Result<RegistrationRequest, OpaqueServerFailure>.Err(
+                OpaqueServerFailure.InvalidInput(
+                    $"Registration request must be {OpaqueConstants.REGISTRATION_REQUEST_LENGTH} bytes"))
+            : Result<RegistrationRequest, OpaqueServerFailure>.Ok(new RegistrationRequest(data));
 }

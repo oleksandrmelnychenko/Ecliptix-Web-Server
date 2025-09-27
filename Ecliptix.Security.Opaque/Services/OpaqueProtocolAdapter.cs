@@ -54,7 +54,6 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
     }
 
 
-
     private static Result<KE1, OpaqueFailure> ValidateKe1(OpaqueSignInInitRequest request)
     {
         Result<KE1, OpaqueServerFailure> ke1Result = KE1.Create(request.PeerOprf.ToByteArray());
