@@ -133,6 +133,7 @@ public class MembershipActor : ReceiveActor
             return;
         }
 
+        //TODO: REMOVE.
         byte[] sessionKey = completionResult.Unwrap();
 
         UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRegistrationRecord, maskingKey);
@@ -228,7 +229,7 @@ public class MembershipActor : ReceiveActor
 
     private async Task HandleInitRecoveryRequestEvent(OprfInitRecoverySecureKeyEvent @event)
     {
-        (byte[] oprfResponse, byte[] maskingKey) = _opaqueProtocolService.ProcessOprfRequestWithMaskingKey(@event.OprfRequest);
+        (byte[] oprfResponse, byte[] maskingKey) = _opaqueProtocolService.ProcessOprfRequest(@event.OprfRequest);
 
         _pendingMaskingKeys[@event.MembershipIdentifier] = maskingKey;
 
@@ -255,7 +256,7 @@ public class MembershipActor : ReceiveActor
     private Task HandleGenerateMembershipOprfRegistrationRecord(
         GenerateMembershipOprfRegistrationRequestEvent @event)
     {
-        (byte[] oprfResponse, byte[] maskingKey) = _opaqueProtocolService.ProcessOprfRequestWithMaskingKey(@event.OprfRequest);
+        (byte[] oprfResponse, byte[] maskingKey) = _opaqueProtocolService.ProcessOprfRequest(@event.OprfRequest);
 
         _pendingMaskingKeys[@event.MembershipIdentifier] = maskingKey;
 
@@ -338,7 +339,7 @@ public class MembershipActor : ReceiveActor
             record =>
             {
                 Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure> initiateSignInResult =
-                    _opaqueProtocolService.InitiateSignInWithServerMac(
+                    _opaqueProtocolService.InitiateSignIn(
                         @event.OpaqueSignInInitRequest,
                         new MembershipOpaqueQueryRecord(@event.MobileNumber, record.SecureKey, record.MaskingKey));
 
@@ -348,7 +349,7 @@ public class MembershipActor : ReceiveActor
                         .InvalidOpaque());
                 }
 
-                var (response, serverMac) = initiateSignInResult.Unwrap();
+                (OpaqueSignInInitResponse response, byte[] serverMac) = initiateSignInResult.Unwrap();
 
                 _pendingSignIns[@event.ConnectId] = (record.UniqueIdentifier, Guid.NewGuid(), @event.MobileNumber,
                     record.ActivityStatus, record.CreationStatus, DateTime.UtcNow, serverMac);
@@ -372,7 +373,7 @@ public class MembershipActor : ReceiveActor
         }
 
         Result<OpaqueSignInFinalizeResponse, OpaqueFailure> opaqueResult =
-            _opaqueProtocolService.FinalizeSignIn(@event.Request, membershipInfo.ServerMac);
+            _opaqueProtocolService.CompleteSignIn(@event.Request, membershipInfo.ServerMac);
 
         if (opaqueResult.IsErr)
         {

@@ -12,7 +12,6 @@ namespace Ecliptix.Security.Opaque.Services;
 
 public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeService) : IOpaqueProtocolService
 {
-    private const int SessionKeySize = 32;
     private const int ContextTokenSize = 64;
     private const int ServerOprfResponseSize = 32;
     private const int ServerEphemeralKeySize = 33;
@@ -29,117 +28,48 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
     private const string AuthenticationFailed = "Authentication failed";
     private const string RegistrationRecordEmptyError = "Registration record cannot be empty";
 
-    public byte[] ProcessOprfRequest(byte[] oprfRequest)
+    public (byte[] Response, byte[] MaskingKey) ProcessOprfRequest(byte[] oprfRequest)
     {
-        return ProcessOprfRequest(oprfRequest.AsSpan());
-    }
+        Result<RegistrationRequest, OpaqueServerFailure> registrationRequestResult =
+            RegistrationRequest.Create(oprfRequest);
 
-    public byte[] ProcessOprfRequest(ReadOnlySpan<byte> oprfRequest)
-    {
-        (byte[] response, _) = ProcessOprfRequestWithMaskingKey(oprfRequest);
-        return response;
-    }
-
-    public (byte[] Response, byte[] MaskingKey) ProcessOprfRequestWithMaskingKey(byte[] oprfRequest)
-    {
-        return ProcessOprfRequestWithMaskingKey(oprfRequest.AsSpan());
-    }
-
-    public (byte[] Response, byte[] MaskingKey) ProcessOprfRequestWithMaskingKey(ReadOnlySpan<byte> oprfRequest)
-    {
-        return ProcessOprfRequestWithMaskingKeyAsync(oprfRequest.ToArray()).GetAwaiter().GetResult();
-    }
-
-    private async Task<(byte[] Response, byte[] MaskingKey)> ProcessOprfRequestWithMaskingKeyAsync(byte[] oprfRequest)
-    {
-        try
+        if (registrationRequestResult.IsErr)
         {
-            Result<RegistrationRequest, OpaqueServerFailure> registrationRequestResult =
-                RegistrationRequest.Create(oprfRequest);
+            throw new InvalidOperationException(
+                $"Invalid OPRF request: {registrationRequestResult.UnwrapErr().Message}");
+        }
 
-            if (registrationRequestResult.IsErr)
+        RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
+        Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
+            nativeService.CreateRegistrationResponse(registrationRequest);
+
+        return result.Match(
+            ok =>
             {
-                throw new InvalidOperationException(
-                    $"Invalid OPRF request: {registrationRequestResult.UnwrapErr().Message}");
-            }
-
-            RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
-            Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
-                await nativeService.CreateRegistrationResponseAsync(registrationRequest).ConfigureAwait(false);
-
-            return result.Match(
-                ok => {
-                    byte[] maskingKey = ok.ServerCredentials.AsSpan(CredentialsMaskingKeyOffset, MaskingKeySize).ToArray();
-                    return (ok.Response.Data, maskingKey);
-                },
-                err => throw new InvalidOperationException($"OPRF processing failed: {err.Message}")
-            );
-        }
-        catch (Exception ex)
-        {
-            throw;
-        }
+                byte[] maskingKey = ok.ServerCredentials.AsSpan(CredentialsMaskingKeyOffset, MaskingKeySize).ToArray();
+                return (ok.Response.Data, maskingKey);
+            },
+            err => throw new InvalidOperationException($"OPRF processing failed: {err.Message}")
+        );
     }
 
-    private static Result<Unit, OpaqueFailure> ValidateSignInInitRequest(OpaqueSignInInitRequest request)
+
+
+    private static Result<KE1, OpaqueFailure> ValidateKe1(OpaqueSignInInitRequest request)
     {
-        if (request is null)
-            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidInput("Sign-in init request cannot be null"));
-
-        if (request.PeerOprf is null || request.PeerOprf.IsEmpty)
-            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidInput("Peer OPRF data cannot be null or empty"));
-
-        return Result<Unit, OpaqueFailure>.Ok(Unit.Value);
-    }
-
-    private static Result<Unit, OpaqueFailure> ValidateSignInFinalizeRequest(OpaqueSignInFinalizeRequest request)
-    {
-        if (request is null)
-            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidInput("Sign-in finalize request cannot be null"));
-
-        if (request.ClientMac is null || request.ClientMac.IsEmpty)
-            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidInput("Client MAC cannot be null or empty"));
-
-        return Result<Unit, OpaqueFailure>.Ok(Unit.Value);
-    }
-
-    private static Result<Unit, OpaqueFailure> ValidateQueryRecord(MembershipOpaqueQueryRecord queryRecord)
-    {
-        if (queryRecord is null)
-            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidInput("Query record cannot be null"));
-
-        if (queryRecord.RegistrationRecord is null || queryRecord.RegistrationRecord.Length != ClientRegistrationRecordSize)
-            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidInput(
-                $"Registration record must be exactly {ClientRegistrationRecordSize} bytes"));
-
-        if (queryRecord.MaskingKey is null || queryRecord.MaskingKey.Length != MaskingKeySize)
-            return Result<Unit, OpaqueFailure>.Err(OpaqueFailure.InvalidInput(
-                $"Masking key must be exactly {MaskingKeySize} bytes"));
-
-        return Result<Unit, OpaqueFailure>.Ok(Unit.Value);
-    }
-
-    private static Result<KE1, OpaqueFailure> ValidateKE1(OpaqueSignInInitRequest request)
-    {
-        var requestValidation = ValidateSignInInitRequest(request);
-        if (requestValidation.IsErr)
-            return Result<KE1, OpaqueFailure>.Err(requestValidation.UnwrapErr());
-
         Result<KE1, OpaqueServerFailure> ke1Result = KE1.Create(request.PeerOprf.ToByteArray());
         return ke1Result.IsErr
-            ? Result<KE1, OpaqueFailure>.Err(OpaqueFailure.InvalidInput($"Invalid KE1: {ke1Result.UnwrapErr().Message}"))
+            ? Result<KE1, OpaqueFailure>.Err(
+                OpaqueFailure.InvalidInput($"Invalid KE1: {ke1Result.UnwrapErr().Message}"))
             : Result<KE1, OpaqueFailure>.Ok(ke1Result.Unwrap());
     }
 
-    private static Result<KE3, OpaqueFailure> ValidateKE3(OpaqueSignInFinalizeRequest request)
+    private static Result<KE3, OpaqueFailure> ValidateKe3(OpaqueSignInFinalizeRequest request)
     {
-        var requestValidation = ValidateSignInFinalizeRequest(request);
-        if (requestValidation.IsErr)
-            return Result<KE3, OpaqueFailure>.Err(requestValidation.UnwrapErr());
-
         Result<KE3, OpaqueServerFailure> ke3Result = KE3.Create(request.ClientMac.ToByteArray());
         return ke3Result.IsErr
-            ? Result<KE3, OpaqueFailure>.Err(OpaqueFailure.InvalidInput($"Invalid KE3: {ke3Result.UnwrapErr().Message}"))
+            ? Result<KE3, OpaqueFailure>.Err(
+                OpaqueFailure.InvalidInput($"Invalid KE3: {ke3Result.UnwrapErr().Message}"))
             : Result<KE3, OpaqueFailure>.Ok(ke3Result.Unwrap());
     }
 
@@ -149,8 +79,9 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
 
         return new OpaqueSignInInitResponse
         {
-            ServerOprfResponse = ByteString.CopyFrom(ke2Span.Slice(0, ServerOprfResponseSize)),
-            ServerEphemeralPublicKey = ByteString.CopyFrom(ke2Span.Slice(ServerOprfResponseSize, ServerEphemeralKeySize)),
+            ServerOprfResponse = ByteString.CopyFrom(ke2Span[..ServerOprfResponseSize]),
+            ServerEphemeralPublicKey =
+                ByteString.CopyFrom(ke2Span.Slice(ServerOprfResponseSize, ServerEphemeralKeySize)),
             RegistrationRecord = ByteString.CopyFrom(registrationRecord),
             ServerStateToken = ByteString.CopyFrom(ke2Data),
             Result = OpaqueSignInInitResponse.Types.SignInResult.Succeeded
@@ -185,7 +116,8 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
     private static byte[] ConstructServerCredentials(byte[] clientRegistrationRecord, byte[] maskingKey)
     {
         if (clientRegistrationRecord.Length != ClientRegistrationRecordSize)
-            throw new ArgumentException($"Client registration record must be {ClientRegistrationRecordSize} bytes, got {clientRegistrationRecord.Length}");
+            throw new ArgumentException(
+                $"Client registration record must be {ClientRegistrationRecordSize} bytes, got {clientRegistrationRecord.Length}");
         if (maskingKey.Length != MaskingKeySize)
             throw new ArgumentException($"Masking key must be {MaskingKeySize} bytes, got {maskingKey.Length}");
 
@@ -202,62 +134,53 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         return credentials;
     }
 
-    public Result<OpaqueSignInInitResponse, OpaqueFailure> InitiateSignIn(
-        OpaqueSignInInitRequest request, MembershipOpaqueQueryRecord queryRecord)
-    {
-        return InitiateSignInAsync(request, queryRecord).GetAwaiter().GetResult();
-    }
-
-    private async Task<Result<OpaqueSignInInitResponse, OpaqueFailure>> InitiateSignInAsync(
+    public Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure> InitiateSignIn(
         OpaqueSignInInitRequest request, MembershipOpaqueQueryRecord queryRecord)
     {
         try
         {
-            var queryValidation = ValidateQueryRecord(queryRecord);
-            if (queryValidation.IsErr)
-                return Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(queryValidation.UnwrapErr());
-
-            var ke1ValidationResult = ValidateKE1(request);
+            Result<KE1, OpaqueFailure> ke1ValidationResult = ValidateKe1(request);
             if (ke1ValidationResult.IsErr)
-                return Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(ke1ValidationResult.UnwrapErr());
+                return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(ke1ValidationResult.UnwrapErr());
 
             KE1 ke1 = ke1ValidationResult.Unwrap();
-            byte[] serverCredentials = ConstructServerCredentials(queryRecord.RegistrationRecord, queryRecord.MaskingKey);
+            byte[] serverCredentials =
+                ConstructServerCredentials(queryRecord.RegistrationRecord, queryRecord.MaskingKey);
 
             Result<KE2, OpaqueServerFailure> ke2Result =
-                await nativeService.GenerateKE2Async(ke1, serverCredentials).ConfigureAwait(false);
+                nativeService.GenerateKe2(ke1, serverCredentials);
 
             return ke2Result.Match(
-                ok => Result<OpaqueSignInInitResponse, OpaqueFailure>.Ok(
-                    BuildSignInInitResponse(ok.Data, queryRecord.RegistrationRecord)),
-                err => Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(
+                ok =>
+                {
+                    byte[] serverMac = ExtractServerMac(ok.Data);
+                    OpaqueSignInInitResponse response =
+                        BuildSignInInitResponse(ok.Data, queryRecord.RegistrationRecord);
+                    return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Ok((response, serverMac));
+                },
+                err => Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(
                     OpaqueFailure.InvalidInput($"KE2 generation failed: {err.Message}")));
         }
         catch (Exception ex)
         {
-            return Result<OpaqueSignInInitResponse, OpaqueFailure>.Err(
+            return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(
                 OpaqueFailure.InvalidInput($"Sign-in initiation failed: {ex.Message}"));
         }
     }
 
-    public Result<OpaqueSignInFinalizeResponse, OpaqueFailure> FinalizeSignIn(OpaqueSignInFinalizeRequest request)
-    {
-        return FinalizeSignInAsync(request, null).GetAwaiter().GetResult();
-    }
-
-    private async Task<Result<OpaqueSignInFinalizeResponse, OpaqueFailure>> FinalizeSignInAsync(
-        OpaqueSignInFinalizeRequest request, byte[]? serverMac)
+    public Result<OpaqueSignInFinalizeResponse, OpaqueFailure> CompleteSignIn(OpaqueSignInFinalizeRequest request,
+        byte[]? serverMac = null)
     {
         try
         {
-            var ke3ValidationResult = ValidateKE3(request);
+            Result<KE3, OpaqueFailure> ke3ValidationResult = ValidateKe3(request);
             if (ke3ValidationResult.IsErr)
                 return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Err(ke3ValidationResult.UnwrapErr());
 
             KE3 ke3 = ke3ValidationResult.Unwrap();
 
             Result<SessionKey, OpaqueServerFailure> sessionKeyResult =
-                await nativeService.FinishAuthenticationAsync(ke3).ConfigureAwait(false);
+                nativeService.FinishAuthentication(ke3);
 
             return sessionKeyResult.Match(
                 ok => Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(
@@ -282,6 +205,7 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         );
     }
 
+    //TODO:REMOVE.
     public Result<byte[], OpaqueFailure> CompleteRegistrationWithSessionKey(byte[] peerRegistrationRecord)
     {
         try
@@ -326,54 +250,6 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         {
             return Result<AuthContextTokenResponse, OpaqueFailure>.Err(
                 OpaqueFailure.InvalidInput($"Authentication context generation failed: {ex.Message}"));
-        }
-    }
-
-    public Result<OpaqueSignInFinalizeResponse, OpaqueFailure> FinalizeSignIn(OpaqueSignInFinalizeRequest request, byte[] serverMac)
-    {
-        return FinalizeSignInAsync(request, serverMac).GetAwaiter().GetResult();
-    }
-
-    public Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure> InitiateSignInWithServerMac(
-        OpaqueSignInInitRequest request, MembershipOpaqueQueryRecord queryRecord)
-    {
-        return InitiateSignInWithServerMacAsync(request, queryRecord).GetAwaiter().GetResult();
-    }
-
-    private async Task<Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure>> InitiateSignInWithServerMacAsync(
-        OpaqueSignInInitRequest request, MembershipOpaqueQueryRecord queryRecord)
-    {
-        try
-        {
-            var queryValidation = ValidateQueryRecord(queryRecord);
-            if (queryValidation.IsErr)
-                return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(queryValidation.UnwrapErr());
-
-            var ke1ValidationResult = ValidateKE1(request);
-            if (ke1ValidationResult.IsErr)
-                return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(ke1ValidationResult.UnwrapErr());
-
-            KE1 ke1 = ke1ValidationResult.Unwrap();
-            byte[] serverCredentials = ConstructServerCredentials(queryRecord.RegistrationRecord, queryRecord.MaskingKey);
-
-            Result<KE2, OpaqueServerFailure> ke2Result =
-                await nativeService.GenerateKE2Async(ke1, serverCredentials).ConfigureAwait(false);
-
-            return ke2Result.Match(
-                ok =>
-                {
-                    byte[] serverMac = ExtractServerMac(ok.Data);
-                    OpaqueSignInInitResponse response = BuildSignInInitResponse(ok.Data, queryRecord.RegistrationRecord);
-                    return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Ok((response, serverMac));
-                },
-                err => Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(
-                    OpaqueFailure.InvalidInput($"KE2 generation failed: {err.Message}"))
-            );
-        }
-        catch (Exception ex)
-        {
-            return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(
-                OpaqueFailure.InvalidInput($"Sign-in initiation with server MAC failed: {ex.Message}"));
         }
     }
 }

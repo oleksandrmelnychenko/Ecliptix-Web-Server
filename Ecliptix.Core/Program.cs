@@ -29,8 +29,6 @@ using StackExchange.Redis;
 using Ecliptix.Domain;
 using Ecliptix.Domain.Abstractions;
 using Ecliptix.Domain.DbConnectionFactory;
-using Ecliptix.Utilities;
-using Ecliptix.Security.Opaque.Models;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque;
 using Ecliptix.Domain.Memberships.PhoneNumberValidation;
@@ -38,6 +36,7 @@ using Ecliptix.Domain.Providers.Twilio;
 using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Services;
+using Ecliptix.Utilities;
 using static Ecliptix.Core.Configuration.NetworkConstants;
 using AppConstants = Ecliptix.Core.Configuration.ApplicationConstants;
 using HealthStatus = Ecliptix.Core.Json.HealthStatus;
@@ -52,7 +51,7 @@ try
 
     WebApplication app = builder.Build();
 
-    await InitializeOpaqueServiceAsync(app);
+    InitializeOpaqueService(app);
 
     ConfigureMiddleware(app);
     ConfigureEndpoints(app);
@@ -117,11 +116,13 @@ static void ConfigureServices(WebApplicationBuilder builder)
 
     IConfigurationSection securityKeysSection =
         builder.Configuration.GetSection(AppConstants.Configuration.SecurityKeys);
-    MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey = securityKeysSection[AppConstants.ConfigurationKeys.KeyExchangeContextTypeKey] ??
-                                                               MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey;
-    MetadataConstants.SecurityKeys.KeyExchangeContextTypeValue = securityKeysSection[AppConstants.ConfigurationKeys.KeyExchangeContextTypeValue] ??
-                                                                 MetadataConstants.SecurityKeys
-                                                                     .KeyExchangeContextTypeValue;
+    MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey =
+        securityKeysSection[AppConstants.ConfigurationKeys.KeyExchangeContextTypeKey] ??
+        MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey;
+    MetadataConstants.SecurityKeys.KeyExchangeContextTypeValue =
+        securityKeysSection[AppConstants.ConfigurationKeys.KeyExchangeContextTypeValue] ??
+        MetadataConstants.SecurityKeys
+            .KeyExchangeContextTypeValue;
 
     builder.Services.AddSingleton<ISmsProvider>(serviceProvider =>
     {
@@ -133,7 +134,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService>();
-    
+
     // Configure Redis for distributed session key caching
     string? redisConnectionString = builder.Configuration.GetConnectionString(AppConstants.Redis.ConnectionStringKey);
     if (string.IsNullOrEmpty(redisConnectionString))
@@ -195,7 +196,8 @@ static void ConfigureMiddleware(WebApplication app)
         options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
         {
             diagnosticContext.Set(AppConstants.DiagnosticContext.RequestHost, httpContext.Request.Host.Value!);
-            diagnosticContext.Set(AppConstants.DiagnosticContext.UserAgent, httpContext.Request.Headers[AppConstants.HttpHeaders.UserAgent].ToString());
+            diagnosticContext.Set(AppConstants.DiagnosticContext.UserAgent,
+                httpContext.Request.Headers[AppConstants.HttpHeaders.UserAgent].ToString());
             diagnosticContext.Set(AppConstants.DiagnosticContext.Protocol, httpContext.Request.Protocol);
 
             if (httpContext.Request.Headers.TryGetValue(AppConstants.HttpHeaders.ConnectId, out StringValues connectId))
@@ -205,7 +207,8 @@ static void ConfigureMiddleware(WebApplication app)
 
             if (httpContext.Request.ContentLength.HasValue)
             {
-                diagnosticContext.Set(AppConstants.DiagnosticContext.RequestSize, httpContext.Request.ContentLength.Value);
+                diagnosticContext.Set(AppConstants.DiagnosticContext.RequestSize,
+                    httpContext.Request.ContentLength.Value);
             }
         };
     });
@@ -260,7 +263,8 @@ static void ConfigureEndpoints(WebApplication app)
     });
 
     app.MapGet(AppConstants.Endpoints.Root,
-        () => Results.Ok(new { Status = AppConstants.StatusMessages.Success, Message = AppConstants.StatusMessages.ServerRunning }));
+        () => Results.Ok(new
+            { Status = AppConstants.StatusMessages.Success, Message = AppConstants.StatusMessages.ServerRunning }));
 }
 
 static void RegisterLocalization(IServiceCollection services)
@@ -285,7 +289,8 @@ static void RegisterSecurity(IServiceCollection services)
     {
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
             RateLimitPartition.GetSlidingWindowLimiter(
-                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? AppConstants.FallbackValues.UnknownIpAddress,
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ??
+                              AppConstants.FallbackValues.UnknownIpAddress,
                 factory: _ => new SlidingWindowRateLimiterOptions
                 {
                     PermitLimit = RateLimit.PermitLimit,
@@ -299,7 +304,8 @@ static void RegisterSecurity(IServiceCollection services)
         {
             context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
             Log.Warning(AppConstants.LogMessages.RateLimitExceeded,
-                context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? AppConstants.FallbackValues.UnknownIpAddress);
+                context.HttpContext.Connection.RemoteIpAddress?.ToString() ??
+                AppConstants.FallbackValues.UnknownIpAddress);
             return ValueTask.CompletedTask;
         };
     });
@@ -343,36 +349,19 @@ static void RegisterGrpc(IServiceCollection services)
     services.Configure<KestrelServerOptions>(options =>
     {
         options.ListenAnyIP(Ports.Grpc, listenOptions => { listenOptions.Protocols = HttpProtocols.Http2; });
-
         options.ListenAnyIP(Ports.Http, listenOptions => { listenOptions.Protocols = HttpProtocols.Http1; });
     });
 }
 
-static async Task InitializeOpaqueServiceAsync(WebApplication app)
+static void InitializeOpaqueService(WebApplication app)
 {
-    try
-    {
-        INativeOpaqueProtocolService opaqueService = app.Services.GetRequiredService<INativeOpaqueProtocolService>();
-        SecurityKeysSettings securityKeysSettings = app.Services.GetRequiredService<IOptions<SecurityKeysSettings>>().Value;
-
-        if (opaqueService is OpaqueProtocolService opaqueProtocolService)
-        {
-            Result<Unit, OpaqueServerFailure> initResult = await opaqueProtocolService.InitializeAsync(securityKeysSettings.OpaqueSecretKeySeed);
-            if (initResult.IsErr)
-            {
-                Log.Warning("OPAQUE service initialization failed - service will be unavailable: {Error}",
-                    initResult.UnwrapErr().Message);
-                return;
-            }
-
-            Log.Information("OPAQUE service initialized successfully with {KeyType}",
-                string.IsNullOrEmpty(securityKeysSettings.OpaqueSecretKeySeed) ? "random keys" : "configured seed");
-        }
-    }
-    catch (Exception ex)
-    {
-        Log.Warning(ex, "OPAQUE service initialization failed - service will be unavailable");
-    }
+    INativeOpaqueProtocolService opaqueService = app.Services.GetRequiredService<INativeOpaqueProtocolService>();
+    SecurityKeysSettings securityKeysSettings = app.Services.GetRequiredService<IOptions<SecurityKeysSettings>>().Value;
+    Result<Unit, OpaqueServerFailure> initializationResult =
+        opaqueService.Initialize(securityKeysSettings.OpaqueSecretKeySeed);
+    if (!initializationResult.IsErr) return;
+    string errorMessage = initializationResult.UnwrapErr().Message;
+    Log.Error(errorMessage);
 }
 
 internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedService
@@ -419,28 +408,31 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
     {
         CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(actorSystem);
 
-        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeServiceUnbind, AppConstants.ActorSystemTasks.StopAcceptingNewConnections,
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeServiceUnbind,
+            AppConstants.ActorSystemTasks.StopAcceptingNewConnections,
             () =>
             {
                 Log.Information(AppConstants.LogMessages.PhaseStopAcceptingConnections);
                 return Task.FromResult(Done.Instance);
             });
 
-        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone, AppConstants.ActorSystemTasks.DrainActiveRequests, async () =>
-        {
-            Log.Information(AppConstants.LogMessages.PhaseDrainingActiveRequests);
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone,
+            AppConstants.ActorSystemTasks.DrainActiveRequests, async () =>
+            {
+                Log.Information(AppConstants.LogMessages.PhaseDrainingActiveRequests);
 
-            await Task.Delay(TimeSpan.FromSeconds(Timeouts.DrainActiveRequestsSeconds));
+                await Task.Delay(TimeSpan.FromSeconds(Timeouts.DrainActiveRequestsSeconds));
 
-            Log.Information(AppConstants.LogMessages.ActiveRequestDrainingCompleted);
-            return Done.Instance;
-        });
+                Log.Information(AppConstants.LogMessages.ActiveRequestDrainingCompleted);
+                return Done.Instance;
+            });
 
-        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate, AppConstants.ActorSystemTasks.CleanupResources, () =>
-        {
-            Log.Information(AppConstants.LogMessages.PhaseCleanupResources);
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate,
+            AppConstants.ActorSystemTasks.CleanupResources, () =>
+            {
+                Log.Information(AppConstants.LogMessages.PhaseCleanupResources);
 
-            return Task.FromResult(Done.Instance);
-        });
+                return Task.FromResult(Done.Instance);
+            });
     }
 }
