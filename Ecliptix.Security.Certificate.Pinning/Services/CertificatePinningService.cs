@@ -9,53 +9,87 @@ namespace Ecliptix.Security.Certificate.Pinning.Services;
 
 public sealed class CertificatePinningService : IDisposable
 {
+    private readonly Lock _lock = new();
     private volatile bool _isInitialized;
     private volatile bool _disposed;
 
-    public ValueTask<Result<Unit, CertificatePinningFailure>> InitializeAsync()
+    private static class Ed25519Validation
     {
-        return ValueTask.FromResult(InitializeSync());
+        private const int PublicKeySize = 32;
+        private const int PrivateKeySize = 32;
+        private const int SignatureSize = 64;
+        private const int MaxMessageSize = 1024 * 1024;
+
+        public static Result<Unit, CertificatePinningFailure> ValidatePublicKey(ReadOnlyMemory<byte> publicKey)
+        {
+            if (publicKey.Length != PublicKeySize)
+                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidPublicKey());
+            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+        }
+
+        public static Result<Unit, CertificatePinningFailure> ValidatePrivateKey(ReadOnlyMemory<byte> privateKey)
+        {
+            if (privateKey.Length != PrivateKeySize)
+                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidPrivateKey());
+            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+        }
+
+        public static Result<Unit, CertificatePinningFailure> ValidateSignature(ReadOnlyMemory<byte> signature)
+        {
+            if (signature.Length != SignatureSize)
+                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidSignature());
+            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+        }
+
+        public static Result<Unit, CertificatePinningFailure> ValidateMessage(ReadOnlyMemory<byte> message)
+        {
+            if (message.Length == 0)
+                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.MessageRequired());
+            if (message.Length > MaxMessageSize)
+                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.MessageRequired());
+            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+        }
     }
 
-    private Result<Unit, CertificatePinningFailure> InitializeSync()
+    public Result<Unit, CertificatePinningFailure> Initialize()
     {
-        if (_disposed)
-            return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
-
-        if (_isInitialized)
-            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
-
-        try
+        lock (_lock)
         {
-            int result = CertificatePinningNativeLibrary.Initialize();
+            if (_disposed)
+                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
 
-            if (result != 0)
+            if (_isInitialized)
+                return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+
+            try
             {
-                string error = GetErrorString();
-                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.LibraryInitializationFailed(error));
+                int result = CertificatePinningNativeLibrary.Initialize();
+
+                if (result != 0)
+                {
+                    string error = GetErrorString();
+                    return Result<Unit, CertificatePinningFailure>.Err(
+                        CertificatePinningFailure.LibraryInitializationFailed(error));
+                }
+
+                _isInitialized = true;
+                return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
             }
-
-            _isInitialized = true;
-            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
-        }
-        catch (Exception ex)
-        {
-            return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InitializationException(ex));
+            catch (Exception ex)
+            {
+                return Result<Unit, CertificatePinningFailure>.Err(
+                    CertificatePinningFailure.InitializationException(ex));
+            }
         }
     }
 
-    public ValueTask<Result<byte[], CertificatePinningFailure>> EncryptAsync(ReadOnlyMemory<byte> plaintext)
+    public Result<byte[], CertificatePinningFailure> Encrypt(ReadOnlyMemory<byte> plaintext)
     {
-        return ValueTask.FromResult(EncryptSync(plaintext));
-    }
-
-    private Result<byte[], CertificatePinningFailure> EncryptSync(ReadOnlyMemory<byte> plaintext)
-    {
-        if (!_isInitialized)
-            return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
-
         if (_disposed)
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
+
+        if (!_isInitialized)
+            return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
 
         if (plaintext.Length == 0)
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.PlaintextRequired());
@@ -78,7 +112,8 @@ public sealed class CertificatePinningService : IDisposable
                     if (encryptResult != 0)
                     {
                         string error = GetErrorString();
-                        return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.EncryptionFailed(error));
+                        return Result<byte[], CertificatePinningFailure>.Err(
+                            CertificatePinningFailure.EncryptionFailed(error));
                     }
                 }
 
@@ -97,23 +132,19 @@ public sealed class CertificatePinningService : IDisposable
         }
     }
 
-    public ValueTask<Result<byte[], CertificatePinningFailure>> DecryptAsync(ReadOnlyMemory<byte> ciphertext)
+    public Result<byte[], CertificatePinningFailure> Decrypt(ReadOnlyMemory<byte> ciphertext)
     {
-        return ValueTask.FromResult(DecryptSync(ciphertext));
-    }
-
-    private Result<byte[], CertificatePinningFailure> DecryptSync(ReadOnlyMemory<byte> ciphertext)
-    {
-        if (!_isInitialized)
-            return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
-
         if (_disposed)
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
+
+        if (!_isInitialized)
+            return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
 
         if (ciphertext.Length == 0)
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.CiphertextRequired());
 
         byte[] plaintext = ArrayPool<byte>.Shared.Rent(CertificatePinningConfigurationConstants.MaxPlaintextSize);
+        nuint actualPlaintextLen = 0;
         try
         {
             unsafe
@@ -131,12 +162,19 @@ public sealed class CertificatePinningService : IDisposable
                     if (decryptResult != 0)
                     {
                         string error = GetErrorString();
-                        return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.DecryptionFailed(error));
+                        return Result<byte[], CertificatePinningFailure>.Err(
+                            CertificatePinningFailure.DecryptionFailed(error));
                     }
+
+                    actualPlaintextLen = plaintextLen;
                 }
 
-                byte[] resultArray = new byte[plaintextLen];
-                plaintext.AsSpan(0, (int)plaintextLen).CopyTo(resultArray);
+                if (actualPlaintextLen > int.MaxValue)
+                    return Result<byte[], CertificatePinningFailure>.Err(
+                        CertificatePinningFailure.DecryptionFailed("Plaintext too large"));
+
+                byte[] resultArray = new byte[actualPlaintextLen];
+                plaintext.AsSpan(0, (int)actualPlaintextLen).CopyTo(resultArray);
                 return Result<byte[], CertificatePinningFailure>.Ok(resultArray);
             }
         }
@@ -146,38 +184,36 @@ public sealed class CertificatePinningService : IDisposable
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(plaintext.AsSpan(0, CertificatePinningConfigurationConstants.MaxPlaintextSize));
-            ArrayPool<byte>.Shared.Return(plaintext, clearArray: false);
+            if (actualPlaintextLen > 0 && actualPlaintextLen <= int.MaxValue)
+                CryptographicOperations.ZeroMemory(plaintext.AsSpan(0, (int)actualPlaintextLen));
+            ArrayPool<byte>.Shared.Return(plaintext, clearArray: true);
         }
     }
 
-    public ValueTask<Result<(byte[], byte[]), CertificatePinningFailure>> GenerateEd25519KeypairAsync()
+    public Result<(byte[], byte[]), CertificatePinningFailure> GenerateEd25519Keypair()
     {
-        return ValueTask.FromResult(GenerateEd25519KeypairSync());
+        return GenerateEd25519KeypairSync();
     }
 
-    public ValueTask<Result<byte[], CertificatePinningFailure>> SignEd25519Async(ReadOnlyMemory<byte> message, ReadOnlyMemory<byte> privateKey)
+    public Result<byte[], CertificatePinningFailure> SignEd25519(ReadOnlyMemory<byte> message,
+        ReadOnlyMemory<byte> privateKey)
     {
-        return ValueTask.FromResult(SignEd25519Sync(message, privateKey));
+        return SignEd25519Sync(message, privateKey);
     }
 
-    public ValueTask<Result<bool, CertificatePinningFailure>> VerifyEd25519Async(ReadOnlyMemory<byte> message, ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> publicKey)
+    public Result<bool, CertificatePinningFailure> VerifyEd25519(ReadOnlyMemory<byte> message,
+        ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> publicKey)
     {
-        return ValueTask.FromResult(VerifyEd25519Sync(message, signature, publicKey));
+        return VerifyEd25519Sync(message, signature, publicKey);
     }
 
-    public ValueTask<Result<byte[], CertificatePinningFailure>> SignAsync(ReadOnlyMemory<byte> data)
+    public Result<byte[], CertificatePinningFailure> Sign(ReadOnlyMemory<byte> data)
     {
-        return ValueTask.FromResult(SignSync(data));
-    }
-
-    private Result<byte[], CertificatePinningFailure> SignSync(ReadOnlyMemory<byte> data)
-    {
-        if (!_isInitialized)
-            return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
-
         if (_disposed)
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
+
+        if (!_isInitialized)
+            return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
 
         if (data.Length == 0)
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.DataRequired());
@@ -200,12 +236,17 @@ public sealed class CertificatePinningService : IDisposable
                     if (result != 0)
                     {
                         string error = GetErrorString();
-                        return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.SigningFailed(error));
+                        return Result<byte[], CertificatePinningFailure>.Err(
+                            CertificatePinningFailure.SigningFailed(error));
                     }
 
-                    byte[] result_array = new byte[signatureLen];
-                    signature.AsSpan(0, (int)signatureLen).CopyTo(result_array);
-                    return Result<byte[], CertificatePinningFailure>.Ok(result_array);
+                    if (signatureLen > int.MaxValue)
+                        return Result<byte[], CertificatePinningFailure>.Err(
+                            CertificatePinningFailure.SigningFailed("Signature too large"));
+
+                    byte[] resultArray = new byte[signatureLen];
+                    signature.AsSpan(0, (int)signatureLen).CopyTo(resultArray);
+                    return Result<byte[], CertificatePinningFailure>.Ok(resultArray);
                 }
             }
         }
@@ -221,18 +262,20 @@ public sealed class CertificatePinningService : IDisposable
 
     private Result<(byte[], byte[]), CertificatePinningFailure> GenerateEd25519KeypairSync()
     {
-        if (!_isInitialized)
-            return Result<(byte[], byte[]), CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
-
         if (_disposed)
             return Result<(byte[], byte[]), CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
+
+        if (!_isInitialized)
+            return Result<(byte[], byte[]), CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
 
         try
         {
             unsafe
             {
-                Span<byte> publicKeySpan = stackalloc byte[CertificatePinningConfigurationConstants.Ed25519PublicKeySize];
-                Span<byte> privateKeySpan = stackalloc byte[CertificatePinningConfigurationConstants.Ed25519PrivateKeySize];
+                Span<byte> publicKeySpan =
+                    stackalloc byte[CertificatePinningConfigurationConstants.Ed25519PublicKeySize];
+                Span<byte> privateKeySpan =
+                    stackalloc byte[CertificatePinningConfigurationConstants.Ed25519PrivateKeySize];
 
                 fixed (byte* publicKeyPtr = publicKeySpan)
                 fixed (byte* privateKeyPtr = privateKeySpan)
@@ -243,40 +286,47 @@ public sealed class CertificatePinningService : IDisposable
                     if (result != CertificatePinningResult.Success)
                     {
                         string error = GetErrorString();
-                        return Result<(byte[], byte[]), CertificatePinningFailure>.Err(CertificatePinningFailure.KeyGenerationFailed(error));
+                        return Result<(byte[], byte[]), CertificatePinningFailure>.Err(
+                            CertificatePinningFailure.KeyGenerationFailed(error));
                     }
                 }
 
                 byte[] publicKey = publicKeySpan.ToArray();
                 byte[] privateKey = privateKeySpan.ToArray();
+
+                CryptographicOperations.ZeroMemory(privateKeySpan);
+
                 return Result<(byte[], byte[]), CertificatePinningFailure>.Ok((publicKey, privateKey));
             }
         }
         catch (Exception ex)
         {
-            return Result<(byte[], byte[]), CertificatePinningFailure>.Err(CertificatePinningFailure.KeyGenerationException(ex));
+            return Result<(byte[], byte[]), CertificatePinningFailure>.Err(CertificatePinningFailure
+                .KeyGenerationException(ex));
         }
     }
 
-    private Result<byte[], CertificatePinningFailure> SignEd25519Sync(ReadOnlyMemory<byte> message, ReadOnlyMemory<byte> privateKey)
+    private Result<byte[], CertificatePinningFailure> SignEd25519Sync(ReadOnlyMemory<byte> message,
+        ReadOnlyMemory<byte> privateKey)
     {
-        if (!_isInitialized)
-            return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
-
         if (_disposed)
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
 
-        if (message.Length == 0)
-            return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.MessageRequired());
+        if (!_isInitialized)
+            return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
 
-        if (privateKey.Length != CertificatePinningConfigurationConstants.Ed25519PrivateKeySize)
-            return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidPrivateKey());
+        Result<Unit, CertificatePinningFailure> messageValidation = Ed25519Validation.ValidateMessage(message);
+        if (messageValidation.IsErr) return messageValidation.MapErr(err => err).Map(_ => Array.Empty<byte>());
+
+        Result<Unit, CertificatePinningFailure> privateKeyValidation = Ed25519Validation.ValidatePrivateKey(privateKey);
+        if (privateKeyValidation.IsErr) return privateKeyValidation.MapErr(err => err).Map(_ => Array.Empty<byte>());
 
         try
         {
             unsafe
             {
-                Span<byte> signatureSpan = stackalloc byte[CertificatePinningConfigurationConstants.Ed25519SignatureSize];
+                Span<byte> signatureSpan =
+                    stackalloc byte[CertificatePinningConfigurationConstants.Ed25519SignatureSize];
                 ReadOnlySpan<byte> messageSpan = message.Span;
                 ReadOnlySpan<byte> privateKeySpan = privateKey.Span;
 
@@ -292,7 +342,8 @@ public sealed class CertificatePinningService : IDisposable
                     if (result != CertificatePinningResult.Success)
                     {
                         string error = GetErrorString();
-                        return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.SigningFailed(error));
+                        return Result<byte[], CertificatePinningFailure>.Err(
+                            CertificatePinningFailure.SigningFailed(error));
                     }
                 }
 
@@ -305,22 +356,23 @@ public sealed class CertificatePinningService : IDisposable
         }
     }
 
-    private Result<bool, CertificatePinningFailure> VerifyEd25519Sync(ReadOnlyMemory<byte> message, ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> publicKey)
+    private Result<bool, CertificatePinningFailure> VerifyEd25519Sync(ReadOnlyMemory<byte> message,
+        ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> publicKey)
     {
-        if (!_isInitialized)
-            return Result<bool, CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
-
         if (_disposed)
             return Result<bool, CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
 
-        if (message.Length == 0)
-            return Result<bool, CertificatePinningFailure>.Err(CertificatePinningFailure.MessageRequired());
+        if (!_isInitialized)
+            return Result<bool, CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
 
-        if (signature.Length != CertificatePinningConfigurationConstants.Ed25519SignatureSize)
-            return Result<bool, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidSignature());
+        var messageValidation = Ed25519Validation.ValidateMessage(message);
+        if (messageValidation.IsErr) return messageValidation.MapErr(err => err).Map(_ => false);
 
-        if (publicKey.Length != CertificatePinningConfigurationConstants.Ed25519PublicKeySize)
-            return Result<bool, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidPublicKey());
+        var signatureValidation = Ed25519Validation.ValidateSignature(signature);
+        if (signatureValidation.IsErr) return signatureValidation.MapErr(err => err).Map(_ => false);
+
+        var publicKeyValidation = Ed25519Validation.ValidatePublicKey(publicKey);
+        if (publicKeyValidation.IsErr) return publicKeyValidation.MapErr(err => err).Map(_ => false);
 
         try
         {
@@ -339,9 +391,14 @@ public sealed class CertificatePinningService : IDisposable
                         signaturePtr,
                         publicKeyPtr);
 
-                    return result == CertificatePinningResult.Success
-                        ? Result<bool, CertificatePinningFailure>.Ok(true)
-                        : Result<bool, CertificatePinningFailure>.Ok(false);
+                    return result switch
+                    {
+                        CertificatePinningResult.Success => Result<bool, CertificatePinningFailure>.Ok(true),
+                        CertificatePinningResult.VerificationFailed => Result<bool, CertificatePinningFailure>.Ok(false),
+                        _ => Result<bool, CertificatePinningFailure>.Err(
+                            CertificatePinningFailure.VerificationException(
+                                new InvalidOperationException($"Verification internal error: {result}")))
+                    };
                 }
             }
         }
@@ -358,37 +415,66 @@ public sealed class CertificatePinningService : IDisposable
             byte* errorPtr = CertificatePinningNativeLibrary.GetErrorMessage();
             if (errorPtr != null)
             {
-                return Marshal.PtrToStringUTF8((IntPtr)errorPtr) ?? "Unknown error";
+                return GetSafeNativeErrorString(errorPtr);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // ignored
+            return $"Error retrieving native error message: {ex.Message}";
         }
 
         return "Error occurred";
     }
 
-    public void Dispose()
+    private static unsafe string GetSafeNativeErrorString(byte* errorPtr)
     {
-        if (_disposed)
-            return;
-
         try
         {
-            if (_isInitialized)
+            int length = 0;
+            const int maxLength = 4096; 
+
+            while (length < maxLength && errorPtr[length] != 0)
             {
-                CertificatePinningNativeLibrary.Cleanup();
+                length++;
             }
+
+            return length switch
+            {
+                0 => "Empty error message",
+                maxLength => "Error message too long or not null-terminated",
+                _ => System.Text.Encoding.UTF8.GetString(errorPtr, length)
+            };
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // ignored
+            return $"Failed to decode error message: {ex.Message}";
         }
-        finally
+    }
+
+    public void Dispose()
+    {
+        lock (_lock)
         {
+            if (_disposed)
+                return;
+
             _disposed = true;
-            _isInitialized = false;
+
+            try
+            {
+                if (_isInitialized)
+                {
+                    CertificatePinningNativeLibrary.Cleanup();
+                }
+            }
+            catch (Exception)
+            {
+                // ignored
+            }
+            finally
+            {
+                _isInitialized = false;
+            }
         }
     }
 }

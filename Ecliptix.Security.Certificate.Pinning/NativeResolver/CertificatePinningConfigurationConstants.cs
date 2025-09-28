@@ -9,7 +9,6 @@ public static class CertificatePinningConfigurationConstants
     public const int Ed25519PrivateKeySize = 32;
     public const int Ed25519SignatureSize = 64;
 
-    // RSA Configuration Constants
     public const int RsaKeySize = 2048;
     public const int RsaEncryptedBlockSize = 256;  // RSA-2048 output size
     public const int RsaMaxPlaintextSize = 214;     // RSA-2048 with OAEP padding

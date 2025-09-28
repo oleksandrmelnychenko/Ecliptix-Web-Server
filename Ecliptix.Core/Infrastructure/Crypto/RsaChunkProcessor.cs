@@ -123,29 +123,29 @@ public sealed class RsaChunkProcessor(
         }
     }
 
-    private async ValueTask<Result<byte[], CertificatePinningFailure>> ProcessEncryptChunkAsync(
+    private ValueTask<Result<byte[], CertificatePinningFailure>> ProcessEncryptChunkAsync(
         ReadOnlyMemory<byte> chunk)
     {
         if (chunk.Length > configuration.OptimalChunkSize)
         {
-            return Result<byte[], CertificatePinningFailure>.Err(
+            return ValueTask.FromResult(Result<byte[], CertificatePinningFailure>.Err(
                 CertificatePinningFailure.EncryptionFailed(
-                    $"Chunk size {chunk.Length} exceeds maximum {configuration.OptimalChunkSize}"));
+                    $"Chunk size {chunk.Length} exceeds maximum {configuration.OptimalChunkSize}")));
         }
 
-        return await certificatePinningService.EncryptAsync(chunk.ToArray());
+        return ValueTask.FromResult(certificatePinningService.Encrypt(chunk.ToArray()));
     }
 
-    private async ValueTask<Result<byte[], CertificatePinningFailure>> ProcessDecryptChunkAsync(
+    private ValueTask<Result<byte[], CertificatePinningFailure>> ProcessDecryptChunkAsync(
         ReadOnlyMemory<byte> chunk)
     {
         if (chunk.Length != configuration.EncryptedBlockSize)
         {
-            return Result<byte[], CertificatePinningFailure>.Err(
+            return ValueTask.FromResult(Result<byte[], CertificatePinningFailure>.Err(
                 CertificatePinningFailure.DecryptionFailed(
-                    $"Encrypted chunk size {chunk.Length} does not match expected {configuration.EncryptedBlockSize}"));
+                    $"Encrypted chunk size {chunk.Length} does not match expected {configuration.EncryptedBlockSize}")));
         }
 
-        return await certificatePinningService.DecryptAsync(chunk.ToArray());
+        return ValueTask.FromResult(certificatePinningService.Decrypt(chunk.ToArray()));
     }
 }

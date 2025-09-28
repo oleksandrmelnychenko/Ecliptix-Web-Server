@@ -7,22 +7,34 @@ namespace Ecliptix.Core.Services;
 
 public sealed class CertificatePinningServiceHost(
     CertificatePinningService securityService)
-    : IHostedService
+    : IHostedService, IDisposable
 {
-    public async Task StartAsync(CancellationToken cancellationToken)
+    private bool _disposed;
+
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        Result<Unit, CertificatePinningFailure> initResult = await securityService.InitializeAsync();
+        Result<Unit, CertificatePinningFailure> initResult = securityService.Initialize();
         if (initResult.IsErr)
         {
             throw new InvalidOperationException($"Server security initialization failed: {initResult.UnwrapErr()}");
         }
 
         Log.Information("SSL/RSA server security service initialized successfully");
+        return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        securityService.Dispose();
+        Dispose();
         return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            securityService?.Dispose();
+            _disposed = true;
+        }
     }
 }
