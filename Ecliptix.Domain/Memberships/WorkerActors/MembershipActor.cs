@@ -395,19 +395,14 @@ public class MembershipActor : ReceiveActor
 
                 if (storeResult.IsErr)
                 {
-                    Log.Error("Failed to store session key for connectId {ConnectId}: {Error}",
-                        @event.ConnectId, storeResult.UnwrapErr());
                     SecureRemovePendingSignIn(@event.ConnectId);
                     Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
                         VerificationFlowFailure.PersistorAccess($"Failed to store session key: {storeResult.UnwrapErr()}")));
                     return;
                 }
-
-                Log.Information("Session key stored successfully for connectId {ConnectId}", @event.ConnectId);
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Error storing session key for connectId {ConnectId}", @event.ConnectId);
                 SecureRemovePendingSignIn(@event.ConnectId);
                 Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.PersistorAccess($"Failed to store session key: {ex.Message}")));
@@ -453,13 +448,9 @@ public class MembershipActor : ReceiveActor
 
             if (persistResult.IsErr)
             {
-                Log.Warning("Failed to persist authentication context to database: {Error}",
-                    persistResult.UnwrapErr().Message);
             }
 
             SecureRemovePendingSignIn(@event.ConnectId);
-            Log.Information("Authentication context established for connectId {ConnectId}, membershipId {MembershipId}",
-                @event.ConnectId, membershipInfo.MembershipId);
 
             finalizeResponse.Membership = new Membership
             {

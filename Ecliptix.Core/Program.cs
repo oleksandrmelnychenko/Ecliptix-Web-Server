@@ -19,8 +19,10 @@ using Ecliptix.Core.Api.Grpc.Services.Device;
 using Ecliptix.Core.Api.Grpc.Services.Membership;
 using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Domain.Protocol.Monitoring;
+using Ecliptix.Core.Infrastructure.Crypto;
 using Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Core.Infrastructure.SecureChannel;
 using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Resources;
@@ -167,6 +169,17 @@ static void ConfigureServices(WebApplicationBuilder builder)
     });
 
     builder.Services.AddSingleton<EcliptixCertificatePinningService>();
+
+    builder.Services.AddSingleton<IRsaConfiguration, RsaConfiguration>();
+    builder.Services.AddSingleton<IRsaChunkProcessor, RsaChunkProcessor>();
+    builder.Services.AddSingleton<ISecureChannelEstablisher>(serviceProvider =>
+    {
+        IRsaChunkProcessor rsaChunkProcessor = serviceProvider.GetRequiredService<IRsaChunkProcessor>();
+        IEcliptixActorRegistry actorRegistry = serviceProvider.GetRequiredService<IEcliptixActorRegistry>();
+        IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
+
+        return new RsaSecureChannelEstablisher(rsaChunkProcessor, protocolActor);
+    });
 
     builder.Services.AddHealthChecks()
         .AddCheck<ProtocolHealthCheck>(AppConstants.HealthChecks.ProtocolHealth)

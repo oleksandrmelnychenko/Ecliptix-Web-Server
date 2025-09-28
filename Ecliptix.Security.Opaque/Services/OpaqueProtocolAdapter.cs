@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Security.Cryptography;
 using Ecliptix.Utilities;
 using Ecliptix.Security.Opaque.Models;
@@ -35,8 +36,7 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
 
         if (registrationRequestResult.IsErr)
         {
-            throw new InvalidOperationException(
-                $"Invalid OPRF request: {registrationRequestResult.UnwrapErr().Message}");
+            throw new InvalidOperationException($"Invalid OPRF request: {registrationRequestResult.UnwrapErr().Message}");
         }
 
         RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
@@ -46,8 +46,9 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         return result.Match(
             ok =>
             {
-                byte[] maskingKey = ok.ServerCredentials.AsSpan(CredentialsMaskingKeyOffset, MaskingKeySize).ToArray();
-                return (ok.Response.Data, maskingKey);
+                Span<byte> maskingKeySpan = stackalloc byte[MaskingKeySize];
+                ok.ServerCredentials.AsSpan(CredentialsMaskingKeyOffset, MaskingKeySize).CopyTo(maskingKeySpan);
+                return (ok.Response.Data, maskingKeySpan.ToArray());
             },
             err => throw new InvalidOperationException($"OPRF processing failed: {err.Message}")
         );
@@ -76,20 +77,25 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
     {
         ReadOnlySpan<byte> ke2Span = ke2Data.AsSpan();
 
+        Span<byte> serverOprfResponseBuffer = stackalloc byte[ServerOprfResponseSize];
+        Span<byte> serverEphemeralKeyBuffer = stackalloc byte[ServerEphemeralKeySize];
+
+        ke2Span[..ServerOprfResponseSize].CopyTo(serverOprfResponseBuffer);
+        ke2Span.Slice(ServerOprfResponseSize, ServerEphemeralKeySize).CopyTo(serverEphemeralKeyBuffer);
+
         return new OpaqueSignInInitResponse
         {
-            ServerOprfResponse = ByteString.CopyFrom(ke2Span[..ServerOprfResponseSize]),
-            ServerEphemeralPublicKey =
-                ByteString.CopyFrom(ke2Span.Slice(ServerOprfResponseSize, ServerEphemeralKeySize)),
+            ServerOprfResponse = ByteString.CopyFrom(serverOprfResponseBuffer),
+            ServerEphemeralPublicKey = ByteString.CopyFrom(serverEphemeralKeyBuffer),
             RegistrationRecord = ByteString.CopyFrom(registrationRecord),
             ServerStateToken = ByteString.CopyFrom(ke2Data),
             Result = OpaqueSignInInitResponse.Types.SignInResult.Succeeded
         };
     }
 
-    private static byte[] ExtractServerMac(byte[] ke2Data)
+    private static void ExtractServerMac(ReadOnlySpan<byte> ke2Data, Span<byte> destination)
     {
-        return ke2Data.AsSpan(ServerMacOffset, ServerMacSize).ToArray();
+        ke2Data.Slice(ServerMacOffset, ServerMacSize).CopyTo(destination);
     }
 
     private static OpaqueSignInFinalizeResponse BuildSuccessfulFinalizeResponse(byte[] sessionKey, byte[]? serverMac)
@@ -120,79 +126,75 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         if (maskingKey.Length != MaskingKeySize)
             throw new ArgumentException($"Masking key must be {MaskingKeySize} bytes, got {maskingKey.Length}");
 
-        byte[] credentials = new byte[ServerCredentialsSize];
-        Span<byte> credentialsSpan = credentials.AsSpan();
-        ReadOnlySpan<byte> recordSpan = clientRegistrationRecord.AsSpan();
-        ReadOnlySpan<byte> maskingKeySpan = maskingKey.AsSpan();
+        byte[] credentials = ArrayPool<byte>.Shared.Rent(ServerCredentialsSize);
+        try
+        {
+            Span<byte> credentialsSpan = credentials.AsSpan(0, ServerCredentialsSize);
+            ReadOnlySpan<byte> recordSpan = clientRegistrationRecord.AsSpan();
+            ReadOnlySpan<byte> maskingKeySpan = maskingKey.AsSpan();
 
-        recordSpan.Slice(0, CredentialsBaseOffset).CopyTo(credentialsSpan.Slice(0, CredentialsBaseOffset));
-        maskingKeySpan.CopyTo(credentialsSpan.Slice(CredentialsMaskingKeyOffset, MaskingKeySize));
-        recordSpan.Slice(CredentialsBaseOffset, MaskingKeySize).CopyTo(
-            credentialsSpan.Slice(CredentialsExportKeyOffset, MaskingKeySize));
+            recordSpan[..CredentialsBaseOffset].CopyTo(credentialsSpan.Slice(0, CredentialsBaseOffset));
+            maskingKeySpan.CopyTo(credentialsSpan.Slice(CredentialsMaskingKeyOffset, MaskingKeySize));
+            recordSpan.Slice(CredentialsBaseOffset, MaskingKeySize).CopyTo(
+                credentialsSpan.Slice(CredentialsExportKeyOffset, MaskingKeySize));
 
-        return credentials;
+            byte[] result = new byte[ServerCredentialsSize];
+            credentialsSpan.CopyTo(result);
+            return result;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(credentials, clearArray: true);
+        }
     }
 
     public Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure> InitiateSignIn(
         OpaqueSignInInitRequest request, MembershipOpaqueQueryRecord queryRecord)
     {
-        try
-        {
-            Result<KE1, OpaqueFailure> ke1ValidationResult = ValidateKe1(request);
-            if (ke1ValidationResult.IsErr)
-                return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(ke1ValidationResult.UnwrapErr());
+        Result<KE1, OpaqueFailure> ke1ValidationResult = ValidateKe1(request);
+        if (ke1ValidationResult.IsErr)
+            return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(ke1ValidationResult.UnwrapErr());
 
-            KE1 ke1 = ke1ValidationResult.Unwrap();
-            byte[] serverCredentials =
-                ConstructServerCredentials(queryRecord.RegistrationRecord, queryRecord.MaskingKey);
+        KE1 ke1 = ke1ValidationResult.Unwrap();
+        byte[] serverCredentials =
+            ConstructServerCredentials(queryRecord.RegistrationRecord, queryRecord.MaskingKey);
 
-            Result<KE2, OpaqueServerFailure> ke2Result =
-                nativeService.GenerateKe2(ke1, serverCredentials);
+        Result<KE2, OpaqueServerFailure> ke2Result =
+            nativeService.GenerateKe2(ke1, serverCredentials);
 
-            return ke2Result.Match(
-                ok =>
-                {
-                    byte[] serverMac = ExtractServerMac(ok.Data);
-                    OpaqueSignInInitResponse response =
-                        BuildSignInInitResponse(ok.Data, queryRecord.RegistrationRecord);
-                    return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Ok((response, serverMac));
-                },
-                err => Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(
-                    OpaqueFailure.InvalidInput($"KE2 generation failed: {err.Message}")));
-        }
-        catch (Exception ex)
-        {
-            return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(
-                OpaqueFailure.InvalidInput($"Sign-in initiation failed: {ex.Message}"));
-        }
+        return ke2Result.Match(
+            ok =>
+            {
+                Span<byte> serverMacSpan = stackalloc byte[ServerMacSize];
+                ExtractServerMac(ok.Data, serverMacSpan);
+                byte[] serverMac = serverMacSpan.ToArray();
+
+                OpaqueSignInInitResponse response =
+                    BuildSignInInitResponse(ok.Data, queryRecord.RegistrationRecord);
+                return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Ok((response, serverMac));
+            },
+            err => Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(
+                OpaqueFailure.InvalidInput($"KE2 generation failed: {err.Message}")));
     }
 
     public Result<OpaqueSignInFinalizeResponse, OpaqueFailure> CompleteSignIn(OpaqueSignInFinalizeRequest request,
         byte[]? serverMac = null)
     {
-        try
-        {
-            Result<KE3, OpaqueFailure> ke3ValidationResult = ValidateKe3(request);
-            if (ke3ValidationResult.IsErr)
-                return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Err(ke3ValidationResult.UnwrapErr());
+        Result<KE3, OpaqueFailure> ke3ValidationResult = ValidateKe3(request);
+        if (ke3ValidationResult.IsErr)
+            return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Err(ke3ValidationResult.UnwrapErr());
 
-            KE3 ke3 = ke3ValidationResult.Unwrap();
+        KE3 ke3 = ke3ValidationResult.Unwrap();
 
-            Result<SessionKey, OpaqueServerFailure> sessionKeyResult =
-                nativeService.FinishAuthentication(ke3);
+        Result<SessionKey, OpaqueServerFailure> sessionKeyResult =
+            nativeService.FinishAuthentication(ke3);
 
-            return sessionKeyResult.Match(
-                ok => Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(
-                    BuildSuccessfulFinalizeResponse(ok.Data, serverMac)),
-                err => Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(
-                    BuildFailedFinalizeResponse())
-            );
-        }
-        catch (Exception ex)
-        {
-            return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Err(
-                OpaqueFailure.InvalidInput($"Sign-in finalization failed: {ex.Message}"));
-        }
+        return sessionKeyResult.Match(
+            ok => Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(
+                BuildSuccessfulFinalizeResponse(ok.Data, serverMac)),
+            err => Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(
+                BuildFailedFinalizeResponse())
+        );
     }
 
     public Result<Unit, OpaqueFailure> CompleteRegistration(byte[] peerRegistrationRecord)
@@ -207,48 +209,31 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
     //TODO:REMOVE.
     public Result<byte[], OpaqueFailure> CompleteRegistrationWithSessionKey(byte[] peerRegistrationRecord)
     {
-        try
-        {
-            if (peerRegistrationRecord is null || peerRegistrationRecord.Length == 0)
-            {
-                return Result<byte[], OpaqueFailure>.Err(
-                    OpaqueFailure.InvalidInput(RegistrationRecordEmptyError));
-            }
-
-
-            return Result<byte[], OpaqueFailure>.Ok(Array.Empty<byte>());
-        }
-        catch (Exception ex)
+        if (peerRegistrationRecord is null || peerRegistrationRecord.Length == 0)
         {
             return Result<byte[], OpaqueFailure>.Err(
-                OpaqueFailure.CalculateRegistrationRecord($"Registration completion failed: {ex.Message}"));
+                OpaqueFailure.InvalidInput(RegistrationRecordEmptyError));
         }
+
+        return Result<byte[], OpaqueFailure>.Ok([]);
     }
 
     public Result<AuthContextTokenResponse, OpaqueFailure> GenerateAuthenticationContext(
         Guid membershipId, Guid mobileNumberId)
     {
-        try
+        Span<byte> contextTokenSpan = stackalloc byte[ContextTokenSize];
+        RandomNumberGenerator.Fill(contextTokenSpan);
+
+        DateTime expiresAt = DateTime.UtcNow.AddHours(AuthTokenExpirationHours);
+
+        AuthContextTokenResponse response = new()
         {
-            byte[] contextToken = new byte[ContextTokenSize];
-            RandomNumberGenerator.Fill(contextToken);
+            ContextToken = contextTokenSpan.ToArray(),
+            MembershipId = membershipId,
+            MobileNumberId = mobileNumberId,
+            ExpiresAt = expiresAt
+        };
 
-            DateTime expiresAt = DateTime.UtcNow.AddHours(AuthTokenExpirationHours);
-
-            AuthContextTokenResponse response = new()
-            {
-                ContextToken = contextToken,
-                MembershipId = membershipId,
-                MobileNumberId = mobileNumberId,
-                ExpiresAt = expiresAt
-            };
-
-            return Result<AuthContextTokenResponse, OpaqueFailure>.Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return Result<AuthContextTokenResponse, OpaqueFailure>.Err(
-                OpaqueFailure.InvalidInput($"Authentication context generation failed: {ex.Message}"));
-        }
+        return Result<AuthContextTokenResponse, OpaqueFailure>.Ok(response);
     }
 }
