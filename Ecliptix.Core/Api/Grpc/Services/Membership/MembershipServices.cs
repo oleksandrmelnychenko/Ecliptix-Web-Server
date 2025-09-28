@@ -28,7 +28,7 @@ public class MembershipServices(
 ) : Protobuf.Membership.MembershipServices.MembershipServicesBase
 
 {
-    private readonly EcliptixGrpcServiceBase _baseService = new(grpcCipherService);
+    private readonly RpcServiceBase _baseService = new(grpcCipherService);
     private readonly IActorRef _membershipActor = actorRegistry.Get(ActorIds.MembershipActor);
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
 

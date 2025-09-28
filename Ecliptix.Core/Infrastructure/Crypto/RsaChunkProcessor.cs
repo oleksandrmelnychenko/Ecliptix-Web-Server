@@ -8,7 +8,7 @@ namespace Ecliptix.Core.Infrastructure.Crypto;
 
 public sealed class RsaChunkProcessor(
     IRsaConfiguration configuration,
-    EcliptixCertificatePinningService certificatePinningService)
+    CertificatePinningService certificatePinningService)
     : IRsaChunkProcessor
 {
 

@@ -17,7 +17,7 @@ using Ecliptix.Core.Configuration;
 
 namespace Ecliptix.Core.Services;
 
-public sealed class ActorSystemInitializationService(
+public sealed class ActorSystemInitializationHost(
     ActorSystem actorSystem,
     IEcliptixActorRegistry registry,
     IServiceProvider serviceProvider)

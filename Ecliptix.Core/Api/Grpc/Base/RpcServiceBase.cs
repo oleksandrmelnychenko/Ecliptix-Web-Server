@@ -12,7 +12,7 @@ using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler
 
 namespace Ecliptix.Core.Api.Grpc.Base;
 
-public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
+public class RpcServiceBase(IGrpcCipherService cipherService)
 {
     private static readonly ActivitySource ActivitySource = new(GrpcServiceConstants.Activities.ServiceSource);
 
@@ -30,58 +30,38 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
 
         Stopwatch stopwatch = Stopwatch.StartNew();
 
-        //TODO: Need to remove try catch from here and handle it in interceptor.
-        
-        try
+        uint connectId = ExtractConnectionId(context);
+        ValidateConnectionId(connectId);
+
+        Log.Debug(GrpcServiceConstants.LogMessages.StartingEncryptedOperation,
+            GetType().Name, operationName, connectId);
+
+        Result<TRequest, FailureBase> decryptResult =
+            await DecryptRequestAsync<TRequest>(encryptedRequest, connectId, context);
+        if (decryptResult.IsErr)
         {
-            uint connectId = ExtractConnectionId(context);
-            ValidateConnectionId(connectId);
-
-            Log.Debug(GrpcServiceConstants.LogMessages.StartingEncryptedOperation,
-                GetType().Name, operationName, connectId);
-
-            Result<TRequest, FailureBase> decryptResult = await DecryptRequestAsync<TRequest>(encryptedRequest, connectId, context);
-            if (decryptResult.IsErr)
-            {
-                activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, false);
-                return await CreateFailureResponseAsync<TResponse>(decryptResult.UnwrapErr(), connectId, context);
-            }
-
-            Result<TResponse, FailureBase> handlerResult = await handler(decryptResult.Unwrap(), connectId, context.CancellationToken);
-            if (handlerResult.IsErr)
-            {
-                activity?.SetTag(GrpcServiceConstants.ActivityTags.HandlerSuccess, false);
-                return await CreateFailureResponseAsync<TResponse>(handlerResult.UnwrapErr(), connectId, context);
-            }
-
-            SecureEnvelope response = await EncryptResponseAsync(handlerResult.Unwrap(), connectId, context);
-
-            stopwatch.Stop();
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.Success, true);
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.DurationMs, stopwatch.ElapsedMilliseconds);
-
-            Log.Debug(GrpcServiceConstants.LogMessages.CompletedEncryptedOperation,
-                GetType().Name, operationName, stopwatch.ElapsedMilliseconds);
-
-            return response;
+            activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, false);
+            return await CreateFailureResponseAsync<TResponse>(decryptResult.UnwrapErr(), connectId, context);
         }
-        catch (RpcException)
+
+        Result<TResponse, FailureBase> handlerResult =
+            await handler(decryptResult.Unwrap(), connectId, context.CancellationToken);
+        if (handlerResult.IsErr)
         {
-            stopwatch.Stop();
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.Error, true);
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.DurationMs, stopwatch.ElapsedMilliseconds);
-            throw;
+            activity?.SetTag(GrpcServiceConstants.ActivityTags.HandlerSuccess, false);
+            return await CreateFailureResponseAsync<TResponse>(handlerResult.UnwrapErr(), connectId, context);
         }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.Error, true);
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.DurationMs, stopwatch.ElapsedMilliseconds);
 
-            Log.Error(ex, GrpcServiceConstants.LogMessages.UnexpectedErrorInOperation, GetType().Name, operationName);
+        SecureEnvelope response = await EncryptResponseAsync(handlerResult.Unwrap(), connectId, context);
 
-            throw new RpcException(new GrpcStatus(StatusCode.Internal, GrpcServiceConstants.ErrorMessages.InternalServerErrorOccurred));
-        }
+        stopwatch.Stop();
+        activity?.SetTag(GrpcServiceConstants.ActivityTags.Success, true);
+        activity?.SetTag(GrpcServiceConstants.ActivityTags.DurationMs, stopwatch.ElapsedMilliseconds);
+
+        Log.Debug(GrpcServiceConstants.LogMessages.CompletedEncryptedOperation,
+            GetType().Name, operationName, stopwatch.ElapsedMilliseconds);
+
+        return response;
     }
 
     public async Task<Result<Unit, FailureBase>> ExecuteEncryptedStreamingOperationAsync<TRequest, TFailure>(
@@ -97,45 +77,24 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         activity?.SetTag(GrpcServiceConstants.ActivityTags.GrpcMethod, operationName);
         activity?.SetTag(GrpcServiceConstants.ActivityTags.Streaming, true);
 
-        try
+        uint connectId = ExtractConnectionId(context);
+        ValidateConnectionId(connectId);
+
+        Result<TRequest, FailureBase> decryptResult =
+            await DecryptRequestAsync<TRequest>(encryptedRequest, connectId, context);
+        if (decryptResult.IsErr)
         {
-            uint connectId = ExtractConnectionId(context);
-            ValidateConnectionId(connectId);
-
-            Result<TRequest, FailureBase> decryptResult =
-                await DecryptRequestAsync<TRequest>(encryptedRequest, connectId, context);
-            if (decryptResult.IsErr)
-            {
-                activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, false);
-                return Result<Unit, FailureBase>.Err(decryptResult.UnwrapErr());
-            }
-
-            Result<Unit, TFailure> result = await handler(decryptResult.Unwrap(), connectId, context.CancellationToken);
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.HandlerSuccess, result.IsOk);
-
-            return result.Match(
-                ok: Result<Unit, FailureBase>.Ok,
-                err: Result<Unit, FailureBase>.Err
-            );
+            activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, false);
+            return Result<Unit, FailureBase>.Err(decryptResult.UnwrapErr());
         }
-        catch (RpcException)
-        {
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.Error, true);
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            activity?.SetTag("cancelled", true);
-            return Result<Unit, FailureBase>.Ok(Unit.Value);
-        }
-        catch (Exception ex)
-        {
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.Error, true);
 
-            Log.Error(ex, GrpcServiceConstants.LogMessages.UnexpectedErrorInStreamingOperation, GetType().Name, operationName);
+        Result<Unit, TFailure> result = await handler(decryptResult.Unwrap(), connectId, context.CancellationToken);
+        activity?.SetTag(GrpcServiceConstants.ActivityTags.HandlerSuccess, result.IsOk);
 
-            throw new RpcException(new GrpcStatus(StatusCode.Internal, GrpcServiceConstants.ErrorMessages.InternalServerErrorOccurred));
-        }
+        return result.Match(
+            ok: Result<Unit, FailureBase>.Ok,
+            err: Result<Unit, FailureBase>.Err
+        );
     }
 
     private async Task<Result<TRequest, FailureBase>> DecryptRequestAsync<TRequest>(
@@ -148,7 +107,8 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         activity?.SetTag(GrpcServiceConstants.ActivityTags.ConnectId, connectId);
         activity?.SetTag(GrpcServiceConstants.ActivityTags.PayloadSize, encryptedPayload.EncryptedPayload.Length);
 
-        Result<byte[], FailureBase> decryptResult = await cipherService.DecryptPayload(encryptedPayload, connectId, context);
+        Result<byte[], FailureBase> decryptResult =
+            await cipherService.DecryptPayload(encryptedPayload, connectId, context);
 
         if (decryptResult.IsErr)
         {
@@ -171,7 +131,8 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         {
             activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, false);
             Log.Error(ex, GrpcServiceConstants.LogMessages.FailedToParseDecryptedRequestLog, connectId);
-            return Result<TRequest, FailureBase>.Err(EcliptixProtocolFailure.Generic(GrpcServiceConstants.ErrorMessages.FailedToParseDecryptedRequest, ex));
+            return Result<TRequest, FailureBase>.Err(
+                EcliptixProtocolFailure.Generic(GrpcServiceConstants.ErrorMessages.FailedToParseDecryptedRequest, ex));
         }
     }
 
@@ -187,7 +148,8 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         byte[]? responseBytes = response.ToByteArray();
         activity?.SetTag(GrpcServiceConstants.ActivityTags.ResponseSize, responseBytes.Length);
 
-        Result<SecureEnvelope, FailureBase> encryptResult = await cipherService.EncryptPayload(responseBytes, connectId, context);
+        Result<SecureEnvelope, FailureBase> encryptResult =
+            await cipherService.EncryptPayload(responseBytes, connectId, context);
 
         if (encryptResult.IsErr)
         {
@@ -198,7 +160,8 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
         }
 
         activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, true);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptedSize, encryptResult.Unwrap().EncryptedPayload.Length);
+        activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptedSize,
+            encryptResult.Unwrap().EncryptedPayload.Length);
 
         return encryptResult.Unwrap();
     }
@@ -228,7 +191,8 @@ public class EcliptixGrpcServiceBase(IGrpcCipherService cipherService)
     {
         if (connectId is 0 or > InterceptorConstants.Limits.MaxConnectId)
         {
-            throw new RpcException(new GrpcStatus(StatusCode.InvalidArgument, GrpcServiceConstants.ErrorMessages.ConnectionIdOutOfRange));
+            throw new RpcException(new GrpcStatus(StatusCode.InvalidArgument,
+                GrpcServiceConstants.ErrorMessages.ConnectionIdOutOfRange));
         }
     }
 }

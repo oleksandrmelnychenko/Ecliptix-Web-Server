@@ -22,7 +22,7 @@ public class VerificationFlowServices(
     IGrpcCipherService grpcCipherService)
     : AuthVerificationServices.AuthVerificationServicesBase
 {
-    private readonly EcliptixGrpcServiceBase _baseService = new(grpcCipherService);
+    private readonly RpcServiceBase _baseService = new(grpcCipherService);
     private readonly IActorRef _verificationFlowManagerActor = actorRegistry.Get(ActorIds.VerificationFlowManagerActor);
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
 

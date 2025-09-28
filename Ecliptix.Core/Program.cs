@@ -168,7 +168,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
         return new OpaqueProtocolAdapter(nativeService);
     });
 
-    builder.Services.AddSingleton<EcliptixCertificatePinningService>();
+    builder.Services.AddSingleton<CertificatePinningService>();
 
     builder.Services.AddSingleton<IRsaConfiguration, RsaConfiguration>();
     builder.Services.AddSingleton<IRsaChunkProcessor, RsaChunkProcessor>();
@@ -186,8 +186,8 @@ static void ConfigureServices(WebApplicationBuilder builder)
         .AddCheck<VerificationFlowHealthCheck>(AppConstants.HealthChecks.VerificationFlowHealth)
         .AddCheck<DatabaseHealthCheck>(AppConstants.HealthChecks.DatabaseHealth);
 
-    builder.Services.AddHostedService<ServerSecurityInitializationService>();
-    builder.Services.AddHostedService<ActorSystemInitializationService>();
+    builder.Services.AddHostedService<CertificatePinningServiceHost>();
+    builder.Services.AddHostedService<ActorSystemInitializationHost>();
 }
 
 static void ConfigureActorSystem(WebApplicationBuilder builder)
@@ -323,7 +323,7 @@ static void RegisterSecurity(IServiceCollection services)
         };
     });
 
-    services.AddSingleton<EcliptixCertificatePinningService>();
+    services.AddSingleton<CertificatePinningService>();
 
     services.Configure<KestrelServerOptions>(options =>
     {

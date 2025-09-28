@@ -24,7 +24,7 @@ public class DeviceService(
     INativeOpaqueProtocolService opaqueService)
     : Protobuf.Device.DeviceService.DeviceServiceBase
 {
-    private readonly EcliptixGrpcServiceBase _baseService = new(cipherService);
+    private readonly RpcServiceBase _baseService = new(cipherService);
     private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
     private readonly IActorRef _appDevicePersistorActor = actorRegistry.Get(ActorIds.AppDevicePersistorActor);
 
