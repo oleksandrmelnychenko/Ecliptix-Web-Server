@@ -175,10 +175,11 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<ISecureChannelEstablisher>(serviceProvider =>
     {
         IRsaChunkProcessor rsaChunkProcessor = serviceProvider.GetRequiredService<IRsaChunkProcessor>();
+        CertificatePinningService certificatePinningService = serviceProvider.GetRequiredService<CertificatePinningService>();
         IEcliptixActorRegistry actorRegistry = serviceProvider.GetRequiredService<IEcliptixActorRegistry>();
         IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
 
-        return new RsaSecureChannelEstablisher(rsaChunkProcessor, protocolActor);
+        return new RsaSecureChannelEstablisher(rsaChunkProcessor, certificatePinningService, protocolActor);
     });
 
     builder.Services.AddHealthChecks()

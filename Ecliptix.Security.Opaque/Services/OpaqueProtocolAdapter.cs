@@ -36,7 +36,8 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
 
         if (registrationRequestResult.IsErr)
         {
-            throw new InvalidOperationException($"Invalid OPRF request: {registrationRequestResult.UnwrapErr().Message}");
+            throw new InvalidOperationException(
+                $"Invalid OPRF request: {registrationRequestResult.UnwrapErr().Message}");
         }
 
         RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();

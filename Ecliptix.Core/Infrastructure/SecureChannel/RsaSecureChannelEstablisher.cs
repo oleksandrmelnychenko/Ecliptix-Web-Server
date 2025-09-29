@@ -5,6 +5,7 @@ using Ecliptix.Core.Infrastructure.Crypto;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Security.Certificate.Pinning.Failures;
+using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Utilities;
 using Google.Protobuf;
 
@@ -12,6 +13,7 @@ namespace Ecliptix.Core.Infrastructure.SecureChannel;
 
 public class RsaSecureChannelEstablisher(
     IRsaChunkProcessor rsaChunkProcessor,
+    CertificatePinningService certificatePinningService,
     IActorRef protocolActor)
     : ISecureChannelEstablisher
 {
@@ -77,7 +79,20 @@ public class RsaSecureChannelEstablisher(
                     SecureChannelFailure.FromCertificateFailure(encryptResult.UnwrapErr()));
             }
 
-            SecureEnvelope responseEnvelope = CreateSecureResponseEnvelope(connectId, encryptResult.Unwrap());
+            byte[] encryptedPayload = encryptResult.Unwrap();
+            SecureEnvelope responseEnvelope = CreateSecureResponseEnvelope(connectId, encryptedPayload);
+
+            Result<byte[], CertificatePinningFailure> signResult = certificatePinningService.Sign(
+                encryptedPayload.AsMemory());
+
+            if (signResult.IsErr)
+            {
+                return Result<SecureEnvelope, SecureChannelFailure>.Err(
+                    SecureChannelFailure.SigningFailed(
+                        $"Failed to sign response: {signResult.UnwrapErr().Message}"));
+            }
+
+            responseEnvelope.AuthenticationTag = ByteString.CopyFrom(signResult.Unwrap());
 
             return Result<SecureEnvelope, SecureChannelFailure>.Ok(responseEnvelope);
         }
