@@ -2,7 +2,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Akka.Actor;
 using Ecliptix.Core.Domain.Actors;
-using Ecliptix.Domain.Abstractions;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.WorkerActors;
@@ -27,7 +26,6 @@ public sealed class ActorSystemInitializationHost(
     {
         IDbConnectionFactory dbConnectionFactory = serviceProvider.GetRequiredService<IDbConnectionFactory>();
         IOpaqueProtocolService opaqueProtocolService = serviceProvider.GetRequiredService<IOpaqueProtocolService>();
-        ISessionKeyService sessionKeyService = serviceProvider.GetRequiredService<ISessionKeyService>();
         ISmsProvider smsProvider = serviceProvider.GetRequiredService<ISmsProvider>();
         ILocalizationProvider localizationProvider = serviceProvider.GetRequiredService<ILocalizationProvider>();
 
@@ -61,8 +59,7 @@ public sealed class ActorSystemInitializationHost(
                 authContextPersistorActor,
                 opaqueProtocolService,
                 localizationProvider,
-                authenticationStateManager,
-                sessionKeyService),
+                authenticationStateManager),
             ApplicationConstants.ActorNames.MembershipActor);
 
         IActorRef verificationFlowManagerActor = actorSystem.ActorOf(

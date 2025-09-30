@@ -27,7 +27,6 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
     private const int AuthTokenExpirationHours = 24;
     private const string AuthenticationSuccessful = "Authentication successful";
     private const string AuthenticationFailed = "Authentication failed";
-    private const string RegistrationRecordEmptyError = "Registration record cannot be empty";
 
     public (byte[] Response, byte[] MaskingKey) ProcessOprfRequest(byte[] oprfRequest)
     {
@@ -207,16 +206,39 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         );
     }
 
-    //TODO:REMOVE.
     public Result<byte[], OpaqueFailure> CompleteRegistrationWithSessionKey(byte[] peerRegistrationRecord)
     {
-        if (peerRegistrationRecord is null || peerRegistrationRecord.Length == 0)
+        try
+        {
+            Result<RegistrationRequest, OpaqueServerFailure> registrationRequestResult =
+                RegistrationRequest.Create(peerRegistrationRecord);
+
+            if (registrationRequestResult.IsErr)
+            {
+                return Result<byte[], OpaqueFailure>.Err(
+                    OpaqueFailure.InvalidInput($"Invalid registration record: {registrationRequestResult.UnwrapErr().Message}"));
+            }
+
+            RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
+            Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
+                nativeService.CreateRegistrationResponse(registrationRequest);
+
+            return result.Match(
+                ok =>
+                {
+                    ReadOnlySpan<byte> exportKeySpan = ok.ServerCredentials.AsSpan(CredentialsExportKeyOffset, MaskingKeySize);
+                    byte[] sessionKey = exportKeySpan.ToArray();
+                    return Result<byte[], OpaqueFailure>.Ok(sessionKey);
+                },
+                err => Result<byte[], OpaqueFailure>.Err(
+                    OpaqueFailure.InvalidInput($"Registration completion failed: {err.Message}"))
+            );
+        }
+        catch (Exception ex)
         {
             return Result<byte[], OpaqueFailure>.Err(
-                OpaqueFailure.InvalidInput(RegistrationRecordEmptyError));
+                OpaqueFailure.InvalidInput($"Registration completion failed: {ex.Message}"));
         }
-
-        return Result<byte[], OpaqueFailure>.Ok([]);
     }
 
     public Result<AuthContextTokenResponse, OpaqueFailure> GenerateAuthenticationContext(

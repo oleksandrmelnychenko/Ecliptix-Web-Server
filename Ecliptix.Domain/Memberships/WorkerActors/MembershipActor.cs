@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using Akka.Actor;
 using Akka.IO;
-using Ecliptix.Domain.Abstractions;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Security.Opaque.Models;
@@ -40,7 +39,6 @@ public class MembershipActor : ReceiveActor
     private readonly IActorRef _authContextPersistor;
     private readonly IOpaqueProtocolService _opaqueProtocolService;
     private readonly IActorRef _authenticationStateManager;
-    private readonly ISessionKeyService _sessionKeyService;
 
     private readonly
         Dictionary<uint, (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Membership.Types.ActivityStatus
@@ -54,26 +52,23 @@ public class MembershipActor : ReceiveActor
 
     public MembershipActor(IActorRef persistor, IActorRef authContextPersistor,
         IOpaqueProtocolService opaqueProtocolService,
-        ILocalizationProvider localizationProvider, IActorRef authenticationStateManager,
-        ISessionKeyService sessionKeyService)
+        ILocalizationProvider localizationProvider, IActorRef authenticationStateManager)
     {
         _persistor = persistor;
         _authContextPersistor = authContextPersistor;
         _opaqueProtocolService = opaqueProtocolService;
         _localizationProvider = localizationProvider;
         _authenticationStateManager = authenticationStateManager;
-        _sessionKeyService = sessionKeyService;
 
         Become(Ready);
     }
 
     public static Props Build(IActorRef persistor, IActorRef authContextPersistor,
         IOpaqueProtocolService opaqueProtocolService,
-        ILocalizationProvider localizationProvider, IActorRef authenticationStateManager,
-        ISessionKeyService sessionKeyService)
+        ILocalizationProvider localizationProvider, IActorRef authenticationStateManager)
     {
         return Props.Create(() => new MembershipActor(persistor, authContextPersistor, opaqueProtocolService,
-            localizationProvider, authenticationStateManager, sessionKeyService));
+            localizationProvider, authenticationStateManager));
     }
 
     protected override void PreStart()
@@ -122,20 +117,6 @@ public class MembershipActor : ReceiveActor
             return;
         }
 
-        Result<byte[], OpaqueFailure> completionResult =
-            _opaqueProtocolService.CompleteRegistrationWithSessionKey(@event.PeerRegistrationRecord);
-
-        if (completionResult.IsErr)
-        {
-            _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
-            Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.InvalidOpaque(completionResult.UnwrapErr().Message)));
-            return;
-        }
-
-        //TODO: REMOVE.
-        byte[] sessionKey = completionResult.Unwrap();
-
         UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRegistrationRecord, maskingKey);
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
@@ -149,39 +130,13 @@ public class MembershipActor : ReceiveActor
 
         _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
 
-        try
-        {
-            Result<Unit, string> storeResult = await _sessionKeyService.StoreSessionKeyAsync(
-                @event.ConnectId, sessionKey);
-
-            if (storeResult.IsErr)
-            {
-                Log.Error("Failed to store session key for connectId {ConnectId}: {Error}",
-                    @event.ConnectId, storeResult.UnwrapErr());
-                Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess($"Failed to store session key: {storeResult.UnwrapErr()}")));
-                return;
-            }
-
-            Log.Information("Session key stored successfully for connectId {ConnectId} after registration", @event.ConnectId);
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Error storing session key for connectId {ConnectId} during registration", @event.ConnectId);
-            Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess($"Failed to store session key: {ex.Message}")));
-            return;
-        }
-
         Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Ok(
             new OprfRegistrationCompleteResponse
             {
                 Result = OprfRegistrationCompleteResponse.Types.RegistrationResult.Succeeded,
                 Message = "Registration completed successfully.",
-                SessionKey = ByteString.CopyFrom(sessionKey)
+                SessionKey = ByteString.Empty
             }));
-
-        CryptographicOperations.ZeroMemory(sessionKey);
     }
 
     private async Task HandleCompleteRecoverySecureKeyEvent(OprfCompleteRecoverySecureKeyEvent @event)
@@ -388,26 +343,7 @@ public class MembershipActor : ReceiveActor
         if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
             finalizeResponse.SessionKey != null && !finalizeResponse.SessionKey.IsEmpty)
         {
-            try
-            {
-                Result<Unit, string> storeResult = await _sessionKeyService.StoreSessionKeyAsync(
-                    @event.ConnectId, finalizeResponse.SessionKey.ToByteArray());
-
-                if (storeResult.IsErr)
-                {
-                    SecureRemovePendingSignIn(@event.ConnectId);
-                    Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.PersistorAccess($"Failed to store session key: {storeResult.UnwrapErr()}")));
-                    return;
-                }
-            }
-            catch (Exception ex)
-            {
-                SecureRemovePendingSignIn(@event.ConnectId);
-                Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess($"Failed to store session key: {ex.Message}")));
-                return;
-            }
+            // Session key handling has been removed
         }
 
         try

@@ -14,8 +14,6 @@ public interface IOpaqueProtocolService
     Result<OpaqueSignInFinalizeResponse, OpaqueFailure> CompleteSignIn(OpaqueSignInFinalizeRequest request,
         byte[]? serverMac = null);
 
-    Result<Unit, OpaqueFailure> CompleteRegistration(byte[] peerRegistrationRecord);
-
     Result<byte[], OpaqueFailure> CompleteRegistrationWithSessionKey(byte[] peerRegistrationRecord);
 
     Result<AuthContextTokenResponse, OpaqueFailure> GenerateAuthenticationContext(Guid membershipId,

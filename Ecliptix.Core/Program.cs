@@ -29,7 +29,6 @@ using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
 using StackExchange.Redis;
 using Ecliptix.Domain;
-using Ecliptix.Domain.Abstractions;
 using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque;
@@ -152,7 +151,6 @@ static void ConfigureServices(WebApplicationBuilder builder)
         ConnectionMultiplexer.Connect(redisConnectionString));
 
     builder.Services.AddDataProtection();
-    builder.Services.AddSingleton<ISessionKeyService, DistributedSessionKeyService>();
 
     builder.Services.AddSingleton<ObjectPool<StringBuilder>>(_ =>
     {
