@@ -4,6 +4,7 @@ using System.Diagnostics;
 using Akka.Actor;
 using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Utilities;
+using Ecliptix.Utilities.Configuration;
 using Serilog;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
@@ -62,12 +63,12 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
     {
         return new Dictionary<string, TimeSpan>
         {
-            ["Create"] = TimeSpan.FromSeconds(30),
-            ["Update"] = TimeSpan.FromSeconds(30),
-            ["Delete"] = TimeSpan.FromSeconds(20),
-            ["Get"] = TimeSpan.FromSeconds(10),
-            ["Query"] = TimeSpan.FromSeconds(15),
-            ["List"] = TimeSpan.FromSeconds(20)
+            ["Create"] = TimeoutConfiguration.Database.CreateTimeout,
+            ["Update"] = TimeoutConfiguration.Database.UpdateTimeout,
+            ["Delete"] = TimeoutConfiguration.Database.DeleteTimeout,
+            ["Get"] = TimeoutConfiguration.Database.GetTimeout,
+            ["Query"] = TimeoutConfiguration.Database.QueryTimeout,
+            ["List"] = TimeoutConfiguration.Database.ListTimeout
         };
     }
 
@@ -122,7 +123,7 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
 
     private async Task<IDbConnection> CreateConnectionWithTimeout(string operationName)
     {
-        using CancellationTokenSource timeoutCts = new(TimeSpan.FromSeconds(30));
+        using CancellationTokenSource timeoutCts = new(TimeoutConfiguration.Database.CommandTimeout);
 
         try
         {

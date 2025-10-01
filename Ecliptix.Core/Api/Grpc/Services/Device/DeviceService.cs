@@ -126,10 +126,8 @@ public class DeviceService(
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        // Parse membership GUID from bytes
         Guid membershipId = new Guid(request.MembershipUniqueId.ToByteArray());
 
-        // Derive deterministic identity keys from master key
         Result<dynamic, FailureBase> deriveKeysResult = await masterKeyService.DeriveIdentityKeysAsync(membershipId);
 
         if (deriveKeysResult.IsErr)
@@ -141,7 +139,6 @@ public class DeviceService(
 
         EcliptixSystemIdentityKeys identityKeys = (EcliptixSystemIdentityKeys)deriveKeysResult.Unwrap();
 
-        // Initialize protocol with derived identity keys and perform X3DH handshake
         InitializeProtocolWithMasterKeyActorEvent initEvent = new(
             connectId,
             identityKeys,
@@ -157,17 +154,15 @@ public class DeviceService(
         if (initResult.IsErr)
         {
             EcliptixProtocolFailure failure = initResult.UnwrapErr();
-            identityKeys.Dispose(); // Clean up on failure
+            identityKeys.Dispose();
             throw new RpcException(new global::Grpc.Core.Status(StatusCode.Internal,
                 $"Failed to initialize authenticated protocol: {failure.Message}"));
         }
 
         InitializeProtocolWithMasterKeyReply reply = initResult.Unwrap();
 
-        // Serialize server's public key exchange
         byte[] serverExchangeBytes = reply.ServerPubKeyExchange.ToByteArray();
 
-        // RSA-encrypt the server's public key exchange
         Result<byte[], CertificatePinningFailure> encryptResult =
             await rsaChunkProcessor.EncryptChunkedAsync(serverExchangeBytes, context.CancellationToken);
 
@@ -180,7 +175,6 @@ public class DeviceService(
 
         byte[] encryptedPayload = encryptResult.Unwrap();
 
-        // Sign the encrypted payload
         Result<byte[], CertificatePinningFailure> signResult =
             certificatePinningService.Sign(encryptedPayload.AsMemory());
 
@@ -193,7 +187,6 @@ public class DeviceService(
 
         byte[] signature = signResult.Unwrap();
 
-        // Return encrypted and signed response
         return new SecureEnvelope
         {
             EncryptedPayload = ByteString.CopyFrom(encryptedPayload),

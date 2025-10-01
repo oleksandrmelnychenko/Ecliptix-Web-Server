@@ -65,38 +65,7 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
     {
         try
         {
-            //EnvelopeMetadata decryptedHeader;
             Result<EnvelopeMetadata, EcliptixProtocolFailure> metadataResult = ProtocolMigrationHelper.ParseEnvelopeMetadata(request.MetaData);
-            /*f (sessionKeyResult.IsOk)
-            {
-                byte[] sessionKey = sessionKeyResult.Unwrap();
-                /*Result<EnvelopeMetadata, string> headerDecryptResult = DecryptHeaderWithKey(request.MetaData.ToByteArray(), sessionKey);
-
-                if (headerDecryptResult.IsErr)
-                {
-                    Log.Error("🔒 Failed to decrypt header with session key for connectId {ConnectId}: {Error}",
-                        connectId, headerDecryptResult.UnwrapErr());
-                    return Result<byte[], FailureBase>.Err(
-                        new EcliptixProtocolFailure(EcliptixProtocolFailureType.StateMissing, "Header decryption failed"));
-                }#1#
-
-                decryptedHeader = headerDecryptResult.Unwrap();
-                Log.Debug("🔒 Using dual-layer decryption (protocol + session key) for connectId {ConnectId}", connectId);
-            }
-            else
-            {
-                Result<EnvelopeMetadata, EcliptixProtocolFailure> metadataResult = ProtocolMigrationHelper.ParseEnvelopeMetadata(request.MetaData);
-                if (metadataResult.IsErr)
-                {
-                    Log.Warning("🔒 Failed to parse metadata for protocol-only decryption, connectId {ConnectId}: {Error}",
-                        connectId, metadataResult.UnwrapErr().Message);
-                    return Result<byte[], FailureBase>.Err(metadataResult.UnwrapErr());
-                }
-
-                decryptedHeader = metadataResult.Unwrap();
-                Log.Debug("🔒 Using protocol-only decryption (no session key) for connectId {ConnectId}", connectId);
-            }
-            */
 
             PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
 

@@ -23,7 +23,7 @@ public class AppDeviceRegisterResult
 
 public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 {
-    private const string RegisterAppDeviceSp = "dbo.RegisterAppDeviceIfNotExists";
+    private const string RegisterAppDeviceSp = "dbo.SP_RegisterAppDevice";
 
     public AppDevicePersistorActor(IDbConnectionFactory connectionFactory)
         : base(connectionFactory)
@@ -83,21 +83,16 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 
     protected override AppDeviceFailure MapDbException(DbException ex)
     {
-        Log.Error(ex, "Database exception in {ActorType}: {ExceptionType} - {Message}", 
-            GetType().Name, ex.GetType().Name, ex.Message);
         return AppDeviceFailure.InfrastructureFailure("Database operation failed", ex);
     }
 
     protected override AppDeviceFailure CreateTimeoutFailure(TimeoutException ex)
     {
-        Log.Error(ex, "Timeout exception in {ActorType}: Operation timed out", GetType().Name);
         return AppDeviceFailure.InfrastructureFailure(AppDeviceMessageKeys.DataAccess, ex);
     }
 
     protected override AppDeviceFailure CreateGenericFailure(Exception ex)
     {
-        Log.Error(ex, "Generic exception in {ActorType}: {ExceptionType} - {Message}", 
-            GetType().Name, ex.GetType().Name, ex.Message);
         return AppDeviceFailure.InternalError("Unexpected error occurred", ex);
     }
 

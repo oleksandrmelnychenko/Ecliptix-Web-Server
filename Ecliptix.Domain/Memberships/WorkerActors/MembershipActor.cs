@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using Akka.Actor;
-using Akka.IO;
 using Ecliptix.Utilities;
 using Ecliptix.Domain.Services.Security;
 using Ecliptix.Domain.Memberships.ActorEvents;
@@ -9,16 +8,11 @@ using Ecliptix.Security.Opaque.Models;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.Utilities;
-using Ecliptix.Utilities.Failures;
 using Ecliptix.Protobuf.Membership;
 using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
 using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteResponse;
 using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitResponse;
 using OprfRegistrationInitResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationInitResponse;
-using OprfRegistrationCompleteRequest = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteRequest;
-using OprfRecoverySecretKeyCompleteRequest = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteRequest;
-using Serilog;
 using ByteString = Google.Protobuf.ByteString;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors;
@@ -155,19 +149,6 @@ public class MembershipActor : ReceiveActor
             return;
         }
 
-        /*
-        Result<Unit, OpaqueFailure> completionResult =
-            _opaqueProtocolService.CompleteRegistration(@event.PeerRecoveryRecord);
-
-        if (completionResult.IsErr)
-        {
-            _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
-            Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.InvalidOpaque(completionResult.UnwrapErr().Message)));
-            return;
-        }
-        */
-
         UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRecoveryRecord, maskingKey);
 
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
@@ -183,7 +164,7 @@ public class MembershipActor : ReceiveActor
         _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
 
         Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Ok(
-            new OprfRecoverySecretKeyCompleteResponse()
+            new OprfRecoverySecretKeyCompleteResponse
             {
                 Message = "Recovery secret key completed successfully."
             }));
@@ -347,9 +328,8 @@ public class MembershipActor : ReceiveActor
 
         (SodiumSecureMemoryHandle sessionKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) = opaqueResult.Unwrap();
 
-        // Derive and store master key if authentication succeeded
         if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
-            sessionKeyHandle != null && !sessionKeyHandle.IsInvalid)
+            !sessionKeyHandle.IsInvalid)
         {
             await DeriveMasterKeyAndStoreShamirShares(sessionKeyHandle, membershipInfo.MembershipId);
         }
@@ -408,7 +388,6 @@ public class MembershipActor : ReceiveActor
         catch (Exception ex)
         {
             SecureRemovePendingSignIn(@event.ConnectId);
-            Log.Error(ex, "Error during sign-in completion for connectId {ConnectId}", @event.ConnectId);
             Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Authentication context creation failed: {ex.Message}")));
         }
@@ -479,11 +458,6 @@ public class MembershipActor : ReceiveActor
         {
             SecureRemovePendingSignIn(connectId);
         }
-
-        if (expiredConnections.Count > 0)
-        {
-            Log.Information("Cleaned up {ExpiredCount} expired pending sign-ins", expiredConnections.Count);
-        }
     }
 
     private async Task DeriveMasterKeyAndStoreShamirShares(SodiumSecureMemoryHandle sessionKeyHandle, Guid membershipId)
@@ -493,11 +467,6 @@ public class MembershipActor : ReceiveActor
         if (result.IsOk)
         {
             _persistor.Tell(new StoreMasterKeySharesActorEvent(membershipId, result.Unwrap()));
-        }
-        else
-        {
-            Log.Error("Failed to derive and split master key for membership {MembershipId}: {Error}",
-                membershipId, result.UnwrapErr().Message);
         }
     }
 }

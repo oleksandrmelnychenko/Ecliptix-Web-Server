@@ -1,7 +1,6 @@
 using System.Buffers;
 using System.Security.Cryptography;
 using Ecliptix.Utilities;
-using Ecliptix.Utilities;
 using Ecliptix.Security.Opaque.Models;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Protobuf.Membership;

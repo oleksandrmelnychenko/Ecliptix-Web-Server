@@ -245,7 +245,6 @@ public class VerificationFlowServices(
         }
         catch (OperationCanceledException)
         {
-            // Silent cancellation 
         }
     }
 

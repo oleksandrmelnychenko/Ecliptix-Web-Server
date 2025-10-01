@@ -306,10 +306,8 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         Context.GetLogger().Info("[AUTHENTICATED_INIT] Creating protocol system with derived identity keys for ConnectId: {0}, MembershipId: {1}",
             cmd.ConnectId, cmd.MembershipId);
 
-        // Exchange type for authenticated users
         PubKeyExchangeType exchangeType = PubKeyExchangeType.DataCenterEphemeralConnect;
 
-        // Clean up any existing protocol for this exchange type
         if (_protocolSystems.TryGetValue(exchangeType, out EcliptixProtocolSystem? existingSystem))
         {
             Context.GetLogger().Info("[AUTHENTICATED_INIT] Disposing existing protocol system for exchange type {0}", exchangeType);
@@ -317,11 +315,8 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             _protocolSystems.Remove(exchangeType);
         }
 
-        // Create protocol system with derived identity keys
-        RatchetConfig ratchetConfig = GetRatchetConfigForExchangeType(exchangeType);
-        EcliptixProtocolSystem system = new EcliptixProtocolSystem(cmd.IdentityKeys, ratchetConfig);
+        EcliptixProtocolSystem system = new(cmd.IdentityKeys);
 
-        // Process client's public key exchange and perform X3DH handshake
         Result<PubKeyExchange, EcliptixProtocolFailure> exchangeResult =
             system.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.ClientPubKeyExchange);
 
@@ -335,14 +330,12 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
         PubKeyExchange serverPubKeyExchange = exchangeResult.Unwrap();
 
-        // Store system and set timeout
         _protocolSystems[exchangeType] = system;
         _currentExchangeType = exchangeType;
-        Context.SetReceiveTimeout(TimeSpan.FromHours(24)); // Long timeout for authenticated sessions
+        Context.SetReceiveTimeout(TimeSpan.FromHours(24));
 
         Context.GetLogger().Info("[AUTHENTICATED_INIT] Successfully created protocol system for MembershipId: {0}", cmd.MembershipId);
 
-        // Send reply with server's public key exchange
         Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Ok(
             new InitializeProtocolWithMasterKeyReply(serverPubKeyExchange)));
     }
@@ -425,11 +418,9 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         EcliptixSystemIdentityKeys identityKeys =
             EcliptixSystemIdentityKeys.Create(ActorConstants.Constants.IdentityKeySize).Unwrap();
 
-        RatchetConfig ratchetConfig = GetRatchetConfigForExchangeType(exchangeType);
-        EcliptixProtocolSystem system = new(identityKeys, ratchetConfig);
+        EcliptixProtocolSystem system = new(identityKeys);
 
-        Context.GetLogger().Info(ActorConstants.LogMessages.CreatedProtocolWithInterval,
-            ratchetConfig.DhRatchetEveryNMessages, exchangeType);
+        Context.GetLogger().Info("[PROTOCOL] Created protocol system for exchange type {0}", exchangeType);
         Result<PubKeyExchange, EcliptixProtocolFailure> replyResult =
             system.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.PubKeyExchange);
 

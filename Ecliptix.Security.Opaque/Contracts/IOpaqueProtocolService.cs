@@ -1,5 +1,4 @@
 using Ecliptix.Utilities;
-using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Security.Opaque.Models;
 

@@ -18,12 +18,6 @@ public class TwilioSmsProvider : ISmsProvider
     {
         try
         {
-            /*MessageResource? messageResource = await MessageResource.CreateAsync(
-                body: message,
-                from: new PhoneNumber(_settings.MobileNumber),
-                to: new PhoneNumber(phoneNumber),
-                statusCallback: callbackUrl != null ? new Uri(callbackUrl, UriKind.Absolute) : null);*/
-
             return new SmsDeliveryResult
             {
                 IsSuccess = true,

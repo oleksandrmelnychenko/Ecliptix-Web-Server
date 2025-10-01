@@ -5,6 +5,7 @@ using System.Threading.RateLimiting;
 using Akka;
 using Akka.Actor;
 using Akka.Configuration;
+using Ecliptix.Utilities.Configuration;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -27,7 +28,6 @@ using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
-using StackExchange.Redis;
 using Ecliptix.Domain;
 using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Security.Opaque.Contracts;
@@ -98,9 +98,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
 {
     builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
     builder.Services.AddSingleton<SessionKeepAliveInterceptor>();
-    //builder.Services.AddSingleton<SecurityInterceptor>();
     builder.Services.AddSingleton<TelemetryInterceptor>();
-    builder.Services.AddSingleton<ConnectionMonitoringInterceptor>();
     builder.Services.AddSingleton<FailureHandlingInterceptor>();
     builder.Services.AddSingleton<RequestMetaDataInterceptor>();
     builder.Services.AddSingleton<ThreadCultureInterceptor>();
@@ -136,19 +134,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService>();
 
-    // Configure Redis for distributed session key caching
-    string? redisConnectionString = builder.Configuration.GetConnectionString(AppConstants.Redis.ConnectionStringKey);
-    if (string.IsNullOrEmpty(redisConnectionString))
-        throw new InvalidOperationException(AppConstants.Redis.RequiredConnectionStringMessage);
-
-    builder.Services.AddStackExchangeRedisCache(options =>
-    {
-        options.Configuration = redisConnectionString;
-        options.InstanceName = AppConstants.Redis.InstanceName;
-    });
-
-    builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
-        ConnectionMultiplexer.Connect(redisConnectionString));
+    builder.Services.AddDistributedMemoryCache();
 
     builder.Services.AddDataProtection();
 
@@ -168,7 +154,6 @@ static void ConfigureServices(WebApplicationBuilder builder)
 
     builder.Services.AddSingleton<CertificatePinningService>();
 
-    // Key derivation services
     builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IHardenedKeyDerivation, Ecliptix.Core.Services.KeyDerivation.HardenedKeyDerivation>();
     builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.ISecretSharingService, Ecliptix.Core.Services.KeyDerivation.ShamirSecretSharing>();
     builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IIdentityKeyDerivationService, Ecliptix.Core.Services.KeyDerivation.IdentityKeyDerivationService>();
@@ -198,9 +183,20 @@ static void ConfigureServices(WebApplicationBuilder builder)
 static void ConfigureActorSystem(WebApplicationBuilder builder)
 {
     const string systemActorName = AppConstants.ActorSystem.SystemName;
-    Config akkaConfig = ConfigurationFactory.Empty
-        .WithFallback(ConfigurationFactory.ParseString(File.ReadAllText(AppConstants.ActorSystem.ConfigFileName)));
-    ActorSystem actorSystem = ActorSystem.Create(systemActorName, akkaConfig);
+
+    Config fileConfig = ConfigurationFactory.ParseString(
+        File.ReadAllText(AppConstants.ActorSystem.ConfigFileName));
+
+    string runtimeConfig = $@"
+        akka.actor.ask-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Actor.AskTimeout)}
+        akka.persistence.sql-store.journal.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
+        akka.persistence.sql-store.snapshot.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
+    ";
+
+    Config finalConfig = ConfigurationFactory.ParseString(runtimeConfig)
+        .WithFallback(fileConfig);
+
+    ActorSystem actorSystem = ActorSystem.Create(systemActorName, finalConfig);
 
     builder.Services.AddSingleton(actorSystem);
     builder.Services.AddHostedService<ActorSystemHostedService>();
@@ -262,11 +258,6 @@ static void ConfigureEndpoints(WebApplication app)
                     healthResult.Status.ToString(),
                     healthResult.Description,
                     healthResult.Data?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
-                ),
-                new ProtocolMetrics(
-                    AppConstants.StatusMessages.Available,
-                    AppConstants.StatusMessages.ProtocolMetricsActive,
-                    AppConstants.StatusMessages.FullMetricsAvailable
                 ),
                 DateTime.UtcNow
             );
@@ -333,8 +324,8 @@ static void RegisterSecurity(IServiceCollection services)
     services.Configure<KestrelServerOptions>(options =>
     {
         options.Limits.MaxRequestBodySize = Limits.MaxRequestBodySizeBytes;
-        options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(Timeouts.RequestHeadersTimeoutSeconds);
-        options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(Timeouts.KeepAliveTimeoutMinutes);
+        options.Limits.RequestHeadersTimeout = TimeoutConfiguration.Network.RequestHeadersTimeout;
+        options.Limits.KeepAliveTimeout = TimeoutConfiguration.Network.KeepAliveTimeout;
         options.Limits.MaxConcurrentConnections = Limits.MaxConcurrentConnections;
         options.Limits.MaxConcurrentUpgradedConnections = Limits.MaxConcurrentUpgradedConnections;
     });
@@ -356,7 +347,6 @@ static void RegisterGrpc(IServiceCollection services)
         options.ResponseCompressionLevel = CompressionLevel.Fastest;
         options.ResponseCompressionAlgorithm = Compression.Algorithm;
         options.EnableDetailedErrors = true;
-        //options.Interceptors.Add<SecurityInterceptor>();
         options.Interceptors.Add<RequestMetaDataInterceptor>();
         options.Interceptors.Add<SessionKeepAliveInterceptor>();
         options.Interceptors.Add<TelemetryInterceptor>();
@@ -401,7 +391,7 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
         {
             using CancellationTokenSource timeoutCts =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromMinutes(Timeouts.ShutdownGracefulTimeoutMinutes));
+            timeoutCts.CancelAfter(TimeoutConfiguration.Network.ShutdownGracefulTimeout);
 
             CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(actorSystem);
             await coordinatedShutdown.Run(CoordinatedShutdown.ClrExitReason.Instance);
@@ -439,7 +429,7 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
             {
                 Log.Information(AppConstants.LogMessages.PhaseDrainingActiveRequests);
 
-                await Task.Delay(TimeSpan.FromSeconds(Timeouts.DrainActiveRequestsSeconds));
+                await Task.Delay(TimeoutConfiguration.Network.DrainActiveRequests);
 
                 Log.Information(AppConstants.LogMessages.ActiveRequestDrainingCompleted);
                 return Done.Instance;

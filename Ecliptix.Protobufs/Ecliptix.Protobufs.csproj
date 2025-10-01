@@ -10,11 +10,11 @@
 
   <ItemGroup>
     <PackageReference Include="Grpc.AspNetCore.Server" Version="2.71.0" />
-    <PackageReference Include="libphonenumber-csharp" Version="9.0.12" />
+    <PackageReference Include="libphonenumber-csharp" Version="9.0.15" />
     <PackageReference Include="protobuf-net" Version="3.2.56" />
     <PackageReference Include="protobuf-net.Grpc" Version="1.2.2" />
     <PackageReference Include="Protobuf.Grpc" Version="1.0.170" />
-    <PackageReference Include="Google.Protobuf" Version="3.32.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.32.1" />
     <PackageReference Include="Grpc.Tools" Version="2.72.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

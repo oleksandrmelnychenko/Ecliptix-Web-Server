@@ -57,7 +57,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
         parameters.Add("@Shares", sharesTable.AsTableValuedParameter("dbo.MasterKeyShareTableType"));
 
         InsertMasterKeySharesResult? result = await connection.QuerySingleOrDefaultAsync<InsertMasterKeySharesResult>(
-            "dbo.InsertMasterKeyShares",
+            "dbo.SP_InsertMasterKeyShares",
             parameters,
             commandType: CommandType.StoredProcedure
         );
@@ -84,7 +84,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
         parameters.Add("@MembershipUniqueId", cmd.MembershipUniqueId);
 
         IEnumerable<MasterKeyShareQueryRecord> shares = await connection.QueryAsync<MasterKeyShareQueryRecord>(
-            "dbo.GetMasterKeySharesByMembership",
+            "dbo.SP_GetMasterKeyShare",
             parameters,
             commandType: CommandType.StoredProcedure
         );

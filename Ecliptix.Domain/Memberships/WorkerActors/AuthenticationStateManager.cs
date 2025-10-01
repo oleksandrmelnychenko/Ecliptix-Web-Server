@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Akka.Actor;
+using Ecliptix.Utilities.Configuration;
 using Serilog;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors;
@@ -235,7 +236,7 @@ public class AuthenticationStateManager : ReceiveActor
         {
             try
             {
-                ContextInfo contextInfo = kvp.Value.Ask<ContextInfo>(new GetContextInfo(), TimeSpan.FromSeconds(2)).Result;
+                ContextInfo contextInfo = kvp.Value.Ask<ContextInfo>(new GetContextInfo(), TimeoutConfiguration.Actor.AskTimeout).Result;
 
                 if (contextInfo is ContextInfo.Expired or ContextInfo.NotEstablished)
                 {

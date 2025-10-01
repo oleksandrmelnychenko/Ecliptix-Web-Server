@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using Ecliptix.Core.Domain.Protocol.Utilities;
+using Ecliptix.Utilities.Configuration;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
@@ -19,24 +20,8 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 {
     private readonly Lock _lock = new();
 
-    private AdaptiveRatchetManager? _ratchetManager;
-    private readonly ProtocolMetricsCollector _metricsCollector = new(TimeSpan.FromSeconds(30));
     private EcliptixProtocolConnection? _connectSession;
 
-    public EcliptixProtocolSystem(
-        EcliptixSystemIdentityKeys ecliptixSystemIdentityKeys,
-        RatchetConfig ratchetConfig) : this(ecliptixSystemIdentityKeys)
-    {
-        _ratchetManager = new AdaptiveRatchetManager(ratchetConfig);
-
-        lock (_lock)
-        {
-            _connectSession?.UpdateRatchetConfig(ratchetConfig);
-        }
-
-        Log.Information("[PROTOCOL] Initialized with custom config - DH interval: {Interval}",
-            ratchetConfig.DhRatchetEveryNMessages);
-    }
 
     public void Dispose()
     {
@@ -50,8 +35,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
         connectionToDispose?.Dispose();
         ecliptixSystemIdentityKeys.Dispose();
-        _ratchetManager?.Dispose();
-        _metricsCollector.Dispose();
     }
 
     public EcliptixSystemIdentityKeys GetIdentityKeys()
@@ -85,20 +68,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Ok(system);
     }
 
-    public static Result<EcliptixProtocolSystem, EcliptixProtocolFailure> CreateFrom(EcliptixSystemIdentityKeys keys,
-        EcliptixProtocolConnection connection, AdaptiveRatchetManager ratchetManager)
-    {
-        if (keys == null) throw new ArgumentNullException(nameof(keys));
-        if (connection == null) throw new ArgumentNullException(nameof(connection));
-        if (ratchetManager == null) throw new ArgumentNullException(nameof(ratchetManager));
-
-        EcliptixProtocolSystem system = new(keys) 
-        { 
-            _connectSession = connection,
-            _ratchetManager = ratchetManager
-        };
-        return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Ok(system);
-    }
 
     public Result<PubKeyExchange, EcliptixProtocolFailure> BeginDataCenterPubKeyExchange(
         uint connectId, PubKeyExchangeType exchangeType)
@@ -485,8 +454,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
 
-        _ratchetManager?.RecordMessage();
-
         EcliptixMessageKey? messageKeyClone = null;
         byte[]? nonce = null;
         byte[]? ad = null;
@@ -567,8 +534,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                 Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow));
 
             stopwatch.Stop();
-            _metricsCollector.RecordOutboundMessage(stopwatch.Elapsed.TotalMilliseconds);
-            _metricsCollector.RecordEncryption();
 
             return Result<SecureEnvelope, EcliptixProtocolFailure>.Ok(payload);
         }
@@ -638,8 +603,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
 
-        _ratchetManager?.RecordMessage();
-
         EcliptixMessageKey? messageKeyClone = null;
         try
         {
@@ -660,7 +623,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                 {
                     Log.Information("[SERVER] Message validation failed: {Message}",
                         validationResult.UnwrapErr().Message);
-                    _metricsCollector.RecordError();
                     Monitoring.ProtocolHealthCheck.RecordConnectionState(_connectSession?.ConnectId ?? 0, false, true);
                     return Result<byte[], EcliptixProtocolFailure>.Err(validationResult.UnwrapErr());
                 }
@@ -691,7 +653,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             {
                 Log.Information("[SERVER] Replay protection check failed: {Message}",
                     replayCheckResult.UnwrapErr().Message);
-                _metricsCollector.RecordError();
                 Monitoring.ProtocolHealthCheck.RecordConnectionState(_connectSession?.ConnectId ?? 0, false, true);
                 return Result<byte[], EcliptixProtocolFailure>.Err(replayCheckResult.UnwrapErr());
             }
@@ -702,13 +663,11 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                     connection.PerformReceivingRatchet(incomingDhKey);
                 if (ratchetResult.IsErr)
                 {
-                    _metricsCollector.RecordError();
                     Monitoring.ProtocolHealthCheck.RecordDhRatchet(_connectSession?.ConnectId ?? 0, false);
                     return Result<byte[], EcliptixProtocolFailure>.Err(ratchetResult.UnwrapErr());
                 }
 
                 connection.NotifyRatchetRotation();
-                _metricsCollector.RecordRatchetRotation();
                 Monitoring.ProtocolHealthCheck.RecordDhRatchet(_connectSession?.ConnectId ?? 0, true);
                 Log.Information("[SERVER] Notified replay protection of receiving ratchet rotation");
             }
@@ -762,15 +721,12 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             if (decryptResult.IsErr)
             {
                 Log.Information("[DECRYPT] Decryption failed - this indicates a protocol state mismatch");
-                _metricsCollector.RecordError();
                 Monitoring.ProtocolHealthCheck.RecordConnectionState(_connectSession?.ConnectId ?? 0, false, true);
                 return decryptResult;
             }
             else
             {
                 Log.Information("[DECRYPT] Decryption succeeded");
-                _metricsCollector.RecordInboundMessage(stopwatch.Elapsed.TotalMilliseconds);
-                _metricsCollector.RecordDecryption();
                 Monitoring.ProtocolHealthCheck.RecordConnectionState(_connectSession?.ConnectId ?? 0, true, false);
             }
 
@@ -906,7 +862,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
             ReadOnlySpan<byte> ciphertextSpan = fullCipherSpan[..cipherLength];
             ReadOnlySpan<byte> tagSpan = fullCipherSpan[cipherLength..];
-            // Parse metadata to get the nonce
             Result<EnvelopeMetadata, EcliptixProtocolFailure> metadataResult = ProtocolMigrationHelper.ParseEnvelopeMetadata(payload.MetaData);
             if (metadataResult.IsErr)
             {
@@ -1195,29 +1150,8 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         return BitConverter.ToUInt32(buffer);
     }
 
-    public (LoadLevel Load, double MessageRate, uint RatchetInterval, TimeSpan MaxAge) GetLoadMetrics()
+    private static RatchetConfig GetConfigForExchangeType(PubKeyExchangeType exchangeType)
     {
-        return _ratchetManager?.GetLoadMetrics() ?? (LoadLevel.Light, 0.0, 5, TimeSpan.FromMinutes(30));
-    }
-
-    public Result<AdaptiveRatchetState, EcliptixProtocolFailure> GetAdaptiveRatchetState()
-    {
-        if (_ratchetManager == null)
-        {
-            return Result<AdaptiveRatchetState, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("AdaptiveRatchetManager not initialized"));
-        }
-
-        return _ratchetManager.ToProtoState();
-    }
-
-    private RatchetConfig GetConfigForExchangeType(PubKeyExchangeType exchangeType)
-    {
-        return exchangeType switch
-        {
-            PubKeyExchangeType.ServerStreaming when _ratchetManager != null => _ratchetManager.CurrentConfig,
-            PubKeyExchangeType.DeviceToDevice when _ratchetManager != null => _ratchetManager.CurrentConfig,
-            _ => RatchetConfig.Default
-        };
+        return RatchetConfig.Default;
     }
 }

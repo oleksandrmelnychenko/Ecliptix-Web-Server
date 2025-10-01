@@ -6,7 +6,6 @@ using Ecliptix.Security.Opaque.Models.RegistrationMessages;
 using Ecliptix.Security.Opaque.Native;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Constants;
-using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures.Sodium;
 
 namespace Ecliptix.Security.Opaque.Services;
@@ -129,7 +128,6 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
                     OpaqueServerFailure.AuthenticationFailed(
                         $"{OpaqueServerConstants.ErrorMessages.FailedToFinishAuthentication}: {result}"));
 
-            // Allocate secure memory for session key
             Result<SodiumSecureMemoryHandle, SodiumFailure> handleResult =
                 SodiumSecureMemoryHandle.Allocate(OpaqueConstants.HASH_LENGTH);
 
@@ -139,7 +137,6 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
 
             SodiumSecureMemoryHandle handle = handleResult.Unwrap();
 
-            // Write session key to secure memory
             Result<Unit, SodiumFailure> writeResult = handle.Write(sessionKeyBuffer);
             if (writeResult.IsErr)
             {
@@ -152,7 +149,6 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
         }
         finally
         {
-            // Always clear the buffer
             CryptographicOperations.ZeroMemory(sessionKeyBuffer);
         }
     }

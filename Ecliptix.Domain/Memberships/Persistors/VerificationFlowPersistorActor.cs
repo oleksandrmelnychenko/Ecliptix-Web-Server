@@ -67,7 +67,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         parameters.Add("@ConnectionId", (long?)cmd.ConnectId);
 
         InitiateVerificationFlowResult? result = await conn.QuerySingleOrDefaultAsync<InitiateVerificationFlowResult>(
-            "dbo.InitiateVerificationFlow",
+            "dbo.SP_InitiateVerificationFlow",
             parameters,
             commandType: CommandType.StoredProcedure);
 
@@ -91,7 +91,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         parameters.Add("@FlowUniqueId", cmd.FlowUniqueId);
 
         RequestResendOtpResult? result = await conn.QuerySingleOrDefaultAsync<RequestResendOtpResult>(
-            "dbo.RequestResendOtp",
+            "dbo.SP_RequestResendOtpCode",
             parameters,
             commandType: CommandType.StoredProcedure
         );
@@ -110,7 +110,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         parameters.Add("@NewStatus", cmd.Status.ToString().ToLowerInvariant());
 
         UpdateOtpStatusResult? result = await conn.QuerySingleOrDefaultAsync<UpdateOtpStatusResult>(
-            "dbo.UpdateOtpStatus",
+            "dbo.SP_UpdateOtpStatus",
             parameters,
             commandType: CommandType.StoredProcedure);
 
@@ -131,8 +131,9 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         parameters.Add("@PhoneUniqueId", cmd.PhoneNumberIdentifier);
 
         PhoneNumberQueryRecord? result = await conn.QuerySingleOrDefaultAsync<PhoneNumberQueryRecord>(
-            "SELECT * FROM dbo.GetPhoneNumber(@PhoneUniqueId)",
-            parameters);
+            "dbo.SP_GetMobileNumber",
+            parameters,
+            commandType: CommandType.StoredProcedure);
 
         if (result == null)
         {
@@ -152,7 +153,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         parameters.Add("@NewStatus", cmd.Status.ToString().ToLowerInvariant());
         parameters.Add("@rowsAffected", dbType: DbType.Int32, direction: ParameterDirection.ReturnValue);
 
-        await conn.ExecuteAsync("dbo.UpdateVerificationFlowStatus", parameters,
+        await conn.ExecuteAsync("dbo.SP_UpdateVerificationFlowStatus", parameters,
             commandType: CommandType.StoredProcedure);
 
         return Result<int, VerificationFlowFailure>.Ok(parameters.Get<int>("@rowsAffected"));
@@ -169,7 +170,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         parameters.Add("@Status", cmd.OtpRecord.Status.ToString().ToLowerInvariant());
 
         CreateOtpResult? result = await conn.QuerySingleOrDefaultAsync<CreateOtpResult>(
-            "dbo.InsertOtpRecord",
+            "dbo.SP_InsertOtpRecord",
             parameters,
             commandType: CommandType.StoredProcedure);
 
@@ -201,7 +202,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         parameters.Add("@AppDeviceId", cmd.AppDeviceIdentifier);
 
         EnsurePhoneNumberResult? result = await conn.QuerySingleOrDefaultAsync<EnsurePhoneNumberResult>(
-            "dbo.EnsurePhoneNumber",
+            "dbo.SP_EnsureMobileNumber",
             parameters,
             commandType: CommandType.StoredProcedure);
 
@@ -225,7 +226,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         VerifyPhoneForSecretKeyRecoveryResult? result =
             await conn.QuerySingleOrDefaultAsync<VerifyPhoneForSecretKeyRecoveryResult>(
-                "dbo.VerifyPhoneForSecretKeyRecovery",
+                "dbo.SP_VerifyMobileForSecretKeyRecovery",
                 parameters,
                 commandType: CommandType.StoredProcedure);
 
@@ -249,7 +250,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         parameters.Add("@FlowUniqueId", cmd.FlowUniqueId);
 
         await conn.ExecuteAsync(
-            "dbo.ExpireAssociatedOtp",
+            "dbo.SP_ExpireAssociatedOtp",
             parameters,
             commandType: CommandType.StoredProcedure);
 

@@ -2,7 +2,6 @@ using Ecliptix.Utilities;
 using Ecliptix.Security.Opaque.Models.AuthenticationMessages;
 using Ecliptix.Security.Opaque.Models.RegistrationMessages;
 using Ecliptix.Security.Opaque.Failures;
-using Ecliptix.Utilities;
 
 namespace Ecliptix.Security.Opaque.Services;
 

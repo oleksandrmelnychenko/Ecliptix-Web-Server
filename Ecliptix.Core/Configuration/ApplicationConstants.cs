@@ -65,7 +65,9 @@ public static class ApplicationConstants
     public static class Protocol
     {
         public const int SupervisionMaxRetries = 3;
+        [Obsolete("Use TimeoutConfiguration.Actor.SupervisionTimeout")]
         public const int SupervisionTimeoutMinutes = 5;
+        [Obsolete("Use TimeoutConfiguration.Actor.StreamingTimeout")]
         public const int StreamingTimeoutMinutes = 6;
     }
 
@@ -96,13 +98,6 @@ public static class ApplicationConstants
         public const string RateLimitExceeded = "Rate limit exceeded for {IpAddress}";
     }
 
-    public static class Redis
-    {
-        public const string ConnectionStringKey = "Redis";
-        public const string InstanceName = "Ecliptix";
-        public const string RequiredConnectionStringMessage = "Redis connection string is required for session key management.";
-    }
-
     public static class HttpHeaders
     {
         public const string UserAgent = "User-Agent";
@@ -120,9 +115,6 @@ public static class ApplicationConstants
 
     public static class StatusMessages
     {
-        public const string Available = "Available";
-        public const string ProtocolMetricsActive = "Protocol metrics collection active";
-        public const string FullMetricsAvailable = "Full metrics available via actor messages";
         public const string Success = "Success";
         public const string ServerRunning = "Server is up and running";
     }

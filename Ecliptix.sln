@@ -27,8 +27,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Protobufs", "Eclip
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Utilities", "Ecliptix.Utilities\Ecliptix.Utilities.csproj", "{34B9751A-097B-4BE6-AD13-59F20786C5D0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Security.KeyDerivation", "Ecliptix.Security.KeyDerivation\Ecliptix.Security.KeyDerivation.csproj", "{A2FFA90E-9CE4-4054-9D51-E154CF037C88}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -63,9 +61,5 @@ Global
 		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Release|Any CPU.Build.0 = Release|Any CPU
-		{A2FFA90E-9CE4-4054-9D51-E154CF037C88}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A2FFA90E-9CE4-4054-9D51-E154CF037C88}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A2FFA90E-9CE4-4054-9D51-E154CF037C88}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A2FFA90E-9CE4-4054-9D51-E154CF037C88}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

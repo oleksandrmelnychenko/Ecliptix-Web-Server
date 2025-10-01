@@ -1,13 +1,8 @@
-using System;
 using System.Text;
 using System.Security.Cryptography;
 using Google.Protobuf;
 using Ecliptix.Utilities;
-using Ecliptix.Utilities.Failures;
 using Konscious.Security.Cryptography;
-using Ecliptix.Core.Domain.Protocol;
-using Ecliptix.Utilities;
-using Ecliptix.Utilities.Failures;
 using Ecliptix.Utilities.Failures.Sodium;
 
 namespace Ecliptix.Core.Services.KeyDerivation;
@@ -48,7 +43,6 @@ public static class MasterKeyDerivation
         {
             stretchedKey = DeriveWithArgon2Id(exportKey, argonSalt);
 
-            // Ensure salt and personal are exactly 16 bytes
             byte[] salt16 = new byte[16];
             byte[] personal16 = new byte[16];
 
@@ -82,7 +76,8 @@ public static class MasterKeyDerivation
         }
     }
 
-    public static Result<SodiumSecureMemoryHandle, SodiumFailure> DeriveMasterKeyHandle(SodiumSecureMemoryHandle exportKeyHandle, ByteString membershipId)
+    public static Result<SodiumSecureMemoryHandle, SodiumFailure> DeriveMasterKeyHandle(
+        SodiumSecureMemoryHandle exportKeyHandle, ByteString membershipId)
     {
         byte[]? exportKeyBytes = null;
         byte[]? stretchedKey = null;
@@ -113,42 +108,41 @@ public static class MasterKeyDerivation
 
             stretchedKey = DeriveWithArgon2Id(exportKeyBytes, argonSalt);
 
-                // Ensure salt and personal are exactly 16 bytes
-                byte[] salt16 = new byte[16];
-                byte[] personal16 = new byte[16];
+            byte[] salt16 = new byte[16];
+            byte[] personal16 = new byte[16];
 
-                Array.Copy(masterSaltBytes.ToArray(), 0, salt16, 0, Math.Min(masterSaltBytes.Length, 16));
-                Array.Copy(membershipBytes.ToArray(), 0, personal16, 0, Math.Min(membershipBytes.Length, 16));
+            Array.Copy(masterSaltBytes.ToArray(), 0, salt16, 0, Math.Min(masterSaltBytes.Length, 16));
+            Array.Copy(membershipBytes.ToArray(), 0, personal16, 0, Math.Min(membershipBytes.Length, 16));
 
-                Result<byte[], SodiumFailure> hashResult = SodiumInterop.Blake2bHashSaltPersonal(
-                    message: stretchedKey,
-                    key: null,
-                    salt: salt16,
-                    personal: personal16,
-                    outputSize: KEY_SIZE
-                );
+            Result<byte[], SodiumFailure> hashResult = SodiumInterop.Blake2bHashSaltPersonal(
+                message: stretchedKey,
+                key: null,
+                salt: salt16,
+                personal: personal16,
+                outputSize: KEY_SIZE
+            );
 
-                if (hashResult.IsErr)
-                    return Result<SodiumSecureMemoryHandle, SodiumFailure>.Err(hashResult.UnwrapErr());
+            if (hashResult.IsErr)
+                return Result<SodiumSecureMemoryHandle, SodiumFailure>.Err(hashResult.UnwrapErr());
 
-                byte[] masterKeyBytes = hashResult.Unwrap();
+            byte[] masterKeyBytes = hashResult.Unwrap();
 
-                Result<SodiumSecureMemoryHandle, SodiumFailure> allocResult = SodiumSecureMemoryHandle.Allocate(KEY_SIZE);
-                if (allocResult.IsErr)
-                {
-                    CryptographicOperations.ZeroMemory(masterKeyBytes);
-                    return allocResult;
-                }
-
-                SodiumSecureMemoryHandle masterKeyHandle = allocResult.Unwrap();
-                Result<Unit, SodiumFailure> writeResult = masterKeyHandle.Write(masterKeyBytes);
+            Result<SodiumSecureMemoryHandle, SodiumFailure> allocResult = SodiumSecureMemoryHandle.Allocate(KEY_SIZE);
+            if (allocResult.IsErr)
+            {
                 CryptographicOperations.ZeroMemory(masterKeyBytes);
+                return allocResult;
+            }
 
-                if (writeResult.IsErr)
-                {
-                    masterKeyHandle.Dispose();
-                    return Result<SodiumSecureMemoryHandle, SodiumFailure>.Err(writeResult.UnwrapErr());
-                }
+            SodiumSecureMemoryHandle masterKeyHandle = allocResult.Unwrap();
+            Result<Unit, SodiumFailure> writeResult = masterKeyHandle.Write(masterKeyBytes);
+            CryptographicOperations.ZeroMemory(masterKeyBytes);
+
+            if (writeResult.IsErr)
+            {
+                masterKeyHandle.Dispose();
+                return Result<SodiumSecureMemoryHandle, SodiumFailure>.Err(writeResult.UnwrapErr());
+            }
 
             return Result<SodiumSecureMemoryHandle, SodiumFailure>.Ok(masterKeyHandle);
         }
@@ -168,7 +162,8 @@ public static class MasterKeyDerivation
         }
     }
 
-    private static byte[] CreateArgonSalt(ReadOnlySpan<byte> membershipBytes, ReadOnlySpan<byte> versionBytes, ReadOnlySpan<byte> domainBytes)
+    private static byte[] CreateArgonSalt(ReadOnlySpan<byte> membershipBytes, ReadOnlySpan<byte> versionBytes,
+        ReadOnlySpan<byte> domainBytes)
     {
         int totalLength = membershipBytes.Length + versionBytes.Length + domainBytes.Length;
 

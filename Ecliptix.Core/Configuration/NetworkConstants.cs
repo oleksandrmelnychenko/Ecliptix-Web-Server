@@ -8,11 +8,16 @@ public static class NetworkConstants
         public const int Http = 8080;
     }
 
+    [Obsolete("Use TimeoutConfiguration.Network instead")]
     public static class Timeouts
     {
+        [Obsolete("Use TimeoutConfiguration.Network.RequestHeadersTimeout")]
         public const int RequestHeadersTimeoutSeconds = 30;
+        [Obsolete("Use TimeoutConfiguration.Network.KeepAliveTimeout")]
         public const int KeepAliveTimeoutMinutes = 2;
+        [Obsolete("Use TimeoutConfiguration.Network.ShutdownGracefulTimeout")]
         public const int ShutdownGracefulTimeoutMinutes = 2;
+        [Obsolete("Use TimeoutConfiguration.Network.DrainActiveRequests")]
         public const int DrainActiveRequestsSeconds = 5;
     }
 

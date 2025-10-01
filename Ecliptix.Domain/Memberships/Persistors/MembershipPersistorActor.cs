@@ -57,7 +57,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         parameters.Add("@PhoneNumber", cmd.MobileNumber);
 
         LoginMembershipResult? result = await connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
-            "dbo.LoginMembership",
+            "dbo.SP_LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
         );
@@ -108,7 +108,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         parameters.Add("@MaskingKey", cmd.MaskingKey);
 
         UpdateSecureKeyResult? result = await connection.QuerySingleOrDefaultAsync<UpdateSecureKeyResult>(
-            "dbo.UpdateMembershipSecureKey",
+            "dbo.SP_UpdateMembershipSecureKey",
             parameters,
             commandType: CommandType.StoredProcedure
         );
@@ -161,7 +161,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         parameters.Add("@CreationStatus", MembershipCreationStatusHelper.GetCreationStatusString(cmd.CreationStatus));
 
         CreateMembershipResult? result = await connection.QuerySingleOrDefaultAsync<CreateMembershipResult>(
-            "dbo.CreateMembership",
+            "dbo.SP_CreateMembership",
             parameters,
             commandType: CommandType.StoredProcedure);
 

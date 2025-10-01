@@ -70,19 +70,27 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
 
     private async Task<bool> IsIpBlocked(string clientIp)
     {
-        string key = $"{ThrottlingConstants.CacheKeys.BlockedIpPrefix}{clientIp}";
-        string? blockedData = await cache.GetStringAsync(key);
-
-        if (blockedData == null) return false;
-        BlockInfo? blockInfo = JsonSerializer.Deserialize(blockedData, AppJsonSerializerContext.Default.BlockInfo);
-        if (blockInfo?.ExpiresAt > DateTime.UtcNow)
+        try
         {
-            return true;
+            string key = $"{ThrottlingConstants.CacheKeys.BlockedIpPrefix}{clientIp}";
+            string? blockedData = await cache.GetStringAsync(key);
+
+            if (blockedData == null) return false;
+            BlockInfo? blockInfo = JsonSerializer.Deserialize(blockedData, AppJsonSerializerContext.Default.BlockInfo);
+            if (blockInfo?.ExpiresAt > DateTime.UtcNow)
+            {
+                return true;
+            }
+
+            await cache.RemoveAsync(key);
+
+            return false;
         }
-
-        await cache.RemoveAsync(key);
-
-        return false;
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Cache error while checking IP block status for {ClientIp}. Allowing request to proceed.", clientIp);
+            return false;
+        }
     }
 
     private static bool CheckRateLimit(string clientIp)
@@ -143,17 +151,24 @@ public class IpThrottlingMiddleware(RequestDelegate next, IDistributedCache cach
             Reason = ThrottlingConstants.Messages.TooManyFailedRequests
         };
 
-        string key = $"{ThrottlingConstants.CacheKeys.BlockedIpPrefix}{clientIp}";
-        string serializedData = JsonSerializer.Serialize(blockInfo, AppJsonSerializerContext.Default.BlockInfo);
-        DistributedCacheEntryOptions options = new()
+        try
         {
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(durationMinutes)
-        };
+            string key = $"{ThrottlingConstants.CacheKeys.BlockedIpPrefix}{clientIp}";
+            string serializedData = JsonSerializer.Serialize(blockInfo, AppJsonSerializerContext.Default.BlockInfo);
+            DistributedCacheEntryOptions options = new()
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(durationMinutes)
+            };
 
-        await cache.SetStringAsync(key, serializedData, options);
+            await cache.SetStringAsync(key, serializedData, options);
 
-        Log.Warning(ThrottlingConstants.Messages.IpBlocked,
-            clientIp, durationMinutes, blockInfo.Reason);
+            Log.Warning(ThrottlingConstants.Messages.IpBlocked,
+                clientIp, durationMinutes, blockInfo.Reason);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Cache error while attempting to block IP {ClientIp}. IP blocking in distributed cache unavailable.", clientIp);
+        }
     }
 
     private async Task HandleBlockedRequest(HttpContext context, string clientIp)
