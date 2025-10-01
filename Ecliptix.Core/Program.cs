@@ -98,7 +98,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
 {
     builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
     builder.Services.AddSingleton<SessionKeepAliveInterceptor>();
-    builder.Services.AddSingleton<SecurityInterceptor>();
+    //builder.Services.AddSingleton<SecurityInterceptor>();
     builder.Services.AddSingleton<TelemetryInterceptor>();
     builder.Services.AddSingleton<ConnectionMonitoringInterceptor>();
     builder.Services.AddSingleton<FailureHandlingInterceptor>();
@@ -350,7 +350,7 @@ static void RegisterGrpc(IServiceCollection services)
         options.ResponseCompressionLevel = CompressionLevel.Fastest;
         options.ResponseCompressionAlgorithm = Compression.Algorithm;
         options.EnableDetailedErrors = true;
-        options.Interceptors.Add<SecurityInterceptor>();
+        //options.Interceptors.Add<SecurityInterceptor>();
         options.Interceptors.Add<RequestMetaDataInterceptor>();
         options.Interceptors.Add<SessionKeepAliveInterceptor>();
         options.Interceptors.Add<TelemetryInterceptor>();

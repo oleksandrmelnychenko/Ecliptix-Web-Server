@@ -102,7 +102,7 @@ public static class InterceptorConstants
 
     public static class Thresholds
     {
-        public const int MinTimeBetweenRequestsMs = 100;
+        public const int MinTimeBetweenRequestsMs = 1000;
 
         public const int LogThrottleIntervalSeconds = 10;
 
