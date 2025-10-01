@@ -1,5 +1,4 @@
 using System.Buffers;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Domain.Protocol;

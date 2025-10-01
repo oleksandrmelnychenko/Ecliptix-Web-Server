@@ -1,18 +1,14 @@
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Akka.Actor;
 using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.WorkerActors;
-using Ecliptix.Security.Opaque.Models;
 using Ecliptix.Security.Opaque.Contracts;
-using Ecliptix.Domain.Memberships.PhoneNumberValidation;
 using Ecliptix.Domain.Providers.Twilio;
 using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain;
-using Ecliptix.Core.Services;
 using Ecliptix.Core.Configuration;
+using Ecliptix.Domain.Services.Security;
 
 namespace Ecliptix.Core.Services;
 
@@ -28,6 +24,7 @@ public sealed class ActorSystemInitializationHost(
         IOpaqueProtocolService opaqueProtocolService = serviceProvider.GetRequiredService<IOpaqueProtocolService>();
         ISmsProvider smsProvider = serviceProvider.GetRequiredService<ISmsProvider>();
         ILocalizationProvider localizationProvider = serviceProvider.GetRequiredService<ILocalizationProvider>();
+        IMasterKeyService masterKeyService = serviceProvider.GetRequiredService<IMasterKeyService>();
 
         IActorRef protocolSystemActor = actorSystem.ActorOf(
             EcliptixProtocolSystemActor.Build(),
@@ -49,6 +46,10 @@ public sealed class ActorSystemInitializationHost(
             AuthContextPersistorActor.Build(dbConnectionFactory),
             ApplicationConstants.ActorNames.AuthContextPersistorActor);
 
+        IActorRef masterKeySharePersistorActor = actorSystem.ActorOf(
+            MasterKeySharePersistorActor.Build(dbConnectionFactory),
+            ApplicationConstants.ActorNames.MasterKeySharePersistorActor);
+
         IActorRef authenticationStateManager = actorSystem.ActorOf(
             AuthenticationStateManager.Build(),
             ApplicationConstants.ActorNames.AuthenticationStateManager);
@@ -59,7 +60,8 @@ public sealed class ActorSystemInitializationHost(
                 authContextPersistorActor,
                 opaqueProtocolService,
                 localizationProvider,
-                authenticationStateManager),
+                authenticationStateManager,
+                masterKeyService),
             ApplicationConstants.ActorNames.MembershipActor);
 
         IActorRef verificationFlowManagerActor = actorSystem.ActorOf(
@@ -75,6 +77,7 @@ public sealed class ActorSystemInitializationHost(
         registry.Register(ActorIds.VerificationFlowPersistorActor, verificationFlowPersistorActor);
         registry.Register(ActorIds.VerificationFlowManagerActor, verificationFlowManagerActor);
         registry.Register(ActorIds.MembershipPersistorActor, membershipPersistorActor);
+        registry.Register(ActorIds.MasterKeySharePersistorActor, masterKeySharePersistorActor);
         registry.Register(ActorIds.MembershipActor, membershipActor);
 
         return Task.CompletedTask;

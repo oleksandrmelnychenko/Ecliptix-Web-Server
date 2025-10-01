@@ -1,6 +1,6 @@
 using Ecliptix.Utilities;
 
-namespace Ecliptix.Core.Domain.Protocol.Failures;
+namespace Ecliptix.Utilities.Failures.Sodium;
 
 public static class SodiumFailureExtensions
 {

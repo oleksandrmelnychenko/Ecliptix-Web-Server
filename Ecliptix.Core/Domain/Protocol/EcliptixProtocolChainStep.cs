@@ -1,8 +1,7 @@
 using System.Buffers;
-using Ecliptix.Core.Domain.Protocol.Failures;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Utilities.Failures.Sodium;
 using Google.Protobuf;
 using Serilog;
 using Serilog.Events;

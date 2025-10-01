@@ -51,5 +51,11 @@ public sealed class OpaqueServerFailure
     public static OpaqueServerFailure StorageException(Exception ex) =>
         new(OpaqueServerFailureType.StorageFailure, OpaqueServerConstants.ErrorMessages.StorageException, ex);
 
+    public static OpaqueServerFailure MemoryAllocationFailed(string message) =>
+        new(OpaqueServerFailureType.CryptographicFailure, $"Memory allocation failed: {message}");
+
+    public static OpaqueServerFailure MemoryWriteFailed(string message) =>
+        new(OpaqueServerFailureType.CryptographicFailure, $"Memory write failed: {message}");
+
     public override string ToString() => Message;
 }

@@ -6,7 +6,6 @@ using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Domain.Protocol.Utilities;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Protocol;
@@ -70,6 +69,9 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
         switch (message)
         {
+            case InitializeProtocolWithMasterKeyActorEvent cmd:
+                HandleAuthenticatedProtocolInitialization(cmd);
+                return true;
             case DeriveSharedSecretActorEvent cmd:
                 HandleInitialKeyExchange(cmd);
                 return true;
@@ -297,6 +299,52 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         base.PreStart();
         Context.GetLogger().Info("[PROTOCOL_ACTOR] Starting and subscribing to ProtocolCleanupRequiredEvent - ConnectId: {0}", connectId);
         Context.System.EventStream.Subscribe(Self, typeof(ProtocolCleanupRequiredEvent));
+    }
+
+    private void HandleAuthenticatedProtocolInitialization(InitializeProtocolWithMasterKeyActorEvent cmd)
+    {
+        Context.GetLogger().Info("[AUTHENTICATED_INIT] Creating protocol system with derived identity keys for ConnectId: {0}, MembershipId: {1}",
+            cmd.ConnectId, cmd.MembershipId);
+
+        // Exchange type for authenticated users
+        PubKeyExchangeType exchangeType = PubKeyExchangeType.DataCenterEphemeralConnect;
+
+        // Clean up any existing protocol for this exchange type
+        if (_protocolSystems.TryGetValue(exchangeType, out EcliptixProtocolSystem? existingSystem))
+        {
+            Context.GetLogger().Info("[AUTHENTICATED_INIT] Disposing existing protocol system for exchange type {0}", exchangeType);
+            existingSystem.Dispose();
+            _protocolSystems.Remove(exchangeType);
+        }
+
+        // Create protocol system with derived identity keys
+        RatchetConfig ratchetConfig = GetRatchetConfigForExchangeType(exchangeType);
+        EcliptixProtocolSystem system = new EcliptixProtocolSystem(cmd.IdentityKeys, ratchetConfig);
+
+        // Process client's public key exchange and perform X3DH handshake
+        Result<PubKeyExchange, EcliptixProtocolFailure> exchangeResult =
+            system.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.ClientPubKeyExchange);
+
+        if (exchangeResult.IsErr)
+        {
+            Context.GetLogger().Error("[AUTHENTICATED_INIT] Failed to process client pub key exchange: {0}", exchangeResult.UnwrapErr().Message);
+            system.Dispose();
+            Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(exchangeResult.UnwrapErr()));
+            return;
+        }
+
+        PubKeyExchange serverPubKeyExchange = exchangeResult.Unwrap();
+
+        // Store system and set timeout
+        _protocolSystems[exchangeType] = system;
+        _currentExchangeType = exchangeType;
+        Context.SetReceiveTimeout(TimeSpan.FromHours(24)); // Long timeout for authenticated sessions
+
+        Context.GetLogger().Info("[AUTHENTICATED_INIT] Successfully created protocol system for MembershipId: {0}", cmd.MembershipId);
+
+        // Send reply with server's public key exchange
+        Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Ok(
+            new InitializeProtocolWithMasterKeyReply(serverPubKeyExchange)));
     }
 
     private void HandleInitialKeyExchange(DeriveSharedSecretActorEvent cmd)

@@ -1,14 +1,12 @@
 using System.Buffers;
-using Ecliptix.Core.Domain.Protocol;
-using Ecliptix.Core.Domain.Protocol.Failures;
-using Ecliptix.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Utilities;
+using Ecliptix.Utilities.Failures.Sodium;
 using Google.Protobuf;
 using Serilog;
 using Serilog.Events;
-using Sodium;
 
-namespace Ecliptix.Core.Protocol;
+namespace Ecliptix.Core.Domain.Protocol;
 
 public sealed class EcliptixSystemIdentityKeys : IDisposable
 {
@@ -468,13 +466,17 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
     private static Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> GenerateEd25519Keys()
     {
-        SodiumSecureMemoryHandle? skHandle;
+        SodiumSecureMemoryHandle? skHandle = null;
         byte[]? skBytes = null;
         try
         {
-            KeyPair edKeyPair = PublicKeyAuth.GenerateKeyPair();
-            skBytes = edKeyPair.PrivateKey;
-            byte[] pkBytes = edKeyPair.PublicKey;
+            Result<(byte[] PublicKey, byte[] SecretKey), SodiumFailure> keyPairResult = SodiumInterop.GenerateSigningKeyPair();
+            if (keyPairResult.IsErr)
+                return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.KeyGeneration($"Failed to generate Ed25519 key pair: {keyPairResult.UnwrapErr().Message}"));
+
+            (byte[] pkBytes, byte[] skBytesTemp) = keyPairResult.Unwrap();
+            skBytes = skBytesTemp;
 
             skHandle = SodiumSecureMemoryHandle.Allocate(Constants.Ed25519SecretKeySize).Unwrap();
             skHandle.Write(skBytes).Unwrap();
@@ -483,6 +485,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
         }
         catch (Exception ex)
         {
+            skHandle?.Dispose();
             return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.KeyGeneration("Failed to generate Ed25519 key pair.", ex));
         }
@@ -518,7 +521,11 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             byte[] signature;
             try
             {
-                signature = PublicKeyAuth.SignDetached(spkPk, tempEdSignKeyCopy);
+                Result<byte[], SodiumFailure> signResult = SodiumInterop.SignDetached(spkPk, tempEdSignKeyCopy);
+                if (signResult.IsErr)
+                    return Result<byte[], EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.Generic($"Failed to sign SPK: {signResult.UnwrapErr().Message}"));
+                signature = signResult.Unwrap();
             }
             catch (Exception ex)
             {
@@ -596,7 +603,10 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
     private static uint GenerateRandomUInt32()
     {
-        byte[] buffer = SodiumCore.GetRandomBytes(sizeof(uint));
+        Result<byte[], SodiumFailure> randomResult = SodiumInterop.GetRandomBytes(sizeof(uint));
+        if (randomResult.IsErr)
+            throw new InvalidOperationException($"Failed to generate random uint32: {randomResult.UnwrapErr().Message}");
+        byte[] buffer = randomResult.Unwrap();
         return BitConverter.ToUInt32(buffer, 0);
     }
 
@@ -711,12 +721,31 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
             bool useOpk = remoteBundle.OneTimePreKeys.FirstOrDefault()?.PublicKey is
                 { Length: Constants.X25519PublicKeySize };
-            dh1 = ScalarMult.Mult(ephemeralSecretBytes, remoteBundle.IdentityX25519);
-            dh2 = ScalarMult.Mult(ephemeralSecretBytes, remoteBundle.SignedPreKeyPublic);
-            dh3 = ScalarMult.Mult(identitySecretBytes, remoteBundle.SignedPreKeyPublic);
+            Result<byte[], SodiumFailure> dh1Result = SodiumInterop.ScalarMult(ephemeralSecretBytes, remoteBundle.IdentityX25519);
+            if (dh1Result.IsErr)
+                return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.DeriveKey($"Failed to compute DH1: {dh1Result.UnwrapErr().Message}"));
+            dh1 = dh1Result.Unwrap();
+
+            Result<byte[], SodiumFailure> dh2Result = SodiumInterop.ScalarMult(ephemeralSecretBytes, remoteBundle.SignedPreKeyPublic);
+            if (dh2Result.IsErr)
+                return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.DeriveKey($"Failed to compute DH2: {dh2Result.UnwrapErr().Message}"));
+            dh2 = dh2Result.Unwrap();
+
+            Result<byte[], SodiumFailure> dh3Result = SodiumInterop.ScalarMult(identitySecretBytes, remoteBundle.SignedPreKeyPublic);
+            if (dh3Result.IsErr)
+                return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.DeriveKey($"Failed to compute DH3: {dh3Result.UnwrapErr().Message}"));
+            dh3 = dh3Result.Unwrap();
+
             if (useOpk)
             {
-                dh4 = ScalarMult.Mult(ephemeralSecretBytes, remoteBundle.OneTimePreKeys[0].PublicKey);
+                Result<byte[], SodiumFailure> dh4Result = SodiumInterop.ScalarMult(ephemeralSecretBytes, remoteBundle.OneTimePreKeys[0].PublicKey);
+                if (dh4Result.IsErr)
+                    return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.DeriveKey($"Failed to compute DH4: {dh4Result.UnwrapErr().Message}"));
+                dh4 = dh4Result.Unwrap();
             }
 
             if (Log.IsEnabled(LogEventLevel.Debug))
@@ -865,12 +894,32 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 oneTimePreKeySecretBytes = readOpkResult.Unwrap();
             }
 
-            dh1 = ScalarMult.Mult(identitySecretBytes, remoteEphemeralPublicKeyX.ToArray());
-            dh2 = ScalarMult.Mult(signedPreKeySecretBytes, remoteEphemeralPublicKeyX.ToArray());
-            dh3 = ScalarMult.Mult(signedPreKeySecretBytes, remoteIdentityPublicKeyX.ToArray());
+            Result<byte[], SodiumFailure> dh1Result = SodiumInterop.ScalarMult(identitySecretBytes, remoteEphemeralPublicKeyX.ToArray());
+            if (dh1Result.IsErr)
+                return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.DeriveKey($"Failed to compute DH1: {dh1Result.UnwrapErr().Message}"));
+            dh1 = dh1Result.Unwrap();
+
+            Result<byte[], SodiumFailure> dh2Result = SodiumInterop.ScalarMult(signedPreKeySecretBytes, remoteEphemeralPublicKeyX.ToArray());
+            if (dh2Result.IsErr)
+                return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.DeriveKey($"Failed to compute DH2: {dh2Result.UnwrapErr().Message}"));
+            dh2 = dh2Result.Unwrap();
+
+            Result<byte[], SodiumFailure> dh3Result = SodiumInterop.ScalarMult(signedPreKeySecretBytes, remoteIdentityPublicKeyX.ToArray());
+            if (dh3Result.IsErr)
+                return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.DeriveKey($"Failed to compute DH3: {dh3Result.UnwrapErr().Message}"));
+            dh3 = dh3Result.Unwrap();
 
             if (oneTimePreKeySecretBytes != null)
-                dh4 = ScalarMult.Mult(oneTimePreKeySecretBytes, remoteEphemeralPublicKeyX.ToArray());
+            {
+                Result<byte[], SodiumFailure> dh4Result = SodiumInterop.ScalarMult(oneTimePreKeySecretBytes, remoteEphemeralPublicKeyX.ToArray());
+                if (dh4Result.IsErr)
+                    return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.DeriveKey($"Failed to compute DH4: {dh4Result.UnwrapErr().Message}"));
+                dh4 = dh4Result.Unwrap();
+            }
 
             if (Log.IsEnabled(LogEventLevel.Debug))
             {
@@ -976,10 +1025,14 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 EcliptixProtocolFailure.InvalidInput("Invalid key or signature length for SPK verification."));
         }
 
-        bool verificationResult = PublicKeyAuth.VerifyDetached(remoteSpkSignature.ToArray(), remoteSpkPublic.ToArray(),
+        Result<bool, SodiumFailure> verificationResult = SodiumInterop.VerifyDetached(remoteSpkSignature.ToArray(), remoteSpkPublic.ToArray(),
             remoteIdentityEd25519.ToArray());
 
-        return verificationResult
+        if (verificationResult.IsErr)
+            return Result<bool, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Handshake($"Remote SPK signature verification error: {verificationResult.UnwrapErr().Message}"));
+
+        return verificationResult.Unwrap()
             ? Result<bool, EcliptixProtocolFailure>.Ok(true)
             : Result<bool, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Handshake("Remote SPK signature verification failed."));

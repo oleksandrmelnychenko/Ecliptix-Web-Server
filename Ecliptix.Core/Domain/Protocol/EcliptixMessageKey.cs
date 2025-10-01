@@ -1,7 +1,6 @@
 using System.Buffers;
-using Ecliptix.Core.Domain.Protocol.Failures;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Utilities;
+using Ecliptix.Utilities.Failures.Sodium;
 
 namespace Ecliptix.Core.Domain.Protocol;
 

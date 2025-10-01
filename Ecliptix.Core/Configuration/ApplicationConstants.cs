@@ -17,6 +17,7 @@ public static class ApplicationConstants
         public const string MembershipPersistorActor = "MembershipPersistorActor";
         public const string MembershipActor = "MembershipActor";
         public const string AuthContextPersistorActor = "AuthContextPersistorActor";
+        public const string MasterKeySharePersistorActor = "MasterKeySharePersistorActor";
         public const string AuthenticationStateManager = "AuthenticationStateManager";
     }
 

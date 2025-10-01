@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Security.Cryptography;
 using Ecliptix.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Security.Opaque.Models;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Protobuf.Membership;
@@ -98,12 +99,11 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         ke2Data.Slice(ServerMacOffset, ServerMacSize).CopyTo(destination);
     }
 
-    private static OpaqueSignInFinalizeResponse BuildSuccessfulFinalizeResponse(byte[] sessionKey, byte[]? serverMac)
+    private static OpaqueSignInFinalizeResponse BuildSuccessfulFinalizeResponse(byte[] serverMac)
     {
         return new OpaqueSignInFinalizeResponse
         {
-            SessionKey = ByteString.CopyFrom(sessionKey),
-            ServerMac = serverMac is not null ? ByteString.CopyFrom(serverMac) : ByteString.Empty,
+            ServerMac = ByteString.CopyFrom(serverMac),
             Result = OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded,
             Message = AuthenticationSuccessful
         };
@@ -177,23 +177,24 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
                 OpaqueFailure.InvalidInput($"KE2 generation failed: {err.Message}")));
     }
 
-    public Result<OpaqueSignInFinalizeResponse, OpaqueFailure> CompleteSignIn(OpaqueSignInFinalizeRequest request,
-        byte[]? serverMac = null)
+    public Result<(SodiumSecureMemoryHandle SessionKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure> CompleteSignIn(
+        OpaqueSignInFinalizeRequest request,
+        byte[] serverMac)
     {
         Result<KE3, OpaqueFailure> ke3ValidationResult = ValidateKe3(request);
         if (ke3ValidationResult.IsErr)
-            return Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Err(ke3ValidationResult.UnwrapErr());
+            return Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(ke3ValidationResult.UnwrapErr());
 
         KE3 ke3 = ke3ValidationResult.Unwrap();
 
-        Result<SessionKey, OpaqueServerFailure> sessionKeyResult =
+        Result<SodiumSecureMemoryHandle, OpaqueServerFailure> sessionKeyResult =
             nativeService.FinishAuthentication(ke3);
 
         return sessionKeyResult.Match(
-            ok => Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(
-                BuildSuccessfulFinalizeResponse(ok.Data, serverMac)),
-            err => Result<OpaqueSignInFinalizeResponse, OpaqueFailure>.Ok(
-                BuildFailedFinalizeResponse())
+            ok => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
+                (ok, BuildSuccessfulFinalizeResponse(serverMac))),
+            err => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
+                (null!, BuildFailedFinalizeResponse()))
         );
     }
 

@@ -1,4 +1,5 @@
 using Ecliptix.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Security.Opaque.Models;
 
@@ -11,8 +12,9 @@ public interface IOpaqueProtocolService
     Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure> InitiateSignIn(
         OpaqueSignInInitRequest request, MembershipOpaqueQueryRecord queryRecord);
 
-    Result<OpaqueSignInFinalizeResponse, OpaqueFailure> CompleteSignIn(OpaqueSignInFinalizeRequest request,
-        byte[]? serverMac = null);
+    Result<(SodiumSecureMemoryHandle SessionKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure> CompleteSignIn(
+        OpaqueSignInFinalizeRequest request,
+        byte[] serverMac);
 
     Result<byte[], OpaqueFailure> CompleteRegistrationWithSessionKey(byte[] peerRegistrationRecord);
 

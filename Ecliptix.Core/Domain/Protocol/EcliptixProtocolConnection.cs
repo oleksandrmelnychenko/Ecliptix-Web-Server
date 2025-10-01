@@ -1,13 +1,11 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
-using Ecliptix.Core.Domain.Protocol.Failures;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Utilities.Failures.Sodium;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
-using Sodium;
 
 namespace Ecliptix.Core.Domain.Protocol;
 
@@ -697,7 +695,10 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     if (privKeyResult.IsErr)
                         throw new InvalidOperationException($"Failed to read ephemeral private key: {privKeyResult.UnwrapErr().Message}");
                     localPrivateKeyBytes = privKeyResult.Unwrap();
-                    dhSecret = ScalarMult.Mult(localPrivateKeyBytes, _peerDhPublicKey);
+                    Result<byte[], SodiumFailure> dhSecretResult = SodiumInterop.ScalarMult(localPrivateKeyBytes, _peerDhPublicKey);
+                    if (dhSecretResult.IsErr)
+                        throw new InvalidOperationException($"Failed to compute DH secret (sender): {dhSecretResult.UnwrapErr().Message}");
+                    dhSecret = dhSecretResult.Unwrap();
                 }
                 else
                 {
@@ -708,7 +709,10 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     if (privKeyResult.IsErr)
                         throw new InvalidOperationException($"Failed to read current DH private key: {privKeyResult.UnwrapErr().Message}");
                     localPrivateKeyBytes = privKeyResult.Unwrap();
-                    dhSecret = ScalarMult.Mult(localPrivateKeyBytes, receivedDhPublicKeyBytes);
+                    Result<byte[], SodiumFailure> dhSecretResult = SodiumInterop.ScalarMult(localPrivateKeyBytes, receivedDhPublicKeyBytes);
+                    if (dhSecretResult.IsErr)
+                        throw new InvalidOperationException($"Failed to compute DH secret (receiver): {dhSecretResult.UnwrapErr().Message}");
+                    dhSecret = dhSecretResult.Unwrap();
                 }
             }, ex => EcliptixProtocolFailure.DeriveKey("DH calculation failed during ratchet.", ex));
             if (dhCalculationResult.IsErr) return dhCalculationResult;

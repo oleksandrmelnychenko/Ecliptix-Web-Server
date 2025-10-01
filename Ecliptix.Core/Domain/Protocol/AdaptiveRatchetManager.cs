@@ -1,6 +1,4 @@
 using System.Collections.Concurrent;
-using Ecliptix.Core.Protocol;
-using Ecliptix.Core.Domain.Protocol.Failures;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
 using Google.Protobuf.WellKnownTypes;

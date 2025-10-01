@@ -1,6 +1,6 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
-using Ecliptix.Core.Protocol;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Domain.Protocol.Utilities;
 

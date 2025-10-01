@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using Ecliptix.Utilities;
 using Ecliptix.Security.Opaque.Models;
 using Ecliptix.Security.Opaque.Models.AuthenticationMessages;
 using Ecliptix.Security.Opaque.Models.RegistrationMessages;
@@ -5,6 +7,7 @@ using Ecliptix.Security.Opaque.Native;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Constants;
 using Ecliptix.Utilities;
+using Ecliptix.Utilities.Failures.Sodium;
 
 namespace Ecliptix.Security.Opaque.Services;
 
@@ -108,26 +111,50 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
             : Result<KE2, OpaqueServerFailure>.Ok(ke2Result.Unwrap());
     }
 
-    public Result<SessionKey, OpaqueServerFailure> FinishAuthentication(KE3 ke3)
+    public Result<SodiumSecureMemoryHandle, OpaqueServerFailure> FinishAuthentication(KE3 ke3)
     {
         byte[] sessionKeyBuffer = new byte[OpaqueConstants.HASH_LENGTH];
 
-        OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_finish(
-            _server, ke3.Data, (nuint)ke3.Data.Length, _currentServerState,
-            sessionKeyBuffer, (nuint)sessionKeyBuffer.Length);
+        try
+        {
+            OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_finish(
+                _server, ke3.Data, (nuint)ke3.Data.Length, _currentServerState,
+                sessionKeyBuffer, (nuint)sessionKeyBuffer.Length);
 
-        OpaqueServerNative.opaque_server_state_destroy(_currentServerState);
-        _currentServerState = 0;
+            OpaqueServerNative.opaque_server_state_destroy(_currentServerState);
+            _currentServerState = 0;
 
-        if (result != OpaqueResult.Success)
-            return Result<SessionKey, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.AuthenticationFailed(
-                    $"{OpaqueServerConstants.ErrorMessages.FailedToFinishAuthentication}: {result}"));
+            if (result != OpaqueResult.Success)
+                return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
+                    OpaqueServerFailure.AuthenticationFailed(
+                        $"{OpaqueServerConstants.ErrorMessages.FailedToFinishAuthentication}: {result}"));
 
-        Result<SessionKey, OpaqueServerFailure> sessionKeyResult = SessionKey.Create(sessionKeyBuffer);
-        return sessionKeyResult.IsErr
-            ? Result<SessionKey, OpaqueServerFailure>.Err(sessionKeyResult.UnwrapErr())
-            : Result<SessionKey, OpaqueServerFailure>.Ok(sessionKeyResult.Unwrap());
+            // Allocate secure memory for session key
+            Result<SodiumSecureMemoryHandle, SodiumFailure> handleResult =
+                SodiumSecureMemoryHandle.Allocate(OpaqueConstants.HASH_LENGTH);
+
+            if (handleResult.IsErr)
+                return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
+                    OpaqueServerFailure.MemoryAllocationFailed(handleResult.UnwrapErr().Message));
+
+            SodiumSecureMemoryHandle handle = handleResult.Unwrap();
+
+            // Write session key to secure memory
+            Result<Unit, SodiumFailure> writeResult = handle.Write(sessionKeyBuffer);
+            if (writeResult.IsErr)
+            {
+                handle.Dispose();
+                return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
+                    OpaqueServerFailure.MemoryWriteFailed(writeResult.UnwrapErr().Message));
+            }
+
+            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Ok(handle);
+        }
+        finally
+        {
+            // Always clear the buffer
+            CryptographicOperations.ZeroMemory(sessionKeyBuffer);
+        }
     }
 
     public void Dispose()

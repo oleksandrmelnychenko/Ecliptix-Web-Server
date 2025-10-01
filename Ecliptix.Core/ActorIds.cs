@@ -8,6 +8,7 @@ public static class ActorIds
     public const int VerificationFlowManagerActor = 4;
     public const int MembershipPersistorActor = 5;
     public const int MembershipActor = 6;
+    public const int MasterKeySharePersistorActor = 7;
 }
 
 public static class ActorTypeMap
@@ -20,6 +21,7 @@ public static class ActorTypeMap
         { ActorIds.VerificationFlowManagerActor, "VerificationFlowManagerActor" },
         { ActorIds.MembershipPersistorActor, "MembershipPersistorActor" },
         { ActorIds.MembershipActor, "MembershipActor" },
+        { ActorIds.MasterKeySharePersistorActor, "MasterKeySharePersistorActor" },
     };
 
     public static string GetActorName(int actorId)

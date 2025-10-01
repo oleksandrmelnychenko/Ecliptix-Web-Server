@@ -168,6 +168,12 @@ static void ConfigureServices(WebApplicationBuilder builder)
 
     builder.Services.AddSingleton<CertificatePinningService>();
 
+    // Key derivation services
+    builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IHardenedKeyDerivation, Ecliptix.Core.Services.KeyDerivation.HardenedKeyDerivation>();
+    builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.ISecretSharingService, Ecliptix.Core.Services.KeyDerivation.ShamirSecretSharing>();
+    builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IIdentityKeyDerivationService, Ecliptix.Core.Services.KeyDerivation.IdentityKeyDerivationService>();
+    builder.Services.AddSingleton<Ecliptix.Domain.Services.Security.IMasterKeyService, Ecliptix.Core.Services.Security.MasterKeyService>();
+
     builder.Services.AddSingleton<IRsaConfiguration, RsaConfiguration>();
     builder.Services.AddSingleton<IRsaChunkProcessor, RsaChunkProcessor>();
     builder.Services.AddSingleton<ISecureChannelEstablisher>(serviceProvider =>

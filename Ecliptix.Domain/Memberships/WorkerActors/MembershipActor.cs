@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using Akka.Actor;
 using Akka.IO;
+using Ecliptix.Utilities;
+using Ecliptix.Domain.Services.Security;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Security.Opaque.Models;
@@ -8,6 +10,7 @@ using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Utilities;
+using Ecliptix.Utilities.Failures;
 using Ecliptix.Protobuf.Membership;
 using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
 using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteResponse;
@@ -39,6 +42,7 @@ public class MembershipActor : ReceiveActor
     private readonly IActorRef _authContextPersistor;
     private readonly IOpaqueProtocolService _opaqueProtocolService;
     private readonly IActorRef _authenticationStateManager;
+    private readonly IMasterKeyService _masterKeyService;
 
     private readonly
         Dictionary<uint, (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Membership.Types.ActivityStatus
@@ -52,23 +56,26 @@ public class MembershipActor : ReceiveActor
 
     public MembershipActor(IActorRef persistor, IActorRef authContextPersistor,
         IOpaqueProtocolService opaqueProtocolService,
-        ILocalizationProvider localizationProvider, IActorRef authenticationStateManager)
+        ILocalizationProvider localizationProvider, IActorRef authenticationStateManager,
+        IMasterKeyService masterKeyService)
     {
         _persistor = persistor;
         _authContextPersistor = authContextPersistor;
         _opaqueProtocolService = opaqueProtocolService;
         _localizationProvider = localizationProvider;
         _authenticationStateManager = authenticationStateManager;
+        _masterKeyService = masterKeyService;
 
         Become(Ready);
     }
 
     public static Props Build(IActorRef persistor, IActorRef authContextPersistor,
         IOpaqueProtocolService opaqueProtocolService,
-        ILocalizationProvider localizationProvider, IActorRef authenticationStateManager)
+        ILocalizationProvider localizationProvider, IActorRef authenticationStateManager,
+        IMasterKeyService masterKeyService)
     {
         return Props.Create(() => new MembershipActor(persistor, authContextPersistor, opaqueProtocolService,
-            localizationProvider, authenticationStateManager));
+            localizationProvider, authenticationStateManager, masterKeyService));
     }
 
     protected override void PreStart()
@@ -327,7 +334,7 @@ public class MembershipActor : ReceiveActor
             return;
         }
 
-        Result<OpaqueSignInFinalizeResponse, OpaqueFailure> opaqueResult =
+        Result<(SodiumSecureMemoryHandle SessionKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure> opaqueResult =
             _opaqueProtocolService.CompleteSignIn(@event.Request, membershipInfo.ServerMac);
 
         if (opaqueResult.IsErr)
@@ -338,12 +345,13 @@ public class MembershipActor : ReceiveActor
             return;
         }
 
-        OpaqueSignInFinalizeResponse finalizeResponse = opaqueResult.Unwrap();
+        (SodiumSecureMemoryHandle sessionKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) = opaqueResult.Unwrap();
 
+        // Derive and store master key if authentication succeeded
         if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
-            finalizeResponse.SessionKey != null && !finalizeResponse.SessionKey.IsEmpty)
+            sessionKeyHandle != null && !sessionKeyHandle.IsInvalid)
         {
-            // Session key handling has been removed
+            await DeriveMasterKeyAndStoreShamirShares(sessionKeyHandle, membershipInfo.MembershipId);
         }
 
         try
@@ -477,6 +485,23 @@ public class MembershipActor : ReceiveActor
             Log.Information("Cleaned up {ExpiredCount} expired pending sign-ins", expiredConnections.Count);
         }
     }
+
+    private async Task DeriveMasterKeyAndStoreShamirShares(SodiumSecureMemoryHandle sessionKeyHandle, Guid membershipId)
+    {
+        Result<dynamic, FailureBase> result = await _masterKeyService.DeriveMasterKeyAndSplitAsync(sessionKeyHandle, membershipId);
+
+        if (result.IsOk)
+        {
+            _persistor.Tell(new StoreMasterKeySharesActorEvent(membershipId, result.Unwrap()));
+        }
+        else
+        {
+            Log.Error("Failed to derive and split master key for membership {MembershipId}: {Error}",
+                membershipId, result.UnwrapErr().Message);
+        }
+    }
 }
 
 internal record CleanupExpiredPendingSignIns;
+
+internal record StoreMasterKeySharesActorEvent(Guid MembershipId, dynamic KeySplitResult);

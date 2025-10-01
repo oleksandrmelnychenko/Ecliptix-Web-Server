@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using Ecliptix.Core.Domain.Protocol;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Protocol;
 using Google.Protobuf;

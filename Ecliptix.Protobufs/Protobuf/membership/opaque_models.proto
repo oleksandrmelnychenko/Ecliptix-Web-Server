@@ -75,7 +75,6 @@ message OpaqueSignInFinalizeResponse {
   SignInResult result = 3;
   optional string message = 4;
   optional int32 minutes_until_retry = 5;
-  optional bytes session_key = 6;
 
   enum SignInResult {
     SUCCEEDED = 0;

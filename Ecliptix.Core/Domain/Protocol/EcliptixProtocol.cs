@@ -1,4 +1,3 @@
-using Ecliptix.Core.Protocol;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.ProtocolState;

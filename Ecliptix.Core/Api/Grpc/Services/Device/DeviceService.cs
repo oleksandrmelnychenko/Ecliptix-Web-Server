@@ -1,14 +1,19 @@
 using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
 using Ecliptix.Core.Domain.Events;
+using Ecliptix.Core.Domain.Protocol;
+using Ecliptix.Core.Infrastructure.Crypto;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Core.Infrastructure.SecureChannel;
 using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Failures;
+using Ecliptix.Domain.Services.Security;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Device;
 using Ecliptix.Protobuf.Protocol;
+using Ecliptix.Security.Certificate.Pinning.Failures;
+using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Services;
 using Ecliptix.Utilities;
@@ -21,7 +26,10 @@ public class DeviceService(
     IGrpcCipherService cipherService,
     IEcliptixActorRegistry actorRegistry,
     ISecureChannelEstablisher secureChannelEstablisher,
-    INativeOpaqueProtocolService opaqueService)
+    INativeOpaqueProtocolService opaqueService,
+    IMasterKeyService masterKeyService,
+    IRsaChunkProcessor rsaChunkProcessor,
+    CertificatePinningService certificatePinningService)
     : Protobuf.Device.DeviceService.DeviceServiceBase
 {
     private readonly RpcServiceBase _baseService = new(cipherService);
@@ -111,5 +119,87 @@ public class DeviceService(
         }
 
         throw new RpcException(failure.ToGrpcStatus());
+    }
+
+    public override async Task<SecureEnvelope> AuthenticatedEstablishSecureChannel(
+        AuthenticatedEstablishRequest request, ServerCallContext context)
+    {
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
+
+        // Parse membership GUID from bytes
+        Guid membershipId = new Guid(request.MembershipUniqueId.ToByteArray());
+
+        // Derive deterministic identity keys from master key
+        Result<dynamic, FailureBase> deriveKeysResult = await masterKeyService.DeriveIdentityKeysAsync(membershipId);
+
+        if (deriveKeysResult.IsErr)
+        {
+            FailureBase failure = deriveKeysResult.UnwrapErr();
+            throw new RpcException(new global::Grpc.Core.Status(StatusCode.Internal,
+                $"Failed to derive identity keys: {failure.Message}"));
+        }
+
+        EcliptixSystemIdentityKeys identityKeys = (EcliptixSystemIdentityKeys)deriveKeysResult.Unwrap();
+
+        // Initialize protocol with derived identity keys and perform X3DH handshake
+        InitializeProtocolWithMasterKeyActorEvent initEvent = new(
+            connectId,
+            identityKeys,
+            request.ClientPubKeyExchange,
+            membershipId);
+
+        ForwardToConnectActorEvent forwardEvent = new(connectId, initEvent);
+
+        Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure> initResult =
+            await _protocolActor.Ask<Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>>(
+                forwardEvent, context.CancellationToken);
+
+        if (initResult.IsErr)
+        {
+            EcliptixProtocolFailure failure = initResult.UnwrapErr();
+            identityKeys.Dispose(); // Clean up on failure
+            throw new RpcException(new global::Grpc.Core.Status(StatusCode.Internal,
+                $"Failed to initialize authenticated protocol: {failure.Message}"));
+        }
+
+        InitializeProtocolWithMasterKeyReply reply = initResult.Unwrap();
+
+        // Serialize server's public key exchange
+        byte[] serverExchangeBytes = reply.ServerPubKeyExchange.ToByteArray();
+
+        // RSA-encrypt the server's public key exchange
+        Result<byte[], CertificatePinningFailure> encryptResult =
+            await rsaChunkProcessor.EncryptChunkedAsync(serverExchangeBytes, context.CancellationToken);
+
+        if (encryptResult.IsErr)
+        {
+            CertificatePinningFailure encryptFailure = encryptResult.UnwrapErr();
+            throw new RpcException(new global::Grpc.Core.Status(StatusCode.Internal,
+                $"Failed to RSA encrypt server exchange: {encryptFailure.Message}"));
+        }
+
+        byte[] encryptedPayload = encryptResult.Unwrap();
+
+        // Sign the encrypted payload
+        Result<byte[], CertificatePinningFailure> signResult =
+            certificatePinningService.Sign(encryptedPayload.AsMemory());
+
+        if (signResult.IsErr)
+        {
+            CertificatePinningFailure signFailure = signResult.UnwrapErr();
+            throw new RpcException(new global::Grpc.Core.Status(StatusCode.Internal,
+                $"Failed to sign encrypted payload: {signFailure.Message}"));
+        }
+
+        byte[] signature = signResult.Unwrap();
+
+        // Return encrypted and signed response
+        return new SecureEnvelope
+        {
+            EncryptedPayload = ByteString.CopyFrom(encryptedPayload),
+            AuthenticationTag = ByteString.CopyFrom(signature),
+            MetaData = ByteString.Empty,
+            ResultCode = ByteString.Empty
+        };
     }
 }

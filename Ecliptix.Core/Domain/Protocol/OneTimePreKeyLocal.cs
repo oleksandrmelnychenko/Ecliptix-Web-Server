@@ -1,7 +1,5 @@
-using Ecliptix.Core.Domain.Protocol.Failures;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Utilities;
-using Sodium;
+using Ecliptix.Utilities.Failures.Sodium;
 
 namespace Ecliptix.Core.Domain.Protocol;
 
@@ -25,9 +23,18 @@ public readonly struct OneTimePreKeyLocal : IDisposable
 
         try
         {
-            tempPrivateKeyBytes = SodiumCore.GetRandomBytes(Constants.X25519PrivateKeySize);
+            Result<byte[], SodiumFailure> randomResult = SodiumInterop.GetRandomBytes(Constants.X25519PrivateKeySize);
+            if (randomResult.IsErr)
+                return Result<OneTimePreKeyLocal, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic($"Failed to generate random bytes for OPK ID {preKeyId}: {randomResult.UnwrapErr().Message}"));
+            tempPrivateKeyBytes = randomResult.Unwrap();
 
-            byte[] publicKeyBytes = ScalarMult.Base(tempPrivateKeyBytes);
+            Result<byte[], SodiumFailure> publicKeyResult = SodiumInterop.ScalarMultBase(tempPrivateKeyBytes);
+            if (publicKeyResult.IsErr)
+                return Result<OneTimePreKeyLocal, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.DeriveKey($"Failed to derive public key for OPK ID {preKeyId}: {publicKeyResult.UnwrapErr().Message}"));
+            byte[] publicKeyBytes = publicKeyResult.Unwrap();
+
             if (publicKeyBytes.Length != Constants.X25519PublicKeySize)
             {
                 return Result<OneTimePreKeyLocal, EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.DeriveKey(
@@ -81,7 +88,11 @@ public readonly struct OneTimePreKeyLocal : IDisposable
                     $"OPK private key for ID {preKeyId} has incorrect size ({privateKey.Length})."));
             }
 
-            byte[] publicKey = ScalarMult.Base(privateKey);
+            Result<byte[], SodiumFailure> publicKeyResult = SodiumInterop.ScalarMultBase(privateKey);
+            if (publicKeyResult.IsErr)
+                return Result<OneTimePreKeyLocal, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.DeriveKey($"Failed to derive public key for OPK ID {preKeyId}: {publicKeyResult.UnwrapErr().Message}"));
+            byte[] publicKey = publicKeyResult.Unwrap();
 
             securePrivateKey = SodiumSecureMemoryHandle.Allocate(privateKey.Length).Unwrap();
             securePrivateKey.Write(privateKey).Unwrap();

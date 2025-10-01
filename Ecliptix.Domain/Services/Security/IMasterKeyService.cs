@@ -1,0 +1,15 @@
+using Ecliptix.Utilities;
+using Ecliptix.Utilities.Failures;
+
+namespace Ecliptix.Domain.Services.Security;
+
+public interface IMasterKeyService
+{
+    Task<Result<dynamic, FailureBase>> DeriveMasterKeyAndSplitAsync(
+        dynamic sessionKeyHandle,
+        Guid membershipId);
+
+    Task<Result<dynamic, FailureBase>> ReconstructMasterKeyAsync(Guid membershipId);
+
+    Task<Result<dynamic, FailureBase>> DeriveIdentityKeysAsync(Guid membershipId);
+}

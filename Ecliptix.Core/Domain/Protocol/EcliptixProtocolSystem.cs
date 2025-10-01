@@ -1,19 +1,17 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Security.Cryptography;
-using Ecliptix.Core.Domain.Protocol.Failures;
 using Ecliptix.Core.Domain.Protocol.Utilities;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Utilities.Failures.Sodium;
 using ProtocolPublicKeyBundle = Ecliptix.Protobuf.Protocol.PublicKeyBundle;
 using CorePublicKeyBundle = Ecliptix.Core.Domain.Protocol.PublicKeyBundle;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Serilog;
-using Sodium;
 
 namespace Ecliptix.Core.Domain.Protocol;
 

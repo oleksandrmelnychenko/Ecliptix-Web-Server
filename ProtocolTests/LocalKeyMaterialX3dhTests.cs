@@ -1,9 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Core.Domain.Protocol;
-using Ecliptix.Core.Domain.Protocol.Failures;
 using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;

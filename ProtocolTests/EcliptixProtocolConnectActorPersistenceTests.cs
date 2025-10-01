@@ -3,7 +3,6 @@ using Akka.Actor;
 using Akka.Persistence;
 using Akka.Persistence.TestKit;
 using Akka.TestKit;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Core.Domain.Actors;

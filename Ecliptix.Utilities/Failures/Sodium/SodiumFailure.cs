@@ -1,4 +1,4 @@
-namespace Ecliptix.Core.Domain.Protocol.Failures;
+namespace Ecliptix.Utilities.Failures.Sodium;
 
 public class SodiumFailure
 {
@@ -66,6 +66,21 @@ public class SodiumFailure
     public static SodiumFailure BufferTooLarge(string details)
     {
         return new SodiumFailure(SodiumFailureType.BufferTooLarge, details);
+    }
+
+    public static SodiumFailure InvalidParameter(string details, Exception? inner = null)
+    {
+        return new SodiumFailure(SodiumFailureType.InvalidBufferSize, details, inner);
+    }
+
+    public static SodiumFailure HashFailed(string details, Exception? inner = null)
+    {
+        return new SodiumFailure(SodiumFailureType.SecureWipeFailed, details, inner);
+    }
+
+    public static SodiumFailure InvalidOperation(string details, Exception? inner = null)
+    {
+        return new SodiumFailure(SodiumFailureType.MemoryProtectionFailed, details, inner);
     }
 
     public override string ToString()

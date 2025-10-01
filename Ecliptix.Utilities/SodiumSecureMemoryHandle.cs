@@ -1,9 +1,9 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Ecliptix.Core.Domain.Protocol.Failures;
+using Ecliptix.Utilities.Failures.Sodium;
 using Ecliptix.Utilities;
 
-namespace Ecliptix.Core.Domain.Protocol;
+namespace Ecliptix.Utilities;
 
 public sealed class SodiumSecureMemoryHandle : SafeHandle
 {
@@ -138,6 +138,45 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
         catch (Exception ex)
         {
             return Result<Unit, SodiumFailure>.Err(
+                SodiumFailure.MemoryProtectionFailed(SodiumFailureMessages.UnexpectedReadError, ex));
+        }
+        finally
+        {
+            if (success) DangerousRelease();
+        }
+    }
+
+    public Result<TResult, SodiumFailure> WithReadAccess<TResult>(
+        Func<ReadOnlySpan<byte>, Result<TResult, SodiumFailure>> operation)
+    {
+        if (IsInvalid || IsClosed)
+            return Result<TResult, SodiumFailure>.Err(
+                SodiumFailure.NullPointer(string.Format(SodiumFailureMessages.ObjectDisposed,
+                    nameof(SodiumSecureMemoryHandle))));
+
+        bool success = false;
+
+        try
+        {
+            DangerousAddRef(ref success);
+            if (!success)
+                return Result<TResult, SodiumFailure>.Err(
+                    SodiumFailure.MemoryProtectionFailed(SodiumFailureMessages.ReferenceCountFailed));
+
+            if (IsInvalid || IsClosed)
+                return Result<TResult, SodiumFailure>.Err(
+                    SodiumFailure.NullPointer(string.Format(SodiumFailureMessages.DisposedAfterAddRef,
+                        nameof(SodiumSecureMemoryHandle))));
+
+            unsafe
+            {
+                ReadOnlySpan<byte> span = new ReadOnlySpan<byte>((void*)handle, Length);
+                return operation(span);
+            }
+        }
+        catch (Exception ex)
+        {
+            return Result<TResult, SodiumFailure>.Err(
                 SodiumFailure.MemoryProtectionFailed(SodiumFailureMessages.UnexpectedReadError, ex));
         }
         finally

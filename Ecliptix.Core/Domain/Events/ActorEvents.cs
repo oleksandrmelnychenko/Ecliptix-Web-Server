@@ -1,3 +1,4 @@
+using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 
@@ -29,6 +30,14 @@ public record RestoreAppDeviceSecrecyChannelState;
 public record DeriveSharedSecretActorEvent(uint ConnectId, PubKeyExchange PubKeyExchange);
 
 public record DeriveSharedSecretReply(PubKeyExchange PubKeyExchange);
+
+public record InitializeProtocolWithMasterKeyActorEvent(
+    uint ConnectId,
+    EcliptixSystemIdentityKeys IdentityKeys,
+    PubKeyExchange ClientPubKeyExchange,
+    Guid MembershipId);
+
+public record InitializeProtocolWithMasterKeyReply(PubKeyExchange ServerPubKeyExchange);
 
 public record CleanupProtocolForTypeActorEvent(PubKeyExchangeType ExchangeType);
 

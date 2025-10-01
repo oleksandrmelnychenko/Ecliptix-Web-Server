@@ -1,4 +1,4 @@
-namespace Ecliptix.Core.Domain.Protocol.Failures;
+namespace Ecliptix.Utilities.Failures.Sodium;
 
 internal static class SodiumExceptionMessagePatterns
 {
