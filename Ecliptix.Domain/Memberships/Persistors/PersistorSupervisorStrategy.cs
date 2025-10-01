@@ -22,9 +22,6 @@ public static class PersistorSupervisorStrategy
                 Type actorType = exception.GetType();
                 string actorTypeName = actorType.Name;
 
-                Log.Debug("Supervisor evaluating exception {ExceptionType} for persistor actor: {Message}", 
-                    actorTypeName, exception.Message);
-
                 return exception switch
                 {
                     SqlException { Number: 18456 } => HandlePermanentFailure("Authentication failed", Directive.Stop),
@@ -74,7 +71,7 @@ public static class PersistorSupervisorStrategy
 
     private static Directive HandlePermanentFailure(string reason, Directive directive)
     {
-        Log.Error("Permanent failure in persistor actor: {Reason}. Directive: {Directive}", reason, directive);
+
         return directive;
     }
 
@@ -82,13 +79,9 @@ public static class PersistorSupervisorStrategy
     {
         if (ShouldThrottleRestart(actorType))
         {
-            Log.Warning("Throttling restart for persistor actor {ActorType} due to frequent failures. Stopping instead. Reason: {Reason}", 
-                actorType.Name, reason);
+
             return Directive.Stop;
         }
-
-        Log.Warning("Transient failure in persistor actor {ActorType}: {Reason}. Directive: {Directive}", 
-            actorType.Name, reason, directive);
 
         RecordRestart(actorType);
         return directive;
@@ -96,19 +89,19 @@ public static class PersistorSupervisorStrategy
 
     private static Directive HandleApplicationError(string reason, Directive directive)
     {
-        Log.Error("Application error in persistor actor: {Reason}. Directive: {Directive}", reason, directive);
+
         return directive;
     }
 
     private static Directive HandleSystemError(string reason, Directive directive)
     {
-        Log.Fatal("System error in persistor actor: {Reason}. Directive: {Directive}", reason, directive);
+
         return directive;
     }
 
     private static Directive HandleNormalCancellation()
     {
-        Log.Debug("Operation cancelled in persistor actor - resuming");
+
         return Directive.Resume;
     }
 
@@ -116,11 +109,10 @@ public static class PersistorSupervisorStrategy
     {
         if (ShouldThrottleRestart(actorType))
         {
-            Log.Error(exception, "Stopping persistor actor {ActorType} due to frequent failures", actorType.Name);
+
             return Directive.Stop;
         }
 
-        Log.Error(exception, "Generic exception in persistor actor {ActorType} - attempting restart", actorType.Name);
         RecordRestart(actorType);
         return Directive.Restart;
     }

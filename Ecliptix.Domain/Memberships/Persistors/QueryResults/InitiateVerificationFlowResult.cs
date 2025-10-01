@@ -3,7 +3,7 @@ namespace Ecliptix.Domain.Memberships.Persistors.QueryResults;
 internal record InitiateVerificationFlowResult
 {
     public Guid UniqueIdentifier { get; init; }
-    public Guid PhoneNumberIdentifier { get; init; }
+    public Guid MobileNumberIdentifier { get; init; }
     public Guid AppDeviceIdentifier { get; init; }
     public long? ConnectId { get; init; }
     public DateTime ExpiresAt { get; init; }

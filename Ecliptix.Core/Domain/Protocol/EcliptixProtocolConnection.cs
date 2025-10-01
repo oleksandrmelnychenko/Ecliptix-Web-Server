@@ -41,6 +41,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
     private bool _receivedNewDhKey;
     private EcliptixProtocolChainStep? _receivingStep;
     private SodiumSecureMemoryHandle? _rootKeyHandle;
+    private SodiumSecureMemoryHandle? _metadataEncryptionKeyHandle;
 
     private EcliptixProtocolConnection(uint id, bool isInitiator, SodiumSecureMemoryHandle initialSendingDh,
         EcliptixProtocolChainStep sendingStep, SodiumSecureMemoryHandle persistentDh, byte[] persistentDhPublic,
@@ -247,6 +248,11 @@ public sealed class EcliptixProtocolConnection : IDisposable
             receivingStep = null;
             rootKeyHandle = null;
 
+            // Derive metadata encryption key from restored root key
+            Result<Unit, EcliptixProtocolFailure> metadataKeyResult = connection.DeriveMetadataEncryptionKey();
+            if (metadataKeyResult.IsErr)
+                return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(metadataKeyResult.UnwrapErr());
+
             return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Ok(connection);
         }
         catch (Exception ex)
@@ -388,6 +394,9 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 _receivingStep = receivingStep;
                 _peerDhPublicKey = peerDhPublicCopy;
                 peerDhPublicCopy = null;
+
+                Result<Unit, EcliptixProtocolFailure> metadataKeyResult = DeriveMetadataEncryptionKey();
+                if (metadataKeyResult.IsErr) return metadataKeyResult;
 
                 return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
             }
@@ -641,6 +650,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 _profiler?.Reset();
 
                 _rootKeyHandle?.Dispose();
+                _metadataEncryptionKeyHandle?.Dispose();
                 _sendingStep?.Dispose();
                 _receivingStep?.Dispose();
                 _persistentDhPrivateKeyHandle?.Dispose();
@@ -775,6 +785,9 @@ public sealed class EcliptixProtocolConnection : IDisposable
             _receivedNewDhKey = false;
             _lastRatchetTime = DateTime.UtcNow;
 
+            Result<Unit, EcliptixProtocolFailure> metadataKeyResult = DeriveMetadataEncryptionKey();
+            if (metadataKeyResult.IsErr) return metadataKeyResult;
+
             return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
         }
         finally
@@ -789,6 +802,66 @@ public sealed class EcliptixProtocolConnection : IDisposable
             if (hkdfOutput != null) ArrayPool<byte>.Shared.Return(hkdfOutput, clearArray: true);
             newEphemeralSkHandle?.Dispose();
         }
+    }
+
+    private Result<Unit, EcliptixProtocolFailure> DeriveMetadataEncryptionKey()
+    {
+        if (_rootKeyHandle is not { IsInvalid: false })
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Root key handle not initialized for metadata key derivation"));
+
+        byte[]? rootKeyBytes = null;
+        byte[]? metadataKeyBytes = null;
+        try
+        {
+            Result<byte[], EcliptixProtocolFailure> readResult =
+                _rootKeyHandle.ReadBytes(Constants.X25519KeySize).MapSodiumFailure();
+            if (readResult.IsErr) return Result<Unit, EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
+            rootKeyBytes = readResult.Unwrap();
+
+            metadataKeyBytes = new byte[Constants.AesKeySize];
+            ReadOnlySpan<byte> info = "ecliptix-metadata-v1"u8;
+
+            HKDF.DeriveKey(
+                HashAlgorithmName.SHA256,
+                ikm: rootKeyBytes,
+                output: metadataKeyBytes.AsSpan(),
+                salt: null,
+                info: info
+            );
+
+            _metadataEncryptionKeyHandle?.Dispose();
+            Result<SodiumSecureMemoryHandle, SodiumFailure> allocResult =
+                SodiumSecureMemoryHandle.Allocate(Constants.AesKeySize);
+            if (allocResult.IsErr)
+                return Result<Unit, EcliptixProtocolFailure>.Err(allocResult.UnwrapErr().ToEcliptixProtocolFailure());
+
+            _metadataEncryptionKeyHandle = allocResult.Unwrap();
+            Result<Unit, SodiumFailure> writeResult = _metadataEncryptionKeyHandle.Write(metadataKeyBytes);
+            if (writeResult.IsErr)
+                return Result<Unit, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr().ToEcliptixProtocolFailure());
+
+            return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.DeriveKey("Failed to derive metadata encryption key", ex));
+        }
+        finally
+        {
+            if (rootKeyBytes != null) SodiumInterop.SecureWipe(rootKeyBytes);
+            if (metadataKeyBytes != null) SodiumInterop.SecureWipe(metadataKeyBytes);
+        }
+    }
+
+    public Result<byte[], EcliptixProtocolFailure> GetMetadataEncryptionKey()
+    {
+        if (_metadataEncryptionKeyHandle is not { IsInvalid: false })
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Metadata encryption key not initialized"));
+
+        return _metadataEncryptionKeyHandle.ReadBytes(Constants.AesKeySize).MapSodiumFailure();
     }
 
     private static Result<Unit, EcliptixProtocolFailure> WipeIfNotNull(byte[]? data) =>

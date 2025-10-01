@@ -16,7 +16,7 @@ public static class EcliptixProtocol
         if (idKeysResult.IsErr)
         {
             if (Log.IsEnabled(LogEventLevel.Debug))
-                Log.Debug("[EcliptixProtocol] RecreateSystemFromState: Error restoring identity keys: {Message}", idKeysResult.UnwrapErr().Message);
+
             return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Err(idKeysResult.UnwrapErr());
         }
 
@@ -26,16 +26,13 @@ public static class EcliptixProtocol
         {
             idKeysResult.Unwrap().Dispose();
             if (Log.IsEnabled(LogEventLevel.Debug))
-                Log.Debug("[EcliptixProtocol] RecreateSystemFromState: Error restoring connection: {Message}", connResult.UnwrapErr().Message);
+
             return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Err(connResult.UnwrapErr());
         }
 
         if (Log.IsEnabled(LogEventLevel.Debug))
         {
-            Log.Debug("[EcliptixProtocol] RecreateSystemFromState (ConnectId: {ConnectId}):", state.ConnectId);
-            Log.Debug("  Identity Keys: IdentityX25519PublicKey={IdentityX25519PublicKey}", Convert.ToHexString(state.IdentityKeys.IdentityX25519PublicKey.Span));
-            Log.Debug("  Connection Root Key: {RootKey}", Convert.ToHexString(state.RatchetState.RootKey.Span));
-            Log.Debug("  Peer DH Public Key: {PeerDhPublicKey}", state.RatchetState.PeerDhPublicKey.IsEmpty ? "<null>" : Convert.ToHexString(state.RatchetState.PeerDhPublicKey.Span));
+
         }
 
         return EcliptixProtocolSystem.CreateFrom(idKeysResult.Unwrap(), connResult.Unwrap());
@@ -54,9 +51,7 @@ public static class EcliptixProtocol
 
         if (Log.IsEnabled(LogEventLevel.Debug))
         {
-            Log.Debug("[EcliptixProtocol] CreateStateFromSystem:");
-            Log.Debug("  Updated Connection Root Key: {RootKey}", Convert.ToHexString(newRatchetState.RootKey.Span));
-            Log.Debug("  Updated Peer DH Public Key: {PeerDhPublicKey}", newRatchetState.PeerDhPublicKey.IsEmpty ? "<null>" : Convert.ToHexString(newRatchetState.PeerDhPublicKey.Span));
+
         }
 
         return Result<EcliptixSessionState, EcliptixProtocolFailure>.Ok(newState);
@@ -90,10 +85,7 @@ public static class EcliptixProtocol
 
         if (Log.IsEnabled(LogEventLevel.Debug))
         {
-            Log.Debug("[EcliptixProtocol] CreateInitialState (ConnectId: {ConnectId}):", connectId);
-            Log.Debug("  Identity Keys: IdentityX25519PublicKey={IdentityX25519PublicKey}", Convert.ToHexString(identityKeysProto.IdentityX25519PublicKey.Span));
-            Log.Debug("  Connection Root Key: {RootKey}", Convert.ToHexString(ratchetStateProto.RootKey.Span));
-            Log.Debug("  Peer DH Public Key: {PeerDhPublicKey}", ratchetStateProto.PeerDhPublicKey.IsEmpty ? "<null>" : Convert.ToHexString(ratchetStateProto.PeerDhPublicKey.Span));
+
         }
 
         return Result<EcliptixSessionState, EcliptixProtocolFailure>.Ok(state);

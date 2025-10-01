@@ -33,9 +33,7 @@ public class MembershipActor : ReceiveActor
 {
     private readonly ILocalizationProvider _localizationProvider;
     private readonly IActorRef _persistor;
-    private readonly IActorRef _authContextPersistor;
     private readonly IOpaqueProtocolService _opaqueProtocolService;
-    private readonly IActorRef _authenticationStateManager;
     private readonly IMasterKeyService _masterKeyService;
 
     private readonly
@@ -48,28 +46,26 @@ public class MembershipActor : ReceiveActor
     private static readonly TimeSpan PendingSignInTimeout = TimeSpan.FromMinutes(10);
     private ICancelable? _cleanupTimer;
 
-    public MembershipActor(IActorRef persistor, IActorRef authContextPersistor,
+    public MembershipActor(IActorRef persistor,
         IOpaqueProtocolService opaqueProtocolService,
-        ILocalizationProvider localizationProvider, IActorRef authenticationStateManager,
+        ILocalizationProvider localizationProvider,
         IMasterKeyService masterKeyService)
     {
         _persistor = persistor;
-        _authContextPersistor = authContextPersistor;
         _opaqueProtocolService = opaqueProtocolService;
         _localizationProvider = localizationProvider;
-        _authenticationStateManager = authenticationStateManager;
         _masterKeyService = masterKeyService;
 
         Become(Ready);
     }
 
-    public static Props Build(IActorRef persistor, IActorRef authContextPersistor,
+    public static Props Build(IActorRef persistor,
         IOpaqueProtocolService opaqueProtocolService,
-        ILocalizationProvider localizationProvider, IActorRef authenticationStateManager,
+        ILocalizationProvider localizationProvider,
         IMasterKeyService masterKeyService)
     {
-        return Props.Create(() => new MembershipActor(persistor, authContextPersistor, opaqueProtocolService,
-            localizationProvider, authenticationStateManager, masterKeyService));
+        return Props.Create(() => new MembershipActor(persistor, opaqueProtocolService,
+            localizationProvider, masterKeyService));
     }
 
     protected override void PreStart()
@@ -228,53 +224,6 @@ public class MembershipActor : ReceiveActor
 
     private async Task HandleSignInMembership(SignInMembershipActorEvent @event)
     {
-        IActorRef authContextActor;
-        try
-        {
-            authContextActor = await _authenticationStateManager.Ask<IActorRef>(
-                new GetOrCreateAuthContext(@event.ConnectId, @event.MobileNumber),
-                TimeSpan.FromSeconds(10));
-        }
-        catch (Exception ex)
-        {
-            Sender.Tell(Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess($"Failed to get authentication context actor: {ex.Message}")));
-            return;
-        }
-
-        AuthResult rateLimitResult;
-        try
-        {
-            rateLimitResult = await authContextActor.Ask<AuthResult>(
-                new AttemptAuthentication(@event.MobileNumber),
-                TimeSpan.FromSeconds(5));
-        }
-        catch (Exception ex)
-        {
-            Sender.Tell(Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess($"Rate limit check failed: {ex.Message}")));
-            return;
-        }
-
-        if (rateLimitResult is AuthResult.RateLimited rateLimited)
-        {
-            string messageTemplate = _localizationProvider.Localize(
-                VerificationFlowMessageKeys.TooManySigninAttempts,
-                @event.CultureName
-            );
-
-            int minutesUntilRetry = (int)Math.Ceiling((rateLimited.LockedUntil - DateTime.UtcNow).TotalMinutes);
-            string message = string.Format(messageTemplate, minutesUntilRetry);
-
-            Sender.Tell(Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
-            {
-                Result = OpaqueSignInInitResponse.Types.SignInResult.LoginAttemptExceeded,
-                Message = message,
-                MinutesUntilRetry = minutesUntilRetry
-            }));
-            return;
-        }
-
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
 
@@ -334,63 +283,16 @@ public class MembershipActor : ReceiveActor
             await DeriveMasterKeyAndStoreShamirShares(sessionKeyHandle, membershipInfo.MembershipId);
         }
 
-        try
+        SecureRemovePendingSignIn(@event.ConnectId);
+
+        finalizeResponse.Membership = new Membership
         {
-            IActorRef authContextActor = await _authenticationStateManager.Ask<IActorRef>(
-                new GetOrCreateAuthContext(@event.ConnectId, membershipInfo.MobileNumber));
+            UniqueIdentifier = ByteString.CopyFrom(membershipInfo.MembershipId.ToByteArray()),
+            Status = membershipInfo.ActivityStatus,
+            CreationStatus = membershipInfo.CreationStatus
+        };
 
-            Result<AuthContextTokenResponse, OpaqueFailure> contextResult =
-                _opaqueProtocolService.GenerateAuthenticationContext(
-                    membershipInfo.MembershipId,
-                    membershipInfo.MobileNumberId
-                );
-
-            if (contextResult.IsErr)
-            {
-                SecureRemovePendingSignIn(@event.ConnectId);
-                Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.InvalidOpaque(
-                        $"Failed to generate authentication context: {contextResult.UnwrapErr().Message}")));
-                return;
-            }
-
-            AuthContextTokenResponse contextData = contextResult.Unwrap();
-
-            _ = await authContextActor.Ask<AuthContextEstablished>(
-                new EstablishContext(contextData.MembershipId, contextData.MobileNumberId, contextData.ContextToken),
-                TimeSpan.FromSeconds(10));
-
-            Result<AuthContextQueryResult, VerificationFlowFailure> persistResult =
-                await _authContextPersistor.Ask<Result<AuthContextQueryResult, VerificationFlowFailure>>(
-                    new CreateAuthContextActorEvent(
-                        contextData.ContextToken,
-                        contextData.MembershipId,
-                        contextData.MobileNumberId,
-                        contextData.ExpiresAt
-                    ),
-                    TimeSpan.FromSeconds(15));
-
-            if (persistResult.IsErr)
-            {
-            }
-
-            SecureRemovePendingSignIn(@event.ConnectId);
-
-            finalizeResponse.Membership = new Membership
-            {
-                UniqueIdentifier = ByteString.CopyFrom(membershipInfo.MembershipId.ToByteArray()),
-                Status = membershipInfo.ActivityStatus,
-                CreationStatus = membershipInfo.CreationStatus
-            };
-
-            Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Ok(finalizeResponse));
-        }
-        catch (Exception ex)
-        {
-            SecureRemovePendingSignIn(@event.ConnectId);
-            Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess($"Authentication context creation failed: {ex.Message}")));
-        }
+        Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Ok(finalizeResponse));
     }
 
     private void SecureRemovePendingSignIn(uint connectId)

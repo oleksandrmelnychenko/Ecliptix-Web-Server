@@ -32,7 +32,7 @@ using Ecliptix.Domain;
 using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque;
-using Ecliptix.Domain.Memberships.PhoneNumberValidation;
+using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Domain.Providers.Twilio;
 using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Security.Opaque.Failures;
@@ -57,17 +57,16 @@ try
     ConfigureMiddleware(app);
     ConfigureEndpoints(app);
 
-    Log.Information(AppConstants.LogMessages.StartingApplication);
     app.Run();
 }
 catch (Exception ex)
 {
-    Log.Fatal(ex, AppConstants.LogMessages.ApplicationTerminatedUnexpectedly);
+
     throw;
 }
 finally
 {
-    Log.Information(AppConstants.LogMessages.ShuttingDownApplication);
+
     Log.CloseAndFlush();
 }
 
@@ -131,7 +130,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
 
     builder.Services.AddSingleton<IEcliptixActorRegistry, ActorRegistry>();
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
-    builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
+    builder.Services.AddSingleton<IMobileNumberValidator, MobileNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService>();
 
     builder.Services.AddDistributedMemoryCache();
@@ -229,7 +228,6 @@ static void ConfigureMiddleware(WebApplication app)
 
     app.UseRateLimiter();
     app.UseMiddleware<SecurityMiddleware>();
-    app.UseMiddleware<IpThrottlingMiddleware>();
     app.UseRequestLocalization();
     app.UseRouting();
     app.UseResponseCompression();
@@ -312,9 +310,7 @@ static void RegisterSecurity(IServiceCollection services)
         options.OnRejected = (context, _) =>
         {
             context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            Log.Warning(AppConstants.LogMessages.RateLimitExceeded,
-                context.HttpContext.Connection.RemoteIpAddress?.ToString() ??
-                AppConstants.FallbackValues.UnknownIpAddress);
+
             return ValueTask.CompletedTask;
         };
     });
@@ -369,14 +365,13 @@ static void InitializeOpaqueService(WebApplication app)
         opaqueService.Initialize(securityKeysSettings.OpaqueSecretKeySeed);
     if (!initializationResult.IsErr) return;
     string errorMessage = initializationResult.UnwrapErr().Message;
-    Log.Error(errorMessage);
+
 }
 
 internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        Log.Information(AppConstants.LogMessages.ActorSystemStarted, actorSystem.Name);
 
         RegisterShutdownHooks();
 
@@ -385,7 +380,6 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        Log.Information(AppConstants.LogMessages.ActorSystemInitiatingShutdown);
 
         try
         {
@@ -396,20 +390,18 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
             CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(actorSystem);
             await coordinatedShutdown.Run(CoordinatedShutdown.ClrExitReason.Instance);
 
-            Log.Information(AppConstants.LogMessages.ActorSystemShutdownCompleted);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            Log.Warning(AppConstants.LogMessages.ShutdownCancelledForcing);
+
             await actorSystem.Terminate();
         }
         catch (Exception ex)
         {
-            Log.Error(ex, AppConstants.LogMessages.ErrorDuringShutdownForcing);
+
             await actorSystem.Terminate();
         }
 
-        Log.Information(AppConstants.LogMessages.ActorSystemShutdownComplete);
     }
 
     private void RegisterShutdownHooks()
@@ -420,25 +412,22 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
             AppConstants.ActorSystemTasks.StopAcceptingNewConnections,
             () =>
             {
-                Log.Information(AppConstants.LogMessages.PhaseStopAcceptingConnections);
+
                 return Task.FromResult(Done.Instance);
             });
 
         coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone,
             AppConstants.ActorSystemTasks.DrainActiveRequests, async () =>
             {
-                Log.Information(AppConstants.LogMessages.PhaseDrainingActiveRequests);
 
                 await Task.Delay(TimeoutConfiguration.Network.DrainActiveRequests);
 
-                Log.Information(AppConstants.LogMessages.ActiveRequestDrainingCompleted);
                 return Done.Instance;
             });
 
         coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate,
             AppConstants.ActorSystemTasks.CleanupResources, () =>
             {
-                Log.Information(AppConstants.LogMessages.PhaseCleanupResources);
 
                 return Task.FromResult(Done.Instance);
             });

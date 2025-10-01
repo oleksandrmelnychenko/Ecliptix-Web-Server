@@ -265,18 +265,16 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         {
             _writer?.TryComplete();
         }
-        catch (Exception ex)
+        catch
         {
-            Log.Warning(ex, "Error completing channel for ConnectId {ConnectId}", _connectId);
         }
 
         try
         {
             await UpdateOtpStatus(VerificationFlowStatus.Verified);
         }
-        catch (Exception ex)
+        catch
         {
-            Log.Error(ex, "Failed to update OTP status for ConnectId {ConnectId}", _connectId);
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Generic("Failed to verify OTP due to system error")));
             return;
@@ -284,8 +282,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         if (!_verificationFlow.HasValue || _activeOtp == null)
         {
-            Log.Error("Cannot create membership: verification flow or OTP is null for ConnectId {ConnectId}",
-                _connectId);
+
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Generic("Verification state is invalid")));
             return;
@@ -302,17 +299,11 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
             result.Switch(
                 membership => { Sender.Tell(CreateSuccessResponse(membership)); },
-                failure =>
-                {
-                    Log.Error("Failed to create membership for ConnectId {ConnectId}: {Error}",
-                        _connectId, failure.Message);
-                    Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(failure));
-                }
+                failure => { Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(failure)); }
             );
         }
-        catch (Exception ex)
+        catch
         {
-            Log.Error(ex, "Unexpected error creating membership for ConnectId {ConnectId}", _connectId);
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Generic("Failed to create membership due to system error")));
         }
@@ -353,7 +344,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         if (!_verificationFlow.HasValue)
         {
-            Log.Error("Cannot process resend OTP: verification flow is null for ConnectId {ConnectId}", _connectId);
+
             await CompleteWithError(VerificationFlowFailure.Generic("Verification flow not initialized"));
             return;
         }
@@ -439,7 +430,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         if (!_verificationFlow.HasValue)
         {
-            Log.Warning("Timers not started: verification flow not available for ConnectId {ConnectId}", _connectId);
+
             return;
         }
 
@@ -473,14 +464,11 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         if (_activeOtp?.IsActive != true)
         {
-            Log.Warning("OTP timer not started: OTP is not active. IsActive={IsActive} for ConnectId {ConnectId}",
-                _activeOtp?.IsActive, _connectId);
+
             return;
         }
 
         _activeOtpRemainingSeconds = CalculateRemainingSeconds(_activeOtp.ExpiresAt);
-        Log.Information("Starting OTP timer: {RemainingSeconds} seconds remaining for ConnectId {ConnectId}",
-            _activeOtpRemainingSeconds, _connectId);
 
         if (_activeOtpRemainingSeconds > 0)
         {
@@ -489,13 +477,11 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
             PauseSessionTimer();
             Become(OtpActive);
-            Log.Information("OTP timer started successfully for ConnectId {ConnectId}", _connectId);
+
         }
         else
         {
-            Log.Warning(
-                "OTP timer not started: OTP already expired. ExpiresAt={ExpiresAt}, Now={Now} for ConnectId {ConnectId}",
-                _activeOtp.ExpiresAt, DateTime.UtcNow, _connectId);
+
         }
     }
 
@@ -627,15 +613,15 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
     private async Task<Result<Unit, VerificationFlowFailure>> PrepareAndSendOtp(string cultureName)
     {
-        GetPhoneNumberActorEvent getPhoneNumberActorEvent = new(_phoneNumberIdentifier);
+        GetMobileNumberActorEvent getMobileNumberActorEvent = new(_phoneNumberIdentifier);
 
-        Result<PhoneNumberQueryRecord, VerificationFlowFailure> phoneNumberQueryRecordResult =
-            await _persistor.Ask<Result<PhoneNumberQueryRecord, VerificationFlowFailure>>(getPhoneNumberActorEvent);
+        Result<MobileNumberQueryRecord, VerificationFlowFailure> phoneNumberQueryRecordResult =
+            await _persistor.Ask<Result<MobileNumberQueryRecord, VerificationFlowFailure>>(getMobileNumberActorEvent);
 
         if (phoneNumberQueryRecordResult.IsErr)
             return Result<Unit, VerificationFlowFailure>.Err(phoneNumberQueryRecordResult.UnwrapErr());
 
-        PhoneNumberQueryRecord phoneNumberQueryRecord = phoneNumberQueryRecordResult.Unwrap();
+        MobileNumberQueryRecord phoneNumberQueryRecord = phoneNumberQueryRecordResult.Unwrap();
 
         if (!_verificationFlow.HasValue)
         {
@@ -677,16 +663,12 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         while (smsAttempt < MaxSmsRetries)
         {
             smsAttempt++;
-            smsResult = await _smsProvider.SendOtpAsync(phoneNumberQueryRecord.PhoneNumber, messageBuilder.ToString());
+            smsResult = await _smsProvider.SendOtpAsync(phoneNumberQueryRecord.MobileNumber, messageBuilder.ToString());
 
             if (smsResult.IsSuccess)
             {
                 break;
             }
-
-            Log.Warning(
-                "SMS sending failed on attempt {Attempt}/{MaxAttempts} for ConnectId {ConnectId}, Status: {Status}, Error: {ErrorMessage}",
-                smsAttempt, MaxSmsRetries, _connectId, smsResult.Status, smsResult.ErrorMessage);
 
             if (smsAttempt >= MaxSmsRetries) continue;
             int delayMs = (int)Math.Pow(2, smsAttempt - 1) * 1000;
@@ -699,9 +681,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             {
                 await UpdateOtpStatus(VerificationFlowStatus.Failed);
             }
-            catch (Exception ex)
+            catch
             {
-                Log.Warning(ex, "Failed to expire OTP after SMS failure for ConnectId {ConnectId}", _connectId);
             }
 
             return Result<Unit, VerificationFlowFailure>.Err(
@@ -802,8 +783,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
 
         if (publishCleanupEvent)
         {
-            Log.Information("[VERIFICATION_CLEANUP] Publishing ProtocolCleanupRequiredEvent for ConnectId {ConnectId}",
-                _connectId);
+
             Context.System.EventStream.Publish(new ProtocolCleanupRequiredEvent(_connectId));
         }
 
@@ -846,9 +826,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             _timersStarted = false;
             _sessionTimerPaused = false;
         }
-        catch (Exception ex)
+        catch
         {
-            Log.Warning(ex, "Error canceling timers for ConnectId {ConnectId}", _connectId);
         }
     }
 
@@ -876,7 +855,6 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         _sessionTimerPaused = false;
     }
 
-
     private async Task SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure> update)
     {
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? writer = _writer;
@@ -896,9 +874,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         catch (OperationCanceledException)
         {
         }
-        catch (Exception ex)
+        catch
         {
-            Log.Error(ex, "Unexpected error writing to channel for ConnectId {ConnectId}", _connectId);
         }
     }
 
@@ -909,9 +886,8 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             CancelTimers();
             _writer?.TryComplete();
         }
-        catch (Exception ex)
+        catch
         {
-            Log.Warning(ex, "Error during PostStop cleanup for ConnectId {ConnectId}", _connectId);
         }
         finally
         {

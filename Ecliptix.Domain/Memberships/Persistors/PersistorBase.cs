@@ -82,16 +82,13 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
     {
         if (result.IsOk)
         {
-            Log.Debug("Persistor operation {OperationName} completed successfully for actor {ActorType}",
-                operationName, GetType().Name);
+
             activity?.SetStatus(ActivityStatusCode.Ok);
             activity?.SetTag("operation.success", true);
         }
         else
         {
             TFailure failure = result.UnwrapErr();
-            Log.Warning("Persistor operation {OperationName} failed for actor {ActorType}: {@FailureDetails}",
-                operationName, GetType().Name, failure.ToStructuredLog());
 
             activity?.SetStatus(ActivityStatusCode.Error, failure.ToString());
             activity?.AddEvent(new ActivityEvent("DomainFailure", tags: new ActivityTagsCollection
@@ -151,7 +148,7 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
         TimeSpan timeout = GetTimeoutForOperation(operationName);
         if (dbConnection.ConnectionTimeout != (int)timeout.TotalSeconds)
         {
-            Log.Debug("Using timeout {Timeout}s for operation {OperationName}", timeout.TotalSeconds, operationName);
+
         }
     }
 
@@ -179,6 +176,5 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
         _activitySource.Dispose();
         _disposed = true;
 
-        Log.Debug("Disposed persistor actor {ActorType}", GetType().Name);
     }
 }

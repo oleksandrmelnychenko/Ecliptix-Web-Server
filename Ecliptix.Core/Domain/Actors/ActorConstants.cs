@@ -48,20 +48,6 @@ public static class ActorConstants
 
     public static class LogMessages
     {
-        public const string SupervisedActorTerminated = "Supervised session actor {ActorPath} has terminated. Its resources are released";
-        public const string ProtocolCleanupTriggered = "Triggered protocol cleanup for ConnectId {ConnectId} due to session expiration";
-        public const string InitializationFailed = "Protocol connect actor failed during initialization. Stopping to prevent further issues";
-        public const string TimeoutEncountered = "Protocol connect actor encountered timeout. Restarting";
-        public const string AuthorizationFailure = "Protocol connect actor encountered authorization failure. Stopping";
-        public const string InvalidArguments = "Protocol connect actor failed with invalid arguments. Stopping to prevent repeated failures";
-        public const string CryptographicError = "Protocol connect actor encountered cryptographic error. Restarting";
-        public const string InvalidOperation = "Protocol connect actor encountered invalid operation. Restarting";
-        public const string IoError = "Protocol connect actor encountered IO error. Restarting";
-        public const string NetworkError = "Protocol connect actor encountered network error. Restarting";
-        public const string OutOfMemory = "Protocol connect actor out of memory. Escalating to parent";
-        public const string StackOverflow = "Protocol connect actor stack overflow. Escalating to parent";
-        public const string UnhandledException = "Protocol connect actor encountered unhandled exception of type {ExceptionType}. Stopping to prevent cascading failures";
-
         public const string RecoveryCompleted = "[RecoveryCompleted] Recovery finished for actor {ActorName}";
         public const string NoSessionState = "[RecoveryCompleted] No previous session state found for connectId {ConnectId}";
         public const string FinalSnapshotSaved = "Final snapshot saved successfully. Initiating cleanup operation.";
@@ -75,7 +61,6 @@ public static class ActorConstants
         public const string UsingExistingSession = "[HandleInitialKeyExchange] Using existing recovered session for connectId {ConnectId}, type: {ExchangeType}";
         public const string SystemDetectedFreshHandshake = "[HandleInitialKeyExchange] System detected fresh handshake - clearing actor state";
         public const string CreatingNewSession = "[HandleInitialKeyExchange] Creating new session for connectId {ConnectId}, type: {ExchangeType}";
-        public const string CreatedProtocolWithInterval = "[ACTOR] Created protocol with DH interval {DhInterval} for type {ExchangeType}";
     }
 
     public static class ErrorMessages

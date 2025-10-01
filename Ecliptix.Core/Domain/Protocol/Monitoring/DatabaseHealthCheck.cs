@@ -61,12 +61,12 @@ public class DatabaseHealthCheck : IHealthCheck
         }
         catch (TimeoutException ex)
         {
-            Log.Warning(ex, "Database health check timed out");
+
             return HealthCheckResult.Unhealthy("Database connection timeout", ex);
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Database health check failed");
+
             return HealthCheckResult.Unhealthy("Database connection failed", ex);
         }
     }

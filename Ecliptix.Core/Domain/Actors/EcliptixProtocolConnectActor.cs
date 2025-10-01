@@ -1,11 +1,8 @@
-using System.Linq;
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
-using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Domain.Protocol;
-using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Protocol;
@@ -301,45 +298,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         Context.System.EventStream.Subscribe(Self, typeof(ProtocolCleanupRequiredEvent));
     }
 
-    private void HandleAuthenticatedProtocolInitialization(InitializeProtocolWithMasterKeyActorEvent cmd)
-    {
-        Context.GetLogger().Info("[AUTHENTICATED_INIT] Creating protocol system with derived identity keys for ConnectId: {0}, MembershipId: {1}",
-            cmd.ConnectId, cmd.MembershipId);
-
-        PubKeyExchangeType exchangeType = PubKeyExchangeType.DataCenterEphemeralConnect;
-
-        if (_protocolSystems.TryGetValue(exchangeType, out EcliptixProtocolSystem? existingSystem))
-        {
-            Context.GetLogger().Info("[AUTHENTICATED_INIT] Disposing existing protocol system for exchange type {0}", exchangeType);
-            existingSystem.Dispose();
-            _protocolSystems.Remove(exchangeType);
-        }
-
-        EcliptixProtocolSystem system = new(cmd.IdentityKeys);
-
-        Result<PubKeyExchange, EcliptixProtocolFailure> exchangeResult =
-            system.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.ClientPubKeyExchange);
-
-        if (exchangeResult.IsErr)
-        {
-            Context.GetLogger().Error("[AUTHENTICATED_INIT] Failed to process client pub key exchange: {0}", exchangeResult.UnwrapErr().Message);
-            system.Dispose();
-            Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(exchangeResult.UnwrapErr()));
-            return;
-        }
-
-        PubKeyExchange serverPubKeyExchange = exchangeResult.Unwrap();
-
-        _protocolSystems[exchangeType] = system;
-        _currentExchangeType = exchangeType;
-        Context.SetReceiveTimeout(TimeSpan.FromHours(24));
-
-        Context.GetLogger().Info("[AUTHENTICATED_INIT] Successfully created protocol system for MembershipId: {0}", cmd.MembershipId);
-
-        Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Ok(
-            new InitializeProtocolWithMasterKeyReply(serverPubKeyExchange)));
-    }
-
     private void HandleInitialKeyExchange(DeriveSharedSecretActorEvent cmd)
     {
         PubKeyExchangeType exchangeType = cmd.PubKeyExchange.OfType;
@@ -461,6 +419,115 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
             originalSender.Tell(
                 Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(new DeriveSharedSecretReply(reply)));
+            MaybeSaveSnapshot();
+        });
+    }
+
+    private void HandleAuthenticatedProtocolInitialization(InitializeProtocolWithMasterKeyActorEvent cmd)
+    {
+        // NOTE: We do NOT wipe cmd.RootKey here - that's the caller's responsibility (DeviceService)
+        // ProcessAuthenticatedPubKeyExchange will make its own copy and wipe that copy
+
+        PubKeyExchangeType exchangeType = cmd.ClientPubKeyExchange.OfType;
+
+        // Check if we already have an existing session for this exchange type
+        if (_protocolSystems.TryGetValue(exchangeType, out EcliptixProtocolSystem? existingSystem) && _state != null)
+        {
+            Context.GetLogger().Info("[PROTOCOL] Found existing authenticated session for ConnectId {0}, ExchangeType {1}",
+                cmd.ConnectId, exchangeType);
+
+            Result<PubKeyExchange, EcliptixProtocolFailure> existingReplyResult =
+                existingSystem.ProcessAuthenticatedPubKeyExchange(cmd.ConnectId, cmd.ClientPubKeyExchange, cmd.RootKey);
+
+            if (existingReplyResult.IsOk)
+            {
+                Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
+                    EcliptixProtocol.CreateStateFromSystem(_state, existingSystem);
+                if (newStateResult.IsOk)
+                {
+                    _state = newStateResult.Unwrap();
+                    Persist(_state, _ => { });
+                }
+
+                _currentExchangeType = exchangeType;
+
+                if (exchangeType == PubKeyExchangeType.ServerStreaming)
+                {
+                    Context.SetReceiveTimeout(null);
+                    Context.GetLogger().Info("[PROTOCOL] AuthenticatedSession (existing) ServerStreaming - no timeout for ConnectId {0}", cmd.ConnectId);
+                }
+                else
+                {
+                    Context.SetReceiveTimeout(IdleTimeout);
+                    Context.GetLogger().Info("[PROTOCOL] AuthenticatedSession (existing) {0} - using idle timeout for ConnectId {1}", exchangeType, cmd.ConnectId);
+                }
+
+                PubKeyExchange pubKeyReply = existingReplyResult.Unwrap();
+                Sender.Tell(
+                    Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Ok(
+                        new InitializeProtocolWithMasterKeyReply(pubKeyReply)));
+            }
+            else
+            {
+                Sender.Tell(
+                    Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(existingReplyResult.UnwrapErr()));
+            }
+
+            return;
+        }
+
+        Context.GetLogger().Info("[PROTOCOL] Creating new authenticated session for MembershipId {0}, ConnectId {1}, ExchangeType {2}",
+            cmd.MembershipId, cmd.ConnectId, exchangeType);
+
+        EcliptixProtocolSystem system = new(cmd.IdentityKeys);
+
+        Context.GetLogger().Info("[PROTOCOL] Processing authenticated pub key exchange for ConnectId {0}", cmd.ConnectId);
+        Result<PubKeyExchange, EcliptixProtocolFailure> replyResult =
+            system.ProcessAuthenticatedPubKeyExchange(cmd.ConnectId, cmd.ClientPubKeyExchange, cmd.RootKey);
+
+        if (replyResult.IsErr)
+        {
+            Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(replyResult.UnwrapErr()));
+            system.Dispose();
+            return;
+        }
+
+        Result<EcliptixSessionState, EcliptixProtocolFailure> stateToPersistResult =
+            EcliptixProtocol.CreateInitialState(cmd.ConnectId, cmd.ClientPubKeyExchange, system);
+        if (stateToPersistResult.IsErr)
+        {
+            Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(stateToPersistResult.UnwrapErr()));
+            system.Dispose();
+            return;
+        }
+
+        EcliptixSessionState newState = stateToPersistResult.Unwrap();
+        // Store MembershipId for authenticated sessions
+        newState.MembershipId = Google.Protobuf.ByteString.CopyFrom(cmd.MembershipId.ToByteArray());
+
+        PubKeyExchange reply = replyResult.Unwrap();
+        IActorRef? originalSender = Sender;
+
+        Persist(newState, state =>
+        {
+            _state = state;
+            _protocolSystems[exchangeType] = system;
+            _currentExchangeType = exchangeType;
+
+            if (exchangeType == PubKeyExchangeType.ServerStreaming)
+            {
+                Context.SetReceiveTimeout(null);
+                Context.GetLogger().Info("[PROTOCOL] AuthenticatedSession ServerStreaming - no timeout for ConnectId {0}", cmd.ConnectId);
+            }
+            else
+            {
+                Context.SetReceiveTimeout(IdleTimeout);
+                Context.GetLogger().Info("[PROTOCOL] AuthenticatedSession {0} - using idle timeout for ConnectId {1}", exchangeType, cmd.ConnectId);
+            }
+
+            originalSender.Tell(
+                Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Ok(
+                    new InitializeProtocolWithMasterKeyReply(reply)));
             MaybeSaveSnapshot();
         });
     }

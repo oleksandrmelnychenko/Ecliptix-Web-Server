@@ -12,7 +12,7 @@ enum VerificationPurpose {
 
 enum VerificationResult {
   SUCCEEDED = 0;
-  INVALID_PHONE = 1;
+  INVALID_MOBILE = 1;
   INVALID_OTP = 2;
   EXPIRED = 3;
 }
@@ -67,12 +67,12 @@ message VerifyCodeResponse {
   optional ecliptix.proto.membership.Membership membership = 3;
 }
 
-message ValidatePhoneNumberRequest {
+message ValidateMobileNumberRequest {
   string mobile_number = 1;
   bytes app_device_identifier = 2;
 }
 
-message ValidatePhoneNumberResponse {
+message ValidateMobileNumberResponse {
   bytes mobile_number_identifier = 1;
   VerificationResult result = 2;
   optional string message = 3;

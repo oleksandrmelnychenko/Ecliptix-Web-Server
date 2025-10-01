@@ -12,7 +12,6 @@ public static class ProtocolMigrationHelper
         uint requestId,
         ByteString nonce,
         uint ratchetIndex,
-        ByteString? dhPublicKey = null,
         byte[]? channelKeyId = null,
         EnvelopeType envelopeType = EnvelopeType.Request,
         string? correlationId = null)
@@ -24,11 +23,6 @@ public static class ProtocolMigrationHelper
             RatchetIndex = ratchetIndex,
             EnvelopeType = envelopeType
         };
-
-        if (dhPublicKey != null && !dhPublicKey.IsEmpty)
-        {
-            metadata.DhPublicKey = dhPublicKey;
-        }
 
         if (channelKeyId != null && channelKeyId.Length > 0)
         {
@@ -142,5 +136,90 @@ public static class ProtocolMigrationHelper
         byte[] keyId = new byte[16];
         global::System.Security.Cryptography.RandomNumberGenerator.Fill(keyId);
         return ByteString.CopyFrom(keyId);
+    }
+
+    public static Result<byte[], EcliptixProtocolFailure> EncryptMetadata(
+        EnvelopeMetadata metadata,
+        byte[] headerEncryptionKey,
+        byte[] headerNonce,
+        byte[] associatedData)
+    {
+        byte[]? metadataBytes = null;
+        byte[]? ciphertext = null;
+        byte[]? tag = null;
+        try
+        {
+            metadataBytes = metadata.ToByteArray();
+
+            ciphertext = new byte[metadataBytes.Length];
+            tag = new byte[Constants.AesGcmTagSize];
+
+            using (global::System.Security.Cryptography.AesGcm aesGcm =
+                new(headerEncryptionKey, Constants.AesGcmTagSize))
+            {
+                aesGcm.Encrypt(headerNonce, metadataBytes, ciphertext, tag, associatedData);
+            }
+
+            byte[] result = new byte[ciphertext.Length + tag.Length];
+            Buffer.BlockCopy(ciphertext, 0, result, 0, ciphertext.Length);
+            Buffer.BlockCopy(tag, 0, result, ciphertext.Length, tag.Length);
+
+            return Result<byte[], EcliptixProtocolFailure>.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Failed to encrypt metadata", ex));
+        }
+        finally
+        {
+            if (metadataBytes != null) Array.Clear(metadataBytes);
+            if (ciphertext != null) Array.Clear(ciphertext);
+            if (tag != null) Array.Clear(tag);
+        }
+    }
+
+    public static Result<EnvelopeMetadata, EcliptixProtocolFailure> DecryptMetadata(
+        byte[] encryptedMetadata,
+        byte[] headerEncryptionKey,
+        byte[] headerNonce,
+        byte[] associatedData)
+    {
+        byte[]? plaintext = null;
+        try
+        {
+            int cipherLength = encryptedMetadata.Length - Constants.AesGcmTagSize;
+            if (cipherLength < 0)
+                return Result<EnvelopeMetadata, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.BufferTooSmall("Encrypted metadata too small"));
+
+            ReadOnlySpan<byte> ciphertextSpan = encryptedMetadata.AsSpan(0, cipherLength);
+            ReadOnlySpan<byte> tagSpan = encryptedMetadata.AsSpan(cipherLength);
+
+            plaintext = new byte[cipherLength];
+
+            using (global::System.Security.Cryptography.AesGcm aesGcm =
+                new(headerEncryptionKey, Constants.AesGcmTagSize))
+            {
+                aesGcm.Decrypt(headerNonce, ciphertextSpan, tagSpan, plaintext, associatedData);
+            }
+
+            EnvelopeMetadata metadata = EnvelopeMetadata.Parser.ParseFrom(plaintext);
+            return Result<EnvelopeMetadata, EcliptixProtocolFailure>.Ok(metadata);
+        }
+        catch (global::System.Security.Cryptography.CryptographicException cryptoEx)
+        {
+            return Result<EnvelopeMetadata, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Header authentication failed", cryptoEx));
+        }
+        catch (Exception ex)
+        {
+            return Result<EnvelopeMetadata, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Failed to decrypt metadata", ex));
+        }
+        finally
+        {
+            if (plaintext != null) Array.Clear(plaintext);
+        }
     }
 }

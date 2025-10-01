@@ -1,7 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Ecliptix.Core.Middleware;
-using Ecliptix.Core.Middleware.Models;
 
 namespace Ecliptix.Core.Json;
 
@@ -10,8 +8,6 @@ namespace Ecliptix.Core.Json;
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     GenerationMode = JsonSourceGenerationMode.Default,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
-[JsonSerializable(typeof(BlockInfo))]
-[JsonSerializable(typeof(ThrottleInfo))]
 [JsonSerializable(typeof(HealthMetricsResponse))]
 [JsonSerializable(typeof(HealthStatus))]
 [JsonSerializable(typeof(ErrorResponse))]

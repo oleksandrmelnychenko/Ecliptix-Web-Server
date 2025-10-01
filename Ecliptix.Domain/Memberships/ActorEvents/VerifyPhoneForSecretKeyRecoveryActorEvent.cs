@@ -1,5 +1,5 @@
 namespace Ecliptix.Domain.Memberships.ActorEvents;
 
-public record VerifyPhoneForSecretKeyRecoveryActorEvent(
-    string PhoneNumber, 
+public record VerifyMobileForSecretKeyRecoveryActorEvent(
+    string MobileNumber, 
     string? RegionCode);

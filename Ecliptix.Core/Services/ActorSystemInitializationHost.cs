@@ -42,25 +42,15 @@ public sealed class ActorSystemInitializationHost(
             MembershipPersistorActor.Build(dbConnectionFactory),
             ApplicationConstants.ActorNames.MembershipPersistorActor);
 
-        IActorRef authContextPersistorActor = actorSystem.ActorOf(
-            AuthContextPersistorActor.Build(dbConnectionFactory),
-            ApplicationConstants.ActorNames.AuthContextPersistorActor);
-
         IActorRef masterKeySharePersistorActor = actorSystem.ActorOf(
             MasterKeySharePersistorActor.Build(dbConnectionFactory),
             ApplicationConstants.ActorNames.MasterKeySharePersistorActor);
 
-        IActorRef authenticationStateManager = actorSystem.ActorOf(
-            AuthenticationStateManager.Build(),
-            ApplicationConstants.ActorNames.AuthenticationStateManager);
-
         IActorRef membershipActor = actorSystem.ActorOf(
             MembershipActor.Build(
                 membershipPersistorActor,
-                authContextPersistorActor,
                 opaqueProtocolService,
                 localizationProvider,
-                authenticationStateManager,
                 masterKeyService),
             ApplicationConstants.ActorNames.MembershipActor);
 

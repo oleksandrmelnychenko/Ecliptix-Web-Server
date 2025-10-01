@@ -40,8 +40,8 @@ public class VerificationFlowManagerActor : ReceiveActor
         Receive<InitiateVerificationFlowActorEvent>(HandleInitiateFlow);
         Receive<VerifyFlowActorEvent>(HandleVerifyFlow);
         Receive<Terminated>(HandleTerminated);
-        Receive<EnsurePhoneNumberActorEvent>(actorEvent => _persistor.Forward(actorEvent));
-        Receive<VerifyPhoneForSecretKeyRecoveryActorEvent>(actorEvent => _persistor.Forward(actorEvent));
+        Receive<EnsureMobileNumberActorEvent>(actorEvent => _persistor.Forward(actorEvent));
+        Receive<VerifyMobileForSecretKeyRecoveryActorEvent>(actorEvent => _persistor.Forward(actorEvent));
         Receive<FlowCompletedGracefullyActorEvent>(HandleFlowCompletedGracefully);
     }
 
@@ -54,8 +54,6 @@ public class VerificationFlowManagerActor : ReceiveActor
         {
             if (!childActor.IsNobody())
             {
-                Log.Information("Cleaning up existing flow actor for ConnectId {ConnectId} before creating new one",
-                    actorEvent.ConnectId);
 
                 _flowWriters.Remove(childActor);
                 Context.Unwatch(childActor);
@@ -64,7 +62,7 @@ public class VerificationFlowManagerActor : ReceiveActor
 
             IActorRef? newFlowActor = Context.ActorOf(VerificationFlowActor.Build(
                 actorEvent.ConnectId,
-                actorEvent.PhoneNumberIdentifier,
+                actorEvent.MobileNumberIdentifier,
                 actorEvent.AppDeviceIdentifier,
                 actorEvent.Purpose,
                 actorEvent.ChannelWriter,
@@ -116,11 +114,11 @@ public class VerificationFlowManagerActor : ReceiveActor
                 out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? _))
         {
             _flowWriters.Remove(completedActor);
-            Log.Debug("Verification flow completed gracefully for actor {ActorPath}", completedActor.Path);
+
         }
         else
         {
-            Log.Debug("Received FlowCompletedGracefullyActorEvent for untracked actor: {ActorPath}", completedActor.Path);
+
         }
     }
 
@@ -133,9 +131,6 @@ public class VerificationFlowManagerActor : ReceiveActor
             _flowWriters.Remove(deadActor);
             if (terminatedMessage is { ExistenceConfirmed: true, AddressTerminated: false })
             {
-                Log.Warning(
-                    "Child actor {ActorPath} was terminated unexpectedly (crashed). Notifying the client channel",
-                    deadActor.Path);
 
                 VerificationFlowFailure failure = VerificationFlowFailure.Generic(
                     "The verification process was terminated due to an internal server error."
@@ -145,21 +140,19 @@ public class VerificationFlowManagerActor : ReceiveActor
                     writer.TryWrite(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Err(failure));
                 if (!writeSuccess)
                 {
-                    Log.Error(
-                        "Failed to write error to channel for actor {ActorPath}. Channel may be completed or faulted",
-                        deadActor.Path);
+
                 }
 
                 bool completeSuccess = writer.TryComplete();
                 if (!completeSuccess)
                 {
-                    Log.Warning("Failed to complete channel for terminated actor {ActorPath}", deadActor.Path);
+
                 }
             }
         }
         else
         {
-            Log.Debug("Received Terminated message for an untracked actor: {ActorPath}", deadActor.Path);
+
         }
     }
 
@@ -176,21 +169,19 @@ public class VerificationFlowManagerActor : ReceiveActor
         switch (ex)
         {
             case ArgumentException argEx:
-                Log.Error(argEx,
-                    "VerificationFlowActor failed with an invalid state (ArgumentException). Stopping the actor to prevent further issues");
+
                 return Directive.Stop;
 
             case ActorInitializationException initEx:
-                Log.Error(initEx, "VerificationFlowActor failed during its initialization. Stopping the actor");
+
                 return Directive.Stop;
 
             case IOException ioEx:
-                Log.Warning(ioEx, "VerificationFlowActor encountered a transient IO error. Restarting the actor");
+
                 return Directive.Restart;
 
             default:
-                Log.Error(ex,
-                    "VerificationFlowActor encountered an unhandled exception. Stopping the actor to prevent further issues");
+
                 return Directive.Stop;
         }
     }

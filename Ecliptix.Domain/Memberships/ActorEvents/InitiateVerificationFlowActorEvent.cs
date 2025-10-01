@@ -7,7 +7,7 @@ namespace Ecliptix.Domain.Memberships.ActorEvents;
 
 public record InitiateVerificationFlowActorEvent(
     uint ConnectId,
-    Guid PhoneNumberIdentifier,
+    Guid MobileNumberIdentifier,
     Guid AppDeviceIdentifier,
     VerificationPurpose Purpose,
     InitiateVerificationRequest.Types.Type RequestType,

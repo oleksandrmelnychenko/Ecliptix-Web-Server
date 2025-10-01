@@ -33,9 +33,6 @@ public class RpcServiceBase(IGrpcCipherService cipherService)
         uint connectId = ExtractConnectionId(context);
         ValidateConnectionId(connectId);
 
-        Log.Debug(GrpcServiceConstants.LogMessages.StartingEncryptedOperation,
-            GetType().Name, operationName, connectId);
-
         Result<TRequest, FailureBase> decryptResult =
             await DecryptRequestAsync<TRequest>(encryptedRequest, connectId, context);
         if (decryptResult.IsErr)
@@ -57,9 +54,6 @@ public class RpcServiceBase(IGrpcCipherService cipherService)
         stopwatch.Stop();
         activity?.SetTag(GrpcServiceConstants.ActivityTags.Success, true);
         activity?.SetTag(GrpcServiceConstants.ActivityTags.DurationMs, stopwatch.ElapsedMilliseconds);
-
-        Log.Debug(GrpcServiceConstants.LogMessages.CompletedEncryptedOperation,
-            GetType().Name, operationName, stopwatch.ElapsedMilliseconds);
 
         return response;
     }
@@ -130,7 +124,7 @@ public class RpcServiceBase(IGrpcCipherService cipherService)
         catch (Exception ex)
         {
             activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, false);
-            Log.Error(ex, GrpcServiceConstants.LogMessages.FailedToParseDecryptedRequestLog, connectId);
+
             return Result<TRequest, FailureBase>.Err(
                 EcliptixProtocolFailure.Generic(GrpcServiceConstants.ErrorMessages.FailedToParseDecryptedRequest, ex));
         }
@@ -154,8 +148,7 @@ public class RpcServiceBase(IGrpcCipherService cipherService)
         if (encryptResult.IsErr)
         {
             activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, false);
-            Log.Error(GrpcServiceConstants.LogMessages.FailedToEncryptResponse,
-                connectId, encryptResult.UnwrapErr().Message);
+
             return new SecureEnvelope();
         }
 

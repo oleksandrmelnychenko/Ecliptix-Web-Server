@@ -16,7 +16,7 @@ public sealed class OneTimePassword
     public Guid UniqueIdentifier { get; set; }
 
     public Result<(OtpQueryRecord Record, string PlainOtp), VerificationFlowFailure> Generate(
-        PhoneNumberQueryRecord phoneNumberQueryRecord, Guid flowUniqueIdentifier)
+        MobileNumberQueryRecord phoneNumberQueryRecord, Guid flowUniqueIdentifier)
     {
         return Result<(OtpQueryRecord, string), VerificationFlowFailure>.Try(
             () =>
@@ -28,7 +28,7 @@ public sealed class OneTimePassword
                 OtpQueryRecord otpQueryRecord = new()
                 {
                     FlowUniqueId = flowUniqueIdentifier,
-                    PhoneNumberIdentifier = phoneNumberQueryRecord.UniqueId,
+                    MobileNumberIdentifier = phoneNumberQueryRecord.UniqueId,
                     OtpHash = hash,
                     OtpSalt = salt,
                     ExpiresAt = ExpiresAt,

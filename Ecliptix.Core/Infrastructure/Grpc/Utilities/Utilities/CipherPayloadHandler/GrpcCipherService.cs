@@ -45,7 +45,6 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
 
             (EnvelopeMetadata metadata, byte[] encryptedPayload) = componentsResult.Unwrap();
 
-
             SecureEnvelope protocolOnlyPayload = ProtocolMigrationHelper.CreateSecureEnvelope(
                 metadata,
                 ByteString.CopyFrom(encryptedPayload),
@@ -65,12 +64,16 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
     {
         try
         {
-            Result<EnvelopeMetadata, EcliptixProtocolFailure> metadataResult = ProtocolMigrationHelper.ParseEnvelopeMetadata(request.MetaData);
-
+            // Note: Metadata is now encrypted and will be decrypted inside ProcessInboundMessage
+            // This function delegates to the actor system which handles full message processing
             PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
 
+            DecryptSecureEnvelopeActorEvent decryptCommand = new(exchangeType, request);
+            ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptCommand);
+
             Result<byte[], EcliptixProtocolFailure> decryptionResult =
-                await DecryptPayloadWithHeader(request.EncryptedPayload.ToByteArray(), metadataResult.Unwrap(), connectId, exchangeType, context);
+                await _protocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(
+                    decryptForwarder, context.CancellationToken);
 
             return decryptionResult.IsErr
                 ? Result<byte[], FailureBase>.Err(decryptionResult.UnwrapErr())
@@ -78,7 +81,7 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "🔒 Unexpected error during payload decryption for connectId {ConnectId}", connectId);
+
             return Result<byte[], FailureBase>.Err(
                 new EcliptixProtocolFailure(EcliptixProtocolFailureType.Generic, "Payload decryption failed"));
         }

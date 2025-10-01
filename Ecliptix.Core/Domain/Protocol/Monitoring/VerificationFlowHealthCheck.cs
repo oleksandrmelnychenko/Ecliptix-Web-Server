@@ -85,7 +85,7 @@ public class VerificationFlowHealthCheck : IHealthCheck
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Verification flow health check failed");
+
             return Task.FromResult(HealthCheckResult.Unhealthy("Verification health check exception", ex));
         }
     }

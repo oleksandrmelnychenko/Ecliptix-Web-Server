@@ -39,7 +39,7 @@ public sealed record VerificationFlowFailure(
         VerificationFlowFailureType.OtpGenerationFailed => false,
 
         VerificationFlowFailureType.SmsSendFailed => true,
-        VerificationFlowFailureType.PhoneNumberInvalid => true,
+        VerificationFlowFailureType.MobileNumberInvalid => true,
 
         VerificationFlowFailureType.PersistorAccess => false,
         VerificationFlowFailureType.ConcurrencyConflict => false,
@@ -85,10 +85,10 @@ public sealed record VerificationFlowFailure(
     }
 
     public static VerificationFlowFailure
-        PhoneNumberInvalid(string? details = null, Exception? innerException = null)
+        MobileNumberInvalid(string? details = null, Exception? innerException = null)
     {
-        return new VerificationFlowFailure(VerificationFlowFailureType.PhoneNumberInvalid,
-            details ?? VerificationFlowMessageKeys.PhoneNumberInvalid, innerException);
+        return new VerificationFlowFailure(VerificationFlowFailureType.MobileNumberInvalid,
+            details ?? VerificationFlowMessageKeys.MobileNumberInvalid, innerException);
     }
 
     public static VerificationFlowFailure
@@ -145,7 +145,7 @@ public sealed record VerificationFlowFailure(
             VerificationFlowFailureType.Expired => StatusCode.Unauthenticated,
             VerificationFlowFailureType.InvalidOtp => StatusCode.Unauthenticated,
             VerificationFlowFailureType.OtpExpired => StatusCode.Unauthenticated,
-            VerificationFlowFailureType.PhoneNumberInvalid => StatusCode.InvalidArgument,
+            VerificationFlowFailureType.MobileNumberInvalid => StatusCode.InvalidArgument,
             VerificationFlowFailureType.Validation => StatusCode.InvalidArgument,
 
             VerificationFlowFailureType.OtpMaxAttemptsReached => StatusCode.ResourceExhausted,

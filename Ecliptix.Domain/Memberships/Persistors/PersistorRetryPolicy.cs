@@ -19,9 +19,7 @@ public static class PersistorRetryPolicy
                 sleepDurationProvider: retryAttempt => TimeSpan.FromMilliseconds(Math.Pow(2, retryAttempt) * 200),
                 onRetry: (outcome, timespan, retryCount, context) =>
                 {
-                    Log.Warning("Retry {RetryCount} for operation {OperationName} after {Delay}ms due to {ExceptionType}: {Message}",
-                        retryCount, operationName, timespan.TotalMilliseconds,
-                        outcome.GetType().Name, outcome.Message);
+
                 });
     }
 
@@ -41,17 +39,17 @@ public static class PersistorRetryPolicy
         }
         catch (DbException dbEx)
         {
-            Log.Error(dbEx, "Database exception in operation {OperationName}: {Message}", operationName, dbEx.Message);
+
             return Result<TResult, TFailure>.Err(dbExceptionMapper(dbEx, operationName));
         }
         catch (TimeoutException timeoutEx)
         {
-            Log.Error(timeoutEx, "Timeout exception in operation {OperationName}: {Message}", operationName, timeoutEx.Message);
+
             return Result<TResult, TFailure>.Err(timeoutExceptionMapper(timeoutEx, operationName));
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Unexpected exception in operation {OperationName}", operationName);
+
             return Result<TResult, TFailure>.Err(genericExceptionMapper(ex, operationName));
         }
     }

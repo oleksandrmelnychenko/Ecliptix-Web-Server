@@ -69,10 +69,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
         if (Log.IsEnabled(LogEventLevel.Debug))
         {
-            Log.Debug("[EcliptixProtocolChainStep] Restoring from Proto State (StepType: {StepType}):", stepType);
-            Log.Debug("  Current Index: {CurrentIndex}", proto.CurrentIndex);
-            Log.Debug("  DH Public Key: {DhPubKey}",
-                dhPubKeyBytes != null ? Convert.ToHexString(dhPubKeyBytes) : "<null>");
+
         }
 
         Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> createResult =
@@ -80,8 +77,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         if (createResult.IsErr)
         {
             if (Log.IsEnabled(LogEventLevel.Debug))
-                Log.Debug("[EcliptixProtocolChainStep] Error creating chain step from proto: {Message}",
-                    createResult.UnwrapErr().Message);
+
             return createResult;
         }
 
@@ -106,7 +102,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
         if (Log.IsEnabled(LogEventLevel.Debug) && proto.CachedMessageKeys.Count > 0)
         {
-            Log.Debug("  Restored {CachedKeyCount} cached message keys", proto.CachedMessageKeys.Count);
+
         }
 
         return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(chainStep);
@@ -130,8 +126,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         if (_messageKeys.TryGetValue(targetIndex, out EcliptixMessageKey? cachedKey))
         {
             if (Log.IsEnabled(LogEventLevel.Debug))
-                Log.Debug("[EcliptixProtocolChainStep] Retrieved cached message key for index {TargetIndex}",
-                    targetIndex);
+
             return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(cachedKey);
         }
 

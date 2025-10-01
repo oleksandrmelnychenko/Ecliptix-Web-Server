@@ -6,12 +6,14 @@ option csharp_namespace = "Ecliptix.Protobuf.Common";
 import "google/protobuf/timestamp.proto";
 
 message SecureEnvelope {
-  bytes meta_data = 1;
+  bytes meta_data = 1;                      // Encrypted EnvelopeMetadata (was plaintext)
   bytes encrypted_payload = 2;
   bytes result_code = 3;
-  optional bytes authentication_tag = 4;    
+  optional bytes authentication_tag = 4;
   google.protobuf.Timestamp timestamp = 5;
   optional bytes error_details = 6;
+  bytes header_nonce = 7;                   // Nonce for header decryption (12 bytes)
+  optional bytes dh_public_key = 8;         // DH public key for ratchet (not encrypted, receiver needs this before decrypting metadata)
 }
 
 message EnvelopeMetadata{
@@ -20,8 +22,7 @@ message EnvelopeMetadata{
   bytes nonce = 3;
   uint32 ratchet_index = 4;
   EnvelopeType envelope_type = 5;
-  optional bytes dh_public_key = 6;
-  optional string correlation_id = 7;
+  optional string correlation_id = 6;       // Note: dh_public_key moved to SecureEnvelope
 }
 
 message EnvelopeError {

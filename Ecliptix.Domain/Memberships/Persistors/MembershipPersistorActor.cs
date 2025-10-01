@@ -54,7 +54,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         IDbConnection connection, SignInMembershipActorEvent cmd)
     {
         DynamicParameters parameters = new DynamicParameters();
-        parameters.Add("@PhoneNumber", cmd.MobileNumber);
+        parameters.Add("@MobileNumber", cmd.MobileNumber);
 
         LoginMembershipResult? result = await connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.SP_LoginMembership",
@@ -64,7 +64,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
         if (result is null)
         {
-            Log.Error("LoginMembership stored procedure returned null for MobileNumber {MaskedMobileNumber}", MaskMobileNumber(cmd.MobileNumber));
+
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess("Login membership failed - stored procedure returned null result"));
         }
@@ -115,15 +115,14 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
         if (result is null)
         {
-            Log.Error("UpdateMembershipSecureKey stored procedure returned null for MembershipUniqueId {MembershipId}", cmd.MembershipIdentifier);
+
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess("Update membership secure key failed - stored procedure returned null result"));
         }
 
         if (!result.Success)
         {
-            Log.Warning("UpdateMembershipSecureKey failed for MembershipUniqueId {MembershipId}: {Message}", 
-                cmd.MembershipIdentifier, result.Message);
+
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Validation($"Secure key update failed: {result.Message}"));
         }
@@ -131,8 +130,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         if (!result.MembershipUniqueId.HasValue || string.IsNullOrEmpty(result.Status) ||
             string.IsNullOrEmpty(result.CreationStatus))
         {
-            Log.Error("UpdateMembershipSecureKey returned success but missing data - MembershipId: {HasId}, Status: {Status}, CreationStatus: {CreationStatus}",
-                result.MembershipUniqueId.HasValue, result.Status, result.CreationStatus);
+
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess("Secure key update succeeded but returned incomplete data"));
         }
@@ -167,16 +165,14 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
         if (result is null)
         {
-            Log.Error("CreateMembership stored procedure returned null for FlowUniqueId {FlowId}, ConnectId {ConnectId}",
-                cmd.VerificationFlowIdentifier, cmd.ConnectId);
+
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess("Create membership failed - stored procedure returned null result"));
         }
 
         if (int.TryParse(result.Outcome, out int rateLimitSeconds))
         {
-            Log.Warning("CreateMembership rate limit exceeded for FlowUniqueId {FlowId}: {RateLimitSeconds} seconds",
-                cmd.VerificationFlowIdentifier, rateLimitSeconds);
+
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.RateLimitExceeded(rateLimitSeconds.ToString()));
         }
@@ -208,15 +204,13 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
     private static Result<MembershipQueryRecord, VerificationFlowFailure> CreateValidationError(CreateMembershipActorEvent cmd, string error)
     {
-        Log.Warning("CreateMembership validation error for FlowUniqueId {FlowId}: {Error}",
-            cmd.VerificationFlowIdentifier, error);
+
         return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(error));
     }
 
     private static Result<MembershipQueryRecord, VerificationFlowFailure> CreatePersistorAccessError(CreateMembershipActorEvent cmd, string outcome)
     {
-        Log.Error("CreateMembership unexpected outcome for FlowUniqueId {FlowId}: {Outcome}",
-            cmd.VerificationFlowIdentifier, outcome);
+
         return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
             VerificationFlowFailure.PersistorAccess($"Membership creation failed: {outcome}"));
     }
@@ -225,10 +219,10 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         return outcome is VerificationFlowMessageKeys.InvalidSecureKey or
             VerificationFlowMessageKeys.InactiveMembership or
-            VerificationFlowMessageKeys.PhoneNumberCannotBeEmpty or
+            VerificationFlowMessageKeys.MobileNumberCannotBeEmpty or
             VerificationFlowMessageKeys.SecureKeyCannotBeEmpty or
             VerificationFlowMessageKeys.SecureKeyNotSet or
-            VerificationFlowMessageKeys.PhoneNotFound or
+            VerificationFlowMessageKeys.MobileNotFound or
             VerificationFlowMessageKeys.MembershipNotFound;
     }
 
@@ -248,8 +242,6 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
     protected override VerificationFlowFailure MapDbException(DbException ex)
     {
-        Log.Error(ex, "Database exception in {ActorType}: {ExceptionType} - {Message}", 
-            GetType().Name, ex.GetType().Name, ex.Message);
 
         if (ex is SqlException sqlEx)
         {
@@ -270,14 +262,13 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
     protected override VerificationFlowFailure CreateTimeoutFailure(TimeoutException ex)
     {
-        Log.Error(ex, "Timeout exception in {ActorType}: Operation timed out", GetType().Name);
+
         return VerificationFlowFailure.PersistorAccess("Database operation timed out", ex);
     }
 
     protected override VerificationFlowFailure CreateGenericFailure(Exception ex)
     {
-        Log.Error(ex, "Generic exception in {ActorType}: {ExceptionType} - {Message}", 
-            GetType().Name, ex.GetType().Name, ex.Message);
+
         return VerificationFlowFailure.Generic($"Unexpected error in membership persistor: {ex.Message}", ex);
     }
 

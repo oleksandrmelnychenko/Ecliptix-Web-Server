@@ -25,7 +25,6 @@ public class SecurityInterceptor(IDistributedCache cache) : Interceptor
         {
             if (!ValidateRequestTiming(clientIp))
             {
-                Log.Warning(InterceptorConstants.LogMessages.RequestTimingValidationFailed, clientIp, methodName);
                 throw new RpcException(new Status(StatusCode.ResourceExhausted, InterceptorConstants.StatusMessages.TooManyRequests));
             }
 
@@ -33,28 +32,21 @@ public class SecurityInterceptor(IDistributedCache cache) : Interceptor
             {
                 if (!await ValidateConnectId(context))
                 {
-                    Log.Warning(InterceptorConstants.LogMessages.ConnectIdValidationFailed, clientIp, methodName);
                     throw new RpcException(new Status(StatusCode.InvalidArgument, InterceptorConstants.StatusMessages.InvalidConnectionIdentifier));
                 }
             }
 
-            LogSecurityEvent(context, InterceptorConstants.SecurityEvents.RequestProcessed);
-
             TResponse response = await continuation(request, context);
-
-            LogSecurityEvent(context, InterceptorConstants.SecurityEvents.RequestCompleted);
 
             return response;
         }
         catch (RpcException)
         {
-            LogSecurityEvent(context, InterceptorConstants.SecurityEvents.RequestFailed);
             throw;
         }
         catch (Exception ex)
         {
             Log.Error(ex, InterceptorConstants.LogMessages.UnexpectedSecurityError, clientIp, methodName);
-            LogSecurityEvent(context, InterceptorConstants.SecurityEvents.RequestError);
             throw new RpcException(new Status(StatusCode.Internal, InterceptorConstants.StatusMessages.InternalServerError));
         }
     }
@@ -105,13 +97,11 @@ public class SecurityInterceptor(IDistributedCache cache) : Interceptor
 
             if (!uint.TryParse(connectIdString, out uint connectId))
             {
-                Log.Warning(InterceptorConstants.LogMessages.InvalidConnectIdFormat, connectIdString);
                 return Task.FromResult(false);
             }
 
             if (connectId < InterceptorConstants.Limits.MinConnectId || connectId > InterceptorConstants.Limits.MaxConnectId)
             {
-                Log.Warning(InterceptorConstants.LogMessages.ConnectIdOutOfRange, connectId);
                 return Task.FromResult(false);
             }
 
@@ -124,13 +114,4 @@ public class SecurityInterceptor(IDistributedCache cache) : Interceptor
         }
     }
 
-    private static void LogSecurityEvent(ServerCallContext context, string eventType)
-    {
-        string clientIp = context.GetHttpContext().Connection.RemoteIpAddress?.ToString() ?? InterceptorConstants.Connections.Unknown;
-        string methodName = context.Method;
-        string userAgent = context.GetHttpContext().Request.Headers.UserAgent.ToString();
-
-        Log.Information(InterceptorConstants.LogMessages.SecurityEvent,
-            eventType, methodName, clientIp, userAgent);
-    }
 }

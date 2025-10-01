@@ -94,8 +94,6 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
                     KeySplittingFailure.KeyDerivationFailed($"Failed to create identity keys: {keysResult.UnwrapErr().Message}"));
             }
 
-            Log.Information("Successfully derived identity keys from master key for membership {MembershipId}", membershipId);
-
             ed25519SkHandle = null;
             x25519SkHandle = null;
 
@@ -103,7 +101,7 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Unexpected error deriving identity keys from master key for membership {MembershipId}", membershipId);
+
             return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
                 KeySplittingFailure.KeyDerivationFailed("Unexpected error during identity key derivation", ex));
         }

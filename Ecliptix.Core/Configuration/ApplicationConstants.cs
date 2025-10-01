@@ -16,9 +16,7 @@ public static class ApplicationConstants
         public const string VerificationFlowManagerActor = "VerificationFlowManagerActor";
         public const string MembershipPersistorActor = "MembershipPersistorActor";
         public const string MembershipActor = "MembershipActor";
-        public const string AuthContextPersistorActor = "AuthContextPersistorActor";
         public const string MasterKeySharePersistorActor = "MasterKeySharePersistorActor";
-        public const string AuthenticationStateManager = "AuthenticationStateManager";
     }
 
     public static class Endpoints
@@ -77,25 +75,6 @@ public static class ApplicationConstants
         public const int InitialValue = 0;
         public const int WindowResetValue = 0;
         public const int SingleMinute = 1;
-        public const string DefaultCultureFallback = "en-US";
-    }
-
-    public static class LogMessages
-    {
-        public const string StartingApplication = "Starting Ecliptix application host";
-        public const string ApplicationTerminatedUnexpectedly = "Ecliptix application host terminated unexpectedly";
-        public const string ShuttingDownApplication = "Shutting down Ecliptix application host";
-        public const string ActorSystemStarted = "Actor system hosted service started - {ActorSystemName}";
-        public const string ActorSystemInitiatingShutdown = "Actor system hosted service initiating graceful shutdown...";
-        public const string ActorSystemShutdownCompleted = "Actor system coordinated shutdown completed successfully";
-        public const string ShutdownCancelledForcing = "Shutdown was cancelled by host, forcing actor system termination";
-        public const string ErrorDuringShutdownForcing = "Error during actor system shutdown, forcing termination";
-        public const string ActorSystemShutdownComplete = "Actor system hosted service shutdown complete";
-        public const string PhaseStopAcceptingConnections = "Phase: Stop accepting new connections";
-        public const string PhaseDrainingActiveRequests = "Phase: Draining active requests";
-        public const string ActiveRequestDrainingCompleted = "Active request draining completed";
-        public const string PhaseCleanupResources = "Phase: Cleaning up application resources";
-        public const string RateLimitExceeded = "Rate limit exceeded for {IpAddress}";
     }
 
     public static class HttpHeaders

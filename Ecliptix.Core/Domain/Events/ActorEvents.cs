@@ -35,7 +35,8 @@ public record InitializeProtocolWithMasterKeyActorEvent(
     uint ConnectId,
     EcliptixSystemIdentityKeys IdentityKeys,
     PubKeyExchange ClientPubKeyExchange,
-    Guid MembershipId);
+    Guid MembershipId,
+    byte[] RootKey);
 
 public record InitializeProtocolWithMasterKeyReply(PubKeyExchange ServerPubKeyExchange);
 

@@ -44,14 +44,12 @@ public class SecurityMiddleware(RequestDelegate next)
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.ResourceExhausted)
         {
-            Log.Warning(SecurityConstants.StatusMessages.ResourceExhaustionDetected,
-                context.Connection.RemoteIpAddress?.ToString(), ex.Message);
+
             throw;
         }
         catch (Exception ex)
         {
-            Log.Error(ex, SecurityConstants.StatusMessages.UnhandledException,
-                context.Connection.RemoteIpAddress?.ToString());
+
             throw;
         }
     }
@@ -84,12 +82,12 @@ public class SecurityMiddleware(RequestDelegate next)
         {
             if (header.Value.Any(v => v != null && v.Length > SecurityConstants.Limits.MaxHeaderLengthBytes))
             {
-                Log.Warning(SecurityConstants.StatusMessages.SuspiciousHeaderLength, header.Key);
+
                 return false;
             }
 
             if (!ContainsSuspiciousContent(header.Key)) continue;
-            Log.Warning(SecurityConstants.StatusMessages.SuspiciousHeaderName, header.Key);
+
             return false;
         }
 
@@ -125,6 +123,5 @@ public class SecurityMiddleware(RequestDelegate next)
             Timestamp = DateTimeOffset.UtcNow
         };
 
-        Log.Debug(SecurityConstants.StatusMessages.SecurityMiddlewareProcessing, info);
     }
 }

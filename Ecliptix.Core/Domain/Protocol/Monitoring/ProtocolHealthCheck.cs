@@ -87,7 +87,7 @@ public class ProtocolHealthCheck : IHealthCheck
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Health check failed");
+
             return Task.FromResult(HealthCheckResult.Unhealthy("Health check exception", ex));
         }
     }

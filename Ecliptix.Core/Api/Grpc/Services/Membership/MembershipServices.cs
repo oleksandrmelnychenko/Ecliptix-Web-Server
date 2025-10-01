@@ -2,7 +2,7 @@ using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Domain.Memberships.PhoneNumberValidation;
+using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
@@ -23,7 +23,7 @@ namespace Ecliptix.Core.Api.Grpc.Services.Membership;
 
 public class MembershipServices(
     IEcliptixActorRegistry actorRegistry,
-    IPhoneNumberValidator phoneNumberValidator,
+    IMobileNumberValidator phoneNumberValidator,
     IGrpcCipherService grpcCipherService
 ) : Protobuf.Membership.MembershipServices.MembershipServicesBase
 
@@ -37,8 +37,8 @@ public class MembershipServices(
         return await _baseService.ExecuteEncryptedOperationAsync<OpaqueSignInInitRequest, OpaqueSignInInitResponse>(request, context,
             async (message, connectId, ct) =>
             {
-                Result<PhoneNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
-                    phoneNumberValidator.ValidatePhoneNumber(message.MobileNumber, _cultureName);
+                Result<MobileNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
+                    phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
 
                 if (phoneNumberValidationResult.IsErr)
                 {
@@ -54,7 +54,7 @@ public class MembershipServices(
                     return Result<OpaqueSignInInitResponse, FailureBase>.Err(verificationFlowFailure);
                 }
 
-                PhoneNumberValidationResult phoneNumberResult = phoneNumberValidationResult.Unwrap();
+                MobileNumberValidationResult phoneNumberResult = phoneNumberValidationResult.Unwrap();
                 if (!phoneNumberResult.IsValid)
                 {
                     return Result<OpaqueSignInInitResponse, FailureBase>.Ok(new OpaqueSignInInitResponse
@@ -65,7 +65,7 @@ public class MembershipServices(
                 }
 
                 SignInMembershipActorEvent signInEvent = new(
-                    connectId, phoneNumberResult.ParsedPhoneNumberE164!, message, _cultureName);
+                    connectId, phoneNumberResult.ParsedMobileNumberE164!, message, _cultureName);
 
                 Result<OpaqueSignInInitResponse, VerificationFlowFailure> initSignInResult =
                     await _membershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent, ct);

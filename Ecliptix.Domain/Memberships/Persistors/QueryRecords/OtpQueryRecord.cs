@@ -4,7 +4,7 @@ public record OtpQueryRecord
 {
     public Guid UniqueIdentifier { get; init; }
     public Guid FlowUniqueId { get; init; }
-    public Guid PhoneNumberIdentifier { get; init; }
+    public Guid MobileNumberIdentifier { get; init; }
     public required string OtpHash { get; init; }
     public required string OtpSalt { get; init; }
     public required DateTime ExpiresAt { get; init; }

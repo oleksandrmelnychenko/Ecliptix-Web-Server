@@ -5,7 +5,7 @@ using System.Globalization;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Domain.Memberships.PhoneNumberValidation;
+using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
@@ -18,7 +18,7 @@ namespace Ecliptix.Core.Api.Grpc.Services.Authentication;
 
 public class VerificationFlowServices(
     IEcliptixActorRegistry actorRegistry,
-    IPhoneNumberValidator phoneNumberValidator,
+    IMobileNumberValidator phoneNumberValidator,
     IGrpcCipherService grpcCipherService)
     : AuthVerificationServices.AuthVerificationServicesBase
 {
@@ -79,105 +79,105 @@ public class VerificationFlowServices(
         }
     }
 
-    public override async Task<SecureEnvelope> ValidatePhoneNumber(SecureEnvelope request, ServerCallContext context) =>
-        await _baseService.ExecuteEncryptedOperationAsync<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(
+    public override async Task<SecureEnvelope> ValidateMobileNumber(SecureEnvelope request, ServerCallContext context) =>
+        await _baseService.ExecuteEncryptedOperationAsync<ValidateMobileNumberRequest, ValidateMobileNumberResponse>(
             request, context,
             async (message, _, ct) =>
             {
-                Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
-                    phoneNumberValidator.ValidatePhoneNumber(message.MobileNumber, _cultureName);
+                Result<MobileNumberValidationResult, VerificationFlowFailure> validationResult =
+                    phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
 
                 if (validationResult.IsErr)
                 {
-                    return Result<ValidatePhoneNumberResponse, FailureBase>.Err(validationResult.UnwrapErr());
+                    return Result<ValidateMobileNumberResponse, FailureBase>.Err(validationResult.UnwrapErr());
                 }
 
-                PhoneNumberValidationResult phoneValidationResult = validationResult.Unwrap();
+                MobileNumberValidationResult phoneValidationResult = validationResult.Unwrap();
 
                 if (phoneValidationResult.IsValid)
                 {
-                    EnsurePhoneNumberActorEvent ensurePhoneNumberEvent = new(
-                        phoneValidationResult.ParsedPhoneNumberE164!,
+                    EnsureMobileNumberActorEvent ensureMobileNumberEvent = new(
+                        phoneValidationResult.ParsedMobileNumberE164!,
                         phoneValidationResult.DetectedRegion,
                         Helpers.FromByteStringToGuid(message.AppDeviceIdentifier));
 
-                    Result<Guid, VerificationFlowFailure> ensurePhoneNumberResult = await _verificationFlowManagerActor
-                        .Ask<Result<Guid, VerificationFlowFailure>>(ensurePhoneNumberEvent, ct);
+                    Result<Guid, VerificationFlowFailure> ensureMobileNumberResult = await _verificationFlowManagerActor
+                        .Ask<Result<Guid, VerificationFlowFailure>>(ensureMobileNumberEvent, ct);
 
-                    ValidatePhoneNumberResponse response = ensurePhoneNumberResult.Match(
-                        guid => new ValidatePhoneNumberResponse
+                    ValidateMobileNumberResponse response = ensureMobileNumberResult.Match(
+                        guid => new ValidateMobileNumberResponse
                         {
                             MobileNumberIdentifier = Helpers.GuidToByteString(guid),
                             Result = VerificationResult.Succeeded
                         },
-                        failure => new ValidatePhoneNumberResponse
+                        failure => new ValidateMobileNumberResponse
                         {
                             MobileNumberIdentifier = ByteString.Empty,
-                            Result = VerificationResult.InvalidPhone,
+                            Result = VerificationResult.InvalidMobile,
                             Message = failure.Message
                         });
 
-                    return Result<ValidatePhoneNumberResponse, FailureBase>.Ok(response);
+                    return Result<ValidateMobileNumberResponse, FailureBase>.Ok(response);
                 }
                 else
                 {
-                    ValidatePhoneNumberResponse response = new()
+                    ValidateMobileNumberResponse response = new()
                     {
-                        Result = VerificationResult.InvalidPhone,
+                        Result = VerificationResult.InvalidMobile,
                         Message = phoneValidationResult.MessageKey
                     };
-                    return Result<ValidatePhoneNumberResponse, FailureBase>.Ok(response);
+                    return Result<ValidateMobileNumberResponse, FailureBase>.Ok(response);
                 }
             });
 
-    public override async Task<SecureEnvelope> RecoverySecretKeyPhoneVerification(SecureEnvelope request,
+    public override async Task<SecureEnvelope> RecoverySecretKeyMobileVerification(SecureEnvelope request,
         ServerCallContext context) =>
-        await _baseService.ExecuteEncryptedOperationAsync<ValidatePhoneNumberRequest, ValidatePhoneNumberResponse>(
+        await _baseService.ExecuteEncryptedOperationAsync<ValidateMobileNumberRequest, ValidateMobileNumberResponse>(
             request, context,
             async (message, _, ct) =>
             {
-                Result<PhoneNumberValidationResult, VerificationFlowFailure> validationResult =
-                    phoneNumberValidator.ValidatePhoneNumber(message.MobileNumber, _cultureName);
+                Result<MobileNumberValidationResult, VerificationFlowFailure> validationResult =
+                    phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
                 if (validationResult.IsErr)
                 {
-                    return Result<ValidatePhoneNumberResponse, FailureBase>.Err(validationResult.UnwrapErr());
+                    return Result<ValidateMobileNumberResponse, FailureBase>.Err(validationResult.UnwrapErr());
                 }
 
-                PhoneNumberValidationResult phoneValidationResult = validationResult.Unwrap();
+                MobileNumberValidationResult phoneValidationResult = validationResult.Unwrap();
 
                 if (phoneValidationResult.IsValid)
                 {
-                    VerifyPhoneForSecretKeyRecoveryActorEvent verifyPhoneEvent = new(
-                        phoneValidationResult.ParsedPhoneNumberE164!,
+                    VerifyMobileForSecretKeyRecoveryActorEvent verifyMobileEvent = new(
+                        phoneValidationResult.ParsedMobileNumberE164!,
                         phoneValidationResult.DetectedRegion);
 
-                    Result<Guid, VerificationFlowFailure> verifyPhoneResult = await _verificationFlowManagerActor
-                        .Ask<Result<Guid, VerificationFlowFailure>>(verifyPhoneEvent, ct);
+                    Result<Guid, VerificationFlowFailure> verifyMobileResult = await _verificationFlowManagerActor
+                        .Ask<Result<Guid, VerificationFlowFailure>>(verifyMobileEvent, ct);
 
-                    ValidatePhoneNumberResponse response = verifyPhoneResult.Match(
-                        guid => new ValidatePhoneNumberResponse
+                    ValidateMobileNumberResponse response = verifyMobileResult.Match(
+                        guid => new ValidateMobileNumberResponse
                         {
                             MobileNumberIdentifier = Helpers.GuidToByteString(guid),
                             Result = VerificationResult.Succeeded
                         },
-                        failure => new ValidatePhoneNumberResponse
+                        failure => new ValidateMobileNumberResponse
                         {
                             MobileNumberIdentifier = ByteString.Empty,
-                            Result = VerificationResult.InvalidPhone,
+                            Result = VerificationResult.InvalidMobile,
                             Message = failure.Message
                         }
                     );
 
-                    return Result<ValidatePhoneNumberResponse, FailureBase>.Ok(response);
+                    return Result<ValidateMobileNumberResponse, FailureBase>.Ok(response);
                 }
                 else
                 {
-                    ValidatePhoneNumberResponse response = new()
+                    ValidateMobileNumberResponse response = new()
                     {
-                        Result = VerificationResult.InvalidPhone,
+                        Result = VerificationResult.InvalidMobile,
                         Message = phoneValidationResult.MessageKey
                     };
-                    return Result<ValidatePhoneNumberResponse, FailureBase>.Ok(response);
+                    return Result<ValidateMobileNumberResponse, FailureBase>.Ok(response);
                 }
             });
 

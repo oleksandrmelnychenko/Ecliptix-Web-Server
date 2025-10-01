@@ -7,6 +7,6 @@ option csharp_namespace = "Ecliptix.Protobuf.Membership";
 service AuthVerificationServices {
   rpc InitiateVerification(ecliptix.proto.common.SecureEnvelope) returns (stream ecliptix.proto.common.SecureEnvelope);
   rpc VerifyOtp(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
-  rpc ValidatePhoneNumber(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
-  rpc RecoverySecretKeyPhoneVerification(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc ValidateMobileNumber(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc RecoverySecretKeyMobileVerification(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
 }

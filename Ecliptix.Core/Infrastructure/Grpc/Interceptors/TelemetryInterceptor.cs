@@ -11,8 +11,6 @@ namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 public class TelemetryInterceptor : Interceptor, IDisposable
 {
     private static readonly ActivitySource ActivitySource = new(InterceptorConstants.Telemetry.GrpcInterceptorsActivitySource);
-    private static readonly ConcurrentDictionary<string, DateTime> LastLogTimes = new();
-    private static readonly TimeSpan LogThrottleInterval = TimeSpan.FromSeconds(InterceptorConstants.Thresholds.LogThrottleIntervalSeconds);
     private static readonly Meter TelemetryMeter = new(InterceptorConstants.Telemetry.GrpcTelemetryMeter);
     private static readonly Counter<int> RequestsTotal = TelemetryMeter.CreateCounter<int>(
         InterceptorConstants.Metrics.GrpcRequestsTotal, 
@@ -37,9 +35,6 @@ public class TelemetryInterceptor : Interceptor, IDisposable
 
         try
         {
-            LogRateLimited($"{InterceptorConstants.LogPrefixes.GrpcStart}{methodName}", 
-                () => Log.Debug(InterceptorConstants.LogMessages.GrpcCallStart, methodName));
-
             RequestsTotal.Add(InterceptorConstants.Numbers.One);
             TResponse response = await continuation(request, context);
 
@@ -49,16 +44,6 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             activity?.SetTag(InterceptorConstants.Tags.GrpcStatus, InterceptorConstants.StatusMessages.Ok);
             activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
             activity?.SetTag(InterceptorConstants.Tags.GrpcResponseSize, EstimateResponseSize(response));
-
-            LogRateLimited($"{InterceptorConstants.LogPrefixes.GrpcSuccess}{methodName}", 
-                () => Log.Information(InterceptorConstants.LogMessages.GrpcCallCompleted,
-                    methodName, duration));
-
-            if (duration > InterceptorConstants.Thresholds.SlowRequestThresholdMs)
-            {
-                Log.Warning(InterceptorConstants.LogMessages.SlowGrpcCall,
-                    methodName, duration);
-            }
 
             return response;
         }
@@ -70,9 +55,6 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             activity?.SetTag(InterceptorConstants.Tags.GrpcStatus, rpcEx.StatusCode.ToString());
             activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
             activity?.SetTag(InterceptorConstants.Tags.GrpcError, true);
-
-            Log.Warning(InterceptorConstants.LogMessages.GrpcCallFailed,
-                methodName, rpcEx.StatusCode, duration, rpcEx.Message);
 
             throw;
         }
@@ -111,8 +93,6 @@ public class TelemetryInterceptor : Interceptor, IDisposable
 
         try
         {
-            Log.Debug(InterceptorConstants.LogMessages.GrpcStreamingStart, methodName, clientHash);
-
             TelemetryServerStreamWriter<TResponse> wrappedStream = new TelemetryServerStreamWriter<TResponse>(responseStream, activity);
 
             await continuation(request, wrappedStream, context);
@@ -123,9 +103,6 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             activity?.SetTag(InterceptorConstants.Tags.GrpcStatus, InterceptorConstants.StatusMessages.Ok);
             activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
             activity?.SetTag(InterceptorConstants.Tags.GrpcMessagesSent, wrappedStream.MessagesSent);
-
-            Log.Information(InterceptorConstants.LogMessages.GrpcStreamingCompleted,
-                methodName, duration, clientHash, wrappedStream.MessagesSent);
         }
         catch (Exception ex)
         {
@@ -174,31 +151,6 @@ public class TelemetryInterceptor : Interceptor, IDisposable
         }
     }
 
-    private static void LogRateLimited(string key, Action logAction)
-    {
-        DateTime now = DateTime.UtcNow;
-        if (!LastLogTimes.TryGetValue(key, out DateTime lastTime) || 
-            now - lastTime >= LogThrottleInterval)
-        {
-            LastLogTimes.AddOrUpdate(key, now, (_, _) => now);
-            logAction();
-
-            if (LastLogTimes.Count > InterceptorConstants.Limits.MaxLogTimesCount)
-            {
-                DateTime cutoff = now - TimeSpan.FromMinutes(InterceptorConstants.Thresholds.CacheCleanupIntervalMinutes);
-                List<string> toRemove = LastLogTimes
-                    .Where(kvp => kvp.Value < cutoff)
-                    .Take(InterceptorConstants.Limits.CleanupBatchSize)
-                    .Select(kvp => kvp.Key)
-                    .ToList();
-
-                foreach (string oldKey in toRemove)
-                {
-                    LastLogTimes.TryRemove(oldKey, out _);
-                }
-            }
-        }
-    }
 
     private static string GetClientIdentifierHash(ServerCallContext context)
     {

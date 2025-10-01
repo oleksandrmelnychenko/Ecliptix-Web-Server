@@ -19,7 +19,6 @@ public sealed class CertificatePinningServiceHost(
             throw new InvalidOperationException($"Server security initialization failed: {initResult.UnwrapErr()}");
         }
 
-        Log.Information("SSL/RSA server security service initialized successfully");
         return Task.CompletedTask;
     }
 

@@ -102,8 +102,6 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
 
     protected override KeySplittingFailure MapDbException(DbException ex)
     {
-        Log.Error(ex, "Database exception in {ActorType}: {ExceptionType} - {Message}",
-            GetType().Name, ex.GetType().Name, ex.Message);
 
         if (ex is SqlException sqlEx)
         {
@@ -124,14 +122,13 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
 
     protected override KeySplittingFailure CreateTimeoutFailure(TimeoutException ex)
     {
-        Log.Error(ex, "Timeout exception in {ActorType}: Operation timed out", GetType().Name);
+
         return KeySplittingFailure.KeySplittingFailed("Database operation timed out", ex);
     }
 
     protected override KeySplittingFailure CreateGenericFailure(Exception ex)
     {
-        Log.Error(ex, "Generic exception in {ActorType}: {ExceptionType} - {Message}",
-            GetType().Name, ex.GetType().Name, ex.Message);
+
         return KeySplittingFailure.KeySplittingFailed($"Unexpected error in master key share persistor: {ex.Message}", ex);
     }
 
