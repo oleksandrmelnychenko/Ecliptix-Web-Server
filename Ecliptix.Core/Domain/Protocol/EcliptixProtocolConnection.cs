@@ -559,7 +559,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
             RandomNumberGenerator.Fill(nonceBuffer.AsSpan(0, 8));
 
             long nextCounter = Interlocked.Increment(ref _nonceCounter);
-            if (nextCounter >= uint.MaxValue)
+            if (nextCounter > ProtocolConstants.Protocol.MaxNonceCounter)
             {
                 return Result<byte[], EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic("Nonce counter overflow detected - connection must be rekeyed"));

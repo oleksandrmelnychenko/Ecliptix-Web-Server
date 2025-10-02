@@ -62,7 +62,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         DynamicParameters parameters = new();
         parameters.Add("@AppDeviceId", cmd.AppDeviceId);
-        parameters.Add("@MobileUniqueId", cmd.MobileNumberId);
+        parameters.Add("@MobileNumberUniqueId", cmd.MobileNumberUniqueId);
         parameters.Add("@Purpose", cmd.Purpose.ToString().ToLowerInvariant());
         parameters.Add("@ConnectionId", (long?)cmd.ConnectId);
 
@@ -151,12 +151,25 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         DynamicParameters parameters = new DynamicParameters();
         parameters.Add("@FlowUniqueId", cmd.FlowIdentifier);
         parameters.Add("@NewStatus", cmd.Status.ToString().ToLowerInvariant());
-        parameters.Add("@rowsAffected", dbType: DbType.Int32, direction: ParameterDirection.ReturnValue);
 
-        await conn.ExecuteAsync("dbo.SP_UpdateVerificationFlowStatus", parameters,
+        UpdateVerificationFlowStatusResult? result = await conn.QuerySingleOrDefaultAsync<UpdateVerificationFlowStatusResult>(
+            "dbo.SP_UpdateVerificationFlowStatus",
+            parameters,
             commandType: CommandType.StoredProcedure);
 
-        return Result<int, VerificationFlowFailure>.Ok(parameters.Get<int>("@rowsAffected"));
+        if (result is null)
+        {
+            return Result<int, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess("Update verification flow status failed - no result returned"));
+        }
+
+        if (result.Outcome != "updated")
+        {
+            return Result<int, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess(result.ErrorMessage ?? result.Outcome));
+        }
+
+        return Result<int, VerificationFlowFailure>.Ok(result.RowsAffected);
     }
 
     private static async Task<Result<CreateOtpResult, VerificationFlowFailure>> CreateOtpAsync(IDbConnection conn,
@@ -241,18 +254,30 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             : Result<Guid, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(result.Outcome));
     }
 
-    private async Task<Result<Unit, VerificationFlowFailure>> ExpireAssociatedOtpAsync(IDbConnection conn, 
+    private async Task<Result<Unit, VerificationFlowFailure>> ExpireAssociatedOtpAsync(IDbConnection conn,
         ExpireAssociatedOtpActorEvent cmd)
     {
         DynamicParameters parameters = new();
         parameters.Add("@FlowUniqueId", cmd.FlowUniqueId);
 
-        await conn.ExecuteAsync(
+        ExpireAssociatedOtpResult? result = await conn.QuerySingleOrDefaultAsync<ExpireAssociatedOtpResult>(
             "dbo.SP_ExpireAssociatedOtp",
             parameters,
             commandType: CommandType.StoredProcedure);
 
-        return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+        if (result is null)
+        {
+            return Result<Unit, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess("Expire associated OTP failed - no result returned"));
+        }
+
+        if (result.Outcome == "expired")
+        {
+            return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+        }
+
+        return Result<Unit, VerificationFlowFailure>.Err(
+            VerificationFlowFailure.PersistorAccess(result.ErrorMessage ?? result.Outcome));
     }
 
     private static Result<VerificationFlowQueryRecord, VerificationFlowFailure> MapToVerificationFlowRecord(

@@ -21,6 +21,11 @@ public static class ProtocolConstants
         public const int MessageWindowSizeMinutes = 1;
     }
 
+    public static class Protocol
+    {
+        public const long MaxNonceCounter = 10_000_000;
+    }
+
     public static class Messages
     {
         public const string BufferNull = "Buffer cannot be null";

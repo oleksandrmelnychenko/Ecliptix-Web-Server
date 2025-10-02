@@ -4,7 +4,7 @@ namespace Ecliptix.Domain.Memberships.ActorEvents;
 
 public record InitiateFlowAndReturnStateActorEvent(
     Guid AppDeviceId,
-    Guid MobileNumberId,
+    Guid MobileNumberUniqueId,
     VerificationPurpose Purpose,
     uint? ConnectId
 );

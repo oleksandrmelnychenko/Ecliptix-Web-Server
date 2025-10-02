@@ -239,15 +239,25 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
             rootKeyHandle = sharedSecretResult.Unwrap();
 
-            Result<byte[], EcliptixProtocolFailure> rootKeyResult =
-                ReadAndWipeSecureHandle(rootKeyHandle, Constants.X25519KeySize);
-            if (rootKeyResult.IsErr)
-                return Result<PubKeyExchange, EcliptixProtocolFailure>.Err(rootKeyResult.UnwrapErr());
+            byte[] rootKeyBytes = new byte[Constants.X25519KeySize];
+            Result<Unit, SodiumFailure> readResult = rootKeyHandle.Read(rootKeyBytes);
+            if (readResult.IsErr)
+            {
+                SodiumInterop.SecureWipe(rootKeyBytes);
+                return Result<PubKeyExchange, EcliptixProtocolFailure>.Err(readResult.UnwrapErr().ToEcliptixProtocolFailure());
+            }
 
-            byte[] rootKeyBytes = rootKeyResult.Unwrap();
             ReadOnlySpan<byte> dhKeySpan = peerInitialMessageProto.InitialDhPublicKey.Span;
             byte[] dhKeyBytes = new byte[dhKeySpan.Length];
             dhKeySpan.CopyTo(dhKeyBytes);
+
+            Result<Unit, EcliptixProtocolFailure> dhKeyValidation = DhValidator.ValidateX25519PublicKey(dhKeyBytes);
+            if (dhKeyValidation.IsErr)
+            {
+                SodiumInterop.SecureWipe(rootKeyBytes);
+                SodiumInterop.SecureWipe(dhKeyBytes);
+                return Result<PubKeyExchange, EcliptixProtocolFailure>.Err(dhKeyValidation.UnwrapErr());
+            }
 
             Result<Unit, EcliptixProtocolFailure> finalizeResult;
             try
@@ -495,15 +505,25 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
             rootKeyHandle = sharedSecretResult.Unwrap();
 
-            Result<byte[], EcliptixProtocolFailure> rootKeyResult =
-                ReadAndWipeSecureHandle(rootKeyHandle, Constants.X25519KeySize);
-            if (rootKeyResult.IsErr)
-                return Result<Unit, EcliptixProtocolFailure>.Err(rootKeyResult.UnwrapErr());
+            byte[] rootKeyBytes = new byte[Constants.X25519KeySize];
+            Result<Unit, SodiumFailure> readResult = rootKeyHandle.Read(rootKeyBytes);
+            if (readResult.IsErr)
+            {
+                SodiumInterop.SecureWipe(rootKeyBytes);
+                return Result<Unit, EcliptixProtocolFailure>.Err(readResult.UnwrapErr().ToEcliptixProtocolFailure());
+            }
 
-            byte[] rootKeyBytes = rootKeyResult.Unwrap();
             ReadOnlySpan<byte> dhKeySpan = peerMessage.InitialDhPublicKey.Span;
             byte[] dhKeyBytes = new byte[dhKeySpan.Length];
             dhKeySpan.CopyTo(dhKeyBytes);
+
+            Result<Unit, EcliptixProtocolFailure> dhKeyValidation = DhValidator.ValidateX25519PublicKey(dhKeyBytes);
+            if (dhKeyValidation.IsErr)
+            {
+                SodiumInterop.SecureWipe(rootKeyBytes);
+                SodiumInterop.SecureWipe(dhKeyBytes);
+                return Result<Unit, EcliptixProtocolFailure>.Err(dhKeyValidation.UnwrapErr());
+            }
 
             Result<Unit, EcliptixProtocolFailure> finalizeResult;
             try
@@ -954,20 +974,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         return Result<byte[], EcliptixProtocolFailure>.Ok(dhKey);
     }
 
-    private static Result<byte[], EcliptixProtocolFailure> ReadAndWipeSecureHandle(SodiumSecureMemoryHandle handle,
-        int size)
-    {
-        byte[] buffer = new byte[size];
-        Result<Unit, SodiumFailure> readResult = handle.Read(buffer);
-        if (readResult.IsErr)
-            return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr().ToEcliptixProtocolFailure());
-        byte[] copy = (byte[])buffer.Clone();
-        Result<Unit, SodiumFailure> wipeResult = SodiumInterop.SecureWipe(buffer);
-        if (wipeResult.IsErr)
-            return Result<byte[], EcliptixProtocolFailure>.Err(wipeResult.UnwrapErr().ToEcliptixProtocolFailure());
-        return Result<byte[], EcliptixProtocolFailure>.Ok(copy);
-    }
-
     private static Result<RatchetChainKey, EcliptixProtocolFailure> CloneRatchetChainKey(RatchetChainKey key)
     {
         byte[]? keyMaterial = null;
@@ -1235,8 +1241,13 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
             CorePublicKeyBundle storedBundle = storedBundleResult.Unwrap();
 
-            bool x25519Matches = currentBundle.IdentityX25519PublicKey.Span.SequenceEqual(storedBundle.IdentityX25519);
-            bool ed25519Matches = currentBundle.IdentityPublicKey.Span.SequenceEqual(storedBundle.IdentityEd25519);
+            Result<bool, SodiumFailure> x25519ComparisonResult =
+                SodiumInterop.ConstantTimeEquals(currentBundle.IdentityX25519PublicKey.Span, storedBundle.IdentityX25519);
+            Result<bool, SodiumFailure> ed25519ComparisonResult =
+                SodiumInterop.ConstantTimeEquals(currentBundle.IdentityPublicKey.Span, storedBundle.IdentityEd25519);
+
+            bool x25519Matches = x25519ComparisonResult.IsOk && x25519ComparisonResult.Unwrap();
+            bool ed25519Matches = ed25519ComparisonResult.IsOk && ed25519ComparisonResult.Unwrap();
 
             if (!x25519Matches || !ed25519Matches)
             {
@@ -1287,7 +1298,9 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
             CorePublicKeyBundle storedBundle = storedBundleResult.Unwrap();
 
-            if (!currentBundle.IdentityX25519PublicKey.Span.SequenceEqual(storedBundle.IdentityX25519))
+            Result<bool, SodiumFailure> x25519ComparisonResult =
+                SodiumInterop.ConstantTimeEquals(currentBundle.IdentityX25519PublicKey.Span, storedBundle.IdentityX25519);
+            if (!x25519ComparisonResult.IsOk || !x25519ComparisonResult.Unwrap())
             {
                 return Result<Unit, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic(
@@ -1295,7 +1308,9 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                         $"received: {Convert.ToHexString(currentBundle.IdentityX25519PublicKey.Span)}"));
             }
 
-            if (!currentBundle.IdentityPublicKey.Span.SequenceEqual(storedBundle.IdentityEd25519))
+            Result<bool, SodiumFailure> ed25519ComparisonResult =
+                SodiumInterop.ConstantTimeEquals(currentBundle.IdentityPublicKey.Span, storedBundle.IdentityEd25519);
+            if (!ed25519ComparisonResult.IsOk || !ed25519ComparisonResult.Unwrap())
             {
                 return Result<Unit, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic(

@@ -55,25 +55,26 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         DynamicParameters parameters = new();
         parameters.Add("@MobileNumber", cmd.MobileNumber, DbType.String, ParameterDirection.Input);
-        parameters.Add("@MembershipUniqueId", dbType: DbType.Guid, direction: ParameterDirection.Output);
-        parameters.Add("@Status", dbType: DbType.String, direction: ParameterDirection.Output, size: 20);
-        parameters.Add("@Outcome", dbType: DbType.String, direction: ParameterDirection.Output, size: 500);
-        parameters.Add("@SecureKey", dbType: DbType.Binary, direction: ParameterDirection.Output,size:-1);
-        parameters.Add("@MaskingKey", dbType: DbType.Binary, direction: ParameterDirection.Output,size:32);
-        parameters.Add("@ErrorMessage", dbType: DbType.String, direction: ParameterDirection.Output, size: 500);
 
-        await connection.ExecuteAsync(
+        LoginMembershipResult? result = await connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
             "dbo.SP_LoginMembership",
             parameters,
             commandType: CommandType.StoredProcedure
         );
 
-        string? outcome = parameters.Get<string>("@Outcome");
-        Guid? membershipUniqueId = parameters.Get<Guid?>("@MembershipUniqueId");
-        string? status = parameters.Get<string>("@Status");
-        byte[]? secureKey = parameters.Get<byte[]>("@SecureKey");
-        byte[]? maskingKey = parameters.Get<byte[]>("@MaskingKey");
-        string? errorMessage = parameters.Get<string>("@ErrorMessage");
+        if (result is null)
+        {
+            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess(
+                    "Login membership failed - stored procedure returned null result"));
+        }
+
+        string outcome = result.Outcome;
+        Guid? membershipUniqueId = result.MembershipUniqueId;
+        string? status = result.Status;
+        byte[]? secureKey = result.SecureKey;
+        byte[]? maskingKey = result.MaskingKey;
+        string? errorMessage = result.ErrorMessage;
 
         if (string.IsNullOrEmpty(outcome))
         {
