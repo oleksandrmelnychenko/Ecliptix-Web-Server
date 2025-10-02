@@ -21,6 +21,11 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <TargetPath>libopaque_server.dll</TargetPath>
     </Content>
+    <Content Include="NativeLibraries\dependencies\libsodium.dll"
+             Condition="('$(RuntimeIdentifier)' == 'win-x64' OR ('$(RuntimeIdentifier)' == '' AND $([MSBuild]::IsOSPlatform('Windows')))) AND Exists('NativeLibraries\windows\libopaque_server.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>libsodium.dll</TargetPath>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

@@ -32,6 +32,12 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <TargetPath>libcertificate.pinning.server.dll</TargetPath>
         </Content>
+
+        <Content Include="NativeLibraries\dependencies\libcrypto-3-x64.dll"
+                 Condition="('$(RuntimeIdentifier)' == 'win-x64' OR ('$(RuntimeIdentifier)' == '' AND $([MSBuild]::IsOSPlatform('Windows')))) AND Exists('NativeLibraries\windows\libcertificate.pinning.server.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <TargetPath>libcrypto-3-x64.dll</TargetPath>
+        </Content>
     </ItemGroup>
 
     <!-- Runtime-specific native assets for deployment -->
