@@ -19,7 +19,6 @@ using Ecliptix.Core.Api.Grpc.Services.Authentication;
 using Ecliptix.Core.Api.Grpc.Services.Device;
 using Ecliptix.Core.Api.Grpc.Services.Membership;
 using Ecliptix.Core.Configuration;
-using Ecliptix.Core.Domain.Protocol.Monitoring;
 using Ecliptix.Core.Infrastructure.Crypto;
 using Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
@@ -170,9 +169,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
         return new RsaSecureChannelEstablisher(rsaChunkProcessor, certificatePinningService, protocolActor);
     });
 
-    builder.Services.AddHealthChecks()
-        .AddCheck<VerificationFlowHealthCheck>(AppConstants.HealthChecks.VerificationFlowHealth)
-        .AddCheck<DatabaseHealthCheck>(AppConstants.HealthChecks.DatabaseHealth);
+    builder.Services.AddHealthChecks();
 
     builder.Services.AddHostedService<CertificatePinningServiceHost>();
     builder.Services.AddHostedService<ActorSystemInitializationHost>();

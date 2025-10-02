@@ -110,25 +110,16 @@ public class VerificationFlowManagerActor : ReceiveActor
     private void HandleFlowCompletedGracefully(FlowCompletedGracefullyActorEvent actorEvent)
     {
         IActorRef completedActor = actorEvent.ActorRef;
-        if (_flowWriters.TryGetValue(completedActor,
-                out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? _))
-        {
-            _flowWriters.Remove(completedActor);
-
-        }
-        else
-        {
-
-        }
+        _flowWriters.Remove(completedActor,
+            out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? _);
     }
 
     private void HandleTerminated(Terminated terminatedMessage)
     {
         IActorRef deadActor = terminatedMessage.ActorRef;
-        if (_flowWriters.TryGetValue(deadActor,
+        if (_flowWriters.Remove(deadActor,
                 out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? writer))
         {
-            _flowWriters.Remove(deadActor);
             if (terminatedMessage is { ExistenceConfirmed: true, AddressTerminated: false })
             {
 
@@ -149,10 +140,6 @@ public class VerificationFlowManagerActor : ReceiveActor
 
                 }
             }
-        }
-        else
-        {
-
         }
     }
 
