@@ -65,7 +65,7 @@ public class ShieldProDoubleRatchetTests
             if (cipherResult.IsErr) Assert.Fail($"Alice failed to produce message {i}: {cipherResult.UnwrapErr()}");
             SecureEnvelope cipher = cipherResult.Unwrap();
 
-            Result<byte[], EcliptixProtocolFailure> decryptResult = _bobEcliptixProtocolSystem.ProcessInboundMessage(cipher);
+            Result<byte[], EcliptixProtocolFailure> decryptResult = _bobEcliptixProtocolSystem.ProcessInboundEnvelope(cipher);
             if (decryptResult.IsErr) Assert.Fail($"Bob failed to process message {i}: {decryptResult.UnwrapErr()}");
         }
 
@@ -136,7 +136,7 @@ public class ShieldProDoubleRatchetTests
 
                     // Note: Metadata is now encrypted - DH ratchet verification done via successful decryption
 
-                    Result<byte[], EcliptixProtocolFailure> bobPlaintextResult = bob.ProcessInboundMessage(aliceCipher);
+                    Result<byte[], EcliptixProtocolFailure> bobPlaintextResult = bob.ProcessInboundEnvelope(aliceCipher);
                     if (bobPlaintextResult.IsErr)
                         throw new AssertFailedException(
                             $"[Session {testSessionId}] Bob failed to decrypt Alice msg {j + 1}: {bobPlaintextResult.UnwrapErr()}");
@@ -151,7 +151,7 @@ public class ShieldProDoubleRatchetTests
 
                     // Note: Metadata is now encrypted - DH ratchet verification done via successful decryption
 
-                    Result<byte[], EcliptixProtocolFailure> alicePlaintextResult = alice.ProcessInboundMessage(bobCipher);
+                    Result<byte[], EcliptixProtocolFailure> alicePlaintextResult = alice.ProcessInboundEnvelope(bobCipher);
                     if (alicePlaintextResult.IsErr)
                         throw new AssertFailedException(
                             $"[Session {testSessionId}] Alice failed to decrypt Bob msg {j + 1}: {alicePlaintextResult.UnwrapErr()}");
@@ -181,7 +181,7 @@ public class ShieldProDoubleRatchetTests
                 Assert.Fail($"[Iteration {i}] Alice failed to produce message: {alicePayloadResult.UnwrapErr()}");
             SecureEnvelope alicePayload = alicePayloadResult.Unwrap();
 
-            Result<byte[], EcliptixProtocolFailure> bobDecryptedResult = _bobEcliptixProtocolSystem.ProcessInboundMessage(alicePayload);
+            Result<byte[], EcliptixProtocolFailure> bobDecryptedResult = _bobEcliptixProtocolSystem.ProcessInboundEnvelope(alicePayload);
             if (bobDecryptedResult.IsErr)
                 Assert.Fail($"[Iteration {i}] Bob failed to decrypt Alice's message: {bobDecryptedResult.UnwrapErr()}");
             CollectionAssert.AreEqual(alicePlaintextBytes, bobDecryptedResult.Unwrap());
@@ -193,7 +193,7 @@ public class ShieldProDoubleRatchetTests
                 Assert.Fail($"[Iteration {i}] Bob failed to produce response: {bobPayloadResult.UnwrapErr()}");
             SecureEnvelope bobPayload = bobPayloadResult.Unwrap();
 
-            Result<byte[], EcliptixProtocolFailure> aliceDecryptedResult = _aliceEcliptixProtocolSystem.ProcessInboundMessage(bobPayload);
+            Result<byte[], EcliptixProtocolFailure> aliceDecryptedResult = _aliceEcliptixProtocolSystem.ProcessInboundEnvelope(bobPayload);
             if (aliceDecryptedResult.IsErr)
                 Assert.Fail(
                     $"[Iteration {i}] Alice failed to decrypt Bob's response: {aliceDecryptedResult.UnwrapErr()}");

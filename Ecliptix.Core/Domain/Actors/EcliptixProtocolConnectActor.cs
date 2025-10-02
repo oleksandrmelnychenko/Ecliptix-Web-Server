@@ -594,7 +594,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         }
 
         Context.GetLogger().Info("[DECRYPT] Using protocol system for type {0}", actorEvent.PubKeyExchangeType);
-        Result<byte[], EcliptixProtocolFailure> result = system.ProcessInboundMessage(actorEvent.SecureEnvelope);
+        Result<byte[], EcliptixProtocolFailure> result = system.ProcessInboundEnvelope(actorEvent.SecureEnvelope);
         if (result.IsErr)
         {
             EcliptixProtocolFailure error = result.UnwrapErr();
@@ -862,7 +862,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
         Context.GetLogger().Info("[ENCRYPT_COMPONENTS] Using protocol system for type {0}", cmd.ExchangeType);
         Result<(EnvelopeMetadata Header, byte[] EncryptedPayload), EcliptixProtocolFailure> result =
-            system.ProduceOutboundMessageComponents(cmd.Payload);
+            system.ProduceOutboundEnvelopeMaterials(cmd.Payload);
 
         if (result.IsErr)
         {
@@ -911,7 +911,7 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
         Context.GetLogger().Info("[DECRYPT_WITH_HEADER] Using protocol system for type {0}", cmd.ExchangeType);
         Result<byte[], EcliptixProtocolFailure> result =
-            system.ProcessInboundMessageFromComponents(cmd.Metadata, cmd.EncryptedPayload);
+            system.ProcessInboundEnvelopeFromMaterials(cmd.Metadata, cmd.EncryptedPayload);
 
         if (result.IsErr)
         {

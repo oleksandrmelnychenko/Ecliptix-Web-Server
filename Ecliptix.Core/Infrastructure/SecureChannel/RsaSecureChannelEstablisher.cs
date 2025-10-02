@@ -1,6 +1,5 @@
 using Akka.Actor;
 using Ecliptix.Core.Domain.Events;
-using Ecliptix.Core.Infrastructure.Builders;
 using Ecliptix.Core.Infrastructure.Crypto;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
@@ -105,9 +104,23 @@ public class RsaSecureChannelEstablisher(
 
     private static SecureEnvelope CreateSecureResponseEnvelope(uint connectId, byte[] encryptedPayload)
     {
-        return SecureEnvelopeBuilder
-            .CreateResponse(connectId)
-            .WithEncryptedPayload(encryptedPayload)
-            .Build();
+        EnvelopeMetadata metadata = new()
+        {
+            EnvelopeId = connectId.ToString(),
+            ChannelKeyId = ByteString.Empty,
+            Nonce = ByteString.Empty,
+            RatchetIndex = 0,
+            EnvelopeType = EnvelopeType.Response
+        };
+
+        return new SecureEnvelope
+        {
+            MetaData = metadata.ToByteString(),
+            EncryptedPayload = ByteString.CopyFrom(encryptedPayload),
+            ResultCode = ByteString.CopyFrom(BitConverter.GetBytes((int)EnvelopeResultCode.Success)),
+            Timestamp = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+            HeaderNonce = ByteString.Empty,
+            DhPublicKey = ByteString.Empty
+        };
     }
 }

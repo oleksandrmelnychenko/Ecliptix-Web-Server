@@ -171,7 +171,6 @@ static void ConfigureServices(WebApplicationBuilder builder)
     });
 
     builder.Services.AddHealthChecks()
-        .AddCheck<ProtocolHealthCheck>(AppConstants.HealthChecks.ProtocolHealth)
         .AddCheck<VerificationFlowHealthCheck>(AppConstants.HealthChecks.VerificationFlowHealth)
         .AddCheck<DatabaseHealthCheck>(AppConstants.HealthChecks.DatabaseHealth);
 
@@ -243,30 +242,18 @@ static void ConfigureEndpoints(WebApplication app)
 
     app.MapHealthChecks(AppConstants.Endpoints.Health);
 
-    app.MapGet(AppConstants.Endpoints.Metrics, async (IServiceProvider services) =>
+    app.MapGet(AppConstants.Endpoints.Metrics, () =>
     {
-        try
-        {
-            ActorSystem actorSystem = services.GetRequiredService<ActorSystem>();
-            ProtocolHealthCheck healthCheck = new(actorSystem);
+        HealthMetricsResponse response = new(
+            new HealthStatus(
+                "Healthy",
+                "Metrics endpoint available",
+                null
+            ),
+            DateTime.UtcNow
+        );
 
-            HealthCheckResult healthResult = await healthCheck.CheckHealthAsync(new HealthCheckContext());
-            HealthMetricsResponse response = new(
-                new HealthStatus(
-                    healthResult.Status.ToString(),
-                    healthResult.Description,
-                    healthResult.Data?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
-                ),
-                DateTime.UtcNow
-            );
-
-            return Results.Json(response, AppJsonSerializerContext.Default.HealthMetricsResponse);
-        }
-        catch (Exception ex)
-        {
-            ErrorResponse errorResponse = new(ex.Message);
-            return Results.Json(errorResponse, AppJsonSerializerContext.Default.ErrorResponse);
-        }
+        return Results.Json(response, AppJsonSerializerContext.Default.HealthMetricsResponse);
     });
 
     app.MapGet(AppConstants.Endpoints.Root,

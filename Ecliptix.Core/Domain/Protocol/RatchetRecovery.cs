@@ -5,22 +5,22 @@ namespace Ecliptix.Core.Domain.Protocol;
 
 public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultMaxSkippedMessages) : IDisposable
 {
-    private readonly Dictionary<uint, EcliptixMessageKey> _skippedMessageKeys = new();
+    private readonly Dictionary<uint, RatchetChainKey> _skippedMessageKeys = new();
     private readonly Lock _lock = new();
     private bool _disposed;
 
-    public Result<Option<EcliptixMessageKey>, EcliptixProtocolFailure> TryRecoverMessageKey(uint messageIndex)
+    public Result<Option<RatchetChainKey>, EcliptixProtocolFailure> TryRecoverMessageKey(uint messageIndex)
     {
         if (_disposed)
-            return Result<Option<EcliptixMessageKey>, EcliptixProtocolFailure>.Err(
+            return Result<Option<RatchetChainKey>, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(RatchetRecovery)));
 
         lock (_lock)
         {
-            return Result<Option<EcliptixMessageKey>, EcliptixProtocolFailure>.Ok(
-                _skippedMessageKeys.Remove(messageIndex, out EcliptixMessageKey? key)
-                    ? Option<EcliptixMessageKey>.Some(key)
-                    : Option<EcliptixMessageKey>.None);
+            return Result<Option<RatchetChainKey>, EcliptixProtocolFailure>.Ok(
+                _skippedMessageKeys.Remove(messageIndex, out RatchetChainKey? key)
+                    ? Option<RatchetChainKey>.Some(key)
+                    : Option<RatchetChainKey>.None);
         }
     }
 
@@ -52,8 +52,8 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
 
             for (uint messageIndex = fromIndex; messageIndex < toIndex; messageIndex++)
             {
-                Result<EcliptixMessageKey, EcliptixProtocolFailure> messageKeyResult = 
-                    EcliptixMessageKey.DeriveFromChainKey(workingChainKey, messageIndex);
+                Result<RatchetChainKey, EcliptixProtocolFailure> messageKeyResult = 
+                    RatchetChainKey.DeriveFromChainKey(workingChainKey, messageIndex);
 
                 if (messageKeyResult.IsErr)
                 {
@@ -114,7 +114,7 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
 
             foreach (uint index in keysToRemove)
             {
-                if (_skippedMessageKeys.Remove(index, out EcliptixMessageKey? key))
+                if (_skippedMessageKeys.Remove(index, out RatchetChainKey? key))
                     key.Dispose();
             }
         }
@@ -122,7 +122,7 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
 
     private void CleanupSkippedKeys()
     {
-        foreach (EcliptixMessageKey key in _skippedMessageKeys.Values)
+        foreach (RatchetChainKey key in _skippedMessageKeys.Values)
             key.Dispose();
         _skippedMessageKeys.Clear();
     }

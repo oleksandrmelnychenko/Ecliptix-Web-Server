@@ -35,27 +35,23 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
         {
             PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
 
-            Result<(EnvelopeMetadata Metadata, byte[] EncryptedPayload), EcliptixProtocolFailure> componentsResult =
-                await GetEncryptedComponents(payload, connectId, exchangeType, context);
+            // Use EncryptPayloadActorEvent to get a complete SecureEnvelope with encrypted metadata and HeaderNonce
+            EncryptPayloadActorEvent encryptCommand = new(exchangeType, payload);
+            ForwardToConnectActorEvent encryptForwarder = new(connectId, encryptCommand);
 
-            if (componentsResult.IsErr)
-            {
-                return Result<SecureEnvelope, FailureBase>.Err(componentsResult.UnwrapErr());
-            }
+            Result<SecureEnvelope, EcliptixProtocolFailure> result =
+                await _protocolActor.Ask<Result<SecureEnvelope, EcliptixProtocolFailure>>(
+                    encryptForwarder, context.CancellationToken);
 
-            (EnvelopeMetadata metadata, byte[] encryptedPayload) = componentsResult.Unwrap();
-
-            SecureEnvelope protocolOnlyPayload = ProtocolMigrationHelper.CreateSecureEnvelope(
-                metadata,
-                ByteString.CopyFrom(encryptedPayload),
-                Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(DateTime.UtcNow));
-
-            return Result<SecureEnvelope, FailureBase>.Ok(protocolOnlyPayload);
+            return result.IsErr
+                ? Result<SecureEnvelope, FailureBase>.Err(result.UnwrapErr())
+                : Result<SecureEnvelope, FailureBase>.Ok(result.Unwrap());
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "Payload encryption failed for connectId {ConnectId}", connectId);
             return Result<SecureEnvelope, FailureBase>.Err(
-                new EcliptixProtocolFailure(EcliptixProtocolFailureType.Generic, "Dual-layer encryption failed"));
+                new EcliptixProtocolFailure(EcliptixProtocolFailureType.Generic, "Payload encryption failed"));
         }
     }
 
@@ -64,8 +60,6 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
     {
         try
         {
-            // Note: Metadata is now encrypted and will be decrypted inside ProcessInboundMessage
-            // This function delegates to the actor system which handles full message processing
             PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
 
             DecryptSecureEnvelopeActorEvent decryptCommand = new(exchangeType, request);

@@ -410,7 +410,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
         }
     }
 
-    internal Result<(EcliptixMessageKey MessageKey, bool IncludeDhKey), EcliptixProtocolFailure>
+    internal Result<(RatchetChainKey MessageKey, bool IncludeDhKey), EcliptixProtocolFailure>
         PrepareNextSendMessage()
     {
         using IDisposable profilerScope = _profiler.StartOperation("PrepareNextSendMessage");
@@ -420,45 +420,45 @@ public sealed class EcliptixProtocolConnection : IDisposable
             try
             {
                 Result<Unit, EcliptixProtocolFailure> disposedCheckResult = CheckDisposed();
-                if (disposedCheckResult.IsErr) return Result<(EcliptixMessageKey, bool), EcliptixProtocolFailure>.Err(disposedCheckResult.UnwrapErr());
+                if (disposedCheckResult.IsErr) return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(disposedCheckResult.UnwrapErr());
 
                 Result<Unit, EcliptixProtocolFailure> expirationCheckResult = EnsureNotExpired();
-                if (expirationCheckResult.IsErr) return Result<(EcliptixMessageKey, bool), EcliptixProtocolFailure>.Err(expirationCheckResult.UnwrapErr());
+                if (expirationCheckResult.IsErr) return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(expirationCheckResult.UnwrapErr());
 
                 Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> sendingStepResult = EnsureSendingStepInitialized();
-                if (sendingStepResult.IsErr) return Result<(EcliptixMessageKey, bool), EcliptixProtocolFailure>.Err(sendingStepResult.UnwrapErr());
+                if (sendingStepResult.IsErr) return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(sendingStepResult.UnwrapErr());
 
                 EcliptixProtocolChainStep sendingStep = sendingStepResult.Unwrap();
 
                 Result<bool, EcliptixProtocolFailure> dhRatchetResult = MaybePerformSendingDhRatchet(sendingStep);
-                if (dhRatchetResult.IsErr) return Result<(EcliptixMessageKey, bool), EcliptixProtocolFailure>.Err(dhRatchetResult.UnwrapErr());
+                if (dhRatchetResult.IsErr) return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(dhRatchetResult.UnwrapErr());
 
                 bool includeDhKey = dhRatchetResult.Unwrap();
 
                 Result<uint, EcliptixProtocolFailure> currentIndexResult = sendingStep.GetCurrentIndex();
-                if (currentIndexResult.IsErr) return Result<(EcliptixMessageKey, bool), EcliptixProtocolFailure>.Err(currentIndexResult.UnwrapErr());
+                if (currentIndexResult.IsErr) return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(currentIndexResult.UnwrapErr());
 
                 uint currentIndex = currentIndexResult.Unwrap();
 
-                Result<EcliptixMessageKey, EcliptixProtocolFailure> derivedKeyResult = sendingStep.GetOrDeriveKeyFor(currentIndex + 1);
-                if (derivedKeyResult.IsErr) return Result<(EcliptixMessageKey, bool), EcliptixProtocolFailure>.Err(derivedKeyResult.UnwrapErr());
+                Result<RatchetChainKey, EcliptixProtocolFailure> derivedKeyResult = sendingStep.GetOrDeriveKeyFor(currentIndex + 1);
+                if (derivedKeyResult.IsErr) return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(derivedKeyResult.UnwrapErr());
 
-                EcliptixMessageKey derivedKey = derivedKeyResult.Unwrap();
+                RatchetChainKey derivedKey = derivedKeyResult.Unwrap();
 
                 Result<Unit, EcliptixProtocolFailure> setIndexResult = sendingStep.SetCurrentIndex(currentIndex + 1);
-                if (setIndexResult.IsErr) return Result<(EcliptixMessageKey, bool), EcliptixProtocolFailure>.Err(setIndexResult.UnwrapErr());
+                if (setIndexResult.IsErr) return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(setIndexResult.UnwrapErr());
 
                 keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
                 Span<byte> keySpan = keyMaterial.AsSpan(0, Constants.AesKeySize);
                 derivedKey.ReadKeyMaterial(keySpan);
 
-                Result<EcliptixMessageKey, EcliptixProtocolFailure> clonedKeyResult = EcliptixMessageKey.New(derivedKey.Index, keySpan);
-                if (clonedKeyResult.IsErr) return Result<(EcliptixMessageKey, bool), EcliptixProtocolFailure>.Err(clonedKeyResult.UnwrapErr());
+                Result<RatchetChainKey, EcliptixProtocolFailure> clonedKeyResult = RatchetChainKey.New(derivedKey.Index, keySpan);
+                if (clonedKeyResult.IsErr) return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(clonedKeyResult.UnwrapErr());
 
-                EcliptixMessageKey clonedKey = clonedKeyResult.Unwrap();
+                RatchetChainKey clonedKey = clonedKeyResult.Unwrap();
 
                 _sendingStep.PruneOldKeys();
-                return Result<(EcliptixMessageKey, bool), EcliptixProtocolFailure>.Ok((clonedKey, includeDhKey));
+                return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Ok((clonedKey, includeDhKey));
             }
             finally
             {
@@ -467,19 +467,19 @@ public sealed class EcliptixProtocolConnection : IDisposable
         }
     }
 
-    internal Result<EcliptixMessageKey, EcliptixProtocolFailure> ProcessReceivedMessage(uint receivedIndex)
+    internal Result<RatchetChainKey, EcliptixProtocolFailure> ProcessReceivedMessage(uint receivedIndex)
     {
         using IDisposable profilerScope = _profiler.StartOperation("ProcessReceivedMessage");
         lock (_lock)
         {
             Result<Unit, EcliptixProtocolFailure> disposedCheckResult = CheckDisposed();
-            if (disposedCheckResult.IsErr) return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(disposedCheckResult.UnwrapErr());
+            if (disposedCheckResult.IsErr) return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(disposedCheckResult.UnwrapErr());
 
             Result<Unit, EcliptixProtocolFailure> expirationCheckResult = EnsureNotExpired();
-            if (expirationCheckResult.IsErr) return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(expirationCheckResult.UnwrapErr());
+            if (expirationCheckResult.IsErr) return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(expirationCheckResult.UnwrapErr());
 
             Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> receivingStepResult = EnsureReceivingStepInitialized();
-            if (receivingStepResult.IsErr) return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(receivingStepResult.UnwrapErr());
+            if (receivingStepResult.IsErr) return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(receivingStepResult.UnwrapErr());
 
             Result<uint, EcliptixProtocolFailure> currentIndexResult = _receivingStep!.GetCurrentIndex();
             if (currentIndexResult.IsOk)
@@ -494,17 +494,17 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 }
             }
 
-            Result<EcliptixMessageKey, EcliptixProtocolFailure> derivedKeyResult = _receivingStep!.GetOrDeriveKeyFor(receivedIndex);
-            if (derivedKeyResult.IsErr) return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(derivedKeyResult.UnwrapErr());
+            Result<RatchetChainKey, EcliptixProtocolFailure> derivedKeyResult = _receivingStep!.GetOrDeriveKeyFor(receivedIndex);
+            if (derivedKeyResult.IsErr) return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(derivedKeyResult.UnwrapErr());
 
-            EcliptixMessageKey derivedKey = derivedKeyResult.Unwrap();
+            RatchetChainKey derivedKey = derivedKeyResult.Unwrap();
 
             Result<Unit, EcliptixProtocolFailure> setIndexResult = _receivingStep!.SetCurrentIndex(derivedKey.Index);
-            if (setIndexResult.IsErr) return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(setIndexResult.UnwrapErr());
+            if (setIndexResult.IsErr) return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(setIndexResult.UnwrapErr());
 
             _receivingStep!.PruneOldKeys();
 
-            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(derivedKey);
+            return Result<RatchetChainKey, EcliptixProtocolFailure>.Ok(derivedKey);
         }
     }
 
@@ -586,31 +586,12 @@ public sealed class EcliptixProtocolConnection : IDisposable
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
-    public Dictionary<string, (long Count, double AvgMs, double MaxMs, double MinMs)> GetPerformanceMetrics()
-    {
-        return _profiler.GetMetrics();
-    }
-
-    public void UpdateRatchetConfig(RatchetConfig newConfig)
-    {
-        lock (_lock)
-        {
-            if (_disposed) return;
-            
-        }
-    }
-
-    public Result<Option<EcliptixMessageKey>, EcliptixProtocolFailure> TryRecoverMessageKey(uint messageIndex)
+    public Result<Option<RatchetChainKey>, EcliptixProtocolFailure> TryRecoverMessageKey(uint messageIndex)
     {
         return _ratchetRecovery.TryRecoverMessageKey(messageIndex);
     }
 
     public uint ConnectId => _id;
-
-    public PerformanceProfiler GetProfiler()
-    {
-        return _profiler;
-    }
 
     public bool IsInitiator()
     {

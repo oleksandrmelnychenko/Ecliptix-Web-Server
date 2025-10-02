@@ -6,7 +6,7 @@ using Google.Protobuf.WellKnownTypes;
 
 namespace Ecliptix.Core.Domain.Protocol.Utilities;
 
-public static class ProtocolMigrationHelper
+public static class SecureEnvelopeBuilder
 {
     public static EnvelopeMetadata CreateEnvelopeMetadata(
         uint requestId,
@@ -47,14 +47,18 @@ public static class ProtocolMigrationHelper
         Timestamp? timestamp = null,
         ByteString? authenticationTag = null,
         EnvelopeResultCode resultCode = EnvelopeResultCode.Success,
-        ByteString? errorDetails = null)
+        ByteString? errorDetails = null,
+        ByteString? headerNonce = null,
+        ByteString? dhPublicKey = null)
     {
         SecureEnvelope envelope = new()
         {
             MetaData = metadata.ToByteString(),
             EncryptedPayload = encryptedPayload,
             ResultCode = ByteString.CopyFrom(BitConverter.GetBytes((int)resultCode)),
-            Timestamp = timestamp ?? Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow)
+            Timestamp = timestamp ?? Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+            HeaderNonce = headerNonce ?? ByteString.Empty,
+            DhPublicKey = dhPublicKey ?? ByteString.Empty
         };
 
         if (authenticationTag != null && !authenticationTag.IsEmpty)
