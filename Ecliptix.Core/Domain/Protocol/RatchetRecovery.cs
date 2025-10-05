@@ -52,7 +52,7 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
 
             for (uint messageIndex = fromIndex; messageIndex < toIndex; messageIndex++)
             {
-                Result<RatchetChainKey, EcliptixProtocolFailure> messageKeyResult = 
+                Result<RatchetChainKey, EcliptixProtocolFailure> messageKeyResult =
                     RatchetChainKey.DeriveFromChainKey(workingChainKey, messageIndex);
 
                 if (messageKeyResult.IsErr)

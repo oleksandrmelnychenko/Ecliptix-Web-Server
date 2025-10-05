@@ -63,7 +63,7 @@ public static class GrpcMetadataHandler
     {
         Result<string, MetaDataSystemFailure> appInstanceIdResult = requestHeaders.GetValueAsResult(ApplicationInstanceIdKey);
         if (appInstanceIdResult.IsErr) return Result<uint, MetaDataSystemFailure>.Err(appInstanceIdResult.UnwrapErr());
-        
+
         if (!Guid.TryParse(appInstanceIdResult.Unwrap(), out Guid appInstanceId))
         {
             return Result<uint, MetaDataSystemFailure>.Err(

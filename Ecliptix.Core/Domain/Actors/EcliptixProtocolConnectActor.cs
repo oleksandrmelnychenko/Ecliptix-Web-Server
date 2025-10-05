@@ -425,12 +425,8 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
     private void HandleAuthenticatedProtocolInitialization(InitializeProtocolWithMasterKeyActorEvent cmd)
     {
-        // NOTE: We do NOT wipe cmd.RootKey here - that's the caller's responsibility (DeviceService)
-        // ProcessAuthenticatedPubKeyExchange will make its own copy and wipe that copy
-
         PubKeyExchangeType exchangeType = cmd.ClientPubKeyExchange.OfType;
 
-        // Check if we already have an existing session for this exchange type
         if (_protocolSystems.TryGetValue(exchangeType, out EcliptixProtocolSystem? existingSystem) && _state != null)
         {
             Context.GetLogger().Info("[PROTOCOL] Found existing authenticated session for ConnectId {0}, ExchangeType {1}",
@@ -502,7 +498,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         }
 
         EcliptixSessionState newState = stateToPersistResult.Unwrap();
-        // Store MembershipId for authenticated sessions
         newState.MembershipId = Google.Protobuf.ByteString.CopyFrom(cmd.MembershipId.ToByteArray());
 
         PubKeyExchange reply = replyResult.Unwrap();

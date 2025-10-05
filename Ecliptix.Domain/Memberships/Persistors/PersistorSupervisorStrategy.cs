@@ -39,7 +39,7 @@ public static class PersistorSupervisorStrategy
                     SqlException { Number: -2 } => HandleTransientFailure(actorType, "Command timeout", Directive.Restart),
                     TimeoutException => HandleTransientFailure(actorType, "Operation timeout", Directive.Restart),
 
-                    SqlException { Number: 40501 or 40613 or 49918 or 49919 or 49920 } => 
+                    SqlException { Number: 40501 or 40613 or 49918 or 49919 or 49920 } =>
                         HandleTransientFailure(actorType, "Transient Azure SQL error", Directive.Restart),
 
                     SqlException { Number: 1205 } => HandleTransientFailure(actorType, "Deadlock detected", Directive.Restart),
@@ -56,9 +56,9 @@ public static class PersistorSupervisorStrategy
                     ArgumentException => HandleApplicationError("Invalid argument", Directive.Stop),
                     NullReferenceException => HandleApplicationError("Null reference", Directive.Stop),
 
-                    InvalidOperationException when exception.Message.Contains("configuration") => 
+                    InvalidOperationException when exception.Message.Contains("configuration") =>
                         HandlePermanentFailure("Configuration error", Directive.Stop),
-                    InvalidOperationException when exception.Message.Contains("service") => 
+                    InvalidOperationException when exception.Message.Contains("service") =>
                         HandlePermanentFailure("Service dependency error", Directive.Stop),
 
                     OutOfMemoryException => HandleSystemError("Out of memory", Directive.Escalate),
@@ -123,7 +123,7 @@ public static class PersistorSupervisorStrategy
 
         CleanupOldRestartRecords(now);
 
-        if (!RestartCounts.TryGetValue(actorType, out int count) || 
+        if (!RestartCounts.TryGetValue(actorType, out int count) ||
             !LastRestartTimes.TryGetValue(actorType, out DateTime lastRestart))
         {
             return false;

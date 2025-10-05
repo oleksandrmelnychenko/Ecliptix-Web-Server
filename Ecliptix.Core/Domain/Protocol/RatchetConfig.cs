@@ -15,7 +15,7 @@ public sealed class RatchetConfig
     public static readonly RatchetConfig Aggressive = new()
     {
         DhRatchetEveryNMessages = 5,
-        EnablePerMessageRatchet = false  
+        EnablePerMessageRatchet = false
     };
 
     public static readonly RatchetConfig PerMessage = new()
@@ -36,19 +36,19 @@ public sealed class RatchetConfig
 
     public bool ShouldRatchet(uint messageIndex, DateTime lastRatchetTime, bool receivedNewDhKey, DateTime currentTime)
     {
-        if (EnablePerMessageRatchet) 
+        if (EnablePerMessageRatchet)
             return true;
 
-        if (RatchetOnNewDhKey && receivedNewDhKey) 
+        if (RatchetOnNewDhKey && receivedNewDhKey)
             return true;
 
-        if (messageIndex > 0 && messageIndex % DhRatchetEveryNMessages == 0) 
+        if (messageIndex > 0 && messageIndex % DhRatchetEveryNMessages == 0)
             return true;
 
-        if (currentTime - lastRatchetTime > MaxChainAge) 
+        if (currentTime - lastRatchetTime > MaxChainAge)
             return true;
 
-        if (messageIndex >= MaxMessagesWithoutRatchet) 
+        if (messageIndex >= MaxMessagesWithoutRatchet)
             return true;
 
         return false;

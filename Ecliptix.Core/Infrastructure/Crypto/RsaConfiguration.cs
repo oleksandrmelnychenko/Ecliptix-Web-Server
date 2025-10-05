@@ -8,5 +8,5 @@ public class RsaConfiguration : IRsaConfiguration
     public int EncryptedBlockSize => CertificatePinningConfigurationConstants.RsaEncryptedBlockSize;
     public int MaxPlaintextSize => CertificatePinningConfigurationConstants.RsaMaxPlaintextSize;
     public int OptimalChunkSize => CertificatePinningConfigurationConstants.RsaOptimalChunkSize;
-    public RsaPaddingMode PaddingMode => RsaPaddingMode.Oaep; 
+    public RsaPaddingMode PaddingMode => RsaPaddingMode.Oaep;
 }

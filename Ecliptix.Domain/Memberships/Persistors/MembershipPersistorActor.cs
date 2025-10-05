@@ -1,256 +1,405 @@
-using System.Data;
 using System.Data.Common;
 using Akka.Actor;
-using Dapper;
-using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
+using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Utilities;
-using Ecliptix.Protobuf.Membership;
 using Microsoft.Data.SqlClient;
-using Serilog;
+using Microsoft.EntityFrameworkCore;
+using Ecliptix.Memberships.Persistor.Schema;
+using Ecliptix.Memberships.Persistor.Schema.Entities;
+using Microsoft.EntityFrameworkCore.Storage;
+using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
 public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 {
-    private static readonly Dictionary<string, Membership.Types.ActivityStatus> MembershipStatusMap = new()
+    private static readonly Dictionary<string, ProtoMembership.Types.ActivityStatus> MembershipStatusMap = new()
     {
-        ["active"] = Membership.Types.ActivityStatus.Active,
-        ["inactive"] = Membership.Types.ActivityStatus.Inactive
+        ["active"] = ProtoMembership.Types.ActivityStatus.Active,
+        ["inactive"] = ProtoMembership.Types.ActivityStatus.Inactive
     };
 
     public MembershipPersistorActor(
-        IDbConnectionFactory connectionFactory)
-        : base(connectionFactory)
+        IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
+        : base(dbContextFactory)
     {
         Become(Ready);
     }
 
-    public static Props Build(IDbConnectionFactory connectionFactory)
+    public static Props Build(IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
     {
-        return Props.Create(() => new MembershipPersistorActor(connectionFactory));
+        return Props.Create(() => new MembershipPersistorActor(dbContextFactory));
     }
 
     private void Ready()
     {
         Receive<UpdateMembershipSecureKeyEvent>(cmd =>
-            ExecuteWithConnection(conn => UpdateMembershipSecureKeyAsync(conn, cmd), "UpdateMembershipSecureKey")
+            ExecuteWithContext(ctx => UpdateMembershipSecureKeyAsync(ctx, cmd), "UpdateMembershipSecureKey")
                 .PipeTo(Sender));
 
         Receive<CreateMembershipActorEvent>(cmd =>
-            ExecuteWithConnection(conn => CreateMembershipAsync(conn, cmd), "CreateMembership")
+            ExecuteWithContext(ctx => CreateMembershipAsync(ctx, cmd), "CreateMembership")
                 .PipeTo(Sender));
 
         Receive<SignInMembershipActorEvent>(cmd =>
-            ExecuteWithConnection(conn => SignInMembershipAsync(conn, cmd), "LoginMembership")
+            ExecuteWithContext(ctx => SignInMembershipAsync(ctx, cmd), "LoginMembership")
                 .PipeTo(Sender));
     }
 
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> SignInMembershipAsync(
-        IDbConnection connection, SignInMembershipActorEvent cmd)
+        EcliptixSchemaContext ctx, SignInMembershipActorEvent cmd)
     {
-        DynamicParameters parameters = new();
-        parameters.Add("@MobileNumber", cmd.MobileNumber, DbType.String, ParameterDirection.Input);
+        const int lockoutDurationMinutes = 5;
+        const int maxAttemptsInPeriod = 5;
 
-        LoginMembershipResult? result = await connection.QuerySingleOrDefaultAsync<LoginMembershipResult>(
-            "dbo.SP_LoginMembership",
-            parameters,
-            commandType: CommandType.StoredProcedure
-        );
-
-        if (result is null)
+        try
         {
-            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess(
-                    "Login membership failed - stored procedure returned null result"));
+            DateTime currentTime = DateTime.UtcNow;
+
+            // Check for active lockout using LockedUntil column (no string parsing needed)
+            LoginAttempt? lockoutMarker = await LoginAttemptQueries.GetMostRecentLockout(ctx, cmd.MobileNumber);
+            if (lockoutMarker?.LockedUntil != null)
+            {
+                if (currentTime < lockoutMarker.LockedUntil.Value)
+                {
+                    // Still locked out
+                    int remainingMinutes = (int)Math.Ceiling((lockoutMarker.LockedUntil.Value - currentTime).TotalMinutes);
+                    return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.RateLimitExceeded(remainingMinutes.ToString()));
+                }
+                else
+                {
+                    // Lockout expired - clean up old attempts
+                    await ctx.LoginAttempts
+                        .Where(la => la.MobileNumber == cmd.MobileNumber &&
+                                     la.Timestamp <= lockoutMarker.Timestamp &&
+                                     !la.IsDeleted)
+                        .ExecuteDeleteAsync();
+                }
+            }
+
+            DateTime fiveMinutesAgo = currentTime.AddMinutes(-5);
+            int failedCount = await LoginAttemptQueries.CountFailedSince(ctx, cmd.MobileNumber, fiveMinutesAgo);
+
+            if (failedCount >= maxAttemptsInPeriod)
+            {
+                DateTime lockedUntil = currentTime.AddMinutes(lockoutDurationMinutes);
+                LoginAttempt lockoutAttempt = new LoginAttempt
+                {
+                    MobileNumber = cmd.MobileNumber,
+                    LockedUntil = lockedUntil,
+                    Outcome = "rate_limit_exceeded",
+                    IsSuccess = false,
+                    Timestamp = currentTime,
+                    AttemptedAt = currentTime
+                };
+                ctx.LoginAttempts.Add(lockoutAttempt);
+                await ctx.SaveChangesAsync();
+
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.RateLimitExceeded(lockoutDurationMinutes.ToString()));
+            }
+
+            if (string.IsNullOrEmpty(cmd.MobileNumber))
+            {
+                await LogLoginAttemptAsync(ctx, cmd.MobileNumber, "mobile_number_cannot_be_empty", false);
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.Validation(VerificationFlowMessageKeys.MobileNumberCannotBeEmpty));
+            }
+
+            Membership? membership = await MembershipQueries.GetByMobileNumber(ctx, cmd.MobileNumber);
+            if (membership == null)
+            {
+                await LogLoginAttemptAsync(ctx, cmd.MobileNumber, "mobile_number_not_found", false);
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.Validation(VerificationFlowMessageKeys.MobileNotFound));
+            }
+
+            if (membership.SecureKey == null || membership.SecureKey.Length == 0)
+            {
+                await LogLoginAttemptAsync(ctx, cmd.MobileNumber, "secure_key_not_set", false);
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.Validation(VerificationFlowMessageKeys.SecureKeyNotSet));
+            }
+
+            if (membership.Status != "active")
+            {
+                await LogLoginAttemptAsync(ctx, cmd.MobileNumber, "inactive_membership", false);
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.Validation(VerificationFlowMessageKeys.InactiveMembership));
+            }
+
+            await LogLoginAttemptAsync(ctx, cmd.MobileNumber, "success", true);
+
+            // Clean up failed attempts and lockout markers on successful login
+            await ctx.LoginAttempts
+                .Where(la => la.MobileNumber == cmd.MobileNumber &&
+                             (!la.IsSuccess || la.LockedUntil != null) &&
+                             !la.IsDeleted)
+                .ExecuteDeleteAsync();
+
+            return MapActivityStatus(membership.Status).Match(
+                activityStatus => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
+                    new MembershipQueryRecord
+                    {
+                        UniqueIdentifier = membership.UniqueId,
+                        ActivityStatus = activityStatus,
+                        CreationStatus = ProtoMembership.Types.CreationStatus.OtpVerified,
+                        SecureKey = membership.SecureKey ?? [],
+                        MaskingKey = membership.MaskingKey ?? []
+                    }),
+                () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
+            );
         }
-
-        string outcome = result.Outcome;
-        Guid? membershipUniqueId = result.MembershipUniqueId;
-        string? status = result.Status;
-        byte[]? secureKey = result.SecureKey;
-        byte[]? maskingKey = result.MaskingKey;
-        string? errorMessage = result.ErrorMessage;
-
-        if (string.IsNullOrEmpty(outcome))
+        catch (Exception ex)
         {
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess(
-                    "Login membership failed - stored procedure returned null outcome"));
+                VerificationFlowFailure.PersistorAccess($"Login failed: {ex.Message}"));
         }
+    }
 
-        if (int.TryParse(outcome, out int _))
-            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.RateLimitExceeded(outcome));
-
-        return outcome switch
+    private static async Task LogLoginAttemptAsync(EcliptixSchemaContext ctx, string mobileNumber, string outcome, bool isSuccess)
+    {
+        LoginAttempt attempt = new LoginAttempt
         {
-            "success" when membershipUniqueId.HasValue && !string.IsNullOrEmpty(status) =>
-                MapActivityStatus(status).Match(
-                    activityStatus => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
-                        new MembershipQueryRecord
-                        {
-                            UniqueIdentifier = membershipUniqueId.Value,
-                            ActivityStatus = activityStatus,
-                            CreationStatus = Membership.Types.CreationStatus.OtpVerified,
-                            SecureKey = secureKey ?? [],
-                            MaskingKey = maskingKey ?? []
-                        }),
-                    () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
-                ),
-
-            string error when IsKnownLoginError(error) =>
-                Result<MembershipQueryRecord, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(error)),
-
-            string outcomeValue =>
-                Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.PersistorAccess(!string.IsNullOrEmpty(errorMessage)
-                        ? errorMessage
-                        : outcomeValue))
+            MobileNumber = mobileNumber,
+            Outcome = outcome,
+            IsSuccess = isSuccess,
+            Timestamp = DateTime.UtcNow,
+            AttemptedAt = DateTime.UtcNow
         };
+        ctx.LoginAttempts.Add(attempt);
+        await ctx.SaveChangesAsync();
     }
 
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> UpdateMembershipSecureKeyAsync(
-        IDbConnection connection, UpdateMembershipSecureKeyEvent cmd)
+        EcliptixSchemaContext ctx, UpdateMembershipSecureKeyEvent cmd)
     {
-        DynamicParameters parameters = new();
-        parameters.Add("@MembershipUniqueId", cmd.MembershipIdentifier);
-        parameters.Add("@SecureKey", cmd.SecureKey);
-        parameters.Add("@MaskingKey", cmd.MaskingKey);
-
-        UpdateSecureKeyResult? result = await connection.QuerySingleOrDefaultAsync<UpdateSecureKeyResult>(
-            "dbo.SP_UpdateMembershipSecureKey",
-            parameters,
-            commandType: CommandType.StoredProcedure
-        );
-
-        if (result is null)
+        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
+        try
         {
-            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess(
-                    "Update membership secure key failed - stored procedure returned null result"));
-        }
+            if (cmd.SecureKey == null || cmd.SecureKey.Length == 0)
+            {
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.Validation("Secure key cannot be empty"));
+            }
 
-        if (!result.Success)
+            if (cmd.MaskingKey == null || cmd.MaskingKey.Length != 32)
+            {
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.Validation("Masking key must be exactly 32 bytes"));
+            }
+
+            Membership? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipIdentifier);
+            if (membership == null)
+            {
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.Validation("Membership not found or deleted"));
+            }
+
+            int rowsAffected = await ctx.Memberships
+                .Where(m => m.UniqueId == cmd.MembershipIdentifier && !m.IsDeleted)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(m => m.SecureKey, cmd.SecureKey)
+                    .SetProperty(m => m.MaskingKey, cmd.MaskingKey)
+                    .SetProperty(m => m.Status, "active")
+                    .SetProperty(m => m.CreationStatus, "secure_key_set")
+                    .SetProperty(m => m.UpdatedAt, DateTime.UtcNow));
+
+            if (rowsAffected == 0)
+            {
+                await transaction.RollbackAsync();
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.PersistorAccess("Failed to update membership"));
+            }
+
+            await transaction.CommitAsync();
+
+            // Construct result from known values (no re-query needed - all data updated above)
+            return MapActivityStatus("active").Match(
+                status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
+                    new MembershipQueryRecord
+                    {
+                        UniqueIdentifier = cmd.MembershipIdentifier,
+                        ActivityStatus = status,
+                        CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum("secure_key_set"),
+                        MaskingKey = cmd.MaskingKey
+                    }),
+                () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
+            );
+        }
+        catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Validation($"Secure key update failed: {result.Message}"));
+                VerificationFlowFailure.PersistorAccess($"Update secure key failed: {ex.Message}"));
         }
-
-        if (!result.MembershipUniqueId.HasValue || string.IsNullOrEmpty(result.Status) ||
-            string.IsNullOrEmpty(result.CreationStatus))
-        {
-            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess("Secure key update succeeded but returned incomplete data"));
-        }
-
-        return MapActivityStatus(result.Status).Match(
-            status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
-                new MembershipQueryRecord
-                {
-                    UniqueIdentifier = result.MembershipUniqueId.Value,
-                    ActivityStatus = status,
-                    CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(result.CreationStatus),
-                    MaskingKey = result.MaskingKey
-                }),
-            () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
-        );
     }
 
     private static async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> CreateMembershipAsync(
-        IDbConnection connection, CreateMembershipActorEvent cmd)
+        EcliptixSchemaContext ctx, CreateMembershipActorEvent cmd)
     {
-        DynamicParameters parameters = new();
-        parameters.Add("@FlowUniqueId", cmd.VerificationFlowIdentifier);
-        parameters.Add("@ConnectionId", (long)cmd.ConnectId);
-        parameters.Add("@OtpUniqueId", cmd.OtpIdentifier);
-        parameters.Add("@CreationStatus", MembershipCreationStatusHelper.GetCreationStatusString(cmd.CreationStatus));
-
-        CreateMembershipResult? result = await connection.QuerySingleOrDefaultAsync<CreateMembershipResult>(
-            "dbo.SP_CreateMembership",
-            parameters,
-            commandType: CommandType.StoredProcedure);
-
-        if (result is null)
+        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
+        try
         {
-            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess(
-                    "Create membership failed - stored procedure returned null result"));
-        }
+            const int attemptWindowHours = 1;
+            const int maxAttempts = 5;
 
-        if (int.TryParse(result.Outcome, out int rateLimitSeconds))
-        {
-            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.RateLimitExceeded(rateLimitSeconds.ToString()));
-        }
+            VerificationFlow? flow = await VerificationFlowQueries.GetByUniqueIdAndConnectionId(
+                ctx, cmd.VerificationFlowIdentifier, cmd.ConnectId);
 
-        return result.Outcome switch
-        {
-            VerificationFlowMessageKeys.Created
-                or VerificationFlowMessageKeys.MembershipAlreadyExists when result.MembershipUniqueId.HasValue &&
-                                                                            !string.IsNullOrEmpty(result.Status) &&
-                                                                            !string.IsNullOrEmpty(result.CreationStatus)
-                =>
-                MapActivityStatus(result.Status).Match(
+            if (flow?.MobileNumber == null)
+            {
+                await transaction.RollbackAsync();
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.Validation(VerificationFlowMessageKeys.CreateMembershipVerificationFlowNotFound));
+            }
+
+            Guid mobileUniqueId = flow.MobileNumber.UniqueId;
+
+            DateTime oneHourAgo = DateTime.UtcNow.AddHours(-attemptWindowHours);
+            int failedAttempts = await MembershipAttemptQueries.CountFailedSince(ctx, mobileUniqueId, oneHourAgo);
+
+            if (failedAttempts >= maxAttempts)
+            {
+                DateTime? earliestFailed = await MembershipAttemptQueries.GetEarliestFailedSince(ctx, mobileUniqueId, oneHourAgo);
+                if (earliestFailed.HasValue)
+                {
+                    DateTime waitUntil = earliestFailed.Value.AddHours(attemptWindowHours);
+                    int waitMinutes = (int)Math.Max(0, (waitUntil - DateTime.UtcNow).TotalMinutes);
+
+                    MembershipAttempt rateLimitAttempt = new MembershipAttempt
+                    {
+                        MembershipId = mobileUniqueId,
+                        AttemptType = "create",
+                        Status = "failed",
+                        ErrorMessage = "rate_limit_exceeded",
+                        AttemptedAt = DateTime.UtcNow
+                    };
+                    ctx.MembershipAttempts.Add(rateLimitAttempt);
+                    await ctx.SaveChangesAsync();
+
+                    await transaction.RollbackAsync();
+                    return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.RateLimitExceeded(waitMinutes.ToString()));
+                }
+            }
+
+            Membership? existingMembership = await MembershipQueries.GetByMobileUniqueIdAndDevice(
+                ctx, mobileUniqueId, flow.AppDeviceId);
+
+            if (existingMembership != null)
+            {
+                MembershipAttempt attempt = new MembershipAttempt
+                {
+                    MembershipId = existingMembership.UniqueId,
+                    AttemptType = "create",
+                    Status = "failed",
+                    ErrorMessage = "membership_already_exists",
+                    AttemptedAt = DateTime.UtcNow
+                };
+                ctx.MembershipAttempts.Add(attempt);
+                await ctx.SaveChangesAsync();
+
+                await transaction.RollbackAsync();
+
+                return MapActivityStatus(existingMembership.Status).Match(
                     status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
                         new MembershipQueryRecord
                         {
-                            UniqueIdentifier = result.MembershipUniqueId.Value,
+                            UniqueIdentifier = existingMembership.UniqueId,
                             ActivityStatus = status,
-                            CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(result.CreationStatus)
+                            CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(existingMembership.CreationStatus ?? "otp_verified")
                         }),
                     () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                         VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
-                ),
+                );
+            }
 
-            string error when IsKnownCreationError(error) => CreateValidationError(cmd, error),
+            Membership newMembership = new Membership
+            {
+                MobileNumberId = mobileUniqueId,
+                AppDeviceId = flow.AppDeviceId,
+                VerificationFlowId = flow.UniqueId,
+                Status = "active",
+                CreationStatus = MembershipCreationStatusHelper.GetCreationStatusString(cmd.CreationStatus)
+            };
+            ctx.Memberships.Add(newMembership);
+            await ctx.SaveChangesAsync();
 
-            string outcome => CreatePersistorAccessError(cmd, outcome)
-        };
+            await ctx.OtpCodes
+                .Where(o => o.UniqueId == cmd.OtpIdentifier && o.VerificationFlowId == flow.Id && !o.IsDeleted)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(o => o.Status, "used")
+                    .SetProperty(o => o.UpdatedAt, DateTime.UtcNow));
+
+            MembershipAttempt successAttempt = new MembershipAttempt
+            {
+                MembershipId = newMembership.UniqueId,
+                AttemptType = "create",
+                Status = "success",
+                ErrorMessage = "created",
+                AttemptedAt = DateTime.UtcNow
+            };
+            ctx.MembershipAttempts.Add(successAttempt);
+            await ctx.SaveChangesAsync();
+
+            // Clean up failed attempts for this mobile number (optimized with explicit join)
+            List<long> failedAttemptIds = await ctx.MembershipAttempts
+                .Join(ctx.Memberships,
+                    ma => ma.MembershipId,
+                    m => m.UniqueId,
+                    (ma, m) => new { ma, m })
+                .Where(x => x.m.MobileNumberId == mobileUniqueId &&
+                            x.ma.Status == "failed" &&
+                            !x.ma.IsDeleted &&
+                            !x.m.IsDeleted)
+                .Select(x => x.ma.Id)
+                .ToListAsync();
+
+            if (failedAttemptIds.Count > 0)
+            {
+                await ctx.MembershipAttempts
+                    .Where(ma => failedAttemptIds.Contains(ma.Id))
+                    .ExecuteDeleteAsync();
+            }
+
+            await transaction.CommitAsync();
+
+            return MapActivityStatus(newMembership.Status).Match(
+                status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
+                    new MembershipQueryRecord
+                    {
+                        UniqueIdentifier = newMembership.UniqueId,
+                        ActivityStatus = status,
+                        CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(newMembership.CreationStatus)
+                    }),
+                () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
+            );
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Create membership failed: {ex.Message}"));
+        }
     }
 
-    private static Result<MembershipQueryRecord, VerificationFlowFailure> CreateValidationError(
-        CreateMembershipActorEvent cmd, string error)
-    {
-        return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(VerificationFlowFailure.Validation(error));
-    }
 
-    private static Result<MembershipQueryRecord, VerificationFlowFailure> CreatePersistorAccessError(
-        CreateMembershipActorEvent cmd, string outcome)
-    {
-        return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
-            VerificationFlowFailure.PersistorAccess($"Membership creation failed: {outcome}"));
-    }
-
-    private static bool IsKnownLoginError(string outcome)
-    {
-        return outcome is VerificationFlowMessageKeys.InvalidSecureKey or
-            VerificationFlowMessageKeys.InactiveMembership or
-            VerificationFlowMessageKeys.MobileNumberCannotBeEmpty or
-            VerificationFlowMessageKeys.SecureKeyCannotBeEmpty or
-            VerificationFlowMessageKeys.SecureKeyNotSet or
-            VerificationFlowMessageKeys.MobileNotFound or
-            VerificationFlowMessageKeys.MembershipNotFound;
-    }
-
-    private static bool IsKnownCreationError(string outcome)
-    {
-        return outcome is VerificationFlowMessageKeys.CreateMembershipVerificationFlowNotFound;
-    }
-
-    private static Option<Membership.Types.ActivityStatus> MapActivityStatus(string? statusStr)
+    private static Option<ProtoMembership.Types.ActivityStatus> MapActivityStatus(string? statusStr)
     {
         if (string.IsNullOrEmpty(statusStr) ||
-            !MembershipStatusMap.TryGetValue(statusStr, out Membership.Types.ActivityStatus status))
-            return Option<Membership.Types.ActivityStatus>.None;
+            !MembershipStatusMap.TryGetValue(statusStr, out ProtoMembership.Types.ActivityStatus status))
+            return Option<ProtoMembership.Types.ActivityStatus>.None;
 
-        return Option<Membership.Types.ActivityStatus>.Some(status);
+        return Option<ProtoMembership.Types.ActivityStatus>.Some(status);
     }
 
     protected override VerificationFlowFailure MapDbException(DbException ex)

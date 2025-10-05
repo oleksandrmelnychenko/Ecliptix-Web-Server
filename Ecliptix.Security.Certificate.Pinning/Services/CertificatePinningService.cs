@@ -364,13 +364,13 @@ public sealed class CertificatePinningService : IDisposable
         if (!_isInitialized)
             return Result<bool, CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
 
-        var messageValidation = Ed25519Validation.ValidateMessage(message);
+        Result<Unit, CertificatePinningFailure> messageValidation = Ed25519Validation.ValidateMessage(message);
         if (messageValidation.IsErr) return messageValidation.MapErr(err => err).Map(_ => false);
 
-        var signatureValidation = Ed25519Validation.ValidateSignature(signature);
+        Result<Unit, CertificatePinningFailure> signatureValidation = Ed25519Validation.ValidateSignature(signature);
         if (signatureValidation.IsErr) return signatureValidation.MapErr(err => err).Map(_ => false);
 
-        var publicKeyValidation = Ed25519Validation.ValidatePublicKey(publicKey);
+        Result<Unit, CertificatePinningFailure> publicKeyValidation = Ed25519Validation.ValidatePublicKey(publicKey);
         if (publicKeyValidation.IsErr) return publicKeyValidation.MapErr(err => err).Map(_ => false);
 
         try
@@ -430,7 +430,7 @@ public sealed class CertificatePinningService : IDisposable
         try
         {
             int length = 0;
-            const int maxLength = 4096; 
+            const int maxLength = 4096;
 
             while (length < maxLength && errorPtr[length] != 0)
             {

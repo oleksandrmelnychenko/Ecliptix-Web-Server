@@ -95,7 +95,7 @@ public sealed class OneTimePassword
 
     public static OneTimePassword FromExisting(OtpQueryRecord record)
     {
-        var otp = new OneTimePassword
+        OneTimePassword otp = new OneTimePassword
         {
             UniqueIdentifier = record.UniqueIdentifier,
             ExpiresAt = record.ExpiresAt,

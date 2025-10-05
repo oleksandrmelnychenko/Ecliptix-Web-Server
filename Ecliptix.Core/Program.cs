@@ -28,7 +28,8 @@ using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
 using Ecliptix.Domain;
-using Ecliptix.Domain.DbConnectionFactory;
+using Ecliptix.Memberships.Persistor.Schema;
+using Microsoft.EntityFrameworkCore;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
@@ -58,14 +59,8 @@ try
 
     app.Run();
 }
-catch (Exception ex)
-{
-
-    throw;
-}
 finally
 {
-
     Log.CloseAndFlush();
 }
 
@@ -94,7 +89,13 @@ static void ConfigureLogging(WebApplicationBuilder builder)
 
 static void ConfigureServices(WebApplicationBuilder builder)
 {
-    builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
+    builder.Services.AddDbContextFactory<EcliptixSchemaContext>(options =>
+    {
+        string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
+        options.UseSqlServer(connectionString)
+               .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+    });
+
     builder.Services.AddSingleton<SessionKeepAliveInterceptor>();
     builder.Services.AddSingleton<TelemetryInterceptor>();
     builder.Services.AddSingleton<FailureHandlingInterceptor>();
@@ -255,7 +256,7 @@ static void ConfigureEndpoints(WebApplication app)
 
     app.MapGet(AppConstants.Endpoints.Root,
         () => Results.Ok(new
-            { Status = AppConstants.StatusMessages.Success, Message = AppConstants.StatusMessages.ServerRunning }));
+        { Status = AppConstants.StatusMessages.Success, Message = AppConstants.StatusMessages.ServerRunning }));
 }
 
 static void RegisterLocalization(IServiceCollection services)
@@ -364,7 +365,6 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-
         try
         {
             using CancellationTokenSource timeoutCts =
@@ -373,19 +373,17 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
 
             CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(actorSystem);
             await coordinatedShutdown.Run(CoordinatedShutdown.ClrExitReason.Instance);
-
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-
+            Log.Information("Actor system shutdown cancelled, forcing termination");
             await actorSystem.Terminate();
         }
         catch (Exception ex)
         {
-
+            Log.Error(ex, "Error during actor system shutdown, forcing termination");
             await actorSystem.Terminate();
         }
-
     }
 
     private void RegisterShutdownHooks()

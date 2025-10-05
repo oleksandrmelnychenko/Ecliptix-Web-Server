@@ -17,7 +17,7 @@ public interface IIdentityKeyDerivationService
 
 public class IdentityKeyDerivationService : IIdentityKeyDerivationService
 {
-    private const uint DEFAULT_ONE_TIME_KEY_COUNT = 100;
+    private const uint DefaultOneTimeKeyCount = 100;
 
     public async Task<Result<EcliptixSystemIdentityKeys, KeySplittingFailure>> DeriveIdentityKeysFromMasterKeyAsync(
         SodiumSecureMemoryHandle masterKeyHandle,
@@ -75,7 +75,7 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
             (uint spkId, SodiumSecureMemoryHandle spkSk, byte[] spkPk, byte[] spkSig) = spkResult.Unwrap();
 
             Result<List<OneTimePreKeyLocal>, EcliptixProtocolFailure> opksResult =
-                GenerateOneTimePreKeys(DEFAULT_ONE_TIME_KEY_COUNT);
+                GenerateOneTimePreKeys(DefaultOneTimeKeyCount);
             if (opksResult.IsErr)
             {
                 return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
@@ -158,7 +158,7 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
             }
 
             SodiumSecureMemoryHandle result = skHandle;
-            skHandle = null; 
+            skHandle = null;
 
             return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Ok((result, pk));
         }
@@ -212,7 +212,7 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
             }
 
             SodiumSecureMemoryHandle result = skHandle;
-            skHandle = null; 
+            skHandle = null;
 
             return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Ok((result, publicKey));
         }

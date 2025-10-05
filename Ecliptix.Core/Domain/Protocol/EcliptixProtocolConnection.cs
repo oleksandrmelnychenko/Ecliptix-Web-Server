@@ -248,7 +248,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
             receivingStep = null;
             rootKeyHandle = null;
 
-            // Derive metadata encryption key from restored root key
             Result<Unit, EcliptixProtocolFailure> metadataKeyResult = connection.DeriveMetadataEncryptionKey();
             if (metadataKeyResult.IsErr)
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(metadataKeyResult.UnwrapErr());
@@ -488,8 +487,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 if (receivedIndex > currentIndex + 1)
                 {
                     uint gapSize = receivedIndex - currentIndex - 1;
-                    
-                    
+
                     System.Diagnostics.Debug.WriteLine($"Message gap detected: missing {gapSize} messages between {currentIndex + 1} and {receivedIndex}");
                 }
             }
@@ -694,7 +692,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 else
                 {
                     if (_receivingStep == null || receivedDhPublicKeyBytes is not
-                            { Length: Constants.X25519PublicKeySize })
+                        { Length: Constants.X25519PublicKeySize })
                         throw new InvalidOperationException("Receiver ratchet pre-conditions not met.");
                     Result<byte[], EcliptixProtocolFailure> privKeyResult = _currentSendingDhPrivateKeyHandle!.ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
                     if (privKeyResult.IsErr)

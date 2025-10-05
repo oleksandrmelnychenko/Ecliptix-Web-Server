@@ -26,7 +26,7 @@ public static class ActorTypeMap
 
     public static string GetActorName(int actorId)
     {
-        return ActorNames.TryGetValue(actorId, out string? name) ? name 
+        return ActorNames.TryGetValue(actorId, out string? name) ? name
             : throw new ArgumentException($"Unknown actor ID: {actorId}");
     }
 }

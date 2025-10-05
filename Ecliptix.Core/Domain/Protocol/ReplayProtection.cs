@@ -30,7 +30,8 @@ public sealed class ReplayProtection : IDisposable
         _maxWindow = maxWindow;
 
         _cleanupTimer = new Timer(
-            callback: _ => {
+            callback: _ =>
+            {
                 CleanupExpiredEntries();
                 AdjustWindowSize();
             },

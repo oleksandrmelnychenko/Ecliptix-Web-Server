@@ -67,14 +67,14 @@ public sealed class PerformanceProfiler
             return report.ToString();
         }
 
-        report.AppendLine(ProtocolMessages.OperationHeader.PadRight(Constants.OperationColumnWidth) + 
-                         ProtocolMessages.CountHeader.PadLeft(Constants.CountColumnWidth) + 
-                         ProtocolMessages.AverageHeader.PadLeft(Constants.MetricsColumnWidth) + 
-                         ProtocolMessages.MaxHeader.PadLeft(Constants.MetricsColumnWidth) + 
+        report.AppendLine(ProtocolMessages.OperationHeader.PadRight(Constants.OperationColumnWidth) +
+                         ProtocolMessages.CountHeader.PadLeft(Constants.CountColumnWidth) +
+                         ProtocolMessages.AverageHeader.PadLeft(Constants.MetricsColumnWidth) +
+                         ProtocolMessages.MaxHeader.PadLeft(Constants.MetricsColumnWidth) +
                          ProtocolMessages.MinHeader.PadLeft(Constants.MetricsColumnWidth));
         report.AppendLine(new string('-', Constants.TotalReportWidth));
 
-        foreach ((string operation, (long count, double avgMs, double maxMs, double minMs)) in 
+        foreach ((string operation, (long count, double avgMs, double maxMs, double minMs)) in
                  metrics.OrderByDescending(x => x.Value.Count))
         {
             report.AppendLine(

@@ -78,7 +78,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         {
             if (Log.IsEnabled(LogEventLevel.Debug))
 
-            return createResult;
+                return createResult;
         }
 
         EcliptixProtocolChainStep chainStep = createResult.Unwrap();
@@ -127,7 +127,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         {
             if (Log.IsEnabled(LogEventLevel.Debug))
 
-            return Result<RatchetChainKey, EcliptixProtocolFailure>.Ok(cachedKey);
+                return Result<RatchetChainKey, EcliptixProtocolFailure>.Ok(cachedKey);
         }
 
         Result<uint, EcliptixProtocolFailure> currentIndexResult = GetCurrentIndex();

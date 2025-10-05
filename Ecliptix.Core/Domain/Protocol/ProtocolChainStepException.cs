@@ -4,7 +4,7 @@ namespace Ecliptix.Core.Domain.Protocol;
 public class ProtocolChainStepException : Exception
 {
     public ProtocolChainStepException()
-        : base("An error occurred within the ShieldChainStep operation.") 
+        : base("An error occurred within the ShieldChainStep operation.")
     {
     }
 

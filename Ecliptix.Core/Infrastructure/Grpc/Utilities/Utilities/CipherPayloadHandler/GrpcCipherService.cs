@@ -35,7 +35,6 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
         {
             PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
 
-            // Use EncryptPayloadActorEvent to get a complete SecureEnvelope with encrypted metadata and HeaderNonce
             EncryptPayloadActorEvent encryptCommand = new(exchangeType, payload);
             ForwardToConnectActorEvent encryptForwarder = new(connectId, encryptCommand);
 
@@ -75,7 +74,6 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
         }
         catch (Exception ex)
         {
-
             return Result<byte[], FailureBase>.Err(
                 new EcliptixProtocolFailure(EcliptixProtocolFailureType.Generic, "Payload decryption failed"));
         }

@@ -5,10 +5,11 @@ using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Domain.Providers.Twilio;
-using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain;
 using Ecliptix.Core.Configuration;
 using Ecliptix.Domain.Services.Security;
+using Microsoft.EntityFrameworkCore;
+using Ecliptix.Memberships.Persistor.Schema;
 
 namespace Ecliptix.Core.Services;
 
@@ -20,7 +21,7 @@ public sealed class ActorSystemInitializationHost(
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        IDbConnectionFactory dbConnectionFactory = serviceProvider.GetRequiredService<IDbConnectionFactory>();
+        IDbContextFactory<EcliptixSchemaContext> dbContextFactory = serviceProvider.GetRequiredService<IDbContextFactory<EcliptixSchemaContext>>();
         IOpaqueProtocolService opaqueProtocolService = serviceProvider.GetRequiredService<IOpaqueProtocolService>();
         ISmsProvider smsProvider = serviceProvider.GetRequiredService<ISmsProvider>();
         ILocalizationProvider localizationProvider = serviceProvider.GetRequiredService<ILocalizationProvider>();
@@ -31,19 +32,19 @@ public sealed class ActorSystemInitializationHost(
             ApplicationConstants.ActorNames.ProtocolSystem);
 
         IActorRef appDevicePersistor = actorSystem.ActorOf(
-            AppDevicePersistorActor.Build(dbConnectionFactory),
+            AppDevicePersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.AppDevicePersistor);
 
         IActorRef verificationFlowPersistorActor = actorSystem.ActorOf(
-            VerificationFlowPersistorActor.Build(dbConnectionFactory),
+            VerificationFlowPersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.VerificationFlowPersistorActor);
 
         IActorRef membershipPersistorActor = actorSystem.ActorOf(
-            MembershipPersistorActor.Build(dbConnectionFactory),
+            MembershipPersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.MembershipPersistorActor);
 
         IActorRef masterKeySharePersistorActor = actorSystem.ActorOf(
-            MasterKeySharePersistorActor.Build(dbConnectionFactory),
+            MasterKeySharePersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.MasterKeySharePersistorActor);
 
         IActorRef membershipActor = actorSystem.ActorOf(

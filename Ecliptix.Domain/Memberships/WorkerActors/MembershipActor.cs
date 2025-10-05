@@ -9,6 +9,7 @@ using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Protobuf.Membership;
+using Serilog;
 using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
 using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteResponse;
 using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitResponse;
@@ -280,7 +281,7 @@ public class MembershipActor : ReceiveActor
         if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
             !sessionKeyHandle.IsInvalid)
         {
-            await DeriveMasterKeyAndStoreShamirShares(sessionKeyHandle, membershipInfo.MembershipId);
+            await EnsureMasterKeySharesExist(sessionKeyHandle, membershipInfo.MembershipId);
         }
 
         SecureRemovePendingSignIn(@event.ConnectId);
@@ -312,35 +313,35 @@ public class MembershipActor : ReceiveActor
         {
             case VerificationFlowFailureType.Validation:
             case VerificationFlowFailureType.NotFound:
-            {
-                string message = _localizationProvider.Localize(
-                    VerificationFlowMessageKeys.InvalidCredentials,
-                    cultureName
-                );
-                return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
                 {
-                    Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
-                    Message = message
-                });
-            }
+                    string message = _localizationProvider.Localize(
+                        VerificationFlowMessageKeys.InvalidCredentials,
+                        cultureName
+                    );
+                    return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
+                    {
+                        Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
+                        Message = message
+                    });
+                }
 
             case VerificationFlowFailureType.RateLimitExceeded:
-            {
-                string messageTemplate = _localizationProvider.Localize(
-                    VerificationFlowMessageKeys.TooManySigninAttempts,
-                    cultureName
-                );
-
-                int.TryParse(failure.Message, out int minutesUntilRetry);
-                string message = string.Format(messageTemplate, minutesUntilRetry);
-
-                return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
                 {
-                    Result = OpaqueSignInInitResponse.Types.SignInResult.LoginAttemptExceeded,
-                    Message = message,
-                    MinutesUntilRetry = minutesUntilRetry
-                });
-            }
+                    string messageTemplate = _localizationProvider.Localize(
+                        VerificationFlowMessageKeys.TooManySigninAttempts,
+                        cultureName
+                    );
+
+                    int.TryParse(failure.Message, out int minutesUntilRetry);
+                    string message = string.Format(messageTemplate, minutesUntilRetry);
+
+                    return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
+                    {
+                        Result = OpaqueSignInInitResponse.Types.SignInResult.LoginAttemptExceeded,
+                        Message = message,
+                        MinutesUntilRetry = minutesUntilRetry
+                    });
+                }
 
             default:
                 return Result<OpaqueSignInInitResponse, VerificationFlowFailure>
@@ -362,13 +363,29 @@ public class MembershipActor : ReceiveActor
         }
     }
 
-    private async Task DeriveMasterKeyAndStoreShamirShares(SodiumSecureMemoryHandle sessionKeyHandle, Guid membershipId)
+    private async Task EnsureMasterKeySharesExist(SodiumSecureMemoryHandle sessionKeyHandle, Guid membershipId)
     {
+        Result<bool, FailureBase> checkResult = await _masterKeyService.CheckSharesExistAsync(membershipId);
+
+        if (checkResult.IsOk && checkResult.Unwrap())
+        {
+            return;
+        }
+
         Result<dynamic, FailureBase> result = await _masterKeyService.DeriveMasterKeyAndSplitAsync(sessionKeyHandle, membershipId);
 
-        if (result.IsOk)
+        if (result.IsErr)
         {
-            _persistor.Tell(new StoreMasterKeySharesActorEvent(membershipId, result.Unwrap()));
+            Log.Error(
+                "Failed to derive master key and split shares for membership {MembershipId}: {Error}",
+                membershipId,
+                result.UnwrapErr().Message);
+        }
+        else
+        {
+            Log.Information(
+                "Successfully created master key shares for membership {MembershipId} on first login",
+                membershipId);
         }
     }
 }

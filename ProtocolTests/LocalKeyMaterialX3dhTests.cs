@@ -55,8 +55,6 @@ public class ShieldProDoubleRatchetTests
     [TestMethod]
     public void SingleSession_DHRatchet_TriggersAtInterval()
     {
-        // Note: Metadata is now encrypted, so we can't inspect DH keys directly.
-        // This test verifies that DH ratchet works correctly by ensuring all messages decrypt successfully.
         for (int i = 1; i <= 20; i++)
         {
             byte[] msg = Encoding.UTF8.GetBytes($"Msg {i}");
@@ -68,8 +66,6 @@ public class ShieldProDoubleRatchetTests
             Result<byte[], EcliptixProtocolFailure> decryptResult = _bobEcliptixProtocolSystem.ProcessInboundEnvelope(cipher);
             if (decryptResult.IsErr) Assert.Fail($"Bob failed to process message {i}: {decryptResult.UnwrapErr()}");
         }
-
-        // Success means DH ratchet worked correctly throughout the conversation
     }
 
     [TestMethod]
@@ -124,7 +120,6 @@ public class ShieldProDoubleRatchetTests
         {
             tasks.Add(Task.Run(() =>
             {
-
                 for (uint j = 0; j < messagesPerSession; j++)
                 {
                     byte[] aliceMsg = Encoding.UTF8.GetBytes($"Session {testSessionId}: Alice msg {j + 1}");
@@ -133,8 +128,6 @@ public class ShieldProDoubleRatchetTests
                         throw new AssertFailedException(
                             $"[Session {testSessionId}] Alice failed to encrypt msg {j + 1}: {aliceCipherResult.UnwrapErr()}");
                     SecureEnvelope aliceCipher = aliceCipherResult.Unwrap();
-
-                    // Note: Metadata is now encrypted - DH ratchet verification done via successful decryption
 
                     Result<byte[], EcliptixProtocolFailure> bobPlaintextResult = bob.ProcessInboundEnvelope(aliceCipher);
                     if (bobPlaintextResult.IsErr)
@@ -148,8 +141,6 @@ public class ShieldProDoubleRatchetTests
                         throw new AssertFailedException(
                             $"[Session {testSessionId}] Bob failed to encrypt msg {j + 1}: {bobCipherResult.UnwrapErr()}");
                     SecureEnvelope bobCipher = bobCipherResult.Unwrap();
-
-                    // Note: Metadata is now encrypted - DH ratchet verification done via successful decryption
 
                     Result<byte[], EcliptixProtocolFailure> alicePlaintextResult = alice.ProcessInboundEnvelope(bobCipher);
                     if (alicePlaintextResult.IsErr)
@@ -170,7 +161,6 @@ public class ShieldProDoubleRatchetTests
     {
         WriteLine("[Test: Ratchet_BidirectionalMessageExchange] Running...");
         const int iterationCount = 50;
-        // Note: Metadata is now encrypted - DH ratchet correctness verified via successful decryption
 
         for (int i = 1; i <= iterationCount; i++)
         {

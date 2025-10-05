@@ -13,7 +13,7 @@ public class TelemetryInterceptor : Interceptor, IDisposable
     private static readonly ActivitySource ActivitySource = new(InterceptorConstants.Telemetry.GrpcInterceptorsActivitySource);
     private static readonly Meter TelemetryMeter = new(InterceptorConstants.Telemetry.GrpcTelemetryMeter);
     private static readonly Counter<int> RequestsTotal = TelemetryMeter.CreateCounter<int>(
-        InterceptorConstants.Metrics.GrpcRequestsTotal, 
+        InterceptorConstants.Metrics.GrpcRequestsTotal,
         description: InterceptorConstants.Metrics.GrpcRequestsTotalDescription);
 
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(

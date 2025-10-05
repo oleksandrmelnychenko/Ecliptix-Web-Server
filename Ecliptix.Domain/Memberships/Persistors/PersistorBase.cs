@@ -2,9 +2,10 @@ using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
 using Akka.Actor;
-using Ecliptix.Domain.DbConnectionFactory;
+using Ecliptix.Memberships.Persistor.Schema;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
@@ -12,39 +13,37 @@ namespace Ecliptix.Domain.Memberships.Persistors;
 public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
     where TFailure : IFailureBase
 {
-    private readonly IDbConnectionFactory _connectionFactory;
+    private readonly IDbContextFactory<EcliptixSchemaContext> _dbContextFactory;
     private readonly ActivitySource _activitySource;
     private readonly Dictionary<string, TimeSpan> _operationTimeouts;
     private bool _disposed;
 
-    protected PersistorBase(IDbConnectionFactory connectionFactory)
+    protected PersistorBase(IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
     {
-        _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        _dbContextFactory = dbContextFactory ?? throw new ArgumentNullException(nameof(dbContextFactory));
         _activitySource = new ActivitySource($"Ecliptix.Persistor.{GetType().Name}");
         _operationTimeouts = GetOperationTimeouts();
     }
 
-    protected async Task<Result<TResult, TFailure>> ExecuteWithConnection<TResult>(
-        Func<IDbConnection, Task<Result<TResult, TFailure>>> operation,
-        string operationName,
-        string? commandText = null)
+    protected async Task<Result<TResult, TFailure>> ExecuteWithContext<TResult>(
+        Func<EcliptixSchemaContext, Task<Result<TResult, TFailure>>> operation,
+        string operationName)
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(PersistorBase<TFailure>));
 
-        using Activity? activity = StartActivity(operationName, commandText);
+        using Activity? activity = StartActivity(operationName, null);
 
         return await PersistorRetryPolicy.ExecuteWithRetryAsync(
             async () =>
             {
-                using IDbConnection connection = await CreateConnectionWithTimeout(operationName);
-                activity?.SetTag("db.name", connection.Database);
-                activity?.SetTag("db.connection_state", connection.State.ToString());
+                await using EcliptixSchemaContext ctx = await _dbContextFactory.CreateDbContextAsync();
 
-                ValidateConnection(connection, operationName);
-                ConfigureConnectionTimeout(connection, operationName);
+                activity?.SetTag("db.name", ctx.Database.GetDbConnection().Database);
+                activity?.SetTag("db.connection_state", ctx.Database.GetDbConnection().State.ToString());
+                activity?.SetTag("operation.start_time", DateTime.UtcNow.ToString("O"));
 
-                Result<TResult, TFailure> result = await operation(connection);
+                Result<TResult, TFailure> result = await operation(ctx);
 
                 HandleOperationResult(activity, result, operationName);
                 return result;
@@ -118,50 +117,6 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
         return activity;
     }
 
-    private async Task<IDbConnection> CreateConnectionWithTimeout(string operationName)
-    {
-        using CancellationTokenSource timeoutCts = new(TimeoutConfiguration.Database.CommandTimeout);
-
-        try
-        {
-            return await _connectionFactory.CreateOpenConnectionAsync(timeoutCts.Token);
-        }
-        catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested)
-        {
-            throw new TimeoutException($"Connection creation timed out for operation {operationName}");
-        }
-    }
-
-    private void ValidateConnection(IDbConnection connection, string operationName)
-    {
-        if (connection.State != ConnectionState.Open)
-        {
-            throw new InvalidOperationException(
-                $"Connection not open for operation {operationName}. State: {connection.State}");
-        }
-    }
-
-    private void ConfigureConnectionTimeout(IDbConnection connection, string operationName)
-    {
-        if (connection is not DbConnection dbConnection) return;
-
-        TimeSpan timeout = GetTimeoutForOperation(operationName);
-        if (dbConnection.ConnectionTimeout != (int)timeout.TotalSeconds)
-        {
-
-        }
-    }
-
-    private TimeSpan GetTimeoutForOperation(string operationName)
-    {
-        foreach (KeyValuePair<string, TimeSpan> kvp in _operationTimeouts.Where(kvp =>
-                     operationName.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase)))
-        {
-            return kvp.Value;
-        }
-
-        return TimeSpan.FromSeconds(15);
-    }
 
     protected override void PostStop()
     {

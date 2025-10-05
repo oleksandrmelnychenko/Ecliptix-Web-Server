@@ -243,13 +243,13 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                                 $"Invalid OPK secret key length for ID {opkProto.PreKeyId}."));
 
                     ReadOnlySpan<byte> opkPkSpan = opkProto.PublicKey.Span;
-                if (opkPkSpan.Length != Constants.X25519PublicKeySize)
-                    return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
-                        EcliptixProtocolFailure.InvalidInput(
-                            $"Invalid OPK public key length for ID {opkProto.PreKeyId}."));
+                    if (opkPkSpan.Length != Constants.X25519PublicKeySize)
+                        return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
+                            EcliptixProtocolFailure.InvalidInput(
+                                $"Invalid OPK public key length for ID {opkProto.PreKeyId}."));
 
-                SodiumSecureMemoryHandle skHandle = SodiumSecureMemoryHandle.Allocate(opkSkSpan.Length).Unwrap();
-                skHandle.Write(opkSkSpan).Unwrap();
+                    SodiumSecureMemoryHandle skHandle = SodiumSecureMemoryHandle.Allocate(opkSkSpan.Length).Unwrap();
+                    skHandle.Write(opkSkSpan).Unwrap();
 
                     byte[] opkPkBytes = new byte[opkPkSpan.Length];
                     opkPkSpan.CopyTo(opkPkBytes);
@@ -279,7 +279,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             spkSkHandle?.Dispose();
             if (opks != null)
             {
-                foreach (OneTimePreKeyLocal k in opks) 
+                foreach (OneTimePreKeyLocal k in opks)
                 {
                     k.Dispose();
                 }
@@ -635,7 +635,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             _ephemeralSecretKeyHandle = null;
 
             bool useOpk = remoteBundle.OneTimePreKeys.FirstOrDefault()?.PublicKey is
-                { Length: Constants.X25519PublicKeySize };
+            { Length: Constants.X25519PublicKeySize };
             Result<byte[], SodiumFailure> dh1Result = SodiumInterop.ScalarMult(ephemeralSecretBytes, remoteBundle.IdentityX25519);
             if (dh1Result.IsErr)
                 return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(

@@ -737,7 +737,7 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         string message)
     {
         return Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
-            { Result = result, Message = message });
+        { Result = result, Message = message });
     }
 
     private static Result<VerifyCodeResponse, VerificationFlowFailure>

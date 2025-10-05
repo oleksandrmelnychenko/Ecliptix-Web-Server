@@ -1,108 +1,155 @@
-using System.Data;
 using System.Data.Common;
 using Akka.Actor;
-using Dapper;
-using Ecliptix.Domain.DbConnectionFactory;
 using Ecliptix.Domain.Memberships.ActorEvents;
+using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures;
 using Microsoft.Data.SqlClient;
-using Serilog;
+using Microsoft.EntityFrameworkCore;
+using Ecliptix.Memberships.Persistor.Schema;
+using Ecliptix.Memberships.Persistor.Schema.Entities;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
 public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
 {
-    public MasterKeySharePersistorActor(IDbConnectionFactory connectionFactory)
-        : base(connectionFactory)
+    public MasterKeySharePersistorActor(IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
+        : base(dbContextFactory)
     {
         Become(Ready);
     }
 
-    public static Props Build(IDbConnectionFactory connectionFactory)
+    public static Props Build(IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
     {
-        return Props.Create(() => new MasterKeySharePersistorActor(connectionFactory));
+        return Props.Create(() => new MasterKeySharePersistorActor(dbContextFactory));
     }
 
     private void Ready()
     {
         Receive<InsertMasterKeySharesEvent>(cmd =>
-            ExecuteWithConnection(conn => InsertMasterKeySharesAsync(conn, cmd), "InsertMasterKeyShares")
+            ExecuteWithContext(ctx => InsertMasterKeySharesAsync(ctx, cmd), "InsertMasterKeyShares")
                 .PipeTo(Sender));
 
         Receive<GetMasterKeySharesEvent>(cmd =>
-            ExecuteWithConnection(conn => GetMasterKeySharesByMembershipIdAsync(conn, cmd), "GetMasterKeyShares")
+            ExecuteWithContext(ctx => GetMasterKeySharesByMembershipIdAsync(ctx, cmd), "GetMasterKeyShares")
                 .PipeTo(Sender));
     }
 
     private static async Task<Result<InsertMasterKeySharesResult, KeySplittingFailure>> InsertMasterKeySharesAsync(
-        IDbConnection connection, InsertMasterKeySharesEvent cmd)
+        EcliptixSchemaContext ctx, InsertMasterKeySharesEvent cmd)
     {
-        DynamicParameters parameters = new();
-        parameters.Add("@MembershipUniqueId", cmd.MembershipUniqueId);
-
-        DataTable sharesTable = new();
-        sharesTable.Columns.Add("ShareIndex", typeof(int));
-        sharesTable.Columns.Add("EncryptedShare", typeof(byte[]));
-        sharesTable.Columns.Add("ShareMetadata", typeof(string));
-        sharesTable.Columns.Add("StorageLocation", typeof(string));
-
-        foreach (ShareData share in cmd.Shares)
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
+        try
         {
-            sharesTable.Rows.Add(share.ShareIndex, share.EncryptedShare, share.ShareMetadata, share.StorageLocation);
+            if (cmd.Shares.Count == 0)
+            {
+                return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
+                    KeySplittingFailure.KeySplittingFailed("No shares provided"));
+            }
+
+            Membership? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId);
+            if (membership == null)
+            {
+                await transaction.RollbackAsync();
+                return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
+                    KeySplittingFailure.InvalidIdentifier("Membership not found or inactive"));
+            }
+
+            List<MasterKeyShare> existingShares = await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId);
+            if (existingShares.Any())
+            {
+                await transaction.RollbackAsync();
+                return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
+                    KeySplittingFailure.KeySplittingFailed("Master key shares already exist for this membership"));
+            }
+
+            int distinctIndexes = cmd.Shares.Select(s => s.ShareIndex).Distinct().Count();
+            if (distinctIndexes != cmd.Shares.Count)
+            {
+                await transaction.RollbackAsync();
+                return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
+                    KeySplittingFailure.KeySplittingFailed("Duplicate share indexes detected"));
+            }
+
+            int maxIndex = cmd.Shares.Max(s => s.ShareIndex);
+            int minIndex = cmd.Shares.Min(s => s.ShareIndex);
+            if (minIndex != 1 || maxIndex != cmd.Shares.Count)
+            {
+                await transaction.RollbackAsync();
+                return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
+                    KeySplittingFailure.KeySplittingFailed($"Share indexes must be sequential starting from 1 (expected 1-{cmd.Shares.Count}, got {minIndex}-{maxIndex})"));
+            }
+
+            List<MasterKeyShare> sharesToInsert = cmd.Shares.Select(s => new MasterKeyShare
+            {
+                MembershipUniqueId = cmd.MembershipUniqueId,
+                ShareIndex = s.ShareIndex,
+                EncryptedShare = s.EncryptedShare,
+                ShareMetadata = s.ShareMetadata,
+                StorageLocation = s.StorageLocation
+            }).ToList();
+
+            ctx.MasterKeyShares.AddRange(sharesToInsert);
+            await ctx.SaveChangesAsync();
+
+            await transaction.CommitAsync();
+
+            return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Ok(
+                new InsertMasterKeySharesResult
+                {
+                    Success = true,
+                    Message = "Shares inserted successfully"
+                });
         }
-
-        parameters.Add("@Shares", sharesTable.AsTableValuedParameter("dbo.MasterKeyShareTableType"));
-
-        InsertMasterKeySharesResult? result = await connection.QuerySingleOrDefaultAsync<InsertMasterKeySharesResult>(
-            "dbo.SP_InsertMasterKeyShares",
-            parameters,
-            commandType: CommandType.StoredProcedure
-        );
-
-        if (result is null)
+        catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
-                KeySplittingFailure.KeySplittingFailed("Insert master key shares failed - stored procedure returned null result"));
+                KeySplittingFailure.KeySplittingFailed($"Insert failed: {ex.Message}"));
         }
-
-        if (!result.Success)
-        {
-            return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
-                KeySplittingFailure.KeySplittingFailed($"Insert failed: {result.Message}"));
-        }
-
-        return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Ok(result);
     }
 
-    private static async Task<Result<IReadOnlyList<MasterKeyShareQueryRecord>, KeySplittingFailure>> GetMasterKeySharesByMembershipIdAsync(
-        IDbConnection connection, GetMasterKeySharesEvent cmd)
+    private static async Task<Result<MasterKeyShareQueryRecord[], KeySplittingFailure>> GetMasterKeySharesByMembershipIdAsync(
+        EcliptixSchemaContext ctx, GetMasterKeySharesEvent cmd)
     {
-        DynamicParameters parameters = new();
-        parameters.Add("@MembershipUniqueId", cmd.MembershipUniqueId);
-
-        IEnumerable<MasterKeyShareQueryRecord> shares = await connection.QueryAsync<MasterKeyShareQueryRecord>(
-            "dbo.SP_GetMasterKeyShare",
-            parameters,
-            commandType: CommandType.StoredProcedure
-        );
-
-        List<MasterKeyShareQueryRecord> sharesList = shares.ToList();
-
-        if (sharesList.Count == 0)
+        try
         {
-            return Result<IReadOnlyList<MasterKeyShareQueryRecord>, KeySplittingFailure>.Err(
-                KeySplittingFailure.InsufficientShares(0, 1));
-        }
+            List<MasterKeyShare> shares = await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId);
 
-        return Result<IReadOnlyList<MasterKeyShareQueryRecord>, KeySplittingFailure>.Ok(sharesList);
+            if (shares.Count == 0)
+            {
+                return Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Err(
+                    KeySplittingFailure.InsufficientShares(0, 1));
+            }
+
+            MasterKeyShareQueryRecord[] queryRecords = new MasterKeyShareQueryRecord[shares.Count];
+            for (int i = 0; i < shares.Count; i++)
+            {
+                MasterKeyShare s = shares[i];
+                queryRecords[i] = new MasterKeyShareQueryRecord
+                {
+                    MembershipUniqueId = s.MembershipUniqueId,
+                    ShareIndex = s.ShareIndex,
+                    EncryptedShare = s.EncryptedShare,
+                    ShareMetadata = s.ShareMetadata,
+                    StorageLocation = s.StorageLocation,
+                    UniqueId = s.UniqueId
+                };
+            }
+
+            return Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Ok(queryRecords);
+        }
+        catch (Exception ex)
+        {
+            return Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Err(
+                KeySplittingFailure.KeySplittingFailed($"Get shares failed: {ex.Message}"));
+        }
     }
 
     protected override KeySplittingFailure MapDbException(DbException ex)
     {
-
         if (ex is SqlException sqlEx)
         {
             return sqlEx.Number switch
@@ -122,13 +169,11 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
 
     protected override KeySplittingFailure CreateTimeoutFailure(TimeoutException ex)
     {
-
         return KeySplittingFailure.KeySplittingFailed("Database operation timed out", ex);
     }
 
     protected override KeySplittingFailure CreateGenericFailure(Exception ex)
     {
-
         return KeySplittingFailure.KeySplittingFailed($"Unexpected error in master key share persistor: {ex.Message}", ex);
     }
 
