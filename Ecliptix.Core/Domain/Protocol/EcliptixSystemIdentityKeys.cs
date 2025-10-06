@@ -674,7 +674,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             ikmBytes = ArrayPool<byte>.Shared.Rent(ikmSize);
             Span<byte> ikmSpan = ikmBytes.AsSpan(0, ikmSize);
             f32.CopyTo(ikmSpan);
-            dhConcatSpan.CopyTo(ikmSpan.Slice(f32.Length));
+            dhConcatSpan.CopyTo(ikmSpan[f32.Length..]);
             byte[] actualIkmArray = ikmSpan.ToArray();
 
             hkdfOutput = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
@@ -739,7 +739,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
 
     public Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> CalculateSharedSecretAsRecipient(
         ReadOnlySpan<byte> remoteIdentityPublicKeyX, ReadOnlySpan<byte> remoteEphemeralPublicKeyX,
-        uint? usedLocalOpkId, ReadOnlySpan<byte> info)
+        ReadOnlySpan<byte> info)
     {
         SodiumSecureMemoryHandle? secureOutputHandle = null;
         byte[]? identitySecretBytes = null, signedPreKeySecretBytes = null, oneTimePreKeySecretBytes = null;
@@ -760,13 +760,9 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(
                     remoteRecipientKeysValidationResult.UnwrapErr());
 
-            if (usedLocalOpkId.HasValue)
+            if (_oneTimePreKeysInternal.Count > 0)
             {
-                Result<SodiumSecureMemoryHandle?, EcliptixProtocolFailure> findOpkResult =
-                    FindLocalOpkHandle(usedLocalOpkId.Value);
-                if (findOpkResult.IsErr)
-                    return Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure>.Err(findOpkResult.UnwrapErr());
-                opkSecretHandle = findOpkResult.Unwrap();
+                opkSecretHandle = _oneTimePreKeysInternal[0].PrivateKeyHandle;
             }
 
             Result<byte[], EcliptixProtocolFailure> readIdResult = _identityX25519SecretKeyHandle
@@ -983,21 +979,6 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
                 EcliptixProtocolFailure.PeerPubKey("Invalid remote Ephemeral key length."));
 
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
-    }
-
-    private Result<SodiumSecureMemoryHandle?, EcliptixProtocolFailure> FindLocalOpkHandle(uint opkId)
-    {
-        foreach (OneTimePreKeyLocal opk in _oneTimePreKeysInternal)
-        {
-            if (opk.PreKeyId != opkId) continue;
-            if (opk.PrivateKeyHandle.IsInvalid)
-                return Result<SodiumSecureMemoryHandle?, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.PrepareLocal($"Local OPK ID {opkId} found but its handle is invalid."));
-            return Result<SodiumSecureMemoryHandle?, EcliptixProtocolFailure>.Ok(opk.PrivateKeyHandle);
-        }
-
-        return Result<SodiumSecureMemoryHandle?, EcliptixProtocolFailure>.Err(
-            EcliptixProtocolFailure.Handshake($"Local OPK ID {opkId} not found."));
     }
 
     private static void ConcatenateDhResults(Span<byte> destination, byte[] dh1, byte[] dh2, byte[] dh3, byte[]? dh4)

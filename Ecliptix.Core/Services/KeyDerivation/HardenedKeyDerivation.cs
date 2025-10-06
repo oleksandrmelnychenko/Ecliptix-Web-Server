@@ -37,7 +37,15 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
 
             byte[] stretchedKey = stretchedResult.Unwrap();
 
+            string stretchedKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stretchedKey))[..16];
+            Serilog.Log.Information("[SERVER-ENHANCED-ARGON2ID] Enhanced key Argon2id stretch completed. Context: {Context}, StretchedKeyFingerprint: {StretchedKeyFingerprint}",
+                context, stretchedKeyFingerprint);
+
             byte[] expandedKey = await ExpandKeyWithHkdfAsync(stretchedKey, context, options.OutputLength);
+
+            string expandedKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(expandedKey))[..16];
+            Serilog.Log.Information("[SERVER-ENHANCED-HKDF] Enhanced key HKDF expansion completed. Context: {Context}, ExpandedKeyFingerprint: {ExpandedKeyFingerprint}",
+                context, expandedKeyFingerprint);
 
             if (options.UseHardwareEntropy)
             {
@@ -58,6 +66,10 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
             }
 
             byte[] finalKey = await ApplyAdditionalRoundsAsync(expandedKey);
+
+            string finalKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(finalKey))[..16];
+            Serilog.Log.Information("[SERVER-ENHANCED-FINAL] Enhanced key final (after additional rounds). Context: {Context}, FinalKeyFingerprint: {FinalKeyFingerprint}",
+                context, finalKeyFingerprint);
 
             CryptographicOperations.ZeroMemory(stretchedKey);
             CryptographicOperations.ZeroMemory(expandedKey);

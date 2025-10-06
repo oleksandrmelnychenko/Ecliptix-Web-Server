@@ -233,7 +233,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> sharedSecretResult =
                 ecliptixSystemIdentityKeys.CalculateSharedSecretAsRecipient(
                     peerBundle.IdentityX25519, peerBundle.EphemeralX25519,
-                    peerBundle.OneTimePreKeys.FirstOrDefault()?.PreKeyId, Constants.X3dhInfo);
+                    Constants.X3dhInfo);
             if (sharedSecretResult.IsErr)
                 return Result<PubKeyExchange, EcliptixProtocolFailure>.Err(sharedSecretResult.UnwrapErr());
 

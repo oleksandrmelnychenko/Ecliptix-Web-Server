@@ -65,7 +65,7 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
             (x25519SkHandle, byte[] x25519Pk) = x25519Result.Unwrap();
 
             Result<(uint id, SodiumSecureMemoryHandle sk, byte[] pk, byte[] sig), EcliptixProtocolFailure> spkResult =
-                GenerateSignedPreKey(ed25519SkHandle, ed25519Pk);
+                GenerateSignedPreKey(ed25519SkHandle, ed25519Pk, masterKeyBytes, membershipIdString);
             if (spkResult.IsErr)
             {
                 return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
@@ -226,26 +226,47 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
 
     private static Result<(uint id, SodiumSecureMemoryHandle sk, byte[] pk, byte[] sig), EcliptixProtocolFailure> GenerateSignedPreKey(
         SodiumSecureMemoryHandle ed25519SkHandle,
-        byte[] identityPublicKey)
+        byte[] identityPublicKey,
+        byte[] masterKey,
+        string membershipId)
     {
+        byte[]? spkSeed = null;
+        byte[]? spkPrivateKey = null;
+        SodiumSecureMemoryHandle? spkSk = null;
+
         try
         {
-            uint spkId = (uint)Random.Shared.Next(1, int.MaxValue);
+            spkSeed = MasterKeyDerivation.DeriveSignedPreKeySeed(masterKey, membershipId);
+            uint spkId = BitConverter.ToUInt32(spkSeed, 0);
 
-            Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> keyPairResult =
-                SodiumInterop.GenerateX25519KeyPair("SignedPreKey");
+            spkPrivateKey = new byte[Constants.X25519PrivateKeySize];
+            Array.Copy(spkSeed, 0, spkPrivateKey, 0, Constants.X25519PrivateKeySize);
 
-            if (keyPairResult.IsErr)
+            Result<byte[], SodiumFailure> publicKeyResult = SodiumInterop.ScalarMultBase(spkPrivateKey);
+            if (publicKeyResult.IsErr)
             {
-                return Result<(uint, SodiumSecureMemoryHandle, byte[], byte[]), EcliptixProtocolFailure>.Err(keyPairResult.UnwrapErr());
+                return Result<(uint, SodiumSecureMemoryHandle, byte[], byte[]), EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic($"Failed to derive SPK public key: {publicKeyResult.UnwrapErr().Message}"));
             }
 
-            (SodiumSecureMemoryHandle spkSk, byte[] spkPk) = keyPairResult.Unwrap();
+            byte[] spkPk = publicKeyResult.Unwrap();
 
-            byte[] signatureMessage = new byte[identityPublicKey.Length + sizeof(uint) + spkPk.Length];
-            Buffer.BlockCopy(identityPublicKey, 0, signatureMessage, 0, identityPublicKey.Length);
-            BitConverter.TryWriteBytes(signatureMessage.AsSpan(identityPublicKey.Length), spkId);
-            Buffer.BlockCopy(spkPk, 0, signatureMessage, identityPublicKey.Length + sizeof(uint), spkPk.Length);
+            Result<SodiumSecureMemoryHandle, SodiumFailure> allocResult =
+                SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
+            if (allocResult.IsErr)
+            {
+                return Result<(uint, SodiumSecureMemoryHandle, byte[], byte[]), EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic($"Failed to allocate secure memory for SPK: {allocResult.UnwrapErr().Message}"));
+            }
+
+            spkSk = allocResult.Unwrap();
+            Result<Unit, SodiumFailure> writeResult = spkSk.Write(spkPrivateKey);
+            if (writeResult.IsErr)
+            {
+                spkSk.Dispose();
+                return Result<(uint, SodiumSecureMemoryHandle, byte[], byte[]), EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic($"Failed to write SPK to secure memory: {writeResult.UnwrapErr().Message}"));
+            }
 
             Result<byte[], SodiumFailure> readSkResult = ed25519SkHandle.ReadBytes(Constants.Ed25519SecretKeySize);
             if (readSkResult.IsErr)
@@ -258,7 +279,7 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
             byte[] ed25519Sk = readSkResult.Unwrap();
 
             Result<byte[], SodiumFailure> signResult =
-                SodiumInterop.SignDetached(signatureMessage, ed25519Sk);
+                SodiumInterop.SignDetached(spkPk, ed25519Sk);
 
             CryptographicOperations.ZeroMemory(ed25519Sk);
 
@@ -271,13 +292,24 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
 
             byte[] signature = signResult.Unwrap();
 
+            SodiumSecureMemoryHandle resultHandle = spkSk;
+            spkSk = null;
+
             return Result<(uint, SodiumSecureMemoryHandle, byte[], byte[]), EcliptixProtocolFailure>.Ok(
-                (spkId, spkSk, spkPk, signature));
+                (spkId, resultHandle, spkPk, signature));
         }
         catch (Exception ex)
         {
+            spkSk?.Dispose();
             return Result<(uint, SodiumSecureMemoryHandle, byte[], byte[]), EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic($"Unexpected error generating signed pre-key: {ex.Message}", ex));
+        }
+        finally
+        {
+            if (spkSeed != null)
+                CryptographicOperations.ZeroMemory(spkSeed);
+            if (spkPrivateKey != null)
+                CryptographicOperations.ZeroMemory(spkPrivateKey);
         }
     }
 

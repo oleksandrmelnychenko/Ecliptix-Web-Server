@@ -19,6 +19,7 @@ public static class MasterKeyDerivation
     private const string DOMAIN_CONTEXT = "ECLIPTIX_MASTER_KEY";
     private const string ED25519_CONTEXT = "ED25519";
     private const string X25519_CONTEXT = "X25519";
+    private const string SPK_X25519_CONTEXT = "SPK_X25519";
 
     public static byte[] DeriveMasterKey(byte[] exportKey, ByteString membershipId)
     {
@@ -43,11 +44,35 @@ public static class MasterKeyDerivation
         {
             stretchedKey = DeriveWithArgon2Id(exportKey, argonSalt);
 
-            byte[] salt16 = new byte[16];
-            byte[] personal16 = new byte[16];
+            // Log Argon2id stretched key fingerprint for verification
+            string stretchedKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stretchedKey))[..16];
+            Serilog.Log.Information("[SERVER-ARGON2ID] Argon2id stretched key derived. StretchedKeyFingerprint: {StretchedKeyFingerprint}", stretchedKeyFingerprint);
 
-            Array.Copy(masterSaltBytes.ToArray(), 0, salt16, 0, Math.Min(masterSaltBytes.Length, 16));
-            Array.Copy(membershipBytes.ToArray(), 0, personal16, 0, Math.Min(membershipBytes.Length, 16));
+            // Prepare Blake2b salt and personal parameters (must be exactly 16 bytes each)
+            byte[] salt16 = masterSaltBytes.ToArray();
+            byte[] personal16 = membershipBytes.ToArray();
+
+            // Validate parameter lengths for Blake2b
+            if (salt16.Length != 16)
+            {
+                // Truncate or pad salt to exactly 16 bytes
+                byte[] adjustedSalt = new byte[16];
+                int copyLength = Math.Min(salt16.Length, 16);
+                Array.Copy(salt16, 0, adjustedSalt, 0, copyLength);
+                salt16 = adjustedSalt;
+                Serilog.Log.Warning("[SERVER-BLAKE2B-SALT] Salt adjusted to 16 bytes. Original length: {OriginalLength}", masterSaltBytes.Length);
+            }
+
+            if (personal16.Length != 16)
+            {
+                throw new InvalidOperationException($"Personal parameter (membershipId) must be exactly 16 bytes, got {personal16.Length}");
+            }
+
+            // Log Blake2b input parameters
+            string saltHex = Convert.ToHexString(salt16)[..16];
+            string personalHex = Convert.ToHexString(personal16)[..16];
+            Serilog.Log.Information("[SERVER-BLAKE2B-INPUT] Blake2b inputs. SaltLength: {SaltLength}, PersonalLength: {PersonalLength}, SaltPrefix: {SaltPrefix}, PersonalPrefix: {PersonalPrefix}",
+                salt16.Length, personal16.Length, saltHex, personalHex);
 
             Result<byte[], SodiumFailure> hashResult = SodiumInterop.Blake2bHashSaltPersonal(
                 message: stretchedKey,
@@ -61,6 +86,10 @@ public static class MasterKeyDerivation
                 throw new InvalidOperationException($"Blake2b hash failed: {hashResult.UnwrapErr().Message}");
 
             byte[] masterKey = hashResult.Unwrap();
+
+            // Log master key fingerprint immediately after Blake2b
+            string masterKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(masterKey))[..16];
+            Serilog.Log.Information("[SERVER-BLAKE2B-OUTPUT] Master key derived from Blake2b. MasterKeyFingerprint: {MasterKeyFingerprint}", masterKeyFingerprint);
 
             return masterKey;
         }
@@ -106,13 +135,43 @@ public static class MasterKeyDerivation
 
             ReadOnlySpan<byte> masterSaltBytes = Encoding.UTF8.GetBytes(MASTER_SALT);
 
+            // Log Argon2id salt for verification
+            string argonSaltHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(argonSalt))[..16];
+            Serilog.Log.Information("[SERVER-ARGON2ID-SALT] Argon2id salt created. ArgonSaltHash: {ArgonSaltHash}, MembershipIdLength: {MembershipIdLength}",
+                argonSaltHash, membershipBytes.Length);
+
             stretchedKey = DeriveWithArgon2Id(exportKeyBytes, argonSalt);
 
-            byte[] salt16 = new byte[16];
-            byte[] personal16 = new byte[16];
+            // Log Argon2id stretched key fingerprint for verification
+            string stretchedKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stretchedKey))[..16];
+            Serilog.Log.Information("[SERVER-ARGON2ID-HANDLE] Argon2id stretched key derived. StretchedKeyFingerprint: {StretchedKeyFingerprint}", stretchedKeyFingerprint);
 
-            Array.Copy(masterSaltBytes.ToArray(), 0, salt16, 0, Math.Min(masterSaltBytes.Length, 16));
-            Array.Copy(membershipBytes.ToArray(), 0, personal16, 0, Math.Min(membershipBytes.Length, 16));
+            // Prepare Blake2b salt and personal parameters (must be exactly 16 bytes each)
+            byte[] salt16 = masterSaltBytes.ToArray();
+            byte[] personal16 = membershipBytes.ToArray();
+
+            // Validate parameter lengths for Blake2b
+            if (salt16.Length != 16)
+            {
+                // Truncate or pad salt to exactly 16 bytes
+                byte[] adjustedSalt = new byte[16];
+                int copyLength = Math.Min(salt16.Length, 16);
+                Array.Copy(salt16, 0, adjustedSalt, 0, copyLength);
+                salt16 = adjustedSalt;
+                Serilog.Log.Warning("[SERVER-BLAKE2B-SALT-HANDLE] Salt adjusted to 16 bytes. Original length: {OriginalLength}", masterSaltBytes.Length);
+            }
+
+            if (personal16.Length != 16)
+            {
+                return Result<SodiumSecureMemoryHandle, SodiumFailure>.Err(
+                    SodiumFailure.InvalidOperation($"Personal parameter (membershipId) must be exactly 16 bytes, got {personal16.Length}"));
+            }
+
+            // Log Blake2b input parameters
+            string saltHex = Convert.ToHexString(salt16)[..16];
+            string personalHex = Convert.ToHexString(personal16)[..16];
+            Serilog.Log.Information("[SERVER-BLAKE2B-INPUT-HANDLE] Blake2b inputs. SaltLength: {SaltLength}, PersonalLength: {PersonalLength}, SaltPrefix: {SaltPrefix}, PersonalPrefix: {PersonalPrefix}",
+                salt16.Length, personal16.Length, saltHex, personalHex);
 
             Result<byte[], SodiumFailure> hashResult = SodiumInterop.Blake2bHashSaltPersonal(
                 message: stretchedKey,
@@ -126,6 +185,10 @@ public static class MasterKeyDerivation
                 return Result<SodiumSecureMemoryHandle, SodiumFailure>.Err(hashResult.UnwrapErr());
 
             byte[] masterKeyBytes = hashResult.Unwrap();
+
+            // Log master key fingerprint immediately after Blake2b
+            string masterKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(masterKeyBytes))[..16];
+            Serilog.Log.Information("[SERVER-BLAKE2B-OUTPUT-HANDLE] Master key derived from Blake2b. MasterKeyFingerprint: {MasterKeyFingerprint}", masterKeyFingerprint);
 
             Result<SodiumSecureMemoryHandle, SodiumFailure> allocResult = SodiumSecureMemoryHandle.Allocate(KEY_SIZE);
             if (allocResult.IsErr)
@@ -250,6 +313,45 @@ public static class MasterKeyDerivation
         BitConverter.TryWriteBytes(versionBytes, CURRENT_VERSION);
 
         ReadOnlySpan<byte> contextBytes = Encoding.UTF8.GetBytes(X25519_CONTEXT);
+
+        int memberBytesLength = Encoding.UTF8.GetByteCount(membershipId);
+        Span<byte> memberBytes = memberBytesLength <= 256
+            ? stackalloc byte[memberBytesLength]
+            : new byte[memberBytesLength];
+        Encoding.UTF8.GetBytes(membershipId, memberBytes);
+
+        int totalLength = versionBytes.Length + contextBytes.Length + memberBytes.Length;
+        Span<byte> combinedContext = totalLength <= 512
+            ? stackalloc byte[totalLength]
+            : new byte[totalLength];
+
+        try
+        {
+            int offset = 0;
+            versionBytes.CopyTo(combinedContext[offset..]);
+            offset += versionBytes.Length;
+
+            contextBytes.CopyTo(combinedContext[offset..]);
+            offset += contextBytes.Length;
+
+            memberBytes.CopyTo(combinedContext[offset..]);
+
+            return HashWithGenericHashFromSpan(masterKey, combinedContext, KEY_SIZE);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(versionBytes);
+            CryptographicOperations.ZeroMemory(memberBytes);
+            CryptographicOperations.ZeroMemory(combinedContext);
+        }
+    }
+
+    public static byte[] DeriveSignedPreKeySeed(byte[] masterKey, string membershipId)
+    {
+        Span<byte> versionBytes = stackalloc byte[sizeof(int)];
+        BitConverter.TryWriteBytes(versionBytes, CURRENT_VERSION);
+
+        ReadOnlySpan<byte> contextBytes = Encoding.UTF8.GetBytes(SPK_X25519_CONTEXT);
 
         int memberBytesLength = Encoding.UTF8.GetByteCount(membershipId);
         Span<byte> memberBytes = memberBytesLength <= 256

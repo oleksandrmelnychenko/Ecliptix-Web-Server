@@ -162,7 +162,6 @@ public class EcliptixProtocolSystemTests : IDisposable
             Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> bobDeriveResult = _bobKeys.CalculateSharedSecretAsRecipient(
                 receivedAliceBundleProto.IdentityX25519PublicKey.ToByteArray(),
                 receivedAliceBundleProto.EphemeralX25519PublicKey.ToByteArray(),
-                opkIdUsedByAlice,
                 Constants.X3dhInfo
             );
             Assert.IsTrue(bobDeriveResult.IsOk,

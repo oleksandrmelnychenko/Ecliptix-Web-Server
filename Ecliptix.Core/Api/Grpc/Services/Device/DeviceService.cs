@@ -129,7 +129,7 @@ public class DeviceService(
 
         try
         {
-            Guid membershipId = new Guid(request.MembershipUniqueId.ToByteArray());
+            Guid membershipId = Helpers.FromByteStringToGuid(request.MembershipUniqueId);
 
             Result<(dynamic IdentityKeys, byte[] RootKey), FailureBase> deriveKeysResult =
                 await masterKeyService.DeriveIdentityKeysAsync(membershipId);

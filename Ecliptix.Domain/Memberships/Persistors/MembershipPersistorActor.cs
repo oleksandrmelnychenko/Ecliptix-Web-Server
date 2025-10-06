@@ -60,20 +60,17 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         {
             DateTime currentTime = DateTime.UtcNow;
 
-            // Check for active lockout using LockedUntil column (no string parsing needed)
             LoginAttempt? lockoutMarker = await LoginAttemptQueries.GetMostRecentLockout(ctx, cmd.MobileNumber);
             if (lockoutMarker?.LockedUntil != null)
             {
                 if (currentTime < lockoutMarker.LockedUntil.Value)
                 {
-                    // Still locked out
                     int remainingMinutes = (int)Math.Ceiling((lockoutMarker.LockedUntil.Value - currentTime).TotalMinutes);
                     return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                         VerificationFlowFailure.RateLimitExceeded(remainingMinutes.ToString()));
                 }
                 else
                 {
-                    // Lockout expired - clean up old attempts
                     await ctx.LoginAttempts
                         .Where(la => la.MobileNumber == cmd.MobileNumber &&
                                      la.Timestamp <= lockoutMarker.Timestamp &&
@@ -88,7 +85,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             if (failedCount >= maxAttemptsInPeriod)
             {
                 DateTime lockedUntil = currentTime.AddMinutes(lockoutDurationMinutes);
-                LoginAttempt lockoutAttempt = new LoginAttempt
+                LoginAttempt lockoutAttempt = new()
                 {
                     MobileNumber = cmd.MobileNumber,
                     LockedUntil = lockedUntil,
@@ -135,7 +132,6 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             await LogLoginAttemptAsync(ctx, cmd.MobileNumber, "success", true);
 
-            // Clean up failed attempts and lockout markers on successful login
             await ctx.LoginAttempts
                 .Where(la => la.MobileNumber == cmd.MobileNumber &&
                              (!la.IsSuccess || la.LockedUntil != null) &&
@@ -220,7 +216,6 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             await transaction.CommitAsync();
 
-            // Construct result from known values (no re-query needed - all data updated above)
             return MapActivityStatus("active").Match(
                 status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
                     new MembershipQueryRecord
@@ -350,7 +345,6 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             ctx.MembershipAttempts.Add(successAttempt);
             await ctx.SaveChangesAsync();
 
-            // Clean up failed attempts for this mobile number (optimized with explicit join)
             List<long> failedAttemptIds = await ctx.MembershipAttempts
                 .Join(ctx.Memberships,
                     ma => ma.MembershipId,

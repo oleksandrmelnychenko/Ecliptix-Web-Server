@@ -21,6 +21,9 @@ public static class Helpers
         Array.Reverse(bytes, 0, 4);
         Array.Reverse(bytes, 4, 2);
         Array.Reverse(bytes, 6, 2);
+
+        Console.WriteLine($"[SERVER-GUID-TO-BYTES] GUID: {guid}, Bytes: {Convert.ToHexString(bytes)}");
+
         return ByteString.CopyFrom(bytes);
     }
 
@@ -34,12 +37,17 @@ public static class Helpers
 
     public static Guid FromByteStringToGuid(ByteString byteString)
     {
-        byte[] bytes = byteString.ToByteArray();
+        byte[] bytesOriginal = byteString.ToByteArray();
+        byte[] bytes = (byte[])bytesOriginal.Clone();
 
         Array.Reverse(bytes, 0, 4);
         Array.Reverse(bytes, 4, 2);
         Array.Reverse(bytes, 6, 2);
 
-        return new Guid(bytes);
+        Guid result = new Guid(bytes);
+
+        Console.WriteLine($"[SERVER-BYTES-TO-GUID] Bytes: {Convert.ToHexString(bytesOriginal)}, GUID: {result}");
+
+        return result;
     }
 }

@@ -87,7 +87,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             if (existingActiveFlow != null)
             {
-                // Client reconnecting - update ConnectionId and expire old OTPs
                 await ctx.VerificationFlows
                     .Where(vf => vf.Id == existingActiveFlow.Id)
                     .ExecuteUpdateAsync(setters => setters
@@ -104,11 +103,10 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
                 await transaction.CommitAsync();
 
-                // Update in-memory entity (no re-query needed - all values known)
                 existingActiveFlow.ConnectionId = cmd.ConnectId;
                 existingActiveFlow.UpdatedAt = DateTime.UtcNow;
-                existingActiveFlow.MobileNumber = mobile;  // Already loaded at line 68
-                existingActiveFlow.OtpCodes = new List<Ecliptix.Memberships.Persistor.Schema.Entities.OtpCode>();  // Empty - all expired above
+                existingActiveFlow.MobileNumber = mobile;
+                existingActiveFlow.OtpCodes = new List<Ecliptix.Memberships.Persistor.Schema.Entities.OtpCode>();
 
                 return MapToVerificationFlowRecord(existingActiveFlow);
             }

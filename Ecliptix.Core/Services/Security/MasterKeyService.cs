@@ -54,7 +54,7 @@ public class MasterKeyService(
 
             enhancedMasterKeyHandle = enhancedResult.Unwrap();
 
-            ByteString membershipIdentifier = ByteString.CopyFrom(membershipId.ToByteArray());
+            ByteString membershipIdentifier = Helpers.GuidToByteString(membershipId);
             Result<SodiumSecureMemoryHandle, SodiumFailure> masterKeyResult =
                 MasterKeyDerivation.DeriveMasterKeyHandle(enhancedMasterKeyHandle, membershipIdentifier);
 
@@ -66,6 +66,17 @@ public class MasterKeyService(
             }
 
             masterKeyHandle = masterKeyResult.Unwrap();
+
+            // Log master key fingerprint for verification
+            Result<byte[], SodiumFailure> masterKeyBytesResult = masterKeyHandle.ReadBytes(masterKeyHandle.Length);
+            if (masterKeyBytesResult.IsOk)
+            {
+                byte[] masterKeyBytes = masterKeyBytesResult.Unwrap();
+                string masterKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(masterKeyBytes))[..16];
+                Log.Information("[SERVER-MASTERKEY-DERIVE] Master key derived from OPAQUE session key. MembershipId: {MembershipId}, MasterKeyFingerprint: {MasterKeyFingerprint}",
+                    membershipId, masterKeyFingerprint);
+                CryptographicOperations.ZeroMemory(masterKeyBytes);
+            }
 
             Result<KeySplitResult, KeySplittingFailure> splitResult = await secretSharingService.SplitKeyAsync(
                 masterKeyHandle,
@@ -268,6 +279,11 @@ public class MasterKeyService(
             byte[] masterKeyBytes = masterKeyReadResult.Unwrap();
             try
             {
+                // Log master key fingerprint before deriving root key
+                string masterKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(masterKeyBytes))[..16];
+                Log.Information("[SERVER-MASTERKEY-ROOTKEY] Using master key to derive root key. MembershipId: {MembershipId}, MasterKeyFingerprint: {MasterKeyFingerprint}",
+                    membershipId, masterKeyFingerprint);
+
                 rootKeyBytes = new byte[32];
                 HKDF.DeriveKey(
                     HashAlgorithmName.SHA256,
@@ -276,6 +292,11 @@ public class MasterKeyService(
                     salt: null,
                     info: "ecliptix-protocol-root-key"u8.ToArray()
                 );
+
+                // Log root key hash for verification
+                string rootKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(rootKeyBytes))[..16];
+                Log.Information("[SERVER-ROOTKEY-DERIVE] Root key derived from master key using HKDF. MembershipId: {MembershipId}, RootKeyHash: {RootKeyHash}",
+                    membershipId, rootKeyHash);
             }
             finally
             {

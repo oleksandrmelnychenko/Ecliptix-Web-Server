@@ -9,6 +9,7 @@ using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Protobuf.Membership;
+using Ecliptix.Utilities.Failures.Sodium;
 using Serilog;
 using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
 using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteResponse;
@@ -278,6 +279,17 @@ public class MembershipActor : ReceiveActor
 
         (SodiumSecureMemoryHandle sessionKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) = opaqueResult.Unwrap();
 
+        // Log OPAQUE export_key (session key) fingerprint
+        Result<byte[], SodiumFailure> sessionKeyBytesResult = sessionKeyHandle.ReadBytes(sessionKeyHandle.Length);
+        if (sessionKeyBytesResult.IsOk)
+        {
+            byte[] sessionKeyBytes = sessionKeyBytesResult.Unwrap();
+            string sessionKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(sessionKeyBytes))[..16];
+            Log.Information("[SERVER-OPAQUE-EXPORTKEY] OPAQUE export_key (session key) derived. MembershipId: {MembershipId}, SessionKeyFingerprint: {SessionKeyFingerprint}",
+                membershipInfo.MembershipId, sessionKeyFingerprint);
+            CryptographicOperations.ZeroMemory(sessionKeyBytes);
+        }
+
         if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
             !sessionKeyHandle.IsInvalid)
         {
@@ -288,7 +300,7 @@ public class MembershipActor : ReceiveActor
 
         finalizeResponse.Membership = new Membership
         {
-            UniqueIdentifier = ByteString.CopyFrom(membershipInfo.MembershipId.ToByteArray()),
+            UniqueIdentifier = Helpers.GuidToByteString(membershipInfo.MembershipId),
             Status = membershipInfo.ActivityStatus,
             CreationStatus = membershipInfo.CreationStatus
         };
@@ -298,7 +310,7 @@ public class MembershipActor : ReceiveActor
 
     private void SecureRemovePendingSignIn(uint connectId)
     {
-        if (_pendingSignIns.TryGetValue(connectId, out var membershipInfo))
+        if (_pendingSignIns.TryGetValue(connectId, out (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Membership.Types.ActivityStatus ActivityStatus, Membership.Types.CreationStatus CreationStatus, DateTime CreatedAt, byte[] ServerMac) membershipInfo))
         {
             CryptographicOperations.ZeroMemory(membershipInfo.ServerMac);
             _pendingSignIns.Remove(connectId);

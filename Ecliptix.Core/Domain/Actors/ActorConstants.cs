@@ -48,19 +48,19 @@ public static class ActorConstants
 
     public static class LogMessages
     {
-        public const string RecoveryCompleted = "[RecoveryCompleted] Recovery finished for actor {ActorName}";
-        public const string NoSessionState = "[RecoveryCompleted] No previous session state found for connectId {ConnectId}";
+        public const string RecoveryCompleted = "[RecoveryCompleted] Recovery finished for actor {0}";
+        public const string NoSessionState = "[RecoveryCompleted] No previous session state found for connectId {0}";
         public const string FinalSnapshotSaved = "Final snapshot saved successfully. Initiating cleanup operation.";
 
         public const string SessionRestorationPrevented = "SERVER_STREAMING session restoration prevented - fresh handshake required";
-        public const string StateIntegrityValidationFailed = "State integrity validation failed: {Error}. Clearing session.";
+        public const string StateIntegrityValidationFailed = "State integrity validation failed: {0}. Clearing session.";
         public const string LiveConnectionCleared = "Live system connection was cleared (likely due to fresh handshake detection). Clearing actor state.";
-        public const string SessionRestored = "Session restored - ConnectId: {ConnectId}, Sending: {SendingIdx}, Receiving: {ReceivingIdx}, LastPersist: {LastPersist}";
+        public const string SessionRestored = "Session restored - ConnectId: {0}, Sending: {1}, Receiving: {2}, LastPersist: {3}";
 
-        public const string SelectingRatchetConfig = "[ACTOR] Selecting ratchet config for exchange type: {ExchangeType}";
-        public const string UsingExistingSession = "[HandleInitialKeyExchange] Using existing recovered session for connectId {ConnectId}, type: {ExchangeType}";
+        public const string SelectingRatchetConfig = "[ACTOR] Selecting ratchet config for exchange type: {0}";
+        public const string UsingExistingSession = "[HandleInitialKeyExchange] Using existing recovered session for connectId {0}, type: {1}";
         public const string SystemDetectedFreshHandshake = "[HandleInitialKeyExchange] System detected fresh handshake - clearing actor state";
-        public const string CreatingNewSession = "[HandleInitialKeyExchange] Creating new session for connectId {ConnectId}, type: {ExchangeType}";
+        public const string CreatingNewSession = "[HandleInitialKeyExchange] Creating new session for connectId {0}, type: {1}";
     }
 
     public static class ErrorMessages
