@@ -20,6 +20,20 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
     private const int HmacSha512HashSize = 64;
     private const int MaxPreviousBlockSize = 64;
     private const int MaxRoundBufferSize = 64;
+    private const int CounterIncrement = 1;
+    private const int StartingCounter = 1;
+    private const int FirstRoundIndex = 0;
+
+    private const string LogTagServerEnhancedArgon2Id = "[SERVER-ENHANCED-ARGON2ID]";
+    private const string LogTagServerEnhancedHkdf = "[SERVER-ENHANCED-HKDF]";
+    private const string LogTagServerEnhancedFinal = "[SERVER-ENHANCED-FINAL]";
+    private const string LogMessageArgon2IdCompleted = "Enhanced key Argon2id stretch completed. Context: {Context}, StretchedKeyFingerprint: {StretchedKeyFingerprint}";
+    private const string LogMessageHkdfCompleted = "Enhanced key HKDF expansion completed. Context: {Context}, ExpandedKeyFingerprint: {ExpandedKeyFingerprint}";
+    private const string LogMessageFinalCompleted = "Enhanced key final (after additional rounds). Context: {Context}, FinalKeyFingerprint: {FinalKeyFingerprint}";
+    private const string ErrorMessageKeyDerivationFailed = "Key derivation failed";
+    private const string ErrorMessageMemoryReadFailed = "Memory read failed";
+    private const string ErrorMessageAllocationFailed = "Allocation failed";
+    private const string ErrorMessageMemoryWriteFailed = "Memory write failed";
 
     private async Task<Result<byte[], KeySplittingFailure>> DeriveEnhancedKeyAsync(
         byte[] baseKey,
@@ -37,14 +51,14 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
 
             byte[] stretchedKey = stretchedResult.Unwrap();
 
-            string stretchedKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stretchedKey))[..16];
-            Serilog.Log.Information("[SERVER-ENHANCED-ARGON2ID] Enhanced key Argon2id stretch completed. Context: {Context}, StretchedKeyFingerprint: {StretchedKeyFingerprint}",
+            string stretchedKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(stretchedKey);
+            Serilog.Log.Information($"{LogTagServerEnhancedArgon2Id} {LogMessageArgon2IdCompleted}",
                 context, stretchedKeyFingerprint);
 
             byte[] expandedKey = await ExpandKeyWithHkdfAsync(stretchedKey, context, options.OutputLength);
 
-            string expandedKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(expandedKey))[..16];
-            Serilog.Log.Information("[SERVER-ENHANCED-HKDF] Enhanced key HKDF expansion completed. Context: {Context}, ExpandedKeyFingerprint: {ExpandedKeyFingerprint}",
+            string expandedKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(expandedKey);
+            Serilog.Log.Information($"{LogTagServerEnhancedHkdf} {LogMessageHkdfCompleted}",
                 context, expandedKeyFingerprint);
 
             if (options.UseHardwareEntropy)
@@ -67,8 +81,8 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
 
             byte[] finalKey = await ApplyAdditionalRoundsAsync(expandedKey);
 
-            string finalKeyFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(finalKey))[..16];
-            Serilog.Log.Information("[SERVER-ENHANCED-FINAL] Enhanced key final (after additional rounds). Context: {Context}, FinalKeyFingerprint: {FinalKeyFingerprint}",
+            string finalKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(finalKey);
+            Serilog.Log.Information($"{LogTagServerEnhancedFinal} {LogMessageFinalCompleted}",
                 context, finalKeyFingerprint);
 
             CryptographicOperations.ZeroMemory(stretchedKey);
@@ -128,7 +142,7 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
             byte[] salt = SHA256.HashData(Encoding.UTF8.GetBytes(context));
 
             byte[] pseudoRandomKey;
-            using (HMACSHA512 hmac = new(salt))
+            using (HMACSHA512 hmac = new HMACSHA512(salt))
             {
                 pseudoRandomKey = hmac.ComputeHash(key);
             }
@@ -136,15 +150,15 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
             byte[] expandedKey = new byte[outputLength];
             int bytesGenerated = 0;
 
-            using HMACSHA512 expandHmac = new(pseudoRandomKey);
+            using HMACSHA512 expandHmac = new HMACSHA512(pseudoRandomKey);
             byte[] previousBlock = [];
 
-            int maxDataToHashSize = MaxPreviousBlockSize + MaxInfoBufferSize + 1;
+            int maxDataToHashSize = MaxPreviousBlockSize + MaxInfoBufferSize + CounterIncrement;
             byte[] dataToHashBuffer = ArrayPool<byte>.Shared.Rent(maxDataToHashSize);
 
             try
             {
-                for (int i = 1; bytesGenerated < outputLength; i++)
+                for (int i = StartingCounter; bytesGenerated < outputLength; i++)
                 {
                     int offset = 0;
                     previousBlock.CopyTo(dataToHashBuffer, offset);
@@ -181,9 +195,9 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
 
             Span<byte> roundBuffer = stackalloc byte[MaxRoundBufferSize];
 
-            for (int round = 0; round < AdditionalRoundsCount; round++)
+            for (int round = FirstRoundIndex; round < AdditionalRoundsCount; round++)
             {
-                using HMACSHA512 hmac = new(result);
+                using HMACSHA512 hmac = new HMACSHA512(result);
                 int roundInputLength = Encoding.UTF8.GetBytes(string.Format(RoundKeyFormat, round), roundBuffer);
                 byte[] roundKey = hmac.ComputeHash(roundBuffer[..roundInputLength].ToArray());
 
@@ -212,15 +226,21 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
             Result<byte[], SodiumFailure> readResult =
                 baseKeyHandle.ReadBytes(baseKeyHandle.Length);
             if (readResult.IsErr)
+            {
+                SodiumFailure error = readResult.UnwrapErr();
                 return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
-                    KeySplittingFailure.MemoryReadFailed(readResult.UnwrapErr().Message));
+                    KeySplittingFailure.MemoryReadFailed(error.Message));
+            }
 
             baseKeyBytes = readResult.Unwrap();
 
             Result<byte[], KeySplittingFailure> deriveResult =
                 await DeriveEnhancedKeyAsync(baseKeyBytes, context, options);
             if (deriveResult.IsErr)
-                return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(deriveResult.UnwrapErr());
+            {
+                KeySplittingFailure error = deriveResult.UnwrapErr();
+                return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(error);
+            }
 
             byte[] derivedKey = deriveResult.Unwrap();
 
@@ -229,8 +249,11 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
                 Result<SodiumSecureMemoryHandle, SodiumFailure> allocateResult =
                     SodiumSecureMemoryHandle.Allocate(derivedKey.Length);
                 if (allocateResult.IsErr)
+                {
+                    SodiumFailure error = allocateResult.UnwrapErr();
                     return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
-                        KeySplittingFailure.AllocationFailed(allocateResult.UnwrapErr().Message));
+                        KeySplittingFailure.AllocationFailed(error.Message));
+                }
 
                 SodiumSecureMemoryHandle handle = allocateResult.Unwrap();
 
@@ -238,8 +261,9 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
                 if (writeResult.IsErr)
                 {
                     handle.Dispose();
+                    SodiumFailure error = writeResult.UnwrapErr();
                     return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
-                        KeySplittingFailure.MemoryWriteFailed(writeResult.UnwrapErr().Message));
+                        KeySplittingFailure.MemoryWriteFailed(error.Message));
                 }
 
                 return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Ok(handle);

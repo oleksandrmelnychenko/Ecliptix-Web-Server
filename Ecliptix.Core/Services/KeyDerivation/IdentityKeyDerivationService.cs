@@ -18,6 +18,35 @@ public interface IIdentityKeyDerivationService
 public class IdentityKeyDerivationService : IIdentityKeyDerivationService
 {
     private const uint DefaultOneTimeKeyCount = 100;
+    private const int MasterKeyReadSize = 32;
+    private const int RandomIdMinValue = 1;
+
+    private const string ErrorMessageMasterKeyReadFailed = "Failed to read master key";
+    private const string ErrorMessageEd25519GenerationFailed = "Failed to generate Ed25519 keys";
+    private const string ErrorMessageX25519GenerationFailed = "Failed to generate X25519 keys";
+    private const string ErrorMessageSignedPreKeyFailed = "Failed to generate signed pre-key";
+    private const string ErrorMessageOneTimePreKeysFailed = "Failed to generate one-time pre-keys";
+    private const string ErrorMessageIdentityKeysCreationFailed = "Failed to create identity keys";
+    private const string ErrorMessageUnexpectedError = "Unexpected error during identity key derivation";
+    private const string ErrorMessageEd25519KeyGenFromSeedFailed = "Ed25519 key generation from seed failed";
+    private const string ErrorMessageSecureMemoryAllocationFailed = "Failed to allocate secure memory";
+    private const string ErrorMessageSecureMemoryWriteFailed = "Failed to write to secure memory";
+    private const string ErrorMessageUnexpectedEd25519Error = "Unexpected error generating Ed25519 key pair from seed";
+    private const string ErrorMessageX25519PublicKeyDeriveFailed = "Failed to derive X25519 public key";
+    private const string ErrorMessageX25519SecureMemoryAllocationFailed = "Failed to allocate secure memory for X25519";
+    private const string ErrorMessageX25519SecureMemoryWriteFailed = "Failed to write X25519 secret key to secure memory";
+    private const string ErrorMessageUnexpectedX25519Error = "Unexpected error generating X25519 key pair from seed";
+    private const string ErrorMessageSpkPublicKeyDeriveFailed = "Failed to derive SPK public key";
+    private const string ErrorMessageSpkSecureMemoryAllocationFailed = "Failed to allocate secure memory for SPK";
+    private const string ErrorMessageSpkSecureMemoryWriteFailed = "Failed to write SPK to secure memory";
+    private const string ErrorMessageEd25519SecretKeyReadFailed = "Failed to read Ed25519 secret key";
+    private const string ErrorMessageSignPreKeyFailed = "Failed to sign pre-key";
+    private const string ErrorMessageUnexpectedSpkError = "Unexpected error generating signed pre-key";
+    private const string ErrorMessageUnexpectedOpkError = "Unexpected error generating one-time pre-keys";
+    private const string ErrorMessageConstructorNotFound = "Failed to find EcliptixSystemIdentityKeys constructor";
+    private const string ErrorMessageIdentityKeysCreationException = "Failed to create identity keys";
+
+    private const string OneTimePreKeyIdFormat = "OneTimePreKey_{0}";
 
     public async Task<Result<EcliptixSystemIdentityKeys, KeySplittingFailure>> DeriveIdentityKeysFromMasterKeyAsync(
         SodiumSecureMemoryHandle masterKeyHandle,
@@ -31,11 +60,12 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
 
         try
         {
-            Result<byte[], SodiumFailure> readResult = masterKeyHandle.ReadBytes(32);
+            Result<byte[], SodiumFailure> readResult = masterKeyHandle.ReadBytes(MasterKeyReadSize);
             if (readResult.IsErr)
             {
+                SodiumFailure error = readResult.UnwrapErr();
                 return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
-                    KeySplittingFailure.KeyDerivationFailed($"Failed to read master key: {readResult.UnwrapErr().Message}"));
+                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageMasterKeyReadFailed}: {error.Message}"));
             }
 
             masterKeyBytes = readResult.Unwrap();
@@ -48,8 +78,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
                 GenerateEd25519KeyPairFromSeed(ed25519Seed);
             if (ed25519Result.IsErr)
             {
+                EcliptixProtocolFailure error = ed25519Result.UnwrapErr();
                 return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
-                    KeySplittingFailure.KeyDerivationFailed($"Failed to generate Ed25519 keys: {ed25519Result.UnwrapErr().Message}"));
+                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageEd25519GenerationFailed}: {error.Message}"));
             }
 
             (ed25519SkHandle, byte[] ed25519Pk) = ed25519Result.Unwrap();
@@ -58,8 +89,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
                 GenerateX25519KeyPairFromSeed(x25519Seed);
             if (x25519Result.IsErr)
             {
+                EcliptixProtocolFailure error = x25519Result.UnwrapErr();
                 return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
-                    KeySplittingFailure.KeyDerivationFailed($"Failed to generate X25519 keys: {x25519Result.UnwrapErr().Message}"));
+                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageX25519GenerationFailed}: {error.Message}"));
             }
 
             (x25519SkHandle, byte[] x25519Pk) = x25519Result.Unwrap();
@@ -68,8 +100,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
                 GenerateSignedPreKey(ed25519SkHandle, ed25519Pk, masterKeyBytes, membershipIdString);
             if (spkResult.IsErr)
             {
+                EcliptixProtocolFailure error = spkResult.UnwrapErr();
                 return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
-                    KeySplittingFailure.KeyDerivationFailed($"Failed to generate signed pre-key: {spkResult.UnwrapErr().Message}"));
+                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageSignedPreKeyFailed}: {error.Message}"));
             }
 
             (uint spkId, SodiumSecureMemoryHandle spkSk, byte[] spkPk, byte[] spkSig) = spkResult.Unwrap();
@@ -78,8 +111,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
                 GenerateOneTimePreKeys(DefaultOneTimeKeyCount);
             if (opksResult.IsErr)
             {
+                EcliptixProtocolFailure error = opksResult.UnwrapErr();
                 return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
-                    KeySplittingFailure.KeyDerivationFailed($"Failed to generate one-time pre-keys: {opksResult.UnwrapErr().Message}"));
+                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageOneTimePreKeysFailed}: {error.Message}"));
             }
 
             List<OneTimePreKeyLocal> opks = opksResult.Unwrap();
@@ -90,8 +124,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
 
             if (keysResult.IsErr)
             {
+                EcliptixProtocolFailure error = keysResult.UnwrapErr();
                 return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
-                    KeySplittingFailure.KeyDerivationFailed($"Failed to create identity keys: {keysResult.UnwrapErr().Message}"));
+                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageIdentityKeysCreationFailed}: {error.Message}"));
             }
 
             ed25519SkHandle = null;
@@ -101,9 +136,8 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
         }
         catch (Exception ex)
         {
-
             return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
-                KeySplittingFailure.KeyDerivationFailed("Unexpected error during identity key derivation", ex));
+                KeySplittingFailure.KeyDerivationFailed(ErrorMessageUnexpectedError, ex));
         }
         finally
         {
@@ -131,8 +165,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
 
             if (keyPairResult.IsErr)
             {
+                SodiumFailure error = keyPairResult.UnwrapErr();
                 return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Ed25519 key generation from seed failed: {keyPairResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.Generic($"{ErrorMessageEd25519KeyGenFromSeedFailed}: {error.Message}"));
             }
 
             (byte[] pk, byte[] sk) = keyPairResult.Unwrap();
@@ -143,8 +178,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
 
             if (allocResult.IsErr)
             {
+                SodiumFailure error = allocResult.UnwrapErr();
                 return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Failed to allocate secure memory: {allocResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.Generic($"{ErrorMessageSecureMemoryAllocationFailed}: {error.Message}"));
             }
 
             skHandle = allocResult.Unwrap();
@@ -153,8 +189,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
             if (writeResult.IsErr)
             {
                 skHandle?.Dispose();
+                SodiumFailure error = writeResult.UnwrapErr();
                 return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Failed to write to secure memory: {writeResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.Generic($"{ErrorMessageSecureMemoryWriteFailed}: {error.Message}"));
             }
 
             SodiumSecureMemoryHandle result = skHandle;
@@ -165,7 +202,7 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
         catch (Exception ex)
         {
             return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic($"Unexpected error generating Ed25519 key pair from seed: {ex.Message}", ex));
+                EcliptixProtocolFailure.Generic($"{ErrorMessageUnexpectedEd25519Error}: {ex.Message}", ex));
         }
         finally
         {
@@ -185,8 +222,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
 
             if (publicKeyResult.IsErr)
             {
+                SodiumFailure error = publicKeyResult.UnwrapErr();
                 return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Failed to derive X25519 public key: {publicKeyResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.Generic($"{ErrorMessageX25519PublicKeyDeriveFailed}: {error.Message}"));
             }
 
             byte[] publicKey = publicKeyResult.Unwrap();
@@ -196,8 +234,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
 
             if (allocResult.IsErr)
             {
+                SodiumFailure error = allocResult.UnwrapErr();
                 return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Failed to allocate secure memory for X25519: {allocResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.Generic($"{ErrorMessageX25519SecureMemoryAllocationFailed}: {error.Message}"));
             }
 
             skHandle = allocResult.Unwrap();
@@ -207,8 +246,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
             if (writeResult.IsErr)
             {
                 skHandle.Dispose();
+                SodiumFailure error = writeResult.UnwrapErr();
                 return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Failed to write X25519 secret key to secure memory: {writeResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.Generic($"{ErrorMessageX25519SecureMemoryWriteFailed}: {error.Message}"));
             }
 
             SodiumSecureMemoryHandle result = skHandle;
@@ -220,7 +260,7 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
         {
             skHandle?.Dispose();
             return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic($"Unexpected error generating X25519 key pair from seed: {ex.Message}", ex));
+                EcliptixProtocolFailure.Generic($"{ErrorMessageUnexpectedX25519Error}: {ex.Message}", ex));
         }
     }
 
@@ -245,8 +285,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
             Result<byte[], SodiumFailure> publicKeyResult = SodiumInterop.ScalarMultBase(spkPrivateKey);
             if (publicKeyResult.IsErr)
             {
+                SodiumFailure error = publicKeyResult.UnwrapErr();
                 return Result<(uint, SodiumSecureMemoryHandle, byte[], byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Failed to derive SPK public key: {publicKeyResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.Generic($"{ErrorMessageSpkPublicKeyDeriveFailed}: {error.Message}"));
             }
 
             byte[] spkPk = publicKeyResult.Unwrap();
@@ -255,8 +296,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
                 SodiumSecureMemoryHandle.Allocate(Constants.X25519PrivateKeySize);
             if (allocResult.IsErr)
             {
+                SodiumFailure error = allocResult.UnwrapErr();
                 return Result<(uint, SodiumSecureMemoryHandle, byte[], byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Failed to allocate secure memory for SPK: {allocResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.Generic($"{ErrorMessageSpkSecureMemoryAllocationFailed}: {error.Message}"));
             }
 
             spkSk = allocResult.Unwrap();
@@ -264,16 +306,18 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
             if (writeResult.IsErr)
             {
                 spkSk.Dispose();
+                SodiumFailure error = writeResult.UnwrapErr();
                 return Result<(uint, SodiumSecureMemoryHandle, byte[], byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Failed to write SPK to secure memory: {writeResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.Generic($"{ErrorMessageSpkSecureMemoryWriteFailed}: {error.Message}"));
             }
 
             Result<byte[], SodiumFailure> readSkResult = ed25519SkHandle.ReadBytes(Constants.Ed25519SecretKeySize);
             if (readSkResult.IsErr)
             {
                 spkSk.Dispose();
+                SodiumFailure error = readSkResult.UnwrapErr();
                 return Result<(uint, SodiumSecureMemoryHandle, byte[], byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Failed to read Ed25519 secret key: {readSkResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.Generic($"{ErrorMessageEd25519SecretKeyReadFailed}: {error.Message}"));
             }
 
             byte[] ed25519Sk = readSkResult.Unwrap();
@@ -286,8 +330,9 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
             if (signResult.IsErr)
             {
                 spkSk.Dispose();
+                SodiumFailure error = signResult.UnwrapErr();
                 return Result<(uint, SodiumSecureMemoryHandle, byte[], byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Failed to sign pre-key: {signResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.Generic($"{ErrorMessageSignPreKeyFailed}: {error.Message}"));
             }
 
             byte[] signature = signResult.Unwrap();
@@ -302,7 +347,7 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
         {
             spkSk?.Dispose();
             return Result<(uint, SodiumSecureMemoryHandle, byte[], byte[]), EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic($"Unexpected error generating signed pre-key: {ex.Message}", ex));
+                EcliptixProtocolFailure.Generic($"{ErrorMessageUnexpectedSpkError}: {ex.Message}", ex));
         }
         finally
         {
@@ -321,10 +366,10 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
         {
             for (uint i = 0; i < count; i++)
             {
-                uint opkId = (uint)Random.Shared.Next(1, int.MaxValue);
+                uint opkId = (uint)Random.Shared.Next(RandomIdMinValue, int.MaxValue);
 
                 Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> keyPairResult =
-                    SodiumInterop.GenerateX25519KeyPair($"OneTimePreKey_{opkId}");
+                    SodiumInterop.GenerateX25519KeyPair(string.Format(OneTimePreKeyIdFormat, opkId));
 
                 if (keyPairResult.IsErr)
                 {
@@ -333,7 +378,8 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
                         opk.PrivateKeyHandle.Dispose();
                     }
 
-                    return Result<List<OneTimePreKeyLocal>, EcliptixProtocolFailure>.Err(keyPairResult.UnwrapErr());
+                    EcliptixProtocolFailure error = keyPairResult.UnwrapErr();
+                    return Result<List<OneTimePreKeyLocal>, EcliptixProtocolFailure>.Err(error);
                 }
 
                 (SodiumSecureMemoryHandle sk, byte[] pk) = keyPairResult.Unwrap();
@@ -350,7 +396,7 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
             }
 
             return Result<List<OneTimePreKeyLocal>, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic($"Unexpected error generating one-time pre-keys: {ex.Message}", ex));
+                EcliptixProtocolFailure.Generic($"{ErrorMessageUnexpectedOpkError}: {ex.Message}", ex));
         }
     }
 
@@ -376,7 +422,7 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
             if (constructor == null)
             {
                 return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic("Failed to find EcliptixSystemIdentityKeys constructor"));
+                    EcliptixProtocolFailure.Generic(ErrorMessageConstructorNotFound));
             }
 
             EcliptixSystemIdentityKeys keys = (EcliptixSystemIdentityKeys)constructor.Invoke(new object[]
@@ -389,7 +435,7 @@ public class IdentityKeyDerivationService : IIdentityKeyDerivationService
         catch (Exception ex)
         {
             return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic($"Failed to create identity keys: {ex.Message}", ex));
+                EcliptixProtocolFailure.Generic($"{ErrorMessageIdentityKeysCreationException}: {ex.Message}", ex));
         }
     }
 }
