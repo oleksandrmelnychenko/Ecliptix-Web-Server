@@ -63,7 +63,7 @@ public class MasterKeyService(
 
         try
         {
-            KeyDerivationOptions options = new KeyDerivationOptions
+            KeyDerivationOptions options = new()
             {
                 MemorySize = Argon2MemorySize,
                 Iterations = Argon2Iterations,
@@ -234,7 +234,7 @@ public class MasterKeyService(
                 ));
             }
 
-            InsertMasterKeySharesEvent insertEvent = new InsertMasterKeySharesEvent(
+            InsertMasterKeySharesEvent insertEvent = new(
                 membershipId,
                 shareDataList
             );
