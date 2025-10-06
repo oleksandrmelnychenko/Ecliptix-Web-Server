@@ -9,7 +9,7 @@ using Ecliptix.Domain;
 using Ecliptix.Core.Configuration;
 using Ecliptix.Domain.Services.Security;
 using Microsoft.EntityFrameworkCore;
-using Ecliptix.Memberships.Persistor.Schema;
+using Ecliptix.Domain.Schema;
 
 namespace Ecliptix.Core.Services;
 

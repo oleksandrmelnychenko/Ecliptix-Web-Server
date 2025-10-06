@@ -48,6 +48,5 @@
         <ProjectReference Include="..\Ecliptix.Utilities\Ecliptix.Utilities.csproj" />
         <ProjectReference Include="..\Ecliptix.Security.Opaque\Ecliptix.Security.Opaque.csproj" />
         <ProjectReference Include="..\Ecliptix.Protobufs\Ecliptix.Protobufs.csproj" />
-        <ProjectReference Include="..\..\Ecliptix.Memberships.Persistor\Ecliptix.Memberships.Persistor\Ecliptix.Memberships.Persistor.csproj" />
     </ItemGroup>
 </Project>

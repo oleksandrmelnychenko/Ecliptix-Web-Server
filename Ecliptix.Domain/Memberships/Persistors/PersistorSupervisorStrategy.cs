@@ -20,7 +20,6 @@ public static class PersistorSupervisorStrategy
             localOnlyDecider: exception =>
             {
                 Type actorType = exception.GetType();
-                string actorTypeName = actorType.Name;
 
                 return exception switch
                 {

@@ -1,15 +1,11 @@
 using Microsoft.EntityFrameworkCore;
-using Ecliptix.Memberships.Persistor.Schema;
-using Ecliptix.Memberships.Persistor.Schema.Entities;
+using Ecliptix.Domain.Schema;
+using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class MembershipQueries
 {
-    /// <summary>
-    /// Get membership by mobile number (for login)
-    /// Filters by mobile number string via join
-    /// </summary>
     public static readonly Func<EcliptixSchemaContext, string, Task<Membership?>>
         GetByMobileNumber = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, string mobileNumber) =>
@@ -25,10 +21,6 @@ public static class MembershipQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    /// <summary>
-    /// Get membership by mobile UniqueId and device UniqueId
-    /// Used for duplicate check in CreateMembership
-    /// </summary>
     public static readonly Func<EcliptixSchemaContext, Guid, Guid, Task<Membership?>>
         GetByMobileUniqueIdAndDevice = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid mobileUniqueId, Guid deviceId) =>
@@ -39,9 +31,6 @@ public static class MembershipQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    /// <summary>
-    /// Get membership by UniqueId
-    /// </summary>
     public static readonly Func<EcliptixSchemaContext, Guid, Task<Membership?>>
         GetByUniqueId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid uniqueId) =>

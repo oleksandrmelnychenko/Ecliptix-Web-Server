@@ -2,25 +2,16 @@ using System.Data.Common;
 using Akka.Actor;
 using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Failures;
-using Ecliptix.Security.Opaque.Models;
-using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Device;
 using Google.Protobuf;
-using Serilog;
 using Microsoft.EntityFrameworkCore;
-using Ecliptix.Memberships.Persistor.Schema;
-using Ecliptix.Memberships.Persistor.Schema.Entities;
+using Ecliptix.Domain.Schema;
+using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.AppDevices.Persistors;
-
-public class AppDeviceRegisterResult
-{
-    public Guid UniqueId { get; set; }
-    public int Status { get; set; }
-}
 
 public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 {
@@ -70,7 +61,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 });
             }
 
-            Device newDevice = new Device
+            Device newDevice = new()
             {
                 AppInstanceId = appInstanceId,
                 DeviceId = deviceId,

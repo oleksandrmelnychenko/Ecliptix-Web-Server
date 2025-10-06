@@ -28,7 +28,7 @@ using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
 using Ecliptix.Domain;
-using Ecliptix.Memberships.Persistor.Schema;
+using Ecliptix.Domain.Schema;
 using Microsoft.EntityFrameworkCore;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque;

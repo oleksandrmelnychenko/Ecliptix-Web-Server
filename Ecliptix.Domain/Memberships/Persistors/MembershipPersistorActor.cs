@@ -8,8 +8,8 @@ using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Utilities;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Ecliptix.Memberships.Persistor.Schema;
-using Ecliptix.Memberships.Persistor.Schema.Entities;
+using Ecliptix.Domain.Schema;
+using Ecliptix.Domain.Schema.Entities;
 using Microsoft.EntityFrameworkCore.Storage;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
 
@@ -179,13 +179,13 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
         try
         {
-            if (cmd.SecureKey == null || cmd.SecureKey.Length == 0)
+            if (cmd.SecureKey.Length == 0)
             {
                 return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation("Secure key cannot be empty"));
             }
 
-            if (cmd.MaskingKey == null || cmd.MaskingKey.Length != 32)
+            if (cmd.MaskingKey.Length != 32)
             {
                 return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation("Masking key must be exactly 32 bytes"));
@@ -269,7 +269,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     DateTime waitUntil = earliestFailed.Value.AddHours(attemptWindowHours);
                     int waitMinutes = (int)Math.Max(0, (waitUntil - DateTime.UtcNow).TotalMinutes);
 
-                    MembershipAttempt rateLimitAttempt = new MembershipAttempt
+                    MembershipAttempt rateLimitAttempt = new()
                     {
                         MembershipId = mobileUniqueId,
                         AttemptType = "create",
@@ -291,7 +291,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             if (existingMembership != null)
             {
-                MembershipAttempt attempt = new MembershipAttempt
+                MembershipAttempt attempt = new()
                 {
                     MembershipId = existingMembership.UniqueId,
                     AttemptType = "create",

@@ -1,14 +1,11 @@
 using Microsoft.EntityFrameworkCore;
-using Ecliptix.Memberships.Persistor.Schema;
-using Ecliptix.Memberships.Persistor.Schema.Entities;
+using Ecliptix.Domain.Schema;
+using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class OtpCodeQueries
 {
-    /// <summary>
-    /// Get OTP code by UniqueId
-    /// </summary>
     public static readonly Func<EcliptixSchemaContext, Guid, Task<OtpCode?>>
         GetByUniqueId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid uniqueId) =>
@@ -17,9 +14,6 @@ public static class OtpCodeQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    /// <summary>
-    /// Get active OTP for a verification flow
-    /// </summary>
     public static readonly Func<EcliptixSchemaContext, long, Task<OtpCode?>>
         GetActiveByFlowId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, long flowId) =>

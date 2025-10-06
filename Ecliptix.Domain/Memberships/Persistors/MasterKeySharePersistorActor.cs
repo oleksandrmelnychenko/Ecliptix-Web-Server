@@ -8,8 +8,8 @@ using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Ecliptix.Memberships.Persistor.Schema;
-using Ecliptix.Memberships.Persistor.Schema.Entities;
+using Ecliptix.Domain.Schema;
+using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 

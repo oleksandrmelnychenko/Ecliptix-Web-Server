@@ -5,8 +5,8 @@ using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
-using Ecliptix.Memberships.Persistor.Schema;
-using Ecliptix.Memberships.Persistor.Schema.Entities;
+using Ecliptix.Domain.Schema;
+using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Microsoft.Data.SqlClient;
@@ -65,7 +65,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            Ecliptix.Memberships.Persistor.Schema.Entities.MobileNumber? mobile = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberUniqueId);
+            MobileNumber? mobile = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberUniqueId);
             if (mobile == null)
             {
                 await transaction.RollbackAsync();
@@ -81,7 +81,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     VerificationFlowFailure.NotFound("device_not_found"));
             }
 
-            Ecliptix.Memberships.Persistor.Schema.Entities.VerificationFlow? existingActiveFlow = await VerificationFlowQueries.GetActiveFlowForRecovery(
+            VerificationFlow? existingActiveFlow = await VerificationFlowQueries.GetActiveFlowForRecovery(
                 ctx, cmd.MobileNumberUniqueId, cmd.AppDeviceId,
                 ConvertPurposeToString(cmd.Purpose));
 
@@ -106,7 +106,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 existingActiveFlow.ConnectionId = cmd.ConnectId;
                 existingActiveFlow.UpdatedAt = DateTime.UtcNow;
                 existingActiveFlow.MobileNumber = mobile;
-                existingActiveFlow.OtpCodes = new List<Ecliptix.Memberships.Persistor.Schema.Entities.OtpCode>();
+                existingActiveFlow.OtpCodes = new List<Ecliptix.Domain.Schema.Entities.OtpCode>();
 
                 return MapToVerificationFlowRecord(existingActiveFlow);
             }
@@ -129,7 +129,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     VerificationFlowFailure.RateLimitExceeded("device_rate_limit_exceeded"));
             }
 
-            Ecliptix.Memberships.Persistor.Schema.Entities.VerificationFlow flow = new VerificationFlow
+            VerificationFlow flow = new()
             {
                 UniqueId = Guid.NewGuid(),
                 MobileNumberId = mobile.Id,
@@ -149,7 +149,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             await transaction.CommitAsync();
 
-            Ecliptix.Memberships.Persistor.Schema.Entities.VerificationFlow? flowWithOtp = await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(ctx, flow.UniqueId);
+            VerificationFlow? flowWithOtp = await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(ctx, flow.UniqueId);
             return MapToVerificationFlowRecord(flowWithOtp!);
         }
         catch (Exception ex)
@@ -165,7 +165,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            Ecliptix.Memberships.Persistor.Schema.Entities.VerificationFlow? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId);
+            VerificationFlow? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId);
             if (flow == null)
                 return Result<string, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Flow not found"));
@@ -208,7 +208,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            Ecliptix.Memberships.Persistor.Schema.Entities.MobileNumber? mobile = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberIdentifier);
+            MobileNumber? mobile = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberIdentifier);
             if (mobile == null)
                 return Result<MobileNumberQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.MobileNotFound));
@@ -258,7 +258,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            Ecliptix.Memberships.Persistor.Schema.Entities.VerificationFlow? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.OtpRecord.FlowUniqueId);
+            VerificationFlow? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.OtpRecord.FlowUniqueId);
             if (flow == null || flow.ExpiresAt <= DateTime.UtcNow)
             {
                 await transaction.RollbackAsync();
@@ -279,7 +279,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     .SetProperty(o => o.Status, "expired")
                     .SetProperty(o => o.UpdatedAt, DateTime.UtcNow));
 
-            Ecliptix.Memberships.Persistor.Schema.Entities.OtpCode otp = new OtpCode
+            OtpCode otp = new()
             {
                 UniqueId = Guid.NewGuid(),
                 VerificationFlowId = flow.Id,
@@ -330,7 +330,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            Ecliptix.Memberships.Persistor.Schema.Entities.MobileNumber? existing = await MobileNumberQueries.GetByNumberAndRegion(
+            MobileNumber? existing = await MobileNumberQueries.GetByNumberAndRegion(
                 ctx, cmd.MobileNumber, cmd.RegionCode);
 
             if (existing != null)
@@ -339,7 +339,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 return Result<Guid, VerificationFlowFailure>.Ok(existing.UniqueId);
             }
 
-            Ecliptix.Memberships.Persistor.Schema.Entities.MobileNumber mobile = new MobileNumber
+            MobileNumber mobile = new()
             {
                 UniqueId = Guid.NewGuid(),
                 Number = cmd.MobileNumber,
@@ -369,7 +369,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            Ecliptix.Memberships.Persistor.Schema.Entities.MobileNumber? mobile = await MobileNumberQueries.GetByNumberAndRegion(
+            MobileNumber? mobile = await MobileNumberQueries.GetByNumberAndRegion(
                 ctx, cmd.MobileNumber, cmd.RegionCode);
 
             if (mobile == null)
@@ -390,7 +390,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            Ecliptix.Memberships.Persistor.Schema.Entities.VerificationFlow? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId);
+            VerificationFlow? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId);
             if (flow == null)
                 return Result<Unit, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Flow not found"));
@@ -413,7 +413,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     private static Result<VerificationFlowQueryRecord, VerificationFlowFailure> MapToVerificationFlowRecord(
         VerificationFlow flow)
     {
-        Ecliptix.Memberships.Persistor.Schema.Entities.OtpCode? activeOtp = flow.OtpCodes?.FirstOrDefault(o => o.Status == "active" && !o.IsDeleted);
+        OtpCode? activeOtp = flow.OtpCodes?.FirstOrDefault(o => o.Status == "active" && !o.IsDeleted);
         Option<OtpQueryRecord> otpActive = activeOtp != null
             ? Option<OtpQueryRecord>.Some(new OtpQueryRecord
             {
