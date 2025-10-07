@@ -52,6 +52,10 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         Receive<GetMembershipByVerificationFlowEvent>(cmd =>
             ExecuteWithContext(ctx => GetMembershipByVerificationFlowAsync(ctx, cmd), "GetMembershipByVerificationFlow")
                 .PipeTo(Sender));
+
+        Receive<ValidatePasswordRecoveryFlowEvent>(cmd =>
+            ExecuteWithContext(ctx => ValidatePasswordRecoveryFlowAsync(ctx, cmd), "ValidatePasswordRecoveryFlow")
+                .PipeTo(Sender));
     }
 
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> SignInMembershipAsync(
@@ -464,6 +468,53 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             return Option<ProtoMembership.Types.ActivityStatus>.None;
 
         return Option<ProtoMembership.Types.ActivityStatus>.Some(status);
+    }
+
+    private async Task<Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>> ValidatePasswordRecoveryFlowAsync(
+        EcliptixSchemaContext ctx, ValidatePasswordRecoveryFlowEvent cmd)
+    {
+        try
+        {
+            DateTime tenMinutesAgo = DateTime.UtcNow.AddMinutes(-10);
+
+            Membership? membership = await ctx.Memberships
+                .Where(m => m.UniqueId == cmd.MembershipIdentifier && !m.IsDeleted)
+                .FirstOrDefaultAsync();
+
+            if (membership == null)
+            {
+                return Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>.Ok(
+                    new PasswordRecoveryFlowValidation(false, null));
+            }
+
+            VerificationFlow? recoveryFlow = await ctx.VerificationFlows
+                .Join(ctx.MobileNumbers,
+                    vf => vf.MobileNumberId,
+                    mn => mn.Id,
+                    (vf, mn) => new { VerificationFlow = vf, MobileNumber = mn })
+                .Where(x => x.MobileNumber.UniqueId == membership.MobileNumberId &&
+                            x.VerificationFlow.Purpose == "password_recovery" &&
+                            x.VerificationFlow.Status == "verified" &&
+                            x.VerificationFlow.UpdatedAt >= tenMinutesAgo &&
+                            !x.VerificationFlow.IsDeleted)
+                .Select(x => x.VerificationFlow)
+                .OrderByDescending(vf => vf.UpdatedAt)
+                .FirstOrDefaultAsync();
+
+            if (recoveryFlow == null)
+            {
+                return Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>.Ok(
+                    new PasswordRecoveryFlowValidation(false, null));
+            }
+
+            return Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>.Ok(
+                new PasswordRecoveryFlowValidation(true, recoveryFlow.UniqueId));
+        }
+        catch (Exception ex)
+        {
+            return Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Validate password recovery flow failed: {ex.Message}"));
+        }
     }
 
     protected override VerificationFlowFailure MapDbException(DbException ex)
