@@ -13,6 +13,7 @@ using Google.Protobuf;
 using Grpc.Core;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Authentication;
 
@@ -96,19 +97,20 @@ public class VerificationFlowServices(
 
                 if (phoneValidationResult.IsValid)
                 {
-                    EnsureMobileNumberActorEvent ensureMobileNumberEvent = new(
+                    CheckMobileAndMembershipActorEvent checkMobileAndMembershipEvent = new(
                         phoneValidationResult.ParsedMobileNumberE164!,
                         phoneValidationResult.DetectedRegion,
                         Helpers.FromByteStringToGuid(message.AppDeviceIdentifier));
 
-                    Result<Guid, VerificationFlowFailure> ensureMobileNumberResult = await _verificationFlowManagerActor
-                        .Ask<Result<Guid, VerificationFlowFailure>>(ensureMobileNumberEvent, ct);
+                    Result<ValidateMobileNumberResult, VerificationFlowFailure> checkResult = 
+                        await _verificationFlowManagerActor.Ask<Result<ValidateMobileNumberResult, VerificationFlowFailure>>(checkMobileAndMembershipEvent, ct);
 
-                    ValidateMobileNumberResponse response = ensureMobileNumberResult.Match(
-                        guid => new ValidateMobileNumberResponse
+                    ValidateMobileNumberResponse response = checkResult.Match(
+                        result => new ValidateMobileNumberResponse
                         {
-                            MobileNumberIdentifier = Helpers.GuidToByteString(guid),
-                            Result = VerificationResult.Succeeded
+                            MobileNumberIdentifier = Helpers.GuidToByteString(result.MobileNumberId),
+                            Result = VerificationResult.Succeeded,
+                            Membership = result.Membership
                         },
                         failure => new ValidateMobileNumberResponse
                         {
@@ -116,7 +118,6 @@ public class VerificationFlowServices(
                             Result = VerificationResult.InvalidMobile,
                             Message = failure.Message
                         });
-
                     return Result<ValidateMobileNumberResponse, FailureBase>.Ok(response);
                 }
                 else

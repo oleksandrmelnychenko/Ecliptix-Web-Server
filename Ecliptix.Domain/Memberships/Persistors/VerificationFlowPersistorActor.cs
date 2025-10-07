@@ -12,6 +12,7 @@ using Ecliptix.Protobuf.Membership;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using Membership = Ecliptix.Domain.Schema.Entities.Membership;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
@@ -55,6 +56,9 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             ExecuteWithContext(ctx => UpdateOtpStatusAsync(ctx, actorEvent), "UpdateOtpStatus").PipeTo(Sender));
         Receive<ExpireAssociatedOtpActorEvent>(actorEvent =>
             ExecuteWithContext(ctx => ExpireAssociatedOtpAsync(ctx, actorEvent), "ExpireAssociatedOtp")
+                .PipeTo(Sender));
+        Receive<CheckMobileAndMembershipActorEvent>(actorEvent =>
+            ExecuteWithContext(ctx => CheckMobileAndMembershipStatusAsync(ctx, actorEvent), "CheckMobileAndMembershipStatus")
                 .PipeTo(Sender));
     }
 
@@ -318,6 +322,61 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 VerificationFlowFailure.OtpGenerationFailed($"Create OTP failed: {ex.Message}"));
         }
     }
+    
+   private async Task<Result<ValidateMobileNumberResult, VerificationFlowFailure>> CheckMobileAndMembershipStatusAsync(
+    EcliptixSchemaContext ctx, CheckMobileAndMembershipActorEvent cmd)
+{
+    if (string.IsNullOrWhiteSpace(cmd.MobileNumber))
+        return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Err(
+            VerificationFlowFailure.Validation("invalid_mobile_number"));
+
+    await using var transaction = await ctx.Database.BeginTransactionAsync();
+
+    try
+    {
+        MobileNumber? existing = await MobileNumberQueries.GetByNumberAndRegion(
+            ctx, cmd.MobileNumber, cmd.RegionCode);
+
+        if (existing != null)
+        {
+            Membership? membership = await MembershipQueries.GetByMobileNumberIdWithRecentActivity(ctx, existing.UniqueId);
+            
+            await transaction.CommitAsync();
+            
+            return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Ok(new ValidateMobileNumberResult
+            {
+                MobileNumberId = existing.UniqueId,
+                Membership = MapToProtoMembership(membership)
+            });
+        }
+
+        MobileNumber mobile = new()
+        {
+            UniqueId = Guid.NewGuid(),
+            Number = cmd.MobileNumber,
+            Region = cmd.RegionCode,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            IsDeleted = false
+        };
+
+        ctx.MobileNumbers.Add(mobile);
+        await ctx.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Ok(new ValidateMobileNumberResult
+        {
+            MobileNumberId = mobile.UniqueId,
+            Membership = null
+        });
+    }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+        return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Err(
+            VerificationFlowFailure.PersistorAccess($"Check mobile and membership failed: {ex.Message}", ex));
+    }
+}
 
     private async Task<Result<Guid, VerificationFlowFailure>> EnsureMobileNumberAsync(
         EcliptixSchemaContext ctx, EnsureMobileNumberActorEvent cmd)
@@ -410,6 +469,31 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         }
     }
 
+    
+    private static Ecliptix.Protobuf.Membership.Membership? MapToProtoMembership(Membership? domainMembership)
+    {
+        if (domainMembership == null)
+            return null;
+
+        return new Ecliptix.Protobuf.Membership.Membership
+        {
+            UniqueIdentifier = Helpers.GuidToByteString(domainMembership.UniqueId),
+            Status = domainMembership.Status switch
+            {
+                "active" => Ecliptix.Protobuf.Membership.Membership.Types.ActivityStatus.Active,
+                "inactive" => Ecliptix.Protobuf.Membership.Membership.Types.ActivityStatus.Inactive,
+                _ => Ecliptix.Protobuf.Membership.Membership.Types.ActivityStatus.Inactive
+            },
+            CreationStatus = domainMembership.CreationStatus switch
+            {
+                "otp_verified" => Ecliptix.Protobuf.Membership.Membership.Types.CreationStatus.OtpVerified,
+                "secure_key_set" => Ecliptix.Protobuf.Membership.Membership.Types.CreationStatus.SecureKeySet,
+                "passphrase_set" => Ecliptix.Protobuf.Membership.Membership.Types.CreationStatus.PassphraseSet,
+                _ => Ecliptix.Protobuf.Membership.Membership.Types.CreationStatus.OtpVerified
+            }
+        };
+    }
+    
     private static Result<VerificationFlowQueryRecord, VerificationFlowFailure> MapToVerificationFlowRecord(
         VerificationFlow flow)
     {
