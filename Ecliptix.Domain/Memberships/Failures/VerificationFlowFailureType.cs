@@ -24,5 +24,7 @@ public enum VerificationFlowFailureType : short
 
     InvalidOpaque,
 
+    Unauthorized,
+
     Generic
 }

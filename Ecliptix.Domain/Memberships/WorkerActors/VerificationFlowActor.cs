@@ -288,6 +288,30 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             return;
         }
 
+        if (_verificationFlow.Value!.Purpose == VerificationPurpose.PasswordRecovery)
+        {
+            try
+            {
+                GetMembershipByVerificationFlowEvent getMembershipEvent = new(_verificationFlow.Value!.UniqueIdentifier);
+                Result<MembershipQueryRecord, VerificationFlowFailure> result =
+                    await _membershipActor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(
+                        getMembershipEvent, MembershipCreationTimeout);
+
+                result.Switch(
+                    membership => { Sender.Tell(CreateSuccessResponse(membership)); },
+                    failure => { Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(failure)); }
+                );
+            }
+            catch
+            {
+                Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.Generic("Failed to fetch membership for password recovery")));
+            }
+
+            await TerminateActor(graceful: true, publishCleanupEvent: true);
+            return;
+        }
+
         CreateMembershipActorEvent createEvent = new(_connectId, _verificationFlow.Value!.UniqueIdentifier,
             _activeOtp.UniqueIdentifier, Membership.Types.CreationStatus.OtpVerified);
 

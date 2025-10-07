@@ -35,6 +35,10 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
         Receive<GetMasterKeySharesEvent>(cmd =>
             ExecuteWithContext(ctx => GetMasterKeySharesByMembershipIdAsync(ctx, cmd), "GetMasterKeyShares")
                 .PipeTo(Sender));
+
+        Receive<DeleteMasterKeySharesEvent>(cmd =>
+            ExecuteWithContext(ctx => DeleteMasterKeySharesAsync(ctx, cmd), "DeleteMasterKeyShares")
+                .PipeTo(Sender));
     }
 
     private static async Task<Result<InsertMasterKeySharesResult, KeySplittingFailure>> InsertMasterKeySharesAsync(
@@ -145,6 +149,24 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
         {
             return Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Err(
                 KeySplittingFailure.KeySplittingFailed($"Get shares failed: {ex.Message}"));
+        }
+    }
+
+    private static async Task<Result<Unit, KeySplittingFailure>> DeleteMasterKeySharesAsync(
+        EcliptixSchemaContext ctx, DeleteMasterKeySharesEvent cmd)
+    {
+        try
+        {
+            await ctx.MasterKeyShares
+                .Where(mks => mks.MembershipUniqueId == cmd.MembershipId && !mks.IsDeleted)
+                .ExecuteDeleteAsync();
+
+            return Result<Unit, KeySplittingFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, KeySplittingFailure>.Err(
+                KeySplittingFailure.KeySplittingFailed($"Delete shares failed: {ex.Message}"));
         }
     }
 

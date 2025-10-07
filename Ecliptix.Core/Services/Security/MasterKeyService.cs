@@ -390,6 +390,34 @@ public class MasterKeyService(
                 KeySplittingFailure.KeyReconstructionFailed(ErrorMessageSharesCheckFailed, ex));
         }
     }
+
+    public async Task<Result<dynamic, FailureBase>> RegenerateMasterKeySharesAsync(
+        dynamic newSessionKey, Guid membershipId)
+    {
+        try
+        {
+            IActorRef masterKeySharePersistor = actorRegistry.Get(ActorIds.MasterKeySharePersistorActor);
+            DeleteMasterKeySharesEvent deleteEvent = new(membershipId);
+
+            Result<Unit, KeySplittingFailure> deleteResult =
+                await masterKeySharePersistor.Ask<Result<Unit, KeySplittingFailure>>(
+                    deleteEvent,
+                    TimeSpan.FromSeconds(AskTimeoutSeconds));
+
+            if (deleteResult.IsErr)
+            {
+                KeySplittingFailure error = deleteResult.UnwrapErr();
+                Log.Warning("Failed to delete old master key shares during regeneration: {Error}", error.Message);
+            }
+
+            return await DeriveMasterKeyAndSplitAsync(newSessionKey, membershipId);
+        }
+        catch (Exception ex)
+        {
+            return Result<dynamic, FailureBase>.Err(
+                KeySplittingFailure.KeyDerivationFailed($"Master key regeneration failed: {ex.Message}", ex));
+        }
+    }
 }
 
 internal class ShareMetadata

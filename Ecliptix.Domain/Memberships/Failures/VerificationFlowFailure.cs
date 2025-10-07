@@ -24,6 +24,7 @@ public sealed record VerificationFlowFailure(
         VerificationFlowFailureType.RateLimitExceeded => true,
         VerificationFlowFailureType.OtpMaxAttemptsReached => true,
         VerificationFlowFailureType.InvalidOpaque => true,
+        VerificationFlowFailureType.Unauthorized => true,
         _ => false
     };
 
@@ -130,6 +131,12 @@ public sealed record VerificationFlowFailure(
             details ?? VerificationFlowMessageKeys.Validation);
     }
 
+    public static VerificationFlowFailure Unauthorized(string? details = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.Unauthorized,
+            details ?? "Unauthorized");
+    }
+
     public static VerificationFlowFailure Generic(string? details = null, Exception? innerException = null)
     {
         return new VerificationFlowFailure(VerificationFlowFailureType.Generic,
@@ -151,6 +158,7 @@ public sealed record VerificationFlowFailure(
             VerificationFlowFailureType.OtpMaxAttemptsReached => StatusCode.ResourceExhausted,
             VerificationFlowFailureType.RateLimitExceeded => StatusCode.ResourceExhausted,
             VerificationFlowFailureType.SuspiciousActivity => StatusCode.PermissionDenied,
+            VerificationFlowFailureType.Unauthorized => StatusCode.Unauthenticated,
 
             VerificationFlowFailureType.ConcurrencyConflict => StatusCode.Aborted,
             VerificationFlowFailureType.PersistorAccess => StatusCode.Unavailable,

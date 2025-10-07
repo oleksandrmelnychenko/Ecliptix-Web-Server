@@ -48,6 +48,10 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         Receive<SignInMembershipActorEvent>(cmd =>
             ExecuteWithContext(ctx => SignInMembershipAsync(ctx, cmd), "LoginMembership")
                 .PipeTo(Sender));
+
+        Receive<GetMembershipByVerificationFlowEvent>(cmd =>
+            ExecuteWithContext(ctx => GetMembershipByVerificationFlowAsync(ctx, cmd), "GetMembershipByVerificationFlow")
+                .PipeTo(Sender));
     }
 
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> SignInMembershipAsync(
@@ -386,6 +390,72 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         }
     }
 
+
+    private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> GetMembershipByVerificationFlowAsync(
+        EcliptixSchemaContext ctx, GetMembershipByVerificationFlowEvent cmd)
+    {
+        try
+        {
+            VerificationFlow? verificationFlow = await ctx.VerificationFlows
+                .Where(vf => vf.UniqueId == cmd.VerificationFlowId && !vf.IsDeleted)
+                .FirstOrDefaultAsync();
+
+            if (verificationFlow == null)
+            {
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.NotFound("Verification flow not found"));
+            }
+
+            Membership? membership;
+
+            if (verificationFlow.Purpose == "password_recovery")
+            {
+                membership = await ctx.Memberships
+                    .Join(ctx.MobileNumbers,
+                        m => m.MobileNumberId,
+                        mn => mn.UniqueId,
+                        (m, mn) => new { Membership = m, MobileNumber = mn })
+                    .Where(x => x.MobileNumber.Id == verificationFlow.MobileNumberId &&
+                                x.Membership.AppDeviceId == verificationFlow.AppDeviceId &&
+                                !x.Membership.IsDeleted)
+                    .Select(x => x.Membership)
+                    .OrderByDescending(m => m.CreatedAt)
+                    .FirstOrDefaultAsync();
+            }
+            else
+            {
+                membership = await ctx.Memberships
+                    .Where(m => m.VerificationFlowId == cmd.VerificationFlowId &&
+                                !m.IsDeleted)
+                    .FirstOrDefaultAsync();
+            }
+
+            if (membership == null)
+            {
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.NotFound("Membership not found for verification flow"));
+            }
+
+            return MapActivityStatus(membership.Status).Match(
+                status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
+                    new MembershipQueryRecord
+                    {
+                        UniqueIdentifier = membership.UniqueId,
+                        ActivityStatus = status,
+                        CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(membership.CreationStatus ?? "otp_verified"),
+                        SecureKey = [],
+                        MaskingKey = []
+                    }),
+                () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
+            );
+        }
+        catch (Exception ex)
+        {
+            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Get membership by flow failed: {ex.Message}"));
+        }
+    }
 
     private static Option<ProtoMembership.Types.ActivityStatus> MapActivityStatus(string? statusStr)
     {

@@ -105,6 +105,7 @@ public class MembershipActor : ReceiveActor
         ReceiveAsync<CompleteRegistrationRecordActorEvent>(HandleCompleteRegistrationRecord);
         ReceiveAsync<OprfInitRecoverySecureKeyEvent>(HandleInitRecoveryRequestEvent);
         ReceiveAsync<OprfCompleteRecoverySecureKeyEvent>(HandleCompleteRecoverySecureKeyEvent);
+        ReceiveAsync<GetMembershipByVerificationFlowEvent>(HandleGetMembershipByVerificationFlow);
     }
 
     private async Task HandleCompleteRegistrationRecord(CompleteRegistrationRecordActorEvent @event)
@@ -161,6 +162,77 @@ public class MembershipActor : ReceiveActor
 
         _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
 
+        Log.Information("Password recovery completed for membership {MembershipId}, regenerating master key shares",
+            @event.MembershipIdentifier);
+
+        Result<byte[], OpaqueFailure> sessionKeyResult =
+            _opaqueProtocolService.CompleteRegistrationWithSessionKey(@event.PeerRecoveryRecord);
+
+        if (sessionKeyResult.IsOk)
+        {
+            byte[] sessionKey = sessionKeyResult.Unwrap();
+            SodiumSecureMemoryHandle? sessionKeyHandle = null;
+            try
+            {
+                Result<SodiumSecureMemoryHandle, SodiumFailure> allocateResult =
+                    SodiumSecureMemoryHandle.Allocate(sessionKey.Length);
+
+                if (allocateResult.IsOk)
+                {
+                    sessionKeyHandle = allocateResult.Unwrap();
+                    Result<Unit, SodiumFailure> writeResult = sessionKeyHandle.Write(sessionKey);
+
+                    if (writeResult.IsOk)
+                    {
+                        Result<dynamic, FailureBase> regenerateResult =
+                            await _masterKeyService.RegenerateMasterKeySharesAsync(
+                                sessionKeyHandle, @event.MembershipIdentifier);
+
+                        if (regenerateResult.IsErr)
+                        {
+                            Log.Error("Failed to regenerate master key shares for membership {MembershipId}: {Error}",
+                                @event.MembershipIdentifier, regenerateResult.UnwrapErr().Message);
+                        }
+                        else
+                        {
+                            Log.Information("Master key shares regenerated successfully for membership {MembershipId}",
+                                @event.MembershipIdentifier);
+                        }
+                    }
+                    else
+                    {
+                        Log.Error("Failed to write session key to secure memory for membership {MembershipId}: {Error}",
+                            @event.MembershipIdentifier, writeResult.UnwrapErr().Message);
+                    }
+                }
+                else
+                {
+                    Log.Error("Failed to allocate secure memory for session key for membership {MembershipId}: {Error}",
+                        @event.MembershipIdentifier, allocateResult.UnwrapErr().Message);
+                }
+            }
+            finally
+            {
+                sessionKeyHandle?.Dispose();
+                CryptographicOperations.ZeroMemory(sessionKey);
+            }
+        }
+        else
+        {
+            Log.Warning("Failed to extract session key during password recovery for membership {MembershipId}: {Error}",
+                @event.MembershipIdentifier, sessionKeyResult.UnwrapErr().Message);
+        }
+
+        Result<Unit, VerificationFlowFailure> expireResult =
+            await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
+                new ExpirePasswordRecoveryFlowsEvent(@event.MembershipIdentifier));
+
+        if (expireResult.IsErr)
+        {
+            Log.Warning("Failed to expire password recovery flows for membership {MembershipId}: {Error}",
+                @event.MembershipIdentifier, expireResult.UnwrapErr().Message);
+        }
+
         Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Ok(
             new OprfRecoverySecretKeyCompleteResponse
             {
@@ -170,6 +242,24 @@ public class MembershipActor : ReceiveActor
 
     private async Task HandleInitRecoveryRequestEvent(OprfInitRecoverySecureKeyEvent @event)
     {
+        Result<PasswordRecoveryFlowValidation, VerificationFlowFailure> flowValidation =
+            await _persistor.Ask<Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>>(
+                new ValidatePasswordRecoveryFlowEvent(@event.MembershipIdentifier));
+
+        if (flowValidation.IsErr)
+        {
+            Sender.Tell(Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Err(flowValidation.UnwrapErr()));
+            return;
+        }
+
+        PasswordRecoveryFlowValidation validation = flowValidation.Unwrap();
+        if (!validation.IsValid)
+        {
+            Sender.Tell(Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.Unauthorized("Password recovery OTP verification required")));
+            return;
+        }
+
         (byte[] oprfResponse, byte[] maskingKey) = _opaqueProtocolService.ProcessOprfRequest(@event.OprfRequest);
 
         _pendingMaskingKeys[@event.MembershipIdentifier] = maskingKey;
@@ -218,6 +308,13 @@ public class MembershipActor : ReceiveActor
     }
 
     private async Task HandleCreateMembership(CreateMembershipActorEvent @event)
+    {
+        Result<MembershipQueryRecord, VerificationFlowFailure> operationResult =
+            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
+        Sender.Tell(operationResult);
+    }
+
+    private async Task HandleGetMembershipByVerificationFlow(GetMembershipByVerificationFlowEvent @event)
     {
         Result<MembershipQueryRecord, VerificationFlowFailure> operationResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
