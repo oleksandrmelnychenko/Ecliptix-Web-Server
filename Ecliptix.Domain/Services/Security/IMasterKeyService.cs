@@ -12,4 +12,7 @@ public interface IMasterKeyService
     Task<Result<(dynamic IdentityKeys, byte[] RootKey), FailureBase>> DeriveIdentityKeysAsync(Guid membershipId);
 
     Task<Result<bool, FailureBase>> CheckSharesExistAsync(Guid membershipId);
+
+    Task<Result<dynamic, FailureBase>> RegenerateMasterKeySharesAsync(
+        dynamic newSessionKey, Guid membershipId);
 }

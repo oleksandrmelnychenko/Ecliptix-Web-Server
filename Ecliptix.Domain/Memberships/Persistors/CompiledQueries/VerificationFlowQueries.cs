@@ -98,4 +98,15 @@ public static class VerificationFlowQueries
                                 !f.IsDeleted)
                     .AsNoTracking()
                     .Count());
+
+    public static readonly Func<EcliptixSchemaContext, long, DateTime, Task<int>>
+        CountRecentPasswordRecovery = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, long mobileId, DateTime since) =>
+                ctx.VerificationFlows
+                    .Where(f => f.MobileNumberId == mobileId &&
+                                f.Purpose == "password_recovery" &&
+                                f.CreatedAt >= since &&
+                                !f.IsDeleted)
+                    .AsNoTracking()
+                    .Count());
 }

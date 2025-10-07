@@ -57,6 +57,12 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         Receive<ExpireAssociatedOtpActorEvent>(actorEvent =>
             ExecuteWithContext(ctx => ExpireAssociatedOtpAsync(ctx, actorEvent), "ExpireAssociatedOtp")
                 .PipeTo(Sender));
+        Receive<ValidatePasswordRecoveryFlowEvent>(actorEvent =>
+            ExecuteWithContext(ctx => ValidatePasswordRecoveryFlowAsync(ctx, actorEvent), "ValidatePasswordRecoveryFlow")
+                .PipeTo(Sender));
+        Receive<ExpirePasswordRecoveryFlowsEvent>(actorEvent =>
+            ExecuteWithContext(ctx => ExpirePasswordRecoveryFlowsAsync(ctx, actorEvent), "ExpirePasswordRecoveryFlows")
+                .PipeTo(Sender));
         Receive<CheckMobileAndMembershipActorEvent>(actorEvent =>
             ExecuteWithContext(ctx => CheckMobileAndMembershipStatusAsync(ctx, actorEvent), "CheckMobileAndMembershipStatus")
                 .PipeTo(Sender));
@@ -115,6 +121,41 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 return MapToVerificationFlowRecord(existingActiveFlow);
             }
 
+            if (cmd.Purpose == VerificationPurpose.PasswordRecovery)
+            {
+                Log.Information("Password recovery flow initiated for mobile ID {MobileId}", mobile.Id);
+
+                int recoveryCount = await VerificationFlowQueries.CountRecentPasswordRecovery(
+                    ctx, mobile.Id, DateTime.UtcNow.AddHours(-1));
+
+                Log.Information("Recent password recovery count: {Count} for mobile ID {MobileId}", recoveryCount, mobile.Id);
+
+                if (recoveryCount >= 3)
+                {
+                    await transaction.RollbackAsync();
+                    return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.RateLimitExceeded("password_recovery_rate_limit_exceeded"));
+                }
+
+                List<VerificationFlow> oldPendingFlows = await ctx.VerificationFlows
+                    .Where(vf => vf.MobileNumberId == mobile.Id &&
+                                 vf.Purpose == "password_recovery" &&
+                                 vf.Status == "pending" &&
+                                 !vf.IsDeleted)
+                    .ToListAsync();
+
+                Log.Information("Found {Count} old pending password recovery flows to expire for mobile ID {MobileId}",
+                    oldPendingFlows.Count, mobile.Id);
+
+                foreach (VerificationFlow oldFlow in oldPendingFlows)
+                {
+                    oldFlow.Status = "expired";
+                    oldFlow.UpdatedAt = DateTime.UtcNow;
+                }
+
+                Log.Information("Updated {Count} old flows to expired status", oldPendingFlows.Count);
+            }
+
             int mobileFlowCount = await VerificationFlowQueries.CountRecentByMobileId(
                 ctx, mobile.Id, DateTime.UtcNow.AddHours(-1));
             if (mobileFlowCount >= 30)
@@ -149,15 +190,24 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             };
 
             ctx.VerificationFlows.Add(flow);
+            Log.Information("About to save new verification flow. Purpose: {Purpose}, MobileId: {MobileId}",
+                flow.Purpose, flow.MobileNumberId);
+
             await ctx.SaveChangesAsync();
 
+            Log.Information("Successfully saved verification flow. FlowId: {FlowId}", flow.UniqueId);
+
             await transaction.CommitAsync();
+
+            Log.Information("Transaction committed successfully for flow {FlowId}", flow.UniqueId);
 
             VerificationFlow? flowWithOtp = await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(ctx, flow.UniqueId);
             return MapToVerificationFlowRecord(flowWithOtp!);
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "CRITICAL: InitiateFlowAsync failed. Purpose: {Purpose}, Error: {Error}",
+                cmd.Purpose, ex.Message);
             await transaction.RollbackAsync();
             return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Generic($"Initiate flow failed: {ex.Message}", ex));
@@ -507,7 +557,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 OtpHash = activeOtp.OtpValue,
                 OtpSalt = activeOtp.OtpSalt,
                 ExpiresAt = activeOtp.ExpiresAt,
-                Status = Enum.Parse<VerificationFlowStatus>(activeOtp.Status, true),
+                Status = ConvertOtpStatusToVerificationFlowStatus(activeOtp.Status),
                 IsActive = activeOtp.Status == "active"
             })
             : Option<OtpQueryRecord>.None;
@@ -520,7 +570,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             ConnectId = (uint?)flow.ConnectionId,
             ExpiresAt = flow.ExpiresAt,
             Status = Enum.Parse<VerificationFlowStatus>(flow.Status, true),
-            Purpose = Enum.Parse<VerificationPurpose>(flow.Purpose, true),
+            Purpose = ConvertStringToPurpose(flow.Purpose),
             OtpCount = flow.OtpCount,
             OtpActive = otpActive.HasValue ? otpActive.Value : null
         };
@@ -539,6 +589,17 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         };
     }
 
+    private static VerificationPurpose ConvertStringToPurpose(string purpose)
+    {
+        return purpose.ToLowerInvariant() switch
+        {
+            "registration" => VerificationPurpose.Registration,
+            "login" => VerificationPurpose.Login,
+            "password_recovery" => VerificationPurpose.PasswordRecovery,
+            _ => VerificationPurpose.Registration
+        };
+    }
+
     private static string ConvertVerificationFlowStatusToOtpStatus(VerificationFlowStatus status)
     {
         return status switch
@@ -550,6 +611,84 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             VerificationFlowStatus.MaxAttemptsReached => "invalid",
             _ => "expired"
         };
+    }
+
+    private static VerificationFlowStatus ConvertOtpStatusToVerificationFlowStatus(string otpStatus)
+    {
+        return otpStatus.ToLowerInvariant() switch
+        {
+            "active" => VerificationFlowStatus.Pending,
+            "used" => VerificationFlowStatus.Verified,
+            "invalid" => VerificationFlowStatus.Failed,
+            "expired" => VerificationFlowStatus.Expired,
+            _ => VerificationFlowStatus.Expired
+        };
+    }
+
+    private async Task<Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>> ValidatePasswordRecoveryFlowAsync(
+        EcliptixSchemaContext ctx, ValidatePasswordRecoveryFlowEvent cmd)
+    {
+        try
+        {
+            DateTime tenMinutesAgo = DateTime.UtcNow.AddMinutes(-10);
+
+            VerificationFlow? recoveryFlow = await ctx.VerificationFlows
+                .Join(ctx.Memberships,
+                    vf => vf.UniqueId,
+                    m => m.VerificationFlowId,
+                    (vf, m) => new { VerificationFlow = vf, Membership = m })
+                .Where(x => x.Membership.UniqueId == cmd.MembershipIdentifier &&
+                            x.VerificationFlow.Purpose == "password_recovery" &&
+                            x.VerificationFlow.Status == "verified" &&
+                            x.VerificationFlow.UpdatedAt >= tenMinutesAgo &&
+                            !x.VerificationFlow.IsDeleted &&
+                            !x.Membership.IsDeleted)
+                .Select(x => x.VerificationFlow)
+                .OrderByDescending(vf => vf.UpdatedAt)
+                .FirstOrDefaultAsync();
+
+            if (recoveryFlow == null)
+            {
+                return Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>.Ok(
+                    new PasswordRecoveryFlowValidation(false, null));
+            }
+
+            return Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>.Ok(
+                new PasswordRecoveryFlowValidation(true, recoveryFlow.UniqueId));
+        }
+        catch (Exception ex)
+        {
+            return Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Validate password recovery flow failed: {ex.Message}"));
+        }
+    }
+
+    private async Task<Result<Unit, VerificationFlowFailure>> ExpirePasswordRecoveryFlowsAsync(
+        EcliptixSchemaContext ctx, ExpirePasswordRecoveryFlowsEvent cmd)
+    {
+        try
+        {
+            await ctx.VerificationFlows
+                .Join(ctx.Memberships,
+                    vf => vf.UniqueId,
+                    m => m.VerificationFlowId,
+                    (vf, m) => new { VerificationFlow = vf, Membership = m })
+                .Where(x => x.Membership.UniqueId == cmd.MembershipIdentifier &&
+                            x.VerificationFlow.Purpose == "password_recovery" &&
+                            x.VerificationFlow.Status == "verified" &&
+                            !x.VerificationFlow.IsDeleted)
+                .Select(x => x.VerificationFlow)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(vf => vf.Status, "expired")
+                    .SetProperty(vf => vf.UpdatedAt, DateTime.UtcNow));
+
+            return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Expire password recovery flows failed: {ex.Message}"));
+        }
     }
 
     protected override VerificationFlowFailure MapDbException(DbException ex)
