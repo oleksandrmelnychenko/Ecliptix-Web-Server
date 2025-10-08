@@ -54,7 +54,6 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlow>
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_VerificationFlows_ExpiresAt");
 
-        // Covering index for GetActiveFlowForRecovery query (hot path - called on every reconnect)
         Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
             builder.HasIndex(e => new { e.MobileNumberId, e.AppDeviceId, e.Purpose, e.Status, e.ExpiresAt })
                 .HasFilter("IsDeleted = 0 AND Status = 'pending'"),

@@ -29,9 +29,8 @@ public class MembershipAttemptConfiguration : EntityBaseMap<MembershipAttempt>
         builder.Property(e => e.AttemptedAt)
             .HasDefaultValueSql("GETUTCDATE()");
 
-        // Composite index for common query pattern
         builder.HasIndex(e => new { e.MembershipId, e.AttemptedAt })
-            .IsDescending(false, true) // MembershipId ASC, AttemptedAt DESC
+            .IsDescending(false, true)
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_MembershipAttempts_Membership_AttemptedAt");
 

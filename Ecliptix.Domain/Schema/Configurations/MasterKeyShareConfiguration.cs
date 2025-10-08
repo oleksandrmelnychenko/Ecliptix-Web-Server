@@ -19,18 +19,17 @@ public class MasterKeyShareConfiguration : EntityBaseMap<MasterKeyShare>
             .IsRequired();
 
         builder.Property(e => e.EncryptedShare)
-            .HasColumnType("VARBINARY(128)") // ChaCha20-Poly1305: ~92 bytes + padding
+            .HasColumnType("VARBINARY(128)")
             .IsRequired();
 
         builder.Property(e => e.ShareMetadata)
-            .HasColumnType("NVARCHAR(500)") // JSON metadata: ~150 chars
+            .HasColumnType("NVARCHAR(500)")
             .IsRequired();
 
         builder.Property(e => e.StorageLocation)
             .HasMaxLength(100)
             .IsRequired();
 
-        // Indexes
         builder.HasIndex(e => e.ShareIndex)
             .HasDatabaseName("IX_MasterKeyShares_ShareIndex");
 

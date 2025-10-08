@@ -16,7 +16,7 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttempt>
             .HasMaxLength(18);
 
         builder.Property(e => e.Outcome)
-            .HasMaxLength(200); // Reduced from 500
+            .HasMaxLength(200);
 
         builder.Property(e => e.IsSuccess)
             .HasDefaultValue(false);
@@ -34,14 +34,13 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttempt>
             .HasMaxLength(500);
 
         builder.Property(e => e.SessionId)
-            .HasMaxLength(64); // GUID/hash = 32-64 chars
+            .HasMaxLength(64);
 
         builder.Property(e => e.AttemptedAt)
             .HasDefaultValueSql("GETUTCDATE()");
 
-        // Composite index for common query pattern
         builder.HasIndex(e => new { e.MembershipUniqueId, e.AttemptedAt })
-            .IsDescending(false, true) // MembershipUniqueId ASC, AttemptedAt DESC
+            .IsDescending(false, true)
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_LoginAttempts_Membership_AttemptedAt");
 
@@ -57,15 +56,13 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttempt>
             .HasFilter("IsDeleted = 0 AND MobileNumber IS NOT NULL")
             .HasDatabaseName("IX_LoginAttempts_MobileNumber");
 
-        // Covering index for CountFailedSince rate limiting query (hot path - called on every login)
         Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
             builder.HasIndex(e => new { e.MobileNumber, e.Timestamp })
-                .IsDescending(false, true) // MobileNumber ASC, Timestamp DESC for range scan
+                .IsDescending(false, true)
                 .HasFilter("IsDeleted = 0 AND MobileNumber IS NOT NULL AND LockedUntil IS NULL"),
             e => e.IsSuccess)
             .HasDatabaseName("IX_LoginAttempts_RateLimiting");
 
-        // Index for lockout timestamp queries (efficient lockout expiry checks)
         builder.HasIndex(e => new { e.MobileNumber, e.LockedUntil })
             .HasFilter("IsDeleted = 0 AND LockedUntil IS NOT NULL")
             .HasDatabaseName("IX_LoginAttempts_Lockout");

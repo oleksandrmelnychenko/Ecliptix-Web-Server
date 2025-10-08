@@ -20,6 +20,7 @@ public class EcliptixSchemaContext : DbContext
     public DbSet<MembershipAttempt> MembershipAttempts { get; set; }
     public DbSet<LoginAttempt> LoginAttempts { get; set; }
     public DbSet<MobileDevice> MobileDevices { get; set; }
+    public DbSet<LogoutAudit> LogoutAudits { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +36,7 @@ public class EcliptixSchemaContext : DbContext
         modelBuilder.AddConfiguration(new MembershipAttemptConfiguration());
         modelBuilder.AddConfiguration(new LoginAttemptConfiguration());
         modelBuilder.AddConfiguration(new MobileDeviceConfiguration());
+        modelBuilder.AddConfiguration(new LogoutAuditConfiguration());
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

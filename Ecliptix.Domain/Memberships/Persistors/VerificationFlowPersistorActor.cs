@@ -377,7 +377,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Validation("invalid_mobile_number"));
 
-        await using var transaction = await ctx.Database.BeginTransactionAsync();
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
 
         try
         {
@@ -502,7 +502,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             Status = domainMembership.Status switch
             {
                 "active" => Ecliptix.Protobuf.Membership.Membership.Types.ActivityStatus.Active,
-                "inactive" => Ecliptix.Protobuf.Membership.Membership.Types.ActivityStatus.Inactive,
                 _ => Ecliptix.Protobuf.Membership.Membership.Types.ActivityStatus.Inactive
             },
             CreationStatus = domainMembership.CreationStatus switch
@@ -591,7 +590,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             "active" => VerificationFlowStatus.Pending,
             "used" => VerificationFlowStatus.Verified,
             "invalid" => VerificationFlowStatus.Failed,
-            "expired" => VerificationFlowStatus.Expired,
             _ => VerificationFlowStatus.Expired
         };
     }

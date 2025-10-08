@@ -341,25 +341,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     return Result<Unit, EcliptixProtocolFailure>.Err(allocateResult.UnwrapErr().ToEcliptixProtocolFailure());
                 }
 
-                tempRootHandle = allocateResult.Unwrap();
-
-                Result<Unit, SodiumFailure> writeResult = tempRootHandle.Write(initialRootKey);
-                if (writeResult.IsErr)
-                {
-                    tempRootHandle?.Dispose();
-                    return Result<Unit, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr().ToEcliptixProtocolFailure());
-                }
-
-                localSenderCk = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
-                localReceiverCk = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
-
-                Result<Unit, EcliptixProtocolFailure> chainKeysResult = DeriveInitialChainKeys(initialRootKey, localSenderCk, localReceiverCk);
-                if (chainKeysResult.IsErr)
-                {
-                    tempRootHandle?.Dispose();
-                    return chainKeysResult;
-                }
-
                 Result<byte[], SodiumFailure> readResult = _persistentDhPrivateKeyHandle!.ReadBytes(Constants.X25519PrivateKeySize);
                 if (readResult.IsErr)
                 {
@@ -368,6 +349,76 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 }
 
                 persistentPrivKeyBytes = readResult.Unwrap();
+                byte[]? dhSecret = null;
+                byte[]? newRootKey = null;
+
+                try
+                {
+                    dhSecret = SodiumInterop.ScalarMult(persistentPrivKeyBytes, peerDhPublicCopy).Unwrap();
+                }
+                catch (Exception ex)
+                {
+                    tempRootHandle?.Dispose();
+                    WipeIfNotNull(peerDhPublicCopy);
+                    return Result<Unit, EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.DeriveKey("Failed to compute DH shared secret during initial handshake.", ex));
+                }
+
+                tempRootHandle = allocateResult.Unwrap();
+                byte[]? hkdfOutput = null;
+
+                try
+                {
+                    hkdfOutput = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize * 2);
+                    Span<byte> hkdfOutputSpan = hkdfOutput.AsSpan(0, Constants.X25519KeySize * 2);
+
+                    HKDF.DeriveKey(
+                        HashAlgorithmName.SHA256,
+                        ikm: dhSecret!,
+                        output: hkdfOutputSpan,
+                        salt: initialRootKey,
+                        info: DhRatchetInfo
+                    );
+
+                    newRootKey = hkdfOutputSpan[..Constants.X25519KeySize].ToArray();
+                    Result<Unit, SodiumFailure> writeResult = tempRootHandle.Write(newRootKey);
+                    if (writeResult.IsErr)
+                    {
+                        tempRootHandle?.Dispose();
+                        WipeIfNotNull(peerDhPublicCopy);
+                        WipeIfNotNull(dhSecret);
+                        WipeIfNotNull(newRootKey);
+                        return Result<Unit, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr().ToEcliptixProtocolFailure());
+                    }
+
+                    localSenderCk = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
+                    localReceiverCk = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
+
+                    Result<Unit, EcliptixProtocolFailure> chainKeysResult = DeriveInitialChainKeys(newRootKey, localSenderCk, localReceiverCk);
+                    if (chainKeysResult.IsErr)
+                    {
+                        tempRootHandle?.Dispose();
+                        WipeIfNotNull(dhSecret);
+                        WipeIfNotNull(newRootKey);
+                        return chainKeysResult;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    tempRootHandle?.Dispose();
+                    WipeIfNotNull(peerDhPublicCopy);
+                    WipeIfNotNull(dhSecret);
+                    WipeIfNotNull(newRootKey);
+                    return Result<Unit, EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.DeriveKey("Failed to derive initial keys with DH.", ex));
+                }
+                finally
+                {
+                    if (hkdfOutput != null)
+                        ArrayPool<byte>.Shared.Return(hkdfOutput, clearArray: true);
+                    WipeIfNotNull(dhSecret);
+                    WipeIfNotNull(newRootKey);
+                }
 
                 byte[] senderKey = localSenderCk.AsSpan(0, Constants.X25519KeySize).ToArray();
                 Result<Unit, EcliptixProtocolFailure> updateSenderResult = _sendingStep.UpdateKeysAfterDhRatchet(senderKey);

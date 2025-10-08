@@ -46,6 +46,7 @@ public sealed class ActorRegistry : IEcliptixActorRegistry
             nameof(VerificationFlowManagerActor) => ActorIds.VerificationFlowManagerActor,
             nameof(MembershipPersistorActor) => ActorIds.MembershipPersistorActor,
             nameof(MembershipActor) => ActorIds.MembershipActor,
+            nameof(LogoutAuditPersistorActor) => ActorIds.LogoutAuditPersistorActor,
             _ => throw new ArgumentException($"Unknown actor type: {typeof(TActor).Name}")
         };
     }

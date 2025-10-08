@@ -4,9 +4,11 @@ using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Domain.Memberships.WorkerActors;
+using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
+using Serilog;
 using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
 using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteResponse;
 using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitResponse;
@@ -24,13 +26,16 @@ namespace Ecliptix.Core.Api.Grpc.Services.Membership;
 public class MembershipServices(
     IEcliptixActorRegistry actorRegistry,
     IMobileNumberValidator phoneNumberValidator,
-    IGrpcCipherService grpcCipherService
+    IGrpcCipherService grpcCipherService,
+    ActorSystem actorSystem
 ) : Protobuf.Membership.MembershipServices.MembershipServicesBase
 
 {
     private readonly RpcServiceBase _baseService = new(grpcCipherService);
     private readonly IActorRef _membershipActor = actorRegistry.Get(ActorIds.MembershipActor);
+    private readonly IActorRef _logoutAuditPersistor = actorRegistry.Get(ActorIds.LogoutAuditPersistorActor);
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
+    private readonly ActorSystem _actorSystem = actorSystem;
 
     public override async Task<SecureEnvelope> OpaqueSignInInitRequest(SecureEnvelope request, ServerCallContext context)
     {
@@ -181,5 +186,60 @@ public class MembershipServices(
                     );
                 }
             );
+    }
+
+    public override async Task<SecureEnvelope> Logout(SecureEnvelope request, ServerCallContext context)
+    {
+        return await _baseService.ExecuteEncryptedOperationAsync<LogoutRequest, LogoutResponse>(
+            request, context,
+            async (message, connectId, ct) =>
+            {
+                try
+                {
+                    Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
+
+                    LogoutReason reason = LogoutReason.UserInitiated;
+                    if (!string.IsNullOrEmpty(message.LogoutReason))
+                    {
+                        if (!Enum.TryParse(message.LogoutReason, true, out reason))
+                        {
+                            reason = LogoutReason.UserInitiated;
+                        }
+                    }
+
+                    Log.Information("Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, Reason: {Reason}",
+                        membershipId, connectId, reason);
+
+                    RecordLogoutEvent logoutEvent = new(membershipId, connectId, reason);
+                    Result<Unit, VerificationFlowFailure> auditResult =
+                        await _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(logoutEvent, ct);
+
+                    if (auditResult.IsErr)
+                    {
+                        Log.Warning("Failed to record logout audit, but continuing with logout: {Error}",
+                            auditResult.UnwrapErr().Message);
+                    }
+
+                    _actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
+
+                    Log.Information("Logout completed for ConnectId: {ConnectId}", connectId);
+
+                    return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
+                    {
+                        Result = LogoutResponse.Types.Result.Succeeded,
+                        Message = "Logout successful"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Error during logout for ConnectId: {ConnectId}", connectId);
+
+                    return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
+                    {
+                        Result = LogoutResponse.Types.Result.Failed,
+                        Message = "Logout failed due to an internal error"
+                    });
+                }
+            });
     }
 }

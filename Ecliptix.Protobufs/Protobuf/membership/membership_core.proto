@@ -20,3 +20,19 @@ message Membership {
   ActivityStatus status = 3;
   optional CreationStatus creation_status = 4;
 }
+
+message LogoutRequest {
+  bytes membership_identifier = 1;
+  string logout_reason = 2;
+}
+
+message LogoutResponse {
+  enum Result {
+    SUCCEEDED = 0;
+    ALREADY_LOGGED_OUT = 1;
+    SESSION_NOT_FOUND = 2;
+    FAILED = 3;
+  }
+  Result result = 1;
+  string message = 2;
+}

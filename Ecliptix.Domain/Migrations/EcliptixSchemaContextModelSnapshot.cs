@@ -1,0 +1,1153 @@
+﻿using System;
+using Ecliptix.Domain.Schema;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+
+#nullable disable
+
+namespace Ecliptix.Domain.Migrations
+{
+    [DbContext(typeof(EcliptixSchemaContext))]
+    partial class EcliptixSchemaContextModelSnapshot : ModelSnapshot
+    {
+        protected override void BuildModel(ModelBuilder modelBuilder)
+        {
+#pragma warning disable 612, 618
+            modelBuilder
+                .HasAnnotation("ProductVersion", "9.0.9")
+                .HasAnnotation("Relational:MaxIdentifierLength", 128);
+
+            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.Device", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("AppInstanceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("DeviceType")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppInstanceId")
+                        .HasDatabaseName("IX_Devices_AppInstanceId");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_Device_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("DeviceId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_Devices_DeviceId");
+
+                    b.HasIndex("DeviceType")
+                        .HasDatabaseName("IX_Devices_DeviceType")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_Device_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_Device_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.ToTable("Devices", (string)null);
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.FailedOtpAttempt", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("AttemptedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("AttemptedValue")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("FailureReason")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<long>("OtpRecordId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttemptedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_FailedOtpAttempts_AttemptedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_FailedOtpAttempt_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("OtpRecordId")
+                        .HasDatabaseName("IX_FailedOtpAttempts_OtpRecordId");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_FailedOtpAttempt_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_FailedOtpAttempt_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.ToTable("FailedOtpAttempts", (string)null);
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.LoginAttempt", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("AttemptedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsSuccess")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime?>("LockedUntil")
+                        .HasColumnType("DATETIME2");
+
+                    b.Property<Guid?>("MembershipUniqueId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MobileNumber")
+                        .HasMaxLength(18)
+                        .HasColumnType("nvarchar(18)");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("SuccessfulAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("Timestamp")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_LoginAttempt_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("IsSuccess")
+                        .HasDatabaseName("IX_LoginAttempts_IsSuccess")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MobileNumber")
+                        .HasDatabaseName("IX_LoginAttempts_MobileNumber")
+                        .HasFilter("IsDeleted = 0 AND MobileNumber IS NOT NULL");
+
+                    b.HasIndex("SessionId")
+                        .HasDatabaseName("IX_LoginAttempts_SessionId")
+                        .HasFilter("IsDeleted = 0 AND SessionId IS NOT NULL");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_LoginAttempts_Status")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_LoginAttempt_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_LoginAttempt_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MembershipUniqueId", "AttemptedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_LoginAttempts_Membership_AttemptedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MobileNumber", "LockedUntil")
+                        .HasDatabaseName("IX_LoginAttempts_Lockout")
+                        .HasFilter("IsDeleted = 0 AND LockedUntil IS NOT NULL");
+
+                    b.HasIndex("MobileNumber", "Timestamp")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_LoginAttempts_RateLimiting")
+                        .HasFilter("IsDeleted = 0 AND MobileNumber IS NOT NULL AND LockedUntil IS NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("MobileNumber", "Timestamp"), new[] { "IsSuccess" });
+
+                    b.ToTable("LoginAttempts", (string)null);
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.LogoutAudit", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ConnectId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime>("LoggedOutAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("MembershipUniqueId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConnectId")
+                        .HasDatabaseName("IX_LogoutAudits_ConnectId")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_LogoutAudit_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("LoggedOutAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_LogoutAudits_LoggedOutAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_LogoutAudit_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_LogoutAudit_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MembershipUniqueId", "LoggedOutAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_LogoutAudits_Membership_LoggedOutAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.ToTable("LogoutAudits", (string)null);
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MasterKeyShare", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<byte[]>("EncryptedShare")
+                        .IsRequired()
+                        .HasColumnType("VARBINARY(128)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<Guid>("MembershipUniqueId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ShareIndex")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ShareMetadata")
+                        .IsRequired()
+                        .HasColumnType("NVARCHAR(500)");
+
+                    b.Property<string>("StorageLocation")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_MasterKeyShare_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("ShareIndex")
+                        .HasDatabaseName("IX_MasterKeyShares_ShareIndex");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_MasterKeyShare_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_MasterKeyShare_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MembershipUniqueId", "ShareIndex")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_MasterKeyShares_MembershipShare");
+
+                    b.ToTable("MasterKeyShares", (string)null);
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.Membership", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("AppDeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("CreationStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<byte[]>("MaskingKey")
+                        .HasColumnType("VARBINARY(32)");
+
+                    b.Property<Guid>("MobileNumberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("SecureKey")
+                        .HasColumnType("VARBINARY(176)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("inactive");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<Guid>("VerificationFlowId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppDeviceId")
+                        .HasDatabaseName("IX_Memberships_AppDeviceId");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_Membership_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MobileNumberId")
+                        .HasDatabaseName("IX_Memberships_MobileNumberId");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_Memberships_Status")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_Memberships_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_Membership_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("VerificationFlowId");
+
+                    b.HasIndex("MobileNumberId", "AppDeviceId", "IsDeleted")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_Memberships_ActiveMembership");
+
+                    b.ToTable("Memberships", null, t =>
+                        {
+                            t.HasCheckConstraint("CHK_Memberships_CreationStatus", "CreationStatus IN ('otp_verified', 'secure_key_set', 'passphrase_set')");
+
+                            t.HasCheckConstraint("CHK_Memberships_Status", "Status IN ('active', 'inactive')");
+                        });
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MembershipAttempt", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AttemptType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("AttemptedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<Guid>("MembershipId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_MembershipAttempt_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_MembershipAttempts_Status")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_MembershipAttempt_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_MembershipAttempt_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MembershipId", "AttemptedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_MembershipAttempts_Membership_AttemptedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.ToTable("MembershipAttempts", (string)null);
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MobileDevice", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<long>("DeviceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("MobileNumberId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RelationshipType")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("primary");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_MobileDevice_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("DeviceId")
+                        .HasDatabaseName("IX_MobileDevices_DeviceId");
+
+                    b.HasIndex("IsActive")
+                        .HasDatabaseName("IX_MobileDevices_IsActive")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("LastUsedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_MobileDevices_LastUsedAt")
+                        .HasFilter("IsDeleted = 0 AND LastUsedAt IS NOT NULL");
+
+                    b.HasIndex("MobileNumberId")
+                        .HasDatabaseName("IX_MobileDevices_MobileNumberId");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_MobileDevice_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_MobileDevice_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MobileNumberId", "DeviceId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_MobileDevices_PhoneDevice");
+
+                    b.ToTable("MobileDevices", (string)null);
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MobileNumber", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(18)
+                        .HasColumnType("nvarchar(18)");
+
+                    b.Property<string>("Region")
+                        .HasMaxLength(2)
+                        .HasColumnType("nvarchar(2)");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_MobileNumbers_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("Region")
+                        .HasDatabaseName("IX_MobileNumbers_Region")
+                        .HasFilter("IsDeleted = 0 AND Region IS NOT NULL");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_MobileNumber_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_MobileNumber_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("Number", "Region")
+                        .HasDatabaseName("IX_MobileNumbers_MobileNumber_Region")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("Number", "Region", "IsDeleted")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_MobileNumbers_ActiveNumberRegion")
+                        .HasFilter("[Region] IS NOT NULL");
+
+                    b.ToTable("MobileNumbers", (string)null);
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.OtpCode", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<short>("AttemptCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)0);
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("OtpSalt")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("OtpValue")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("active");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<long>("VerificationFlowId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_OtpCode_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("IX_OtpCodes_ExpiresAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_OtpCodes_Status")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_OtpCode_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_OtpCode_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("VerificationFlowId")
+                        .HasDatabaseName("IX_OtpCodes_VerificationFlowId");
+
+                    b.ToTable("OtpCodes", null, t =>
+                        {
+                            t.HasCheckConstraint("CHK_OtpCodes_Status", "Status IN ('active', 'used', 'expired', 'invalid')");
+                        });
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.VerificationFlow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("AppDeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("ConnectionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<long>("MobileNumberId")
+                        .HasColumnType("bigint");
+
+                    b.Property<short>("OtpCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)0);
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("unspecified");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("pending");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppDeviceId")
+                        .HasDatabaseName("IX_VerificationFlows_AppDeviceId");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_VerificationFlow_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("IX_VerificationFlows_ExpiresAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MobileNumberId")
+                        .HasDatabaseName("IX_VerificationFlows_MobileNumberId");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_VerificationFlows_Status")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_VerificationFlow_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_VerificationFlow_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MobileNumberId", "AppDeviceId", "Purpose", "Status", "ExpiresAt")
+                        .HasDatabaseName("IX_VerificationFlows_ActiveFlowRecovery")
+                        .HasFilter("IsDeleted = 0 AND Status = 'pending'");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("MobileNumberId", "AppDeviceId", "Purpose", "Status", "ExpiresAt"), new[] { "UniqueId", "ConnectionId", "OtpCount", "CreatedAt", "UpdatedAt" });
+
+                    b.ToTable("VerificationFlows", null, t =>
+                        {
+                            t.HasCheckConstraint("CHK_VerificationFlows_Purpose", "Purpose IN ('unspecified', 'registration', 'login', 'password_recovery', 'update_phone')");
+
+                            t.HasCheckConstraint("CHK_VerificationFlows_Status", "Status IN ('pending', 'verified', 'expired', 'failed')");
+                        });
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.FailedOtpAttempt", b =>
+                {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.OtpCode", "OtpRecord")
+                        .WithMany("FailedAttempts")
+                        .HasForeignKey("OtpRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_FailedOtpAttempts_OtpCodes");
+
+                    b.Navigation("OtpRecord");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.LoginAttempt", b =>
+                {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.Membership", "Membership")
+                        .WithMany("LoginAttempts")
+                        .HasForeignKey("MembershipUniqueId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("FK_LoginAttempts_Memberships");
+
+                    b.Navigation("Membership");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.LogoutAudit", b =>
+                {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.Membership", "Membership")
+                        .WithMany()
+                        .HasForeignKey("MembershipUniqueId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_LogoutAudits_Memberships");
+
+                    b.Navigation("Membership");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MasterKeyShare", b =>
+                {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.Membership", "Membership")
+                        .WithMany("MasterKeyShares")
+                        .HasForeignKey("MembershipUniqueId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_MasterKeyShares_Memberships");
+
+                    b.Navigation("Membership");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.Membership", b =>
+                {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.Device", "AppDevice")
+                        .WithMany("Memberships")
+                        .HasForeignKey("AppDeviceId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Memberships_Devices");
+
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.MobileNumber", "MobileNumber")
+                        .WithMany("Memberships")
+                        .HasForeignKey("MobileNumberId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Memberships_MobileNumbers");
+
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.VerificationFlow", "VerificationFlow")
+                        .WithMany("Memberships")
+                        .HasForeignKey("VerificationFlowId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Memberships_VerificationFlows");
+
+                    b.Navigation("AppDevice");
+
+                    b.Navigation("MobileNumber");
+
+                    b.Navigation("VerificationFlow");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MembershipAttempt", b =>
+                {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.Membership", "Membership")
+                        .WithMany("MembershipAttempts")
+                        .HasForeignKey("MembershipId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_MembershipAttempts_Memberships");
+
+                    b.Navigation("Membership");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MobileDevice", b =>
+                {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.Device", "Device")
+                        .WithMany("MobileDevices")
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_MobileDevices_Devices");
+
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.MobileNumber", "MobileNumber")
+                        .WithMany("MobileDevices")
+                        .HasForeignKey("MobileNumberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_MobileDevices_MobileNumbers");
+
+                    b.Navigation("Device");
+
+                    b.Navigation("MobileNumber");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.OtpCode", b =>
+                {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.VerificationFlow", "VerificationFlow")
+                        .WithMany("OtpCodes")
+                        .HasForeignKey("VerificationFlowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_OtpCodes_VerificationFlows");
+
+                    b.Navigation("VerificationFlow");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.VerificationFlow", b =>
+                {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.Device", "AppDevice")
+                        .WithMany("VerificationFlows")
+                        .HasForeignKey("AppDeviceId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_VerificationFlows_Devices");
+
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.MobileNumber", "MobileNumber")
+                        .WithMany("VerificationFlows")
+                        .HasForeignKey("MobileNumberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_VerificationFlows_MobileNumbers");
+
+                    b.Navigation("AppDevice");
+
+                    b.Navigation("MobileNumber");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.Device", b =>
+                {
+                    b.Navigation("Memberships");
+
+                    b.Navigation("MobileDevices");
+
+                    b.Navigation("VerificationFlows");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.Membership", b =>
+                {
+                    b.Navigation("LoginAttempts");
+
+                    b.Navigation("MasterKeyShares");
+
+                    b.Navigation("MembershipAttempts");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MobileNumber", b =>
+                {
+                    b.Navigation("Memberships");
+
+                    b.Navigation("MobileDevices");
+
+                    b.Navigation("VerificationFlows");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.OtpCode", b =>
+                {
+                    b.Navigation("FailedAttempts");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.VerificationFlow", b =>
+                {
+                    b.Navigation("Memberships");
+
+                    b.Navigation("OtpCodes");
+                });
+#pragma warning restore 612, 618
+        }
+    }
+}
