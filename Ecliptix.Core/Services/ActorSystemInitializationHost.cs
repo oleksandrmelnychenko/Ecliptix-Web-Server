@@ -47,6 +47,10 @@ public sealed class ActorSystemInitializationHost(
             MasterKeySharePersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.MasterKeySharePersistorActor);
 
+        IActorRef logoutAuditPersistorActor = actorSystem.ActorOf(
+            LogoutAuditPersistorActor.Build(dbContextFactory),
+            ApplicationConstants.ActorNames.LogoutAuditPersistorActor);
+
         IActorRef membershipActor = actorSystem.ActorOf(
             MembershipActor.Build(
                 membershipPersistorActor,
@@ -69,6 +73,7 @@ public sealed class ActorSystemInitializationHost(
         registry.Register(ActorIds.VerificationFlowManagerActor, verificationFlowManagerActor);
         registry.Register(ActorIds.MembershipPersistorActor, membershipPersistorActor);
         registry.Register(ActorIds.MasterKeySharePersistorActor, masterKeySharePersistorActor);
+        registry.Register(ActorIds.LogoutAuditPersistorActor, logoutAuditPersistorActor);
         registry.Register(ActorIds.MembershipActor, membershipActor);
 
         return Task.CompletedTask;

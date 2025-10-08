@@ -269,27 +269,31 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             }
 
             Guid mobileUniqueId = flow.MobileNumber.UniqueId;
+            string mobileNumber = flow.MobileNumber.Number;
 
             DateTime oneHourAgo = DateTime.UtcNow.AddHours(-attemptWindowHours);
-            int failedAttempts = await MembershipAttemptQueries.CountFailedSince(ctx, mobileUniqueId, oneHourAgo);
+            int failedAttempts = await LoginAttemptQueries.CountFailedMembershipCreationSince(ctx, mobileUniqueId, oneHourAgo);
 
             if (failedAttempts >= maxAttempts)
             {
-                DateTime? earliestFailed = await MembershipAttemptQueries.GetEarliestFailedSince(ctx, mobileUniqueId, oneHourAgo);
+                DateTime? earliestFailed = await LoginAttemptQueries.GetEarliestFailedMembershipCreationSince(ctx, mobileUniqueId, oneHourAgo);
                 if (earliestFailed.HasValue)
                 {
                     DateTime waitUntil = earliestFailed.Value.AddHours(attemptWindowHours);
                     int waitMinutes = (int)Math.Max(0, (waitUntil - DateTime.UtcNow).TotalMinutes);
 
-                    MembershipAttempt rateLimitAttempt = new()
+                    LoginAttempt rateLimitAttempt = new()
                     {
-                        MembershipId = mobileUniqueId,
-                        AttemptType = "create",
+                        MembershipUniqueId = mobileUniqueId,
+                        MobileNumber = mobileNumber,
+                        Outcome = "membership_creation",
                         Status = "failed",
+                        IsSuccess = false,
                         ErrorMessage = "rate_limit_exceeded",
-                        AttemptedAt = DateTime.UtcNow
+                        AttemptedAt = DateTime.UtcNow,
+                        Timestamp = DateTime.UtcNow
                     };
-                    ctx.MembershipAttempts.Add(rateLimitAttempt);
+                    ctx.LoginAttempts.Add(rateLimitAttempt);
                     await ctx.SaveChangesAsync();
 
                     await transaction.RollbackAsync();
@@ -303,15 +307,18 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             if (existingMembership != null)
             {
-                MembershipAttempt attempt = new()
+                LoginAttempt attempt = new()
                 {
-                    MembershipId = existingMembership.UniqueId,
-                    AttemptType = "create",
+                    MembershipUniqueId = existingMembership.UniqueId,
+                    MobileNumber = mobileNumber,
+                    Outcome = "membership_creation",
                     Status = "failed",
+                    IsSuccess = false,
                     ErrorMessage = "membership_already_exists",
-                    AttemptedAt = DateTime.UtcNow
+                    AttemptedAt = DateTime.UtcNow,
+                    Timestamp = DateTime.UtcNow
                 };
-                ctx.MembershipAttempts.Add(attempt);
+                ctx.LoginAttempts.Add(attempt);
                 await ctx.SaveChangesAsync();
 
                 await transaction.RollbackAsync();
@@ -346,33 +353,38 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     .SetProperty(o => o.Status, "used")
                     .SetProperty(o => o.UpdatedAt, DateTime.UtcNow));
 
-            MembershipAttempt successAttempt = new MembershipAttempt
+            LoginAttempt successAttempt = new LoginAttempt
             {
-                MembershipId = newMembership.UniqueId,
-                AttemptType = "create",
+                MembershipUniqueId = newMembership.UniqueId,
+                MobileNumber = mobileNumber,
+                Outcome = "membership_creation",
                 Status = "success",
+                IsSuccess = true,
                 ErrorMessage = "created",
-                AttemptedAt = DateTime.UtcNow
+                AttemptedAt = DateTime.UtcNow,
+                Timestamp = DateTime.UtcNow,
+                SuccessfulAt = DateTime.UtcNow
             };
-            ctx.MembershipAttempts.Add(successAttempt);
+            ctx.LoginAttempts.Add(successAttempt);
             await ctx.SaveChangesAsync();
 
-            List<long> failedAttemptIds = await ctx.MembershipAttempts
+            List<long> failedAttemptIds = await ctx.LoginAttempts
                 .Join(ctx.Memberships,
-                    ma => ma.MembershipId,
+                    la => la.MembershipUniqueId,
                     m => m.UniqueId,
-                    (ma, m) => new { ma, m })
+                    (la, m) => new { la, m })
                 .Where(x => x.m.MobileNumberId == mobileUniqueId &&
-                            x.ma.Status == "failed" &&
-                            !x.ma.IsDeleted &&
+                            x.la.Outcome == "membership_creation" &&
+                            x.la.Status == "failed" &&
+                            !x.la.IsDeleted &&
                             !x.m.IsDeleted)
-                .Select(x => x.ma.Id)
+                .Select(x => x.la.Id)
                 .ToListAsync();
 
             if (failedAttemptIds.Count > 0)
             {
-                await ctx.MembershipAttempts
-                    .Where(ma => failedAttemptIds.Contains(ma.Id))
+                await ctx.LoginAttempts
+                    .Where(la => failedAttemptIds.Contains(la.Id))
                     .ExecuteDeleteAsync();
             }
 

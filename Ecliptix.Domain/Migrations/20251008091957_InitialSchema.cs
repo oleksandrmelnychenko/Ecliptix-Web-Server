@@ -5,8 +5,10 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Ecliptix.Domain.Migrations
 {
-    public partial class AddLogoutAuditWithEnum : Migration
+    /// <inheritdoc />
+    public partial class InitialSchema : Migration
     {
+        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
@@ -276,33 +278,6 @@ namespace Ecliptix.Domain.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "MembershipAttempts",
-                columns: table => new
-                {
-                    Id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    MembershipId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    AttemptType = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
-                    ErrorMessage = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    AttemptedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETUTCDATE()"),
-                    UniqueId = table.Column<Guid>(type: "uniqueidentifier", nullable: false, defaultValueSql: "NEWID()"),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETUTCDATE()"),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETUTCDATE()"),
-                    IsDeleted = table.Column<bool>(type: "bit", nullable: false, defaultValue: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_MembershipAttempts", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_MembershipAttempts_Memberships",
-                        column: x => x.MembershipId,
-                        principalTable: "Memberships",
-                        principalColumn: "UniqueId",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "FailedOtpAttempts",
                 columns: table => new
                 {
@@ -534,39 +509,6 @@ namespace Ecliptix.Domain.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_MembershipAttempt_CreatedAt",
-                table: "MembershipAttempts",
-                column: "CreatedAt",
-                descending: new bool[0],
-                filter: "IsDeleted = 0");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_MembershipAttempt_UpdatedAt",
-                table: "MembershipAttempts",
-                column: "UpdatedAt",
-                descending: new bool[0],
-                filter: "IsDeleted = 0");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_MembershipAttempts_Membership_AttemptedAt",
-                table: "MembershipAttempts",
-                columns: new[] { "MembershipId", "AttemptedAt" },
-                descending: new[] { false, true },
-                filter: "IsDeleted = 0");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_MembershipAttempts_Status",
-                table: "MembershipAttempts",
-                column: "Status",
-                filter: "IsDeleted = 0");
-
-            migrationBuilder.CreateIndex(
-                name: "UQ_MembershipAttempt_UniqueId",
-                table: "MembershipAttempts",
-                column: "UniqueId",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
                 name: "IX_Membership_CreatedAt",
                 table: "Memberships",
                 column: "CreatedAt",
@@ -788,6 +730,7 @@ namespace Ecliptix.Domain.Migrations
                 unique: true);
         }
 
+        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
@@ -801,9 +744,6 @@ namespace Ecliptix.Domain.Migrations
 
             migrationBuilder.DropTable(
                 name: "MasterKeyShares");
-
-            migrationBuilder.DropTable(
-                name: "MembershipAttempts");
 
             migrationBuilder.DropTable(
                 name: "MobileDevices");

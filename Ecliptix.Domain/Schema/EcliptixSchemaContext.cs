@@ -17,7 +17,6 @@ public class EcliptixSchemaContext : DbContext
     public DbSet<FailedOtpAttempt> FailedOtpAttempts { get; set; }
     public DbSet<Membership> Memberships { get; set; }
     public DbSet<MasterKeyShare> MasterKeyShares { get; set; }
-    public DbSet<MembershipAttempt> MembershipAttempts { get; set; }
     public DbSet<LoginAttempt> LoginAttempts { get; set; }
     public DbSet<MobileDevice> MobileDevices { get; set; }
     public DbSet<LogoutAudit> LogoutAudits { get; set; }
@@ -33,7 +32,6 @@ public class EcliptixSchemaContext : DbContext
         modelBuilder.AddConfiguration(new FailedOtpAttemptConfiguration());
         modelBuilder.AddConfiguration(new MasterKeyShareConfiguration());
         modelBuilder.AddConfiguration(new MembershipConfiguration());
-        modelBuilder.AddConfiguration(new MembershipAttemptConfiguration());
         modelBuilder.AddConfiguration(new LoginAttemptConfiguration());
         modelBuilder.AddConfiguration(new MobileDeviceConfiguration());
         modelBuilder.AddConfiguration(new LogoutAuditConfiguration());

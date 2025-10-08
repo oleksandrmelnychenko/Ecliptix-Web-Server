@@ -341,7 +341,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     return Result<Unit, EcliptixProtocolFailure>.Err(allocateResult.UnwrapErr().ToEcliptixProtocolFailure());
                 }
 
-                Result<byte[], SodiumFailure> readResult = _persistentDhPrivateKeyHandle!.ReadBytes(Constants.X25519PrivateKeySize);
+                Result<byte[], SodiumFailure> readResult = _initialSendingDhPrivateKeyHandle!.ReadBytes(Constants.X25519PrivateKeySize);
                 if (readResult.IsErr)
                 {
                     tempRootHandle?.Dispose();
