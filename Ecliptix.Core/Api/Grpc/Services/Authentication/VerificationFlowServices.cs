@@ -102,7 +102,7 @@ public class VerificationFlowServices(
                         phoneValidationResult.DetectedRegion,
                         Helpers.FromByteStringToGuid(message.AppDeviceIdentifier));
 
-                    Result<ValidateMobileNumberResult, VerificationFlowFailure> checkResult = 
+                    Result<ValidateMobileNumberResult, VerificationFlowFailure> checkResult =
                         await _verificationFlowManagerActor.Ask<Result<ValidateMobileNumberResult, VerificationFlowFailure>>(checkMobileAndMembershipEvent, ct);
 
                     ValidateMobileNumberResponse response = checkResult.Match(

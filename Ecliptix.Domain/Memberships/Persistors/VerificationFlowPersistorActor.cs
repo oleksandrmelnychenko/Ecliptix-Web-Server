@@ -54,9 +54,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             ExecuteWithContext(ctx => CreateOtpAsync(ctx, actorEvent), "CreateOtp").PipeTo(Sender));
         Receive<UpdateOtpStatusActorEvent>(actorEvent =>
             ExecuteWithContext(ctx => UpdateOtpStatusAsync(ctx, actorEvent), "UpdateOtpStatus").PipeTo(Sender));
-        Receive<ExpireAssociatedOtpActorEvent>(actorEvent =>
-            ExecuteWithContext(ctx => ExpireAssociatedOtpAsync(ctx, actorEvent), "ExpireAssociatedOtp")
-                .PipeTo(Sender));
         Receive<ValidatePasswordRecoveryFlowEvent>(actorEvent =>
             ExecuteWithContext(ctx => ValidatePasswordRecoveryFlowAsync(ctx, actorEvent), "ValidatePasswordRecoveryFlow")
                 .PipeTo(Sender));
@@ -372,61 +369,61 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 VerificationFlowFailure.OtpGenerationFailed($"Create OTP failed: {ex.Message}"));
         }
     }
-    
-   private async Task<Result<ValidateMobileNumberResult, VerificationFlowFailure>> CheckMobileAndMembershipStatusAsync(
-    EcliptixSchemaContext ctx, CheckMobileAndMembershipActorEvent cmd)
-{
-    if (string.IsNullOrWhiteSpace(cmd.MobileNumber))
-        return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Err(
-            VerificationFlowFailure.Validation("invalid_mobile_number"));
 
-    await using var transaction = await ctx.Database.BeginTransactionAsync();
-
-    try
+    private async Task<Result<ValidateMobileNumberResult, VerificationFlowFailure>> CheckMobileAndMembershipStatusAsync(
+     EcliptixSchemaContext ctx, CheckMobileAndMembershipActorEvent cmd)
     {
-        MobileNumber? existing = await MobileNumberQueries.GetByNumberAndRegion(
-            ctx, cmd.MobileNumber, cmd.RegionCode);
+        if (string.IsNullOrWhiteSpace(cmd.MobileNumber))
+            return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.Validation("invalid_mobile_number"));
 
-        if (existing != null)
+        await using var transaction = await ctx.Database.BeginTransactionAsync();
+
+        try
         {
-            Membership? membership = await MembershipQueries.GetByMobileNumberIdWithRecentActivity(ctx, existing.UniqueId);
-            
+            MobileNumber? existing = await MobileNumberQueries.GetByNumberAndRegion(
+                ctx, cmd.MobileNumber, cmd.RegionCode);
+
+            if (existing != null)
+            {
+                Membership? membership = await MembershipQueries.GetByMobileNumberIdWithRecentActivity(ctx, existing.UniqueId);
+
+                await transaction.CommitAsync();
+
+                return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Ok(new ValidateMobileNumberResult
+                {
+                    MobileNumberId = existing.UniqueId,
+                    Membership = MapToProtoMembership(membership)
+                });
+            }
+
+            MobileNumber mobile = new()
+            {
+                UniqueId = Guid.NewGuid(),
+                Number = cmd.MobileNumber,
+                Region = cmd.RegionCode,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+                IsDeleted = false
+            };
+
+            ctx.MobileNumbers.Add(mobile);
+            await ctx.SaveChangesAsync();
             await transaction.CommitAsync();
-            
+
             return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Ok(new ValidateMobileNumberResult
             {
-                MobileNumberId = existing.UniqueId,
-                Membership = MapToProtoMembership(membership)
+                MobileNumberId = mobile.UniqueId,
+                Membership = null
             });
         }
-
-        MobileNumber mobile = new()
+        catch (Exception ex)
         {
-            UniqueId = Guid.NewGuid(),
-            Number = cmd.MobileNumber,
-            Region = cmd.RegionCode,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            IsDeleted = false
-        };
-
-        ctx.MobileNumbers.Add(mobile);
-        await ctx.SaveChangesAsync();
-        await transaction.CommitAsync();
-
-        return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Ok(new ValidateMobileNumberResult
-        {
-            MobileNumberId = mobile.UniqueId,
-            Membership = null
-        });
+            await transaction.RollbackAsync();
+            return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Check mobile and membership failed: {ex.Message}", ex));
+        }
     }
-    catch (Exception ex)
-    {
-        await transaction.RollbackAsync();
-        return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Err(
-            VerificationFlowFailure.PersistorAccess($"Check mobile and membership failed: {ex.Message}", ex));
-    }
-}
 
     private async Task<Result<Guid, VerificationFlowFailure>> EnsureMobileNumberAsync(
         EcliptixSchemaContext ctx, EnsureMobileNumberActorEvent cmd)
@@ -494,32 +491,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         }
     }
 
-    private async Task<Result<Unit, VerificationFlowFailure>> ExpireAssociatedOtpAsync(
-        EcliptixSchemaContext ctx, ExpireAssociatedOtpActorEvent cmd)
-    {
-        try
-        {
-            VerificationFlow? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId);
-            if (flow == null)
-                return Result<Unit, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.NotFound("Flow not found"));
-
-            await ctx.OtpCodes
-                .Where(o => o.VerificationFlowId == flow.Id && o.Status == "active" && !o.IsDeleted)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(o => o.Status, "expired")
-                    .SetProperty(o => o.UpdatedAt, DateTime.UtcNow));
-
-            return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
-        }
-        catch (Exception ex)
-        {
-            return Result<Unit, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess($"Expire OTP failed: {ex.Message}"));
-        }
-    }
-
-    
     private static Ecliptix.Protobuf.Membership.Membership? MapToProtoMembership(Membership? domainMembership)
     {
         if (domainMembership == null)
@@ -543,7 +514,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             }
         };
     }
-    
+
     private static Result<VerificationFlowQueryRecord, VerificationFlowFailure> MapToVerificationFlowRecord(
         VerificationFlow flow)
     {

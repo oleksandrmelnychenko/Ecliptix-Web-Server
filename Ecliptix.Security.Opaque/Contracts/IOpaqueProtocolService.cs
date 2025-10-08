@@ -18,7 +18,4 @@ public interface IOpaqueProtocolService
         byte[] serverMac);
 
     Result<byte[], OpaqueFailure> CompleteRegistrationWithSessionKey(byte[] peerRegistrationRecord);
-
-    Result<AuthContextTokenResponse, OpaqueFailure> GenerateAuthenticationContext(Guid membershipId,
-        Guid mobileNumberId);
 }

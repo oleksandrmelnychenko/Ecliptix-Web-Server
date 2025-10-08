@@ -227,15 +227,6 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         );
     }
 
-    public Result<Unit, OpaqueFailure> CompleteRegistration(byte[] peerRegistrationRecord)
-    {
-        Result<byte[], OpaqueFailure> result = CompleteRegistrationWithSessionKey(peerRegistrationRecord);
-        return result.Match(
-            ok => Result<Unit, OpaqueFailure>.Ok(Unit.Value),
-            err => Result<Unit, OpaqueFailure>.Err(err)
-        );
-    }
-
     public Result<byte[], OpaqueFailure> CompleteRegistrationWithSessionKey(byte[] peerRegistrationRecord)
     {
         try
@@ -269,24 +260,5 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
             return Result<byte[], OpaqueFailure>.Err(
                 OpaqueFailure.InvalidInput($"Registration completion failed: {ex.Message}"));
         }
-    }
-
-    public Result<AuthContextTokenResponse, OpaqueFailure> GenerateAuthenticationContext(
-        Guid membershipId, Guid mobileNumberId)
-    {
-        Span<byte> contextTokenSpan = stackalloc byte[ContextTokenSize];
-        RandomNumberGenerator.Fill(contextTokenSpan);
-
-        DateTime expiresAt = DateTime.UtcNow.AddHours(AuthTokenExpirationHours);
-
-        AuthContextTokenResponse response = new()
-        {
-            ContextToken = contextTokenSpan.ToArray(),
-            MembershipId = membershipId,
-            MobileNumberId = mobileNumberId,
-            ExpiresAt = expiresAt
-        };
-
-        return Result<AuthContextTokenResponse, OpaqueFailure>.Ok(response);
     }
 }

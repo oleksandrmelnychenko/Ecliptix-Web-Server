@@ -46,7 +46,7 @@ public class VerificationFlowManagerActor : ReceiveActor
         Receive<CheckMobileAndMembershipActorEvent>(HandleCheckMobileAndMembership);
 
     }
-    
+
     private void HandleCheckMobileAndMembership(CheckMobileAndMembershipActorEvent checkEvent)
     {
         _persistor.Ask<Result<ValidateMobileNumberResult, VerificationFlowFailure>>(
