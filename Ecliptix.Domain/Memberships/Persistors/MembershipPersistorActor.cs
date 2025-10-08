@@ -436,7 +436,6 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         mn => mn.UniqueId,
                         (m, mn) => new { Membership = m, MobileNumber = mn })
                     .Where(x => x.MobileNumber.Id == verificationFlow.MobileNumberId &&
-                                x.Membership.AppDeviceId == verificationFlow.AppDeviceId &&
                                 !x.Membership.IsDeleted)
                     .Select(x => x.Membership)
                     .OrderByDescending(m => m.CreatedAt)
