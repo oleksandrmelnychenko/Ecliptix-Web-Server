@@ -34,6 +34,7 @@ public static class VerificationFlowMessageKeys
     public const string Validation = "validation_failed";
 
     public const string InvalidCredentials = "invalid_credentials";
+    public const string PasswordRecoveryOtpRequired = "password_recovery_otp_required";
     public const string InactiveMembership = "inactive_membership";
     public const string InvalidSecureKey = "invalid_secure_key";
     public const string MembershipAlreadyExists = "membership_already_exists";

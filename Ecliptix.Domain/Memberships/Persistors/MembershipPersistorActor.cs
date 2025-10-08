@@ -56,6 +56,10 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         Receive<ValidatePasswordRecoveryFlowEvent>(cmd =>
             ExecuteWithContext(ctx => ValidatePasswordRecoveryFlowAsync(ctx, cmd), "ValidatePasswordRecoveryFlow")
                 .PipeTo(Sender));
+
+        Receive<ExpirePasswordRecoveryFlowsEvent>(cmd =>
+            ExecuteWithContext(ctx => ExpirePasswordRecoveryFlowsAsync(ctx, cmd), "ExpirePasswordRecoveryFlows")
+                .PipeTo(Sender));
     }
 
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> SignInMembershipAsync(
@@ -514,6 +518,43 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         {
             return Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Validate password recovery flow failed: {ex.Message}"));
+        }
+    }
+
+    private async Task<Result<Unit, VerificationFlowFailure>> ExpirePasswordRecoveryFlowsAsync(
+        EcliptixSchemaContext ctx, ExpirePasswordRecoveryFlowsEvent cmd)
+    {
+        try
+        {
+            Membership? membership = await ctx.Memberships
+                .Where(m => m.UniqueId == cmd.MembershipIdentifier && !m.IsDeleted)
+                .FirstOrDefaultAsync();
+
+            if (membership == null)
+            {
+                return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+            }
+
+            int rowsAffected = await ctx.VerificationFlows
+                .Join(ctx.MobileNumbers,
+                    vf => vf.MobileNumberId,
+                    mn => mn.Id,
+                    (vf, mn) => new { VerificationFlow = vf, MobileNumber = mn })
+                .Where(x => x.MobileNumber.UniqueId == membership.MobileNumberId &&
+                            x.VerificationFlow.Purpose == "password_recovery" &&
+                            x.VerificationFlow.Status == "verified" &&
+                            !x.VerificationFlow.IsDeleted)
+                .Select(x => x.VerificationFlow)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(vf => vf.Status, "expired")
+                    .SetProperty(vf => vf.UpdatedAt, DateTime.UtcNow));
+
+            return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Expire password recovery flows failed: {ex.Message}"));
         }
     }
 

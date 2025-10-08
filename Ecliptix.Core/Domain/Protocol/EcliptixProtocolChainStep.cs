@@ -230,25 +230,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         }
     }
 
-    public Result<Unit, EcliptixProtocolFailure> SkipKeysUntil(uint targetIndex)
-    {
-        if (_currentIndex >= targetIndex)
-        {
-            return OkResult;
-        }
-
-        for (uint i = _currentIndex + 1; i <= targetIndex; i++)
-        {
-            Result<RatchetChainKey, EcliptixProtocolFailure> keyResult = GetOrDeriveKeyFor(i);
-            if (keyResult.IsErr)
-            {
-                return Result<Unit, EcliptixProtocolFailure>.Err(keyResult.UnwrapErr());
-            }
-        }
-
-        return SetCurrentIndex(targetIndex);
-    }
-
     internal Result<Unit, EcliptixProtocolFailure> UpdateKeysAfterDhRatchet(byte[] newChainKey,
         byte[]? newDhPrivateKey = null, byte[]? newDhPublicKey = null)
     {

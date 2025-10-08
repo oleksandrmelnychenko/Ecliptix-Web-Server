@@ -168,7 +168,8 @@ public class MembershipServices(
                 {
                     OprfInitRecoverySecureKeyEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
-                        Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory));
+                        Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory),
+                        _cultureName);
 
                     Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure> result = await _membershipActor
                         .Ask<Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>>(

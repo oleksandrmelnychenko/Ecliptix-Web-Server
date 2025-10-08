@@ -54,6 +54,36 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         );
     }
 
+    public (byte[] Response, byte[] MaskingKey, byte[] SessionKey) ProcessOprfRequestWithSessionKey(byte[] oprfRequest)
+    {
+        Result<RegistrationRequest, OpaqueServerFailure> registrationRequestResult =
+            RegistrationRequest.Create(oprfRequest);
+
+        if (registrationRequestResult.IsErr)
+        {
+            throw new InvalidOperationException(
+                $"Invalid OPRF request: {registrationRequestResult.UnwrapErr().Message}");
+        }
+
+        RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
+        Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
+            nativeService.CreateRegistrationResponse(registrationRequest);
+
+        return result.Match(
+            ok =>
+            {
+                Span<byte> maskingKeySpan = stackalloc byte[MaskingKeySize];
+                ok.ServerCredentials.AsSpan(CredentialsMaskingKeyOffset, MaskingKeySize).CopyTo(maskingKeySpan);
+
+                Span<byte> sessionKeySpan = stackalloc byte[MaskingKeySize];
+                ok.ServerCredentials.AsSpan(CredentialsExportKeyOffset, MaskingKeySize).CopyTo(sessionKeySpan);
+
+                return (ok.Response.Data, maskingKeySpan.ToArray(), sessionKeySpan.ToArray());
+            },
+            err => throw new InvalidOperationException($"OPRF processing failed: {err.Message}")
+        );
+    }
+
 
     private static Result<KE1, OpaqueFailure> ValidateKe1(OpaqueSignInInitRequest request)
     {

@@ -435,7 +435,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
             if (keysMatch)
             {
-                // Log root key hash when reusing session
                 string reuseRootKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(cmd.RootKey))[..16];
 
                 Context.GetLogger().Info(
@@ -494,7 +493,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         Context.GetLogger().Info("[SERVER-AUTH-NEW] Creating new authenticated session. ConnectId: {0}, MembershipId: {1}, ExchangeType: {2}",
             cmd.ConnectId, cmd.MembershipId, exchangeType);
 
-        // Log root key hash for verification
         string rootKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(cmd.RootKey))[..16];
         Context.GetLogger().Info("[SERVER-AUTH-ROOTKEY] Received root key for authenticated session. ConnectId: {0}, MembershipId: {1}, RootKeyHash: {2}",
             cmd.ConnectId, cmd.MembershipId, rootKeyHash);
@@ -544,7 +542,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 Context.GetLogger().Info("[PROTOCOL] AuthenticatedSession {0} - using idle timeout for ConnectId {1}", exchangeType, cmd.ConnectId);
             }
 
-            // Log detailed protocol state for verification
             string persistedRootKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(state.RatchetState.RootKey.ToByteArray()))[..16];
             string sendingChainKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(state.RatchetState.SendingStep.ChainKey.ToByteArray()))[..16];
             string receivingChainKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(state.RatchetState.ReceivingStep.ChainKey.ToByteArray()))[..16];
@@ -671,7 +668,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 connectId, _state.RatchetState.SendingStep.CurrentIndex, _state.RatchetState.ReceivingStep.CurrentIndex);
         }
 
-        // Log incoming envelope
         Context.GetLogger().Info(
             "[SERVER-DECRYPT-ENVELOPE] Incoming envelope. ConnectId: {0}, HeaderNonce: {1}, AuthTag: {2}",
             connectId,

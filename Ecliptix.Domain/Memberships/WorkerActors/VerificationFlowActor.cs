@@ -272,6 +272,13 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
         try
         {
             await UpdateOtpStatus(VerificationFlowStatus.Verified);
+
+            if (_verificationFlow.HasValue)
+            {
+                await _persistor.Ask<Result<int, VerificationFlowFailure>>(
+                    new UpdateVerificationFlowStatusActorEvent(_verificationFlow.Value!.UniqueIdentifier,
+                        VerificationFlowStatus.Verified), UpdateOtpStatusTimeout);
+            }
         }
         catch
         {
