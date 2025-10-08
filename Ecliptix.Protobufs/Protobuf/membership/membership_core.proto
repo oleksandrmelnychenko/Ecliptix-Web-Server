@@ -34,5 +34,4 @@ message LogoutResponse {
     FAILED = 3;
   }
   Result result = 1;
-  string message = 2;
 }

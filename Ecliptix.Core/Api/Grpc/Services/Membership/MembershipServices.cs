@@ -20,6 +20,7 @@ using OprfRecoverySecureKeyInitRequest = Ecliptix.Protobuf.Membership.OpaqueReco
 using Grpc.Core;
 using System.Globalization;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Membership;
 
@@ -35,7 +36,6 @@ public class MembershipServices(
     private readonly IActorRef _membershipActor = actorRegistry.Get(ActorIds.MembershipActor);
     private readonly IActorRef _logoutAuditPersistor = actorRegistry.Get(ActorIds.LogoutAuditPersistorActor);
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
-    private readonly ActorSystem _actorSystem = actorSystem;
 
     public override async Task<SecureEnvelope> OpaqueSignInInitRequest(SecureEnvelope request, ServerCallContext context)
     {
@@ -190,7 +190,7 @@ public class MembershipServices(
 
     public override async Task<SecureEnvelope> Logout(SecureEnvelope request, ServerCallContext context)
     {
-        return await _baseService.ExecuteEncryptedOperationAsync<LogoutRequest, LogoutResponse>(
+        SecureEnvelope response = await _baseService.ExecuteEncryptedOperationAsync<LogoutRequest, LogoutResponse>(
             request, context,
             async (message, connectId, ct) =>
             {
@@ -220,14 +220,11 @@ public class MembershipServices(
                             auditResult.UnwrapErr().Message);
                     }
 
-                    _actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
-
                     Log.Information("Logout completed for ConnectId: {ConnectId}", connectId);
 
                     return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
                     {
-                        Result = LogoutResponse.Types.Result.Succeeded,
-                        Message = "Logout successful"
+                        Result = LogoutResponse.Types.Result.Succeeded
                     });
                 }
                 catch (Exception ex)
@@ -236,10 +233,18 @@ public class MembershipServices(
 
                     return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
                     {
-                        Result = LogoutResponse.Types.Result.Failed,
-                        Message = "Logout failed due to an internal error"
+                        Result = LogoutResponse.Types.Result.Failed
                     });
                 }
             });
+
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
+        _ = Task.Run(() =>
+        {
+            actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
+            Log.Information("Protocol cleanup triggered for ConnectId: {ConnectId}", connectId);
+        });
+
+        return response;
     }
 }
