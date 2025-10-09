@@ -198,6 +198,21 @@ public class MembershipServices(
                 {
                     Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
 
+                    long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    long timestampDiff = Math.Abs(serverTimestamp - message.Timestamp);
+                    const long maxTimestampDrift = 300;
+
+                    if (timestampDiff > maxTimestampDrift)
+                    {
+                        Log.Warning("Logout request timestamp validation failed for MembershipId: {MembershipId}, Drift: {Drift}s",
+                            membershipId, timestampDiff);
+                        return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
+                        {
+                            Result = LogoutResponse.Types.Result.InvalidTimestamp,
+                            ServerTimestamp = serverTimestamp
+                        });
+                    }
+
                     LogoutReason reason = LogoutReason.UserInitiated;
                     if (!string.IsNullOrEmpty(message.LogoutReason))
                     {
@@ -207,8 +222,8 @@ public class MembershipServices(
                         }
                     }
 
-                    Log.Information("Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, Reason: {Reason}",
-                        membershipId, connectId, reason);
+                    Log.Information("Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, Reason: {Reason}, Scope: {Scope}",
+                        membershipId, connectId, reason, message.Scope);
 
                     RecordLogoutEvent logoutEvent = new(membershipId, connectId, reason);
                     Result<Unit, VerificationFlowFailure> auditResult =
@@ -220,11 +235,16 @@ public class MembershipServices(
                             auditResult.UnwrapErr().Message);
                     }
 
+                    byte[] revocationProof = System.Security.Cryptography.SHA256.HashData(
+                        System.Text.Encoding.UTF8.GetBytes($"{membershipId}:{connectId}:{serverTimestamp}"));
+
                     Log.Information("Logout completed for ConnectId: {ConnectId}", connectId);
 
                     return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
                     {
-                        Result = LogoutResponse.Types.Result.Succeeded
+                        Result = LogoutResponse.Types.Result.Succeeded,
+                        ServerTimestamp = serverTimestamp,
+                        RevocationProof = Google.Protobuf.ByteString.CopyFrom(revocationProof)
                     });
                 }
                 catch (Exception ex)
@@ -233,7 +253,8 @@ public class MembershipServices(
 
                     return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
                     {
-                        Result = LogoutResponse.Types.Result.Failed
+                        Result = LogoutResponse.Types.Result.Failed,
+                        ServerTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                     });
                 }
             });

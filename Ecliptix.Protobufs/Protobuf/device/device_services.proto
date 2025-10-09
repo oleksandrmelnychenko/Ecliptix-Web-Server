@@ -13,7 +13,6 @@ service DeviceService {
 }
 
 message RestoreChannelRequest {
-  bytes session_token = 1;
 }
 
 message RestoreChannelResponse {

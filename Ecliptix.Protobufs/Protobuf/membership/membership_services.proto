@@ -1,5 +1,6 @@
 syntax = "proto3";
 import "common/secure_envelope.proto";
+import "membership/membership_core.proto";
 
 package ecliptix.proto.membership;
 option csharp_namespace = "Ecliptix.Protobuf.Membership";
