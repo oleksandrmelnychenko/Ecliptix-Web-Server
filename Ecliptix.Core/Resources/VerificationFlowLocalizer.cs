@@ -32,6 +32,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["data_access_failed"] = "Data access issue; try again later.",
                 ["security_rate_limit_exceeded"] = "Too many verification attempts. Please try again in 30-60 minutes.",
                 ["global_rate_limit_exceeded"] = "Too many verification attempts. Please try again later.",
+                ["device_rate_limit_exceeded"] = "Too many verification attempts from this device. Please try again later.",
                 ["security_suspicious_activity"] = "Unusual activity detected; access restricted.",
                 ["membership_too_many_attempts"] = "Too many membership attempts; wait {0} min or contact support.",
                 ["signin_too_many_attempts"] = "Too many sign-in attempts; wait {0} min or contact support.",
@@ -117,6 +118,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["data_access_failed"] = "Проблема з доступом до даних; спробуйте пізніше.",
                 ["security_rate_limit_exceeded"] = "Забагато спроб верифікації. Спробуйте знову через 30-60 хвилин.",
                 ["global_rate_limit_exceeded"] = "Забагато спроб верифікації. Будь ласка, спробуйте пізніше.",
+                ["device_rate_limit_exceeded"] = "Забагато спроб верифікації з цього пристрою. Будь ласка, спробуйте пізніше.",
                 ["security_suspicious_activity"] = "Виявлено незвичайну активність; доступ обмежено.",
                 ["membership_too_many_attempts"] =
                     "Забагато спроб членства; зачекайте {0} хв або зв'яжіться з підтримкою.",

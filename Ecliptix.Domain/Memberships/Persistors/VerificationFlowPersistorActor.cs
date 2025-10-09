@@ -113,7 +113,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 existingActiveFlow.ConnectionId = cmd.ConnectId;
                 existingActiveFlow.UpdatedAt = DateTime.UtcNow;
                 existingActiveFlow.MobileNumber = mobile;
-                existingActiveFlow.OtpCodes = new List<Ecliptix.Domain.Schema.Entities.OtpCode>();
+                existingActiveFlow.OtpCodes = new List<OtpCode>();
 
                 return MapToVerificationFlowRecord(existingActiveFlow);
             }
