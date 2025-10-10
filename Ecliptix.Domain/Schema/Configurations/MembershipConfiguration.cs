@@ -50,6 +50,7 @@ public class MembershipConfiguration : EntityBaseMap<Membership>
             .HasDatabaseName("UQ_Memberships_ActiveMembership");
 
         builder.HasIndex(e => e.MobileNumberId)
+            .IsUnique()
             .HasDatabaseName("IX_Memberships_MobileNumberId");
 
         builder.HasIndex(e => e.AppDeviceId)

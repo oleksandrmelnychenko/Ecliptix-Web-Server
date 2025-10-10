@@ -97,20 +97,19 @@ public class VerificationFlowServices(
 
                 if (phoneValidationResult.IsValid)
                 {
-                    CheckMobileAndMembershipActorEvent checkMobileAndMembershipEvent = new(
+                    EnsureMobileNumberActorEvent ensureMobileNumberEvent = new(
                         phoneValidationResult.ParsedMobileNumberE164!,
                         phoneValidationResult.DetectedRegion,
                         Helpers.FromByteStringToGuid(message.AppDeviceIdentifier));
 
-                    Result<ValidateMobileNumberResult, VerificationFlowFailure> checkResult =
-                        await _verificationFlowManagerActor.Ask<Result<ValidateMobileNumberResult, VerificationFlowFailure>>(checkMobileAndMembershipEvent, ct);
+                    Result<Guid, VerificationFlowFailure> ensureMobileNumberResult = await _verificationFlowManagerActor
+                        .Ask<Result<Guid, VerificationFlowFailure>>(ensureMobileNumberEvent, ct);
 
-                    ValidateMobileNumberResponse response = checkResult.Match(
-                        result => new ValidateMobileNumberResponse
+                    ValidateMobileNumberResponse response = ensureMobileNumberResult.Match(
+                        guid => new ValidateMobileNumberResponse
                         {
-                            MobileNumberIdentifier = Helpers.GuidToByteString(result.MobileNumberId),
-                            Result = VerificationResult.Succeeded,
-                            Membership = result.Membership
+                            MobileNumberIdentifier = Helpers.GuidToByteString(guid),
+                            Result = VerificationResult.Succeeded
                         },
                         failure => new ValidateMobileNumberResponse
                         {

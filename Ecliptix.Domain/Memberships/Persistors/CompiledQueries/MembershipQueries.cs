@@ -39,12 +39,14 @@ public static class MembershipQueries
                 .FirstOrDefault());
 
     public static readonly Func<EcliptixSchemaContext, Guid, Task<Membership?>>
-        GetByMobileNumberIdWithRecentActivity = EF.CompileAsyncQuery((EcliptixSchemaContext ctx, Guid mobileNumberId) =>
-            ctx.Memberships
-                .Where(m => m.MobileNumberId == mobileNumberId &&
-                            !m.IsDeleted &&
-                            (m.CreationStatus == "secure_key_set" ||
-                             (m.CreationStatus == "otp_verified" && m.UpdatedAt > DateTime.UtcNow.AddHours(-12))))
-                .AsNoTracking()
+        GetByMobileUniqueId = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, Guid mobileUniqueId) =>
+                ctx.Memberships
+                    .Include(m => m.MobileNumber)
+                    .Include(m => m.VerificationFlow)
+                    .Where(m => m.MobileNumber!.UniqueId == mobileUniqueId && 
+                                !m.IsDeleted && 
+                                !m.MobileNumber.IsDeleted)
+                    .OrderByDescending(m => m.UpdatedAt)
                 .FirstOrDefault());
 }

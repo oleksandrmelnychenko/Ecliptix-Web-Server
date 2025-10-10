@@ -43,15 +43,6 @@ public class VerificationFlowManagerActor : ReceiveActor
         Receive<EnsureMobileNumberActorEvent>(actorEvent => _persistor.Forward(actorEvent));
         Receive<VerifyMobileForSecretKeyRecoveryActorEvent>(actorEvent => _persistor.Forward(actorEvent));
         Receive<FlowCompletedGracefullyActorEvent>(HandleFlowCompletedGracefully);
-        Receive<CheckMobileAndMembershipActorEvent>(HandleCheckMobileAndMembership);
-
-    }
-
-    private void HandleCheckMobileAndMembership(CheckMobileAndMembershipActorEvent checkEvent)
-    {
-        _persistor.Ask<Result<ValidateMobileNumberResult, VerificationFlowFailure>>(
-                checkEvent, TimeSpan.FromSeconds(30))
-            .PipeTo(Sender);
     }
 
     private void HandleInitiateFlow(InitiateVerificationFlowActorEvent actorEvent)

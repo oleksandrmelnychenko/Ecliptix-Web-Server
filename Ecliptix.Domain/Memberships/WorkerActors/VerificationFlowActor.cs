@@ -318,6 +318,44 @@ public class VerificationFlowActor : ReceiveActor, IWithStash
             await TerminateActor(graceful: true, publishCleanupEvent: true);
             return;
         }
+        
+        try
+        {
+            CheckExistingMembershipActorEvent checkMembershipEvent = new(
+                _phoneNumberIdentifier);
+
+            Result<ExistingMembershipResult, VerificationFlowFailure> membershipResult =
+                await _persistor.Ask<Result<ExistingMembershipResult, VerificationFlowFailure>>(
+                    checkMembershipEvent, MembershipCreationTimeout);
+
+            if (membershipResult.IsErr)
+            {
+                Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(membershipResult.UnwrapErr()));
+                await TerminateActor(graceful: true, publishCleanupEvent: true);
+                return;
+            }
+
+            ExistingMembershipResult existingMembership = membershipResult.Unwrap();
+
+            if (existingMembership is { MembershipExists: true, Membership: not null })
+            {
+                Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
+                {
+                    Result = VerificationResult.Succeeded,
+                    Membership = existingMembership.Membership
+                }));
+
+                await TerminateActor(graceful: true, publishCleanupEvent: true);
+                return;
+            }
+        }
+        catch
+        {
+            Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.Generic("Failed to check existing membership")));
+            await TerminateActor(graceful: true, publishCleanupEvent: true);
+            return;
+        }
 
         CreateMembershipActorEvent createEvent = new(_connectId, _verificationFlow.Value!.UniqueIdentifier,
             _activeOtp.UniqueIdentifier, Membership.Types.CreationStatus.OtpVerified);

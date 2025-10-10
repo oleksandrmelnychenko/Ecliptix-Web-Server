@@ -60,8 +60,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         Receive<ExpirePasswordRecoveryFlowsEvent>(actorEvent =>
             ExecuteWithContext(ctx => ExpirePasswordRecoveryFlowsAsync(ctx, actorEvent), "ExpirePasswordRecoveryFlows")
                 .PipeTo(Sender));
-        Receive<CheckMobileAndMembershipActorEvent>(actorEvent =>
-            ExecuteWithContext(ctx => CheckMobileAndMembershipStatusAsync(ctx, actorEvent), "CheckMobileAndMembershipStatus")
+        Receive<CheckExistingMembershipActorEvent>(actorEvent =>
+            ExecuteWithContext(ctx => CheckExistingMembershipAsync(ctx, actorEvent), "CheckExistingMembership")
                 .PipeTo(Sender));
     }
 
@@ -301,6 +301,36 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 VerificationFlowFailure.PersistorAccess($"Update flow status failed: {ex.Message}"));
         }
     }
+    
+    private static async Task<Result<ExistingMembershipResult, VerificationFlowFailure>> CheckExistingMembershipAsync(
+        EcliptixSchemaContext ctx, CheckExistingMembershipActorEvent cmd)
+    {
+        try
+        {
+            Membership? membership = await MembershipQueries.GetByMobileUniqueId(
+                ctx, cmd.MobileNumberId);
+
+            if (membership == null)
+            {
+                return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(new ExistingMembershipResult
+                {
+                    MembershipExists = false,
+                    Membership = null
+                });
+            }
+
+            return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(new ExistingMembershipResult
+            {
+                MembershipExists = true,
+                Membership = MapToProtoMembership(membership)
+            });
+        }
+        catch (Exception ex)
+        {
+            return Result<ExistingMembershipResult, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Check existing membership failed: {ex.Message}", ex));
+        }
+    }
 
     private static async Task<Result<CreateOtpResult, VerificationFlowFailure>> CreateOtpAsync(
         EcliptixSchemaContext ctx, CreateOtpActorEvent cmd)
@@ -367,61 +397,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             await transaction.RollbackAsync();
             return Result<CreateOtpResult, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.OtpGenerationFailed($"Create OTP failed: {ex.Message}"));
-        }
-    }
-
-    private async Task<Result<ValidateMobileNumberResult, VerificationFlowFailure>> CheckMobileAndMembershipStatusAsync(
-     EcliptixSchemaContext ctx, CheckMobileAndMembershipActorEvent cmd)
-    {
-        if (string.IsNullOrWhiteSpace(cmd.MobileNumber))
-            return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Validation("invalid_mobile_number"));
-
-        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
-
-        try
-        {
-            MobileNumber? existing = await MobileNumberQueries.GetByNumberAndRegion(
-                ctx, cmd.MobileNumber, cmd.RegionCode);
-
-            if (existing != null)
-            {
-                Membership? membership = await MembershipQueries.GetByMobileNumberIdWithRecentActivity(ctx, existing.UniqueId);
-
-                await transaction.CommitAsync();
-
-                return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Ok(new ValidateMobileNumberResult
-                {
-                    MobileNumberId = existing.UniqueId,
-                    Membership = MapToProtoMembership(membership)
-                });
-            }
-
-            MobileNumber mobile = new()
-            {
-                UniqueId = Guid.NewGuid(),
-                Number = cmd.MobileNumber,
-                Region = cmd.RegionCode,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
-                IsDeleted = false
-            };
-
-            ctx.MobileNumbers.Add(mobile);
-            await ctx.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Ok(new ValidateMobileNumberResult
-            {
-                MobileNumberId = mobile.UniqueId,
-                Membership = null
-            });
-        }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync();
-            return Result<ValidateMobileNumberResult, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess($"Check mobile and membership failed: {ex.Message}", ex));
         }
     }
 

@@ -76,5 +76,4 @@ message ValidateMobileNumberResponse {
   bytes mobile_number_identifier = 1;
   VerificationResult result = 2;
   optional string message = 3;
-  optional ecliptix.proto.membership.Membership membership = 4;
 }
