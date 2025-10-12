@@ -17,11 +17,11 @@ public class OtpCodeConfiguration : EntityBaseMap<OtpCode>
 
         builder.Property(e => e.OtpValue)
             .IsRequired()
-            .HasMaxLength(64); // SHA256 Base64 hash = 44 chars + buffer
+            .HasMaxLength(64);
 
         builder.Property(e => e.OtpSalt)
             .IsRequired()
-            .HasMaxLength(32); // 16 bytes Base64 = 24 chars + buffer
+            .HasMaxLength(32);
 
         builder.Property(e => e.Status)
             .IsRequired()

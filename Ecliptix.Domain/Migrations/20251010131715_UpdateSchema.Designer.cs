@@ -4,6 +4,7 @@ using Ecliptix.Domain.Schema;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Ecliptix.Domain.Migrations
 {
     [DbContext(typeof(EcliptixSchemaContext))]
-    partial class EcliptixSchemaContextModelSnapshot : ModelSnapshot
+    [Migration("20251010131715_UpdateSchema")]
+    partial class UpdateSchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -377,9 +380,6 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("GETUTCDATE()");
 
-                    b.Property<int>("CredentialsVersion")
-                        .HasColumnType("int");
-
                     b.Property<byte[]>("EncryptedShare")
                         .IsRequired()
                         .HasColumnType("VARBINARY(128)");
@@ -459,9 +459,6 @@ namespace Ecliptix.Domain.Migrations
                     b.Property<string>("CreationStatus")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
-
-                    b.Property<int>("CredentialsVersion")
-                        .HasColumnType("int");
 
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()

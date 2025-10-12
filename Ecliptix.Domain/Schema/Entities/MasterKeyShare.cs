@@ -7,6 +7,7 @@ public class MasterKeyShare : EntityBase
     public byte[] EncryptedShare { get; set; } = null!;
     public string ShareMetadata { get; set; } = null!;
     public string StorageLocation { get; set; } = null!;
+    public int CredentialsVersion { get; set; }
 
     public virtual Membership Membership { get; set; } = null!;
 }

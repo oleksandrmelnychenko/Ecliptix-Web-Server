@@ -532,16 +532,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
             if (receivingStepResult.IsErr) return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(receivingStepResult.UnwrapErr());
 
             Result<uint, EcliptixProtocolFailure> currentIndexResult = _receivingStep!.GetCurrentIndex();
-            if (currentIndexResult.IsOk)
-            {
-                uint currentIndex = currentIndexResult.Unwrap();
-                if (receivedIndex > currentIndex + 1)
-                {
-                    uint gapSize = receivedIndex - currentIndex - 1;
-
-                    System.Diagnostics.Debug.WriteLine($"Message gap detected: missing {gapSize} messages between {currentIndex + 1} and {receivedIndex}");
-                }
-            }
 
             Result<RatchetChainKey, EcliptixProtocolFailure> derivedKeyResult = _receivingStep!.GetOrDeriveKeyFor(receivedIndex);
             if (derivedKeyResult.IsErr) return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(derivedKeyResult.UnwrapErr());

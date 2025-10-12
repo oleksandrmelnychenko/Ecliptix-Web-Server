@@ -156,8 +156,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             {
                 try
                 {
-                    Console.WriteLine($"[SERVER] [{_stepType}] Deriving message key for index {idx} from chain key: {Convert.ToHexString(currentChainKey[0..8])}...");
-                    Console.WriteLine($"[SERVER] [{_stepType}] Using MsgInfo: {Convert.ToHexString(Constants.MsgInfo)}");
                     System.Security.Cryptography.HKDF.DeriveKey(
                         System.Security.Cryptography.HashAlgorithmName.SHA256,
                         ikm: currentChainKey,
@@ -165,7 +163,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                         salt: null,
                         info: Constants.MsgInfo
                     );
-                    Console.WriteLine($"[SERVER] [{_stepType}] Derived message key for index {idx}: {Convert.ToHexString(msgKey[0..8])}...");
 
                     System.Security.Cryptography.HKDF.DeriveKey(
                         System.Security.Cryptography.HashAlgorithmName.SHA256,

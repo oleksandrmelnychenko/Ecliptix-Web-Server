@@ -7,6 +7,7 @@ public class Membership : EntityBase
     public Guid VerificationFlowId { get; set; }
     public byte[]? SecureKey { get; set; }
     public byte[]? MaskingKey { get; set; }
+    public int CredentialsVersion { get; set; } = 1;
 
     public string Status { get; set; } = "inactive";
     public string? CreationStatus { get; set; }

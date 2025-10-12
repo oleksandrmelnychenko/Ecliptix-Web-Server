@@ -16,6 +16,6 @@ public static class OpaqueConstants
     public const int KE1_LENGTH = 96;
     public const int KE2_LENGTH = 304;
     public const int KE3_LENGTH = 64;
-    public const int SERVER_CREDENTIALS_LENGTH = 208; // ENVELOPE_LENGTH + PRIVATE_KEY_LENGTH + PUBLIC_KEY_LENGTH
+    public const int SERVER_CREDENTIALS_LENGTH = 208;
     public const int MASKING_KEY_LENGTH = 32;
 }

@@ -217,6 +217,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     .SetProperty(m => m.MaskingKey, cmd.MaskingKey)
                     .SetProperty(m => m.Status, "active")
                     .SetProperty(m => m.CreationStatus, "secure_key_set")
+                    .SetProperty(m => m.CredentialsVersion, m => m.CredentialsVersion + 1)
                     .SetProperty(m => m.UpdatedAt, DateTime.UtcNow));
 
             if (rowsAffected == 0)

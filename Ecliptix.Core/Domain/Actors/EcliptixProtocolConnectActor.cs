@@ -559,7 +559,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 "[SERVER-AUTH-PERSISTED] Authenticated session persisted. ConnectId: {0}, MembershipId: {1}, Sending: {2}, Receiving: {3}",
                 cmd.ConnectId, cmd.MembershipId, state.RatchetState.SendingStep.CurrentIndex, state.RatchetState.ReceivingStep.CurrentIndex);
 
-            // CRITICAL: Force snapshot save for authenticated handshake
             SaveSnapshot(_state);
             Context.GetLogger().Info(
                 "[SNAPSHOT-FORCE] Forced snapshot save after authenticated handshake. ConnectId: {0}, SeqNr: {1}",
@@ -796,8 +795,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
 
     private void MaybeSaveSnapshot()
     {
-        // For DataCenterEphemeralConnect: ALWAYS save snapshot after state changes
-        // Cryptographic protocol state cannot rely on event replay
         if (_currentExchangeType == PubKeyExchangeType.DataCenterEphemeralConnect && _state != null)
         {
             SaveSnapshot(_state);
@@ -807,7 +804,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
                 _state.RatchetState?.SendingStep?.CurrentIndex ?? 0,
                 _state.RatchetState?.ReceivingStep?.CurrentIndex ?? 0);
         }
-        // For ServerStreaming: no persistence needed
     }
 
     private void SaveFinalSnapshot()

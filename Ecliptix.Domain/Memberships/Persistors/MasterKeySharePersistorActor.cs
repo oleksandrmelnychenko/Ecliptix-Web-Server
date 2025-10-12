@@ -92,7 +92,8 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                 ShareIndex = s.ShareIndex,
                 EncryptedShare = s.EncryptedShare,
                 ShareMetadata = s.ShareMetadata,
-                StorageLocation = s.StorageLocation
+                StorageLocation = s.StorageLocation,
+                CredentialsVersion = membership.CredentialsVersion
             }).ToList();
 
             ctx.MasterKeyShares.AddRange(sharesToInsert);
@@ -139,7 +140,8 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                     EncryptedShare = s.EncryptedShare,
                     ShareMetadata = s.ShareMetadata,
                     StorageLocation = s.StorageLocation,
-                    UniqueId = s.UniqueId
+                    UniqueId = s.UniqueId,
+                    CredentialsVersion = s.CredentialsVersion
                 };
             }
 

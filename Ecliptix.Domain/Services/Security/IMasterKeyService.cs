@@ -15,4 +15,7 @@ public interface IMasterKeyService
 
     Task<Result<dynamic, FailureBase>> RegenerateMasterKeySharesAsync(
         dynamic newSessionKey, Guid membershipId);
+
+    Task<Result<string, FailureBase>> ValidateMasterKeySharesAsync(
+        dynamic sessionKeyHandle, Guid membershipId);
 }

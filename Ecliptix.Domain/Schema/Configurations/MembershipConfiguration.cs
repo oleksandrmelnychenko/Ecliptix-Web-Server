@@ -22,10 +22,10 @@ public class MembershipConfiguration : EntityBaseMap<Membership>
             .IsRequired();
 
         builder.Property(e => e.SecureKey)
-            .HasColumnType("VARBINARY(176)"); // OPAQUE CredentialResponse = 176 bytes
+            .HasColumnType("VARBINARY(176)");
 
         builder.Property(e => e.MaskingKey)
-            .HasColumnType("VARBINARY(32)"); // OPAQUE MaskingKey = 32 bytes
+            .HasColumnType("VARBINARY(32)");
 
         builder.Property(e => e.Status)
             .IsRequired()

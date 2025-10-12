@@ -45,8 +45,10 @@ public class MembershipActor : ReceiveActor
 
     private readonly Dictionary<Guid, byte[]> _pendingMaskingKeys = new();
     private readonly Dictionary<Guid, SodiumSecureMemoryHandle> _pendingSessionKeys = new();
+    private readonly Dictionary<Guid, DateTime> _pendingRecoveryTimestamps = new();
 
     private static readonly TimeSpan PendingSignInTimeout = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan PendingPasswordRecoveryTimeout = TimeSpan.FromMinutes(10);
     private ICancelable? _cleanupTimer;
 
     public MembershipActor(IActorRef persistor,
@@ -80,6 +82,13 @@ public class MembershipActor : ReceiveActor
             Self,
             new CleanupExpiredPendingSignIns(),
             ActorRefs.NoSender);
+
+        Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
+            TimeSpan.FromMinutes(2),
+            TimeSpan.FromMinutes(2),
+            Self,
+            new CleanupExpiredPasswordRecovery(),
+            ActorRefs.NoSender);
     }
 
     protected override void PostStop()
@@ -99,6 +108,8 @@ public class MembershipActor : ReceiveActor
         }
         _pendingSessionKeys.Clear();
 
+        _pendingRecoveryTimestamps.Clear();
+
         base.PostStop();
     }
 
@@ -106,6 +117,7 @@ public class MembershipActor : ReceiveActor
     {
         ReceiveAsync<SignInCompleteEvent>(HandleSignInComplete);
         Receive<CleanupExpiredPendingSignIns>(_ => CleanupExpiredPendingSignIns());
+        Receive<CleanupExpiredPasswordRecovery>(_ => CleanupExpiredPasswordRecovery());
         ReceiveAsync<GenerateMembershipOprfRegistrationRequestEvent>(HandleGenerateMembershipOprfRegistrationRecord);
         ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembership);
         ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembership);
@@ -125,6 +137,10 @@ public class MembershipActor : ReceiveActor
         }
 
         UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRegistrationRecord, maskingKey);
+
+        Log.Information("[REGISTRATION-COMPLETE] Updating OPAQUE credentials in database for membership {MembershipId}",
+            @event.MembershipIdentifier);
+
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
 
@@ -134,6 +150,9 @@ public class MembershipActor : ReceiveActor
             Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Err(persistorResult.UnwrapErr()));
             return;
         }
+
+        Log.Information("[REGISTRATION-COMPLETE] OPAQUE credentials successfully stored in database for membership {MembershipId}",
+            @event.MembershipIdentifier);
 
         _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
 
@@ -148,6 +167,24 @@ public class MembershipActor : ReceiveActor
 
     private async Task HandleCompleteRecoverySecureKeyEvent(OprfCompleteRecoverySecureKeyEvent @event)
     {
+        if (!_pendingRecoveryTimestamps.TryGetValue(@event.MembershipIdentifier, out DateTime initTimestamp))
+        {
+            Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.InvalidOpaque("No password recovery session found. Please restart the password recovery process.")));
+            return;
+        }
+
+        TimeSpan elapsed = DateTime.UtcNow - initTimestamp;
+        if (elapsed > PendingPasswordRecoveryTimeout)
+        {
+            Log.Warning("Password recovery timeout exceeded for membership {MembershipId}. Elapsed: {Elapsed}, Max: {Max}",
+                @event.MembershipIdentifier, elapsed, PendingPasswordRecoveryTimeout);
+            CleanupPasswordRecoveryState(@event.MembershipIdentifier);
+            Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.Generic($"Password recovery session expired. Please restart the password recovery process.")));
+            return;
+        }
+
         if (!_pendingMaskingKeys.TryGetValue(@event.MembershipIdentifier, out byte[]? maskingKey))
         {
             Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
@@ -201,6 +238,9 @@ public class MembershipActor : ReceiveActor
 
         UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRecoveryRecord, maskingKey);
 
+        Log.Information("[PASSWORD-RECOVERY-COMPLETE] Updating OPAQUE credentials in database for membership {MembershipId}",
+            @event.MembershipIdentifier);
+
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
 
@@ -213,7 +253,11 @@ public class MembershipActor : ReceiveActor
             return;
         }
 
+        Log.Information("[PASSWORD-RECOVERY-COMPLETE] OPAQUE credentials successfully updated in database for membership {MembershipId}",
+            @event.MembershipIdentifier);
+
         _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
+        _pendingRecoveryTimestamps.Remove(@event.MembershipIdentifier);
 
         Result<Unit, VerificationFlowFailure> expireResult =
             await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
@@ -256,16 +300,31 @@ public class MembershipActor : ReceiveActor
             return;
         }
 
-        if (_pendingSessionKeys.ContainsKey(@event.MembershipIdentifier) || _pendingMaskingKeys.ContainsKey(@event.MembershipIdentifier))
+        if (_pendingRecoveryTimestamps.TryGetValue(@event.MembershipIdentifier, out DateTime existingTimestamp))
         {
-            Log.Warning("Race condition detected: Password reset already in progress for membership {MembershipId}",
-                @event.MembershipIdentifier);
-            Sender.Tell(Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Generic("A password reset is already in progress. Please complete the current reset or wait a few minutes before trying again.")));
-            return;
+            TimeSpan elapsed = DateTime.UtcNow - existingTimestamp;
+            if (elapsed < PendingPasswordRecoveryTimeout)
+            {
+                int remainingSeconds = (int)(PendingPasswordRecoveryTimeout - elapsed).TotalSeconds;
+                Log.Warning("Password recovery already in progress for membership {MembershipId}. Time remaining: {Seconds}s",
+                    @event.MembershipIdentifier, remainingSeconds);
+                Sender.Tell(Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.Generic($"A password reset is already in progress. Please wait {remainingSeconds} seconds before trying again.")));
+                return;
+            }
+            else
+            {
+                Log.Information("Previous password recovery attempt expired for membership {MembershipId}. Cleaning up and allowing new attempt.",
+                    @event.MembershipIdentifier);
+                CleanupPasswordRecoveryState(@event.MembershipIdentifier);
+            }
         }
 
         (byte[] oprfResponse, byte[] maskingKey, byte[] sessionKey) = _opaqueProtocolService.ProcessOprfRequestWithSessionKey(@event.OprfRequest);
+
+        string sessionKeyFingerprint = Convert.ToHexString(SHA256.HashData(sessionKey))[..16];
+        Log.Information("[PASSWORD-RECOVERY-INIT-EXPORTKEY] OPAQUE export_key derived during password recovery INIT. MembershipId: {MembershipId}, ExportKeyFingerprint: {ExportKeyFingerprint}",
+            @event.MembershipIdentifier, sessionKeyFingerprint);
 
         try
         {
@@ -300,51 +359,29 @@ public class MembershipActor : ReceiveActor
 
             _pendingMaskingKeys[@event.MembershipIdentifier] = maskingKey;
             _pendingSessionKeys[@event.MembershipIdentifier] = sessionKeyHandle;
+            _pendingRecoveryTimestamps[@event.MembershipIdentifier] = DateTime.UtcNow;
         }
         finally
         {
             CryptographicOperations.ZeroMemory(sessionKey);
         }
 
-        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, oprfResponse, maskingKey);
-        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
+        OprfRecoverySecureKeyInitResponse response = new()
+        {
+            Membership = new Membership
+            {
+                UniqueIdentifier = Helpers.GuidToByteString(@event.MembershipIdentifier),
+                Status = Membership.Types.ActivityStatus.Active,
+                CreationStatus = Membership.Types.CreationStatus.SecureKeySet
+            },
+            PeerOprf = ByteString.CopyFrom(oprfResponse),
+            Result = OprfRecoverySecureKeyInitResponse.Types.RecoveryResult.Succeeded
+        };
 
-        Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure> finalResult =
-            persistorResult.Match(
-                record => Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Ok(
-                    new OprfRecoverySecureKeyInitResponse
-                    {
-                        Membership = new Membership
-                        {
-                            UniqueIdentifier = Helpers.GuidToByteString(record.UniqueIdentifier),
-                            Status = record.ActivityStatus,
-                            CreationStatus = record.CreationStatus
-                        },
-                        PeerOprf = ByteString.CopyFrom(oprfResponse),
-                        Result = OprfRecoverySecureKeyInitResponse.Types.RecoveryResult.Succeeded
-                    }),
-                failure =>
-                {
-                    Log.Error("Failed to store password recovery OPRF response for membership {MembershipId}: {Error}",
-                        @event.MembershipIdentifier, failure.Message);
+        Log.Information("[PASSWORD-RECOVERY-INIT] OPRF generated for membership {MembershipId}. Credentials stored in pending state (NOT persisted to database yet).",
+            @event.MembershipIdentifier);
 
-                    if (_pendingSessionKeys.TryGetValue(@event.MembershipIdentifier, out SodiumSecureMemoryHandle? handle))
-                    {
-                        handle?.Dispose();
-                        _pendingSessionKeys.Remove(@event.MembershipIdentifier);
-                    }
-
-                    if (_pendingMaskingKeys.TryGetValue(@event.MembershipIdentifier, out byte[]? key))
-                    {
-                        CryptographicOperations.ZeroMemory(key);
-                        _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
-                    }
-
-                    return Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Err(failure);
-                });
-
-        Sender.Tell(finalResult);
+        Sender.Tell(Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Ok(response));
     }
 
     private Task HandleGenerateMembershipOprfRegistrationRecord(
@@ -534,31 +571,101 @@ public class MembershipActor : ReceiveActor
         }
     }
 
+    private void CleanupExpiredPasswordRecovery()
+    {
+        DateTime cutoffTime = DateTime.UtcNow - PendingPasswordRecoveryTimeout;
+        List<Guid> expiredRecoveries = _pendingRecoveryTimestamps
+            .Where(kvp => kvp.Value < cutoffTime)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (Guid membershipId in expiredRecoveries)
+        {
+            Log.Information("Cleaning up expired password recovery attempt for membership {MembershipId}", membershipId);
+            CleanupPasswordRecoveryState(membershipId);
+        }
+    }
+
+    private void CleanupPasswordRecoveryState(Guid membershipId)
+    {
+        if (_pendingMaskingKeys.TryGetValue(membershipId, out byte[]? maskingKey))
+        {
+            CryptographicOperations.ZeroMemory(maskingKey);
+            _pendingMaskingKeys.Remove(membershipId);
+        }
+
+        if (_pendingSessionKeys.TryGetValue(membershipId, out SodiumSecureMemoryHandle? sessionKeyHandle))
+        {
+            sessionKeyHandle?.Dispose();
+            _pendingSessionKeys.Remove(membershipId);
+        }
+
+        _pendingRecoveryTimestamps.Remove(membershipId);
+    }
+
     private async Task EnsureMasterKeySharesExist(SodiumSecureMemoryHandle sessionKeyHandle, Guid membershipId)
     {
         Result<bool, FailureBase> checkResult = await _masterKeyService.CheckSharesExistAsync(membershipId);
 
-        if (checkResult.IsOk && checkResult.Unwrap())
+        if (checkResult.IsErr || !checkResult.Unwrap())
         {
+            Result<dynamic, FailureBase> createResult = await _masterKeyService.DeriveMasterKeyAndSplitAsync(sessionKeyHandle, membershipId);
+
+            if (createResult.IsErr)
+            {
+                Log.Error(
+                    "[MASTER-KEY-CREATE] Failed to create master key shares for membership {MembershipId}: {Error}",
+                    membershipId,
+                    createResult.UnwrapErr().Message);
+            }
+            else
+            {
+                Log.Information(
+                    "[MASTER-KEY-CREATE] Successfully created master key shares for membership {MembershipId} on first login",
+                    membershipId);
+            }
             return;
         }
 
-        Result<dynamic, FailureBase> result = await _masterKeyService.DeriveMasterKeyAndSplitAsync(sessionKeyHandle, membershipId);
+        Result<string, FailureBase> validationResult = await _masterKeyService.ValidateMasterKeySharesAsync(sessionKeyHandle, membershipId);
 
-        if (result.IsErr)
+        if (validationResult.IsErr)
         {
-            Log.Error(
-                "Failed to derive master key and split shares for membership {MembershipId}: {Error}",
-                membershipId,
-                result.UnwrapErr().Message);
+            Log.Error("[MASTER-KEY-VALIDATE] Failed to validate master key shares for membership {MembershipId}: {Error}",
+                membershipId, validationResult.UnwrapErr().Message);
+            return;
+        }
+
+        string validationStatus = validationResult.Unwrap();
+
+        if (validationStatus == "mismatch")
+        {
+            Log.Warning("[MASTER-KEY-MISMATCH] Export key mismatch detected for membership {MembershipId}. OPAQUE credentials changed since last login. Regenerating master key shares...",
+                membershipId);
+
+            Result<dynamic, FailureBase> regenResult = await _masterKeyService.RegenerateMasterKeySharesAsync(sessionKeyHandle, membershipId);
+
+            if (regenResult.IsErr)
+            {
+                Log.Error(
+                    "[MASTER-KEY-REGEN] CRITICAL: Failed to regenerate master key shares for membership {MembershipId}: {Error}",
+                    membershipId,
+                    regenResult.UnwrapErr().Message);
+            }
+            else
+            {
+                Log.Information(
+                    "[MASTER-KEY-REGEN] Successfully regenerated master key shares for membership {MembershipId} after export key change",
+                    membershipId);
+            }
         }
         else
         {
-            Log.Information(
-                "Successfully created master key shares for membership {MembershipId} on first login",
+            Log.Information("[MASTER-KEY-VALID] Master key shares are valid for membership {MembershipId}. No regeneration needed.",
                 membershipId);
         }
     }
 }
 
 internal record CleanupExpiredPendingSignIns;
+internal record CleanupExpiredPasswordRecovery;
