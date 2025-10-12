@@ -6,7 +6,7 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class LoginAttemptQueries
 {
-    public static readonly Func<EcliptixSchemaContext, string, Task<LoginAttempt?>>
+    public static readonly Func<EcliptixSchemaContext, string, Task<LoginAttemptEntity?>>
         GetMostRecentLockout = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, string mobileNumber) =>
                 ctx.LoginAttempts

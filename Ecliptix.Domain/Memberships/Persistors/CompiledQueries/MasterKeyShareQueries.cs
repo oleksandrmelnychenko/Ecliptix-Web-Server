@@ -6,7 +6,7 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class MasterKeyShareQueries
 {
-    public static async Task<List<MasterKeyShare>> GetByMembershipUniqueId(
+    public static async Task<List<MasterKeyShareEntity>> GetByMembershipUniqueId(
         EcliptixSchemaContext ctx,
         Guid membershipUniqueId)
     {

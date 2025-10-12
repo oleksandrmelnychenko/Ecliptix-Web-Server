@@ -1,7 +1,7 @@
 
 namespace Ecliptix.Domain.Schema.Entities;
 
-public class MobileDevice : EntityBase
+public class MobileDeviceEntity : EntityBase
 {
     public long MobileNumberId { get; set; }
     public long DeviceId { get; set; }
@@ -9,6 +9,6 @@ public class MobileDevice : EntityBase
     public bool IsActive { get; set; } = true;
     public DateTime? LastUsedAt { get; set; }
 
-    public virtual MobileNumber MobileNumber { get; set; } = null!;
-    public virtual Device Device { get; set; } = null!;
+    public virtual MobileNumberEntity MobileNumber { get; set; } = null!;
+    public virtual DeviceEntity Device { get; set; } = null!;
 }

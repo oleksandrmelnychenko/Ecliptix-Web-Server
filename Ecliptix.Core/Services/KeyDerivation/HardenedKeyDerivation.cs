@@ -30,10 +30,6 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
     private const string LogMessageArgon2IdCompleted = "Enhanced key Argon2id stretch completed. Context: {Context}, StretchedKeyFingerprint: {StretchedKeyFingerprint}";
     private const string LogMessageHkdfCompleted = "Enhanced key HKDF expansion completed. Context: {Context}, ExpandedKeyFingerprint: {ExpandedKeyFingerprint}";
     private const string LogMessageFinalCompleted = "Enhanced key final (after additional rounds). Context: {Context}, FinalKeyFingerprint: {FinalKeyFingerprint}";
-    private const string ErrorMessageKeyDerivationFailed = "Key derivation failed";
-    private const string ErrorMessageMemoryReadFailed = "Memory read failed";
-    private const string ErrorMessageAllocationFailed = "Allocation failed";
-    private const string ErrorMessageMemoryWriteFailed = "Memory write failed";
 
     private async Task<Result<byte[], KeySplittingFailure>> DeriveEnhancedKeyAsync(
         byte[] baseKey,

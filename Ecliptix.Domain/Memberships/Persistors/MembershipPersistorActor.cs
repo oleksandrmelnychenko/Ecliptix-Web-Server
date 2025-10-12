@@ -72,7 +72,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         {
             DateTime currentTime = DateTime.UtcNow;
 
-            LoginAttempt? lockoutMarker = await LoginAttemptQueries.GetMostRecentLockout(ctx, cmd.MobileNumber);
+            LoginAttemptEntity? lockoutMarker = await LoginAttemptQueries.GetMostRecentLockout(ctx, cmd.MobileNumber);
             if (lockoutMarker?.LockedUntil != null)
             {
                 if (currentTime < lockoutMarker.LockedUntil.Value)
@@ -97,7 +97,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             if (failedCount >= maxAttemptsInPeriod)
             {
                 DateTime lockedUntil = currentTime.AddMinutes(lockoutDurationMinutes);
-                LoginAttempt lockoutAttempt = new()
+                LoginAttemptEntity lockoutAttempt = new()
                 {
                     MobileNumber = cmd.MobileNumber,
                     LockedUntil = lockedUntil,
@@ -120,7 +120,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     VerificationFlowFailure.Validation(VerificationFlowMessageKeys.MobileNumberCannotBeEmpty));
             }
 
-            Membership? membership = await MembershipQueries.GetByMobileNumber(ctx, cmd.MobileNumber);
+            MembershipEntity? membership = await MembershipQueries.GetByMobileNumber(ctx, cmd.MobileNumber);
             if (membership == null)
             {
                 await LogLoginAttemptAsync(ctx, cmd.MobileNumber, "mobile_number_not_found", false);
@@ -173,7 +173,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
     private static async Task LogLoginAttemptAsync(EcliptixSchemaContext ctx, string mobileNumber, string outcome, bool isSuccess)
     {
-        LoginAttempt attempt = new LoginAttempt
+        LoginAttemptEntity attempt = new LoginAttemptEntity
         {
             MobileNumber = mobileNumber,
             Outcome = outcome,
@@ -203,7 +203,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     VerificationFlowFailure.Validation("Masking key must be exactly 32 bytes"));
             }
 
-            Membership? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipIdentifier);
+            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipIdentifier);
             if (membership == null)
             {
                 return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
@@ -259,7 +259,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             const int attemptWindowHours = 1;
             const int maxAttempts = 5;
 
-            VerificationFlow? flow = await VerificationFlowQueries.GetByUniqueIdAndConnectionId(
+            VerificationFlowEntity? flow = await VerificationFlowQueries.GetByUniqueIdAndConnectionId(
                 ctx, cmd.VerificationFlowIdentifier, cmd.ConnectId);
 
             if (flow?.MobileNumber == null)
@@ -283,7 +283,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     DateTime waitUntil = earliestFailed.Value.AddHours(attemptWindowHours);
                     int waitMinutes = (int)Math.Max(0, (waitUntil - DateTime.UtcNow).TotalMinutes);
 
-                    LoginAttempt rateLimitAttempt = new()
+                    LoginAttemptEntity rateLimitAttempt = new()
                     {
                         MembershipUniqueId = mobileUniqueId,
                         MobileNumber = mobileNumber,
@@ -303,12 +303,12 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 }
             }
 
-            Membership? existingMembership = await MembershipQueries.GetByMobileUniqueIdAndDevice(
+            MembershipEntity? existingMembership = await MembershipQueries.GetByMobileUniqueIdAndDevice(
                 ctx, mobileUniqueId, flow.AppDeviceId);
 
             if (existingMembership != null)
             {
-                LoginAttempt attempt = new()
+                LoginAttemptEntity attempt = new()
                 {
                     MembershipUniqueId = existingMembership.UniqueId,
                     MobileNumber = mobileNumber,
@@ -337,7 +337,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 );
             }
 
-            Membership newMembership = new Membership
+            MembershipEntity newMembership = new MembershipEntity
             {
                 MobileNumberId = mobileUniqueId,
                 AppDeviceId = flow.AppDeviceId,
@@ -354,7 +354,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     .SetProperty(o => o.Status, "used")
                     .SetProperty(o => o.UpdatedAt, DateTime.UtcNow));
 
-            LoginAttempt successAttempt = new LoginAttempt
+            LoginAttemptEntity successAttempt = new LoginAttemptEntity
             {
                 MembershipUniqueId = newMembership.UniqueId,
                 MobileNumber = mobileNumber,
@@ -417,7 +417,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         try
         {
-            VerificationFlow? verificationFlow = await ctx.VerificationFlows
+            VerificationFlowEntity? verificationFlow = await ctx.VerificationFlows
                 .Where(vf => vf.UniqueId == cmd.VerificationFlowId && !vf.IsDeleted)
                 .FirstOrDefaultAsync();
 
@@ -427,7 +427,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     VerificationFlowFailure.NotFound("Verification flow not found"));
             }
 
-            Membership? membership;
+            MembershipEntity? membership;
 
             if (verificationFlow.Purpose == "password_recovery")
             {
@@ -493,7 +493,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         {
             DateTime tenMinutesAgo = DateTime.UtcNow.AddMinutes(-10);
 
-            Membership? membership = await ctx.Memberships
+            MembershipEntity? membership = await ctx.Memberships
                 .Where(m => m.UniqueId == cmd.MembershipIdentifier && !m.IsDeleted)
                 .FirstOrDefaultAsync();
 
@@ -503,7 +503,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     new PasswordRecoveryFlowValidation(false, null));
             }
 
-            VerificationFlow? recoveryFlow = await ctx.VerificationFlows
+            VerificationFlowEntity? recoveryFlow = await ctx.VerificationFlows
                 .Join(ctx.MobileNumbers,
                     vf => vf.MobileNumberId,
                     mn => mn.Id,
@@ -538,7 +538,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         try
         {
-            Membership? membership = await ctx.Memberships
+            MembershipEntity? membership = await ctx.Memberships
                 .Where(m => m.UniqueId == cmd.MembershipIdentifier && !m.IsDeleted)
                 .FirstOrDefaultAsync();
 

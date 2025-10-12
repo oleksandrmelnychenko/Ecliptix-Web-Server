@@ -10,16 +10,16 @@ public class EcliptixSchemaContext : DbContext
     {
     }
 
-    public DbSet<MobileNumber> MobileNumbers { get; set; }
-    public DbSet<Device> Devices { get; set; }
-    public DbSet<VerificationFlow> VerificationFlows { get; set; }
-    public DbSet<OtpCode> OtpCodes { get; set; }
-    public DbSet<FailedOtpAttempt> FailedOtpAttempts { get; set; }
-    public DbSet<Membership> Memberships { get; set; }
-    public DbSet<MasterKeyShare> MasterKeyShares { get; set; }
-    public DbSet<LoginAttempt> LoginAttempts { get; set; }
-    public DbSet<MobileDevice> MobileDevices { get; set; }
-    public DbSet<LogoutAudit> LogoutAudits { get; set; }
+    public DbSet<MobileNumberEntity> MobileNumbers { get; set; }
+    public DbSet<DeviceEntity> Devices { get; set; }
+    public DbSet<VerificationFlowEntity> VerificationFlows { get; set; }
+    public DbSet<OtpCodeEntity> OtpCodes { get; set; }
+    public DbSet<FailedOtpAttemptEntity> FailedOtpAttempts { get; set; }
+    public DbSet<MembershipEntity> Memberships { get; set; }
+    public DbSet<MasterKeyShareEntity> MasterKeyShares { get; set; }
+    public DbSet<LoginAttemptEntity> LoginAttempts { get; set; }
+    public DbSet<MobileDeviceEntity> MobileDevices { get; set; }
+    public DbSet<LogoutAuditEntity> LogoutAudits { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

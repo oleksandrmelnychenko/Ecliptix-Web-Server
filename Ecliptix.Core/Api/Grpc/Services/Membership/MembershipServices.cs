@@ -262,8 +262,15 @@ public class MembershipServices(
         uint connectId = ServiceUtilities.ExtractConnectId(context);
         _ = Task.Run(() =>
         {
-            actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
-            Log.Information("Protocol cleanup triggered for ConnectId: {ConnectId}", connectId);
+            try
+            {
+                actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
+                Log.Information("[PROTOCOL-CLEANUP-TRIGGER] Protocol cleanup triggered for ConnectId: {ConnectId}", connectId);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "[PROTOCOL-CLEANUP-FAILED] Failed to trigger protocol cleanup for ConnectId: {ConnectId}. Cryptographic state may persist.", connectId);
+            }
         });
 
         return response;

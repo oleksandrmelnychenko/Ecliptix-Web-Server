@@ -35,7 +35,7 @@ public class LogoutAuditPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         try
         {
-            LogoutAudit audit = new()
+            LogoutAuditEntity audit = new()
             {
                 MembershipUniqueId = cmd.MembershipUniqueId,
                 ConnectId = cmd.ConnectId,

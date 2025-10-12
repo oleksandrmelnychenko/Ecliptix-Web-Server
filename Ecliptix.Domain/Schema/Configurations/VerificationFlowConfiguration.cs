@@ -4,9 +4,9 @@ using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
-public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlow>
+public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntity>
 {
-    public override void Map(EntityTypeBuilder<VerificationFlow> builder)
+    public override void Map(EntityTypeBuilder<VerificationFlowEntity> builder)
     {
         base.Map(builder);
 

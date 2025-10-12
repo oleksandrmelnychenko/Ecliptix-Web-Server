@@ -53,7 +53,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                     KeySplittingFailure.KeySplittingFailed("No shares provided"));
             }
 
-            Membership? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId);
+            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId);
             if (membership == null)
             {
                 await transaction.RollbackAsync();
@@ -61,7 +61,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                     KeySplittingFailure.InvalidIdentifier("Membership not found or inactive"));
             }
 
-            List<MasterKeyShare> existingShares = await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId);
+            List<MasterKeyShareEntity> existingShares = await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId);
             if (existingShares.Any())
             {
                 await transaction.RollbackAsync();
@@ -86,7 +86,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                     KeySplittingFailure.KeySplittingFailed($"Share indexes must be sequential starting from 1 (expected 1-{cmd.Shares.Count}, got {minIndex}-{maxIndex})"));
             }
 
-            List<MasterKeyShare> sharesToInsert = cmd.Shares.Select(s => new MasterKeyShare
+            List<MasterKeyShareEntity> sharesToInsert = cmd.Shares.Select(s => new MasterKeyShareEntity
             {
                 MembershipUniqueId = cmd.MembershipUniqueId,
                 ShareIndex = s.ShareIndex,
@@ -121,7 +121,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
     {
         try
         {
-            List<MasterKeyShare> shares = await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId);
+            List<MasterKeyShareEntity> shares = await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId);
 
             if (shares.Count == 0)
             {
@@ -132,7 +132,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
             MasterKeyShareQueryRecord[] queryRecords = new MasterKeyShareQueryRecord[shares.Count];
             for (int i = 0; i < shares.Count; i++)
             {
-                MasterKeyShare s = shares[i];
+                MasterKeyShareEntity s = shares[i];
                 queryRecords[i] = new MasterKeyShareQueryRecord
                 {
                     MembershipUniqueId = s.MembershipUniqueId,

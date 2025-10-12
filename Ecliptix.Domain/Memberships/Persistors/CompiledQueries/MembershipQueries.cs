@@ -6,7 +6,7 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class MembershipQueries
 {
-    public static readonly Func<EcliptixSchemaContext, string, Task<Membership?>>
+    public static readonly Func<EcliptixSchemaContext, string, Task<MembershipEntity?>>
         GetByMobileNumber = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, string mobileNumber) =>
                 ctx.Memberships
@@ -21,7 +21,7 @@ public static class MembershipQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, Guid, Task<Membership?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Guid, Task<MembershipEntity?>>
         GetByMobileUniqueIdAndDevice = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid mobileUniqueId, Guid deviceId) =>
                 ctx.Memberships
@@ -31,14 +31,14 @@ public static class MembershipQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<Membership?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<MembershipEntity?>>
         GetByUniqueId = EF.CompileAsyncQuery((EcliptixSchemaContext ctx, Guid uniqueId) =>
             ctx.Memberships
                 .Where(m => m.UniqueId == uniqueId && !m.IsDeleted)
                 .AsNoTracking()
                 .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<Membership?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<MembershipEntity?>>
         GetByMobileUniqueId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid mobileUniqueId) =>
                 ctx.Memberships

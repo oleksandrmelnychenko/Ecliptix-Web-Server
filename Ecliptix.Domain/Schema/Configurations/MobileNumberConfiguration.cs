@@ -4,9 +4,9 @@ using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
-public class MobileNumberConfiguration : EntityBaseMap<MobileNumber>
+public class MobileNumberConfiguration : EntityBaseMap<MobileNumberEntity>
 {
-    public override void Map(EntityTypeBuilder<MobileNumber> builder)
+    public override void Map(EntityTypeBuilder<MobileNumberEntity> builder)
     {
         base.Map(builder);
 

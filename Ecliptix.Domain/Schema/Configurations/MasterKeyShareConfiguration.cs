@@ -4,9 +4,9 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
-public class MasterKeyShareConfiguration : EntityBaseMap<MasterKeyShare>
+public class MasterKeyShareConfiguration : EntityBaseMap<MasterKeyShareEntity>
 {
-    public override void Map(EntityTypeBuilder<MasterKeyShare> builder)
+    public override void Map(EntityTypeBuilder<MasterKeyShareEntity> builder)
     {
         base.Map(builder);
 

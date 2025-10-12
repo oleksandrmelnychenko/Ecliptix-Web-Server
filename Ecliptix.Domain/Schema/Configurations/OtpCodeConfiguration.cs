@@ -4,9 +4,9 @@ using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
-public class OtpCodeConfiguration : EntityBaseMap<OtpCode>
+public class OtpCodeConfiguration : EntityBaseMap<OtpCodeEntity>
 {
-    public override void Map(EntityTypeBuilder<OtpCode> builder)
+    public override void Map(EntityTypeBuilder<OtpCodeEntity> builder)
     {
         base.Map(builder);
 

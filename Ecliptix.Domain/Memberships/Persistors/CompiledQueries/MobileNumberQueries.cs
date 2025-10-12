@@ -6,7 +6,7 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class MobileNumberQueries
 {
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<MobileNumber?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<MobileNumberEntity?>>
         GetByUniqueId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid uniqueId) =>
                 ctx.MobileNumbers
@@ -14,7 +14,7 @@ public static class MobileNumberQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, string, string?, Task<MobileNumber?>>
+    public static readonly Func<EcliptixSchemaContext, string, string?, Task<MobileNumberEntity?>>
         GetByNumberAndRegion = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, string number, string? region) =>
                 ctx.MobileNumbers

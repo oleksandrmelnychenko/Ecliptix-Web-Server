@@ -4,9 +4,9 @@ using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
-public class FailedOtpAttemptConfiguration : EntityBaseMap<FailedOtpAttempt>
+public class FailedOtpAttemptConfiguration : EntityBaseMap<FailedOtpAttemptEntity>
 {
-    public override void Map(EntityTypeBuilder<FailedOtpAttempt> builder)
+    public override void Map(EntityTypeBuilder<FailedOtpAttemptEntity> builder)
     {
         base.Map(builder);
 

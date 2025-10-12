@@ -6,24 +6,6 @@ public sealed class RatchetConfig
 {
     public static readonly RatchetConfig Default = new();
 
-    public static readonly RatchetConfig Conservative = new()
-    {
-        DhRatchetEveryNMessages = 50,
-        EnablePerMessageRatchet = false
-    };
-
-    public static readonly RatchetConfig Aggressive = new()
-    {
-        DhRatchetEveryNMessages = 5,
-        EnablePerMessageRatchet = false
-    };
-
-    public static readonly RatchetConfig PerMessage = new()
-    {
-        DhRatchetEveryNMessages = 1,
-        EnablePerMessageRatchet = true
-    };
-
     public uint DhRatchetEveryNMessages { get; init; } = 10;
 
     public bool EnablePerMessageRatchet { get; init; } = false;

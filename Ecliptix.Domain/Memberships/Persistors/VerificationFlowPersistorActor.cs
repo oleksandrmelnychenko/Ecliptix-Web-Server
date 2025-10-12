@@ -12,7 +12,7 @@ using Ecliptix.Protobuf.Membership;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
-using Membership = Ecliptix.Domain.Schema.Entities.Membership;
+using Membership = Ecliptix.Domain.Schema.Entities.MembershipEntity;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
@@ -72,7 +72,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            MobileNumber? mobile = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberUniqueId);
+            MobileNumberEntity? mobile = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberUniqueId);
             if (mobile == null)
             {
                 await transaction.RollbackAsync();
@@ -88,7 +88,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     VerificationFlowFailure.NotFound("device_not_found"));
             }
 
-            VerificationFlow? existingActiveFlow = await VerificationFlowQueries.GetActiveFlowForRecovery(
+            VerificationFlowEntity? existingActiveFlow = await VerificationFlowQueries.GetActiveFlowForRecovery(
                 ctx, cmd.MobileNumberUniqueId, cmd.AppDeviceId,
                 ConvertPurposeToString(cmd.Purpose));
 
@@ -113,7 +113,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 existingActiveFlow.ConnectionId = cmd.ConnectId;
                 existingActiveFlow.UpdatedAt = DateTime.UtcNow;
                 existingActiveFlow.MobileNumber = mobile;
-                existingActiveFlow.OtpCodes = new List<OtpCode>();
+                existingActiveFlow.OtpCodes = new List<OtpCodeEntity>();
 
                 return MapToVerificationFlowRecord(existingActiveFlow);
             }
@@ -134,7 +134,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                         VerificationFlowFailure.RateLimitExceeded("password_recovery_rate_limit_exceeded"));
                 }
 
-                List<VerificationFlow> oldPendingFlows = await ctx.VerificationFlows
+                List<VerificationFlowEntity> oldPendingFlows = await ctx.VerificationFlows
                     .Where(vf => vf.MobileNumberId == mobile.Id &&
                                  vf.Purpose == "password_recovery" &&
                                  vf.Status == "pending" &&
@@ -144,7 +144,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 Log.Information("Found {Count} old pending password recovery flows to expire for mobile ID {MobileId}",
                     oldPendingFlows.Count, mobile.Id);
 
-                foreach (VerificationFlow oldFlow in oldPendingFlows)
+                foreach (VerificationFlowEntity oldFlow in oldPendingFlows)
                 {
                     oldFlow.Status = "expired";
                     oldFlow.UpdatedAt = DateTime.UtcNow;
@@ -171,7 +171,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     VerificationFlowFailure.RateLimitExceeded("device_rate_limit_exceeded"));
             }
 
-            VerificationFlow flow = new()
+            VerificationFlowEntity flow = new()
             {
                 UniqueId = Guid.NewGuid(),
                 MobileNumberId = mobile.Id,
@@ -198,7 +198,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             Log.Information("Transaction committed successfully for flow {FlowId}", flow.UniqueId);
 
-            VerificationFlow? flowWithOtp = await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(ctx, flow.UniqueId);
+            VerificationFlowEntity? flowWithOtp = await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(ctx, flow.UniqueId);
             return MapToVerificationFlowRecord(flowWithOtp!);
         }
         catch (Exception ex)
@@ -216,7 +216,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            VerificationFlow? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId);
+            VerificationFlowEntity? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId);
             if (flow == null)
                 return Result<string, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Flow not found"));
@@ -259,7 +259,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            MobileNumber? mobile = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberIdentifier);
+            MobileNumberEntity? mobile = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberIdentifier);
             if (mobile == null)
                 return Result<MobileNumberQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.MobileNotFound));
@@ -339,7 +339,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            VerificationFlow? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.OtpRecord.FlowUniqueId);
+            VerificationFlowEntity? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.OtpRecord.FlowUniqueId);
             if (flow == null || flow.ExpiresAt <= DateTime.UtcNow)
             {
                 await transaction.RollbackAsync();
@@ -360,7 +360,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     .SetProperty(o => o.Status, "expired")
                     .SetProperty(o => o.UpdatedAt, DateTime.UtcNow));
 
-            OtpCode otp = new()
+            OtpCodeEntity otp = new()
             {
                 UniqueId = Guid.NewGuid(),
                 VerificationFlowId = flow.Id,
@@ -411,7 +411,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            MobileNumber? existing = await MobileNumberQueries.GetByNumberAndRegion(
+            MobileNumberEntity? existing = await MobileNumberQueries.GetByNumberAndRegion(
                 ctx, cmd.MobileNumber, cmd.RegionCode);
 
             if (existing != null)
@@ -420,7 +420,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 return Result<Guid, VerificationFlowFailure>.Ok(existing.UniqueId);
             }
 
-            MobileNumber mobile = new()
+            MobileNumberEntity mobile = new()
             {
                 UniqueId = Guid.NewGuid(),
                 Number = cmd.MobileNumber,
@@ -450,7 +450,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            MobileNumber? mobile = await MobileNumberQueries.GetByNumberAndRegion(
+            MobileNumberEntity? mobile = await MobileNumberQueries.GetByNumberAndRegion(
                 ctx, cmd.MobileNumber, cmd.RegionCode);
 
             if (mobile == null)
@@ -490,9 +490,9 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     }
 
     private static Result<VerificationFlowQueryRecord, VerificationFlowFailure> MapToVerificationFlowRecord(
-        VerificationFlow flow)
+        VerificationFlowEntity flow)
     {
-        OtpCode? activeOtp = flow.OtpCodes?.FirstOrDefault(o => o.Status == "active" && !o.IsDeleted);
+        OtpCodeEntity? activeOtp = flow.OtpCodes?.FirstOrDefault(o => o.Status == "active" && !o.IsDeleted);
         Option<OtpQueryRecord> otpActive = activeOtp != null
             ? Option<OtpQueryRecord>.Some(new OtpQueryRecord
             {
@@ -576,7 +576,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         {
             DateTime tenMinutesAgo = DateTime.UtcNow.AddMinutes(-10);
 
-            VerificationFlow? recoveryFlow = await ctx.VerificationFlows
+            VerificationFlowEntity? recoveryFlow = await ctx.VerificationFlows
                 .Join(ctx.Memberships,
                     vf => vf.UniqueId,
                     m => m.VerificationFlowId,

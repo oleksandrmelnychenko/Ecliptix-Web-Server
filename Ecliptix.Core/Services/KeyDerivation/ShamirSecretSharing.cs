@@ -19,12 +19,11 @@ public sealed class ShamirSecretSharing : ISecretSharingService
     private const int MaximumShares = 255;
     private const int MaxKeyChunks = 1000;
     private const int MaxKeyLength = 1024 * 1024;
-    private const int ShareExpirationDays = 30;
 
     private static readonly BigInteger Prime256 =
         BigInteger.Parse("115792089237316195423570985008687907853269984665640564039457584007908634671663");
 
-    private TimeSpan ShareExpiration { get; } = TimeSpan.FromDays(ShareExpirationDays);
+    private TimeSpan ShareExpiration { get; } = TimeSpan.FromDays(30);
 
     private static async Task<Result<KeySplitResult, KeySplittingFailure>> SplitKeyAsync(byte[] key,
         int threshold = DefaultThreshold, int totalShares = DefaultTotalShares, byte[]? hmacKey = null)

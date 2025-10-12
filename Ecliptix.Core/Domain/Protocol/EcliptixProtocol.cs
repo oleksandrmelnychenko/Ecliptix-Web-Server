@@ -15,9 +15,7 @@ public static class EcliptixProtocol
             EcliptixSystemIdentityKeys.FromProtoState(state.IdentityKeys);
         if (idKeysResult.IsErr)
         {
-            if (Log.IsEnabled(LogEventLevel.Debug))
-
-                return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Err(idKeysResult.UnwrapErr());
+            return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Err(idKeysResult.UnwrapErr());
         }
 
         Result<EcliptixProtocolConnection, EcliptixProtocolFailure> connResult =
@@ -25,14 +23,7 @@ public static class EcliptixProtocol
         if (connResult.IsErr)
         {
             idKeysResult.Unwrap().Dispose();
-            if (Log.IsEnabled(LogEventLevel.Debug))
-
-                return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Err(connResult.UnwrapErr());
-        }
-
-        if (Log.IsEnabled(LogEventLevel.Debug))
-        {
-
+            return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Err(connResult.UnwrapErr());
         }
 
         return EcliptixProtocolSystem.CreateFrom(idKeysResult.Unwrap(), connResult.Unwrap());
@@ -48,11 +39,6 @@ public static class EcliptixProtocol
         RatchetState newRatchetState = ratchetStateResult.Unwrap();
         EcliptixSessionState newState = oldState.Clone();
         newState.RatchetState = newRatchetState;
-
-        if (Log.IsEnabled(LogEventLevel.Debug))
-        {
-
-        }
 
         return Result<EcliptixSessionState, EcliptixProtocolFailure>.Ok(newState);
     }
@@ -82,11 +68,6 @@ public static class EcliptixProtocol
             PeerHandshakeMessage = peerMsg,
             RatchetState = ratchetStateProto
         };
-
-        if (Log.IsEnabled(LogEventLevel.Debug))
-        {
-
-        }
 
         return Result<EcliptixSessionState, EcliptixProtocolFailure>.Ok(state);
     }

@@ -6,7 +6,7 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class VerificationFlowQueries
 {
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<VerificationFlow?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<VerificationFlowEntity?>>
         GetByUniqueId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid flowId) =>
                 ctx.VerificationFlows
@@ -14,7 +14,7 @@ public static class VerificationFlowQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<VerificationFlow?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<VerificationFlowEntity?>>
         GetByUniqueIdWithMobile = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid flowId) =>
                 ctx.VerificationFlows
@@ -23,7 +23,7 @@ public static class VerificationFlowQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<VerificationFlow?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<VerificationFlowEntity?>>
         GetByUniqueIdWithActiveOtp = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid flowId) =>
                 ctx.VerificationFlows
@@ -33,7 +33,7 @@ public static class VerificationFlowQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, long, Task<VerificationFlow?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, long, Task<VerificationFlowEntity?>>
         GetByUniqueIdAndConnectionId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid flowId, long connectionId) =>
                 ctx.VerificationFlows
@@ -62,7 +62,7 @@ public static class VerificationFlowQueries
                     .AsNoTracking()
                     .Any());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, Guid, string, Task<VerificationFlow?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Guid, string, Task<VerificationFlowEntity?>>
         GetActiveFlowForRecovery = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid mobileUniqueId, Guid deviceId, string purpose) =>
                 ctx.VerificationFlows

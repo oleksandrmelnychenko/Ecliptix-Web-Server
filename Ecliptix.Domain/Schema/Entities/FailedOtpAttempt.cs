@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Ecliptix.Domain.Schema.Entities;
 
-public class FailedOtpAttempt : EntityBase
+public class FailedOtpAttemptEntity : EntityBase
 {
     public long OtpRecordId { get; set; }
 
@@ -14,5 +14,5 @@ public class FailedOtpAttempt : EntityBase
     public DateTime AttemptedAt { get; set; } = DateTime.UtcNow;
 
     [ForeignKey(nameof(OtpRecordId))]
-    public virtual OtpCode OtpRecord { get; set; } = null!;
+    public virtual OtpCodeEntity OtpRecord { get; set; } = null!;
 }

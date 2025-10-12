@@ -67,18 +67,11 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             SecureByteStringInterop.SecureCopyWithCleanup(proto.DhPublicKey, out dhPubKeyBytes);
         }
 
-        if (Log.IsEnabled(LogEventLevel.Debug))
-        {
-
-        }
-
         Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> createResult =
             Create(stepType, chainKeyBytes, dhPrivKeyBytes, dhPubKeyBytes);
         if (createResult.IsErr)
         {
-            if (Log.IsEnabled(LogEventLevel.Debug))
-
-                return createResult;
+            return createResult;
         }
 
         EcliptixProtocolChainStep chainStep = createResult.Unwrap();
@@ -98,11 +91,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                     messageKey.Dispose();
                 }
             }
-        }
-
-        if (Log.IsEnabled(LogEventLevel.Debug) && proto.CachedMessageKeys.Count > 0)
-        {
-
         }
 
         return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(chainStep);
@@ -125,9 +113,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
         if (_messageKeys.TryGetValue(targetIndex, out RatchetChainKey? cachedKey))
         {
-            if (Log.IsEnabled(LogEventLevel.Debug))
-
-                return Result<RatchetChainKey, EcliptixProtocolFailure>.Ok(cachedKey);
+            return Result<RatchetChainKey, EcliptixProtocolFailure>.Ok(cachedKey);
         }
 
         Result<uint, EcliptixProtocolFailure> currentIndexResult = GetCurrentIndex();

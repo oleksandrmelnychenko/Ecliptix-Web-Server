@@ -8,6 +8,7 @@ using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Schema;
+using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Domain.Services.Security;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures;
@@ -431,7 +432,6 @@ public class MasterKeyService(
 
         try
         {
-            // FAST PATH: Check credentials version first before expensive crypto operations
             Result<MasterKeyShareQueryRecord[], KeySplittingFailure> sharesResult = await RetrieveSharesAsync(membershipId);
             if (sharesResult.IsErr)
             {
@@ -445,9 +445,8 @@ public class MasterKeyService(
                     KeySplittingFailure.KeyReconstructionFailed("No shares found for membership"));
             }
 
-            // Get current membership's credentials version
             await using EcliptixSchemaContext ctx = await dbContextFactory.CreateDbContextAsync();
-            var membership = await MembershipQueries.GetByUniqueId(ctx, membershipId);
+            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, membershipId);
             if (membership == null)
             {
                 return Result<string, FailureBase>.Err(
@@ -460,7 +459,6 @@ public class MasterKeyService(
             Log.Information("[CREDENTIALS-VERSION-CHECK] Membership {MembershipId}: Current={Current}, Stored={Stored}",
                 membershipId, currentVersion, storedVersion);
 
-            // If versions don't match, credentials have changed - return mismatch immediately
             if (currentVersion != storedVersion)
             {
                 Log.Warning("[CREDENTIALS-VERSION-MISMATCH] Credentials version mismatch for membership {MembershipId}. Current: {Current}, Stored: {Stored}. Credentials changed since shares were created.",
@@ -468,7 +466,6 @@ public class MasterKeyService(
                 return Result<string, FailureBase>.Ok("mismatch");
             }
 
-            // Versions match - proceed with fingerprint validation as additional security check
             Log.Information("[CREDENTIALS-VERSION-MATCH] Versions match for membership {MembershipId}. Proceeding with fingerprint validation.",
                 membershipId);
 

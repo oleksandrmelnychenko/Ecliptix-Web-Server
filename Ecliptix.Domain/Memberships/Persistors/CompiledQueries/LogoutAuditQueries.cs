@@ -6,7 +6,7 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class LogoutAuditQueries
 {
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<LogoutAudit?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<LogoutAuditEntity?>>
         GetMostRecentByMembership = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid membershipUniqueId) =>
                 ctx.LogoutAudits
@@ -16,7 +16,7 @@ public static class LogoutAuditQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, int, Task<List<LogoutAudit>>>
+    public static readonly Func<EcliptixSchemaContext, Guid, int, Task<List<LogoutAuditEntity>>>
         GetLogoutHistory = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid membershipUniqueId, int limit) =>
                 ctx.LogoutAudits
@@ -27,7 +27,7 @@ public static class LogoutAuditQueries
                     .AsNoTracking()
                     .ToList());
 
-    public static readonly Func<EcliptixSchemaContext, uint, Task<LogoutAudit?>>
+    public static readonly Func<EcliptixSchemaContext, uint, Task<LogoutAuditEntity?>>
         GetByConnectId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, uint connectId) =>
                 ctx.LogoutAudits

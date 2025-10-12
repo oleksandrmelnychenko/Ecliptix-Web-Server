@@ -4,9 +4,9 @@ using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
-public class LoginAttemptConfiguration : EntityBaseMap<LoginAttempt>
+public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
 {
-    public override void Map(EntityTypeBuilder<LoginAttempt> builder)
+    public override void Map(EntityTypeBuilder<LoginAttemptEntity> builder)
     {
         base.Map(builder);
 

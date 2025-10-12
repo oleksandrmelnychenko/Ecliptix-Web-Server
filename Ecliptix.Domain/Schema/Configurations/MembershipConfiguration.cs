@@ -4,9 +4,9 @@ using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
-public class MembershipConfiguration : EntityBaseMap<Membership>
+public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
 {
-    public override void Map(EntityTypeBuilder<Membership> builder)
+    public override void Map(EntityTypeBuilder<MembershipEntity> builder)
     {
         base.Map(builder);
 

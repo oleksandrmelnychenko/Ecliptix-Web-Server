@@ -14,7 +14,7 @@ public static class DeviceQueries
                     .AsNoTracking()
                     .Any());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<Device?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<DeviceEntity?>>
         GetByUniqueId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid uniqueId) =>
                 ctx.Devices
@@ -22,7 +22,7 @@ public static class DeviceQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<Device?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<DeviceEntity?>>
         GetByDeviceId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid deviceId) =>
                 ctx.Devices

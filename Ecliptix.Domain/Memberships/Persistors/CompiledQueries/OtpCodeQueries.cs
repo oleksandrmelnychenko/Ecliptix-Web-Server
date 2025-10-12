@@ -6,7 +6,7 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class OtpCodeQueries
 {
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<OtpCode?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<OtpCodeEntity?>>
         GetByUniqueId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid uniqueId) =>
                 ctx.OtpCodes
@@ -14,7 +14,7 @@ public static class OtpCodeQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, long, Task<OtpCode?>>
+    public static readonly Func<EcliptixSchemaContext, long, Task<OtpCodeEntity?>>
         GetActiveByFlowId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, long flowId) =>
                 ctx.OtpCodes

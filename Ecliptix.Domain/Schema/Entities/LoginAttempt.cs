@@ -1,6 +1,6 @@
 namespace Ecliptix.Domain.Schema.Entities;
 
-public class LoginAttempt : EntityBase
+public class LoginAttemptEntity : EntityBase
 {
     public Guid? MembershipUniqueId { get; set; }
 
@@ -24,5 +24,5 @@ public class LoginAttempt : EntityBase
 
     public DateTime? SuccessfulAt { get; set; }
 
-    public virtual Membership? Membership { get; set; }
+    public virtual MembershipEntity? Membership { get; set; }
 }

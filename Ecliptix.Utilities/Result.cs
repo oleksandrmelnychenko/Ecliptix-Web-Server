@@ -88,32 +88,6 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
         }
     }
 
-    public static async ValueTask<Result<Unit, TError>> TryAsync<TError>(
-        Func<ValueTask> action,
-        Func<Exception, TError> errorMapper,
-        Action? cleanup = null)
-    {
-        ArgumentNullException.ThrowIfNull(action, nameof(action));
-        ArgumentNullException.ThrowIfNull(errorMapper, nameof(errorMapper));
-
-        try
-        {
-            await action().ConfigureAwait(false);
-            return Result<Unit, TError>.Ok(Unit.Value);
-        }
-        catch (Exception ex) when (ex is not ThreadAbortException and not StackOverflowException)
-        {
-            TError? error = errorMapper(ex);
-            if (error == null)
-                throw new InvalidOperationException("Error mapper returned null, violating TError : notnull");
-            return Result<Unit, TError>.Err(error);
-        }
-        finally
-        {
-            cleanup?.Invoke();
-        }
-    }
-
     [MemberNotNullWhen(true, nameof(_value))]
     [MemberNotNullWhen(false, nameof(_error))]
     public bool IsOk { get; }
@@ -137,11 +111,6 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
         return IsOk ? _value : defaultValue;
     }
 
-    public T UnwrapOrElse(Func<TE, T> fallbackFn)
-    {
-        return IsOk ? _value! : fallbackFn(_error!);
-    }
-
     public Result<TNext, TE> Map<TNext>(Func<T, TNext> mapFn)
     {
         return IsOk ? Result<TNext, TE>.Ok(mapFn(_value!)) : Result<TNext, TE>.Err(_error!);
@@ -155,11 +124,6 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
     public Result<TNext, TE> Bind<TNext>(Func<T, Result<TNext, TE>> bindFn)
     {
         return IsOk ? bindFn(_value!) : Result<TNext, TE>.Err(_error!);
-    }
-
-    public Result<TNext, TE> AndThen<TNext>(Func<T, Result<TNext, TE>> bindFn)
-    {
-        return Bind(bindFn);
     }
 
     public TOut Match<TOut>(Func<T, TOut> ok, Func<TE, TOut> err)

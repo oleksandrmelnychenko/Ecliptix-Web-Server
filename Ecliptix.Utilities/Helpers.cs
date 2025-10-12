@@ -1,14 +1,10 @@
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using Google.Protobuf;
 
 namespace Ecliptix.Utilities;
 
 public static class Helpers
 {
-    private const string InvalidPayloadDataLengthMessage = "Invalid payload data length.";
-    private static readonly RandomNumberGenerator Rng = RandomNumberGenerator.Create();
-
     public static T ParseFromBytes<T>(byte[] data) where T : IMessage<T>, new()
     {
         MessageParser<T> parser = new(() => new T());
@@ -28,7 +24,7 @@ public static class Helpers
     public static byte[] ReadMemoryToRetrieveBytes(ReadOnlyMemory<byte> readOnlyMemory)
     {
         if (!MemoryMarshal.TryGetArray(readOnlyMemory, out ArraySegment<byte> segment) || segment.Count == 0)
-            throw new ArgumentException(InvalidPayloadDataLengthMessage);
+            throw new ArgumentException("Invalid payload data length.");
 
         return segment.Array!;
     }

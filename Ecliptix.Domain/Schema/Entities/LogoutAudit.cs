@@ -1,6 +1,6 @@
 namespace Ecliptix.Domain.Schema.Entities;
 
-public class LogoutAudit : EntityBase
+public class LogoutAuditEntity : EntityBase
 {
     public Guid MembershipUniqueId { get; set; }
 
@@ -10,5 +10,5 @@ public class LogoutAudit : EntityBase
 
     public DateTime LoggedOutAt { get; set; } = DateTime.UtcNow;
 
-    public virtual Membership Membership { get; set; } = null!;
+    public virtual MembershipEntity Membership { get; set; } = null!;
 }

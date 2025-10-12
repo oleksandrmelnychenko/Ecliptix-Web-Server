@@ -1265,67 +1265,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         }
     }
 
-    private Result<Unit, EcliptixProtocolFailure> VerifyClientIdentityConsistency(PubKeyExchange peerMessage)
-    {
-        if (_connectSession == null)
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("No session for identity verification"));
-
-        try
-        {
-            Result<ProtocolPublicKeyBundle, EcliptixProtocolFailure> currentBundleResult;
-            try
-            {
-                ProtocolPublicKeyBundle parsedBundle =
-                    ProtocolPublicKeyBundle.Parser.ParseFrom(peerMessage.Payload);
-                currentBundleResult =
-                    Result<ProtocolPublicKeyBundle, EcliptixProtocolFailure>.Ok(parsedBundle);
-            }
-            catch (Exception ex)
-            {
-                currentBundleResult = Result<ProtocolPublicKeyBundle, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Decode("Failed to parse client bundle for identity verification", ex));
-            }
-
-            if (currentBundleResult.IsErr)
-                return Result<Unit, EcliptixProtocolFailure>.Err(currentBundleResult.UnwrapErr());
-
-            ProtocolPublicKeyBundle currentBundle = currentBundleResult.Unwrap();
-
-            Result<CorePublicKeyBundle, EcliptixProtocolFailure> storedBundleResult = _connectSession.GetPeerBundle();
-            if (storedBundleResult.IsErr)
-                return Result<Unit, EcliptixProtocolFailure>.Err(storedBundleResult.UnwrapErr());
-
-            CorePublicKeyBundle storedBundle = storedBundleResult.Unwrap();
-
-            Result<bool, SodiumFailure> x25519ComparisonResult =
-                SodiumInterop.ConstantTimeEquals(currentBundle.IdentityX25519PublicKey.Span, storedBundle.IdentityX25519);
-            if (!x25519ComparisonResult.IsOk || !x25519ComparisonResult.Unwrap())
-            {
-                return Result<Unit, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic(
-                        $"Client X25519 identity key mismatch - stored: {Convert.ToHexString(storedBundle.IdentityX25519)}, " +
-                        $"received: {Convert.ToHexString(currentBundle.IdentityX25519PublicKey.Span)}"));
-            }
-
-            Result<bool, SodiumFailure> ed25519ComparisonResult =
-                SodiumInterop.ConstantTimeEquals(currentBundle.IdentityPublicKey.Span, storedBundle.IdentityEd25519);
-            if (!ed25519ComparisonResult.IsOk || !ed25519ComparisonResult.Unwrap())
-            {
-                return Result<Unit, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic(
-                        $"Client Ed25519 identity key mismatch - stored: {Convert.ToHexString(storedBundle.IdentityEd25519)}, " +
-                        $"received: {Convert.ToHexString(currentBundle.IdentityPublicKey.Span)}"));
-            }
-
-            return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
-        }
-        catch (Exception ex)
-        {
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic($"Client identity verification failed: {ex.Message}"));
-        }
-    }
 
     private static uint GenerateRequestId()
     {

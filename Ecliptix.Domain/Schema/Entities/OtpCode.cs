@@ -1,7 +1,7 @@
 
 namespace Ecliptix.Domain.Schema.Entities;
 
-public class OtpCode : EntityBase
+public class OtpCodeEntity : EntityBase
 {
     public long VerificationFlowId { get; set; }
     public string OtpValue { get; set; } = string.Empty;
@@ -11,7 +11,7 @@ public class OtpCode : EntityBase
     public short AttemptCount { get; set; } = 0;
     public DateTime? VerifiedAt { get; set; }
 
-    public virtual VerificationFlow VerificationFlow { get; set; } = null!;
+    public virtual VerificationFlowEntity VerificationFlow { get; set; } = null!;
 
-    public virtual ICollection<FailedOtpAttempt> FailedAttempts { get; set; } = new List<FailedOtpAttempt>();
+    public virtual ICollection<FailedOtpAttemptEntity> FailedAttempts { get; set; } = new List<FailedOtpAttemptEntity>();
 }

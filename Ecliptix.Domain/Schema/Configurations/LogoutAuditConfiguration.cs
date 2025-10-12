@@ -4,9 +4,9 @@ using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
-public class LogoutAuditConfiguration : EntityBaseMap<LogoutAudit>
+public class LogoutAuditConfiguration : EntityBaseMap<LogoutAuditEntity>
 {
-    public override void Map(EntityTypeBuilder<LogoutAudit> builder)
+    public override void Map(EntityTypeBuilder<LogoutAuditEntity> builder)
     {
         base.Map(builder);
 

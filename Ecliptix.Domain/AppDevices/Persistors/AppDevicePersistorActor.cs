@@ -49,7 +49,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 });
             }
 
-            Device? existingDevice = await DeviceQueries.GetByDeviceId(ctx, deviceId);
+            DeviceEntity? existingDevice = await DeviceQueries.GetByDeviceId(ctx, deviceId);
 
             if (existingDevice != null)
             {
@@ -61,7 +61,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 });
             }
 
-            Device newDevice = new()
+            DeviceEntity newDevice = new()
             {
                 AppInstanceId = appInstanceId,
                 DeviceId = deviceId,
