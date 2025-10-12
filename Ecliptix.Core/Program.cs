@@ -13,6 +13,8 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.ObjectPool;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Serilog;
 using Ecliptix.Core;
 using Ecliptix.Core.Api.Grpc.Services.Authentication;
@@ -48,6 +50,7 @@ try
 {
     ConfigureLogging(builder);
     ConfigureServices(builder);
+    ConfigureOpenTelemetry(builder);
     ConfigureActorSystem(builder);
 
     WebApplication app = builder.Build();
@@ -340,6 +343,47 @@ static void RegisterGrpc(IServiceCollection services)
         options.ListenAnyIP(Ports.Grpc, listenOptions => { listenOptions.Protocols = HttpProtocols.Http2; });
         options.ListenAnyIP(Ports.Http, listenOptions => { listenOptions.Protocols = HttpProtocols.Http1; });
     });
+}
+
+static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
+{
+    string serviceName = "Ecliptix.Core";
+    string serviceVersion = "1.0.0";
+
+    builder.Services.AddOpenTelemetry()
+        .ConfigureResource(resource => resource
+            .AddService(
+                serviceName: serviceName,
+                serviceVersion: serviceVersion,
+                serviceInstanceId: Environment.MachineName))
+        .WithTracing(tracing =>
+        {
+            tracing
+                .AddSource("Ecliptix.GrpcInterceptors")
+                .AddSource("Ecliptix.GrpcServices")
+                .AddAspNetCoreInstrumentation(options =>
+                {
+                    options.RecordException = true;
+                    options.Filter = httpContext =>
+                    {
+                        return !httpContext.Request.Path.Value?.Contains("/health") ?? true;
+                    };
+                });
+
+            string? otlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
+
+            if (!string.IsNullOrEmpty(otlpEndpoint))
+            {
+                tracing.AddOtlpExporter(otlpOptions =>
+                {
+                    otlpOptions.Endpoint = new Uri(otlpEndpoint);
+                });
+            }
+            else
+            {
+                tracing.AddConsoleExporter();
+            }
+        });
 }
 
 static void InitializeOpaqueService(WebApplication app)

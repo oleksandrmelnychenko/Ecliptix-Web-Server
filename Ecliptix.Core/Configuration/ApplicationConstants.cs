@@ -44,7 +44,6 @@ public static class ApplicationConstants
     public static class Configuration
     {
         public const string TwilioSettings = "TwilioSettings";
-        public const string OpaqueProtocolSecretKeySeed = "OpaqueProtocol:SecretKeySeed";
         public const string SecurityKeys = "SecurityKeys";
     }
 
@@ -59,23 +58,6 @@ public static class ApplicationConstants
         public const string StopAcceptingNewConnections = "stop-accepting-new-connections";
         public const string DrainActiveRequests = "drain-active-requests";
         public const string CleanupResources = "cleanup-resources";
-    }
-
-    public static class Protocol
-    {
-        public const int SupervisionMaxRetries = 3;
-        [Obsolete("Use TimeoutConfiguration.Actor.SupervisionTimeout")]
-        public const int SupervisionTimeoutMinutes = 5;
-        [Obsolete("Use TimeoutConfiguration.Actor.StreamingTimeout")]
-        public const int StreamingTimeoutMinutes = 6;
-    }
-
-    public static class Arrays
-    {
-        public const int FirstIndex = 0;
-        public const int InitialValue = 0;
-        public const int WindowResetValue = 0;
-        public const int SingleMinute = 1;
     }
 
     public static class HttpHeaders
