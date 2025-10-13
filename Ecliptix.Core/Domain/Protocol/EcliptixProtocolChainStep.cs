@@ -11,12 +11,14 @@ namespace Ecliptix.Core.Domain.Protocol;
 public sealed class EcliptixProtocolChainStep : IDisposable
 {
     private const uint DefaultCacheWindowSize = Constants.DefaultCacheWindowSize;
+    internal static readonly byte[] MsgInfo = { 0x01 };
+    internal static readonly byte[] ChainInfo = { 0x02 };
 
     private static readonly Result<Unit, EcliptixProtocolFailure> OkResult =
         Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
 
     private readonly uint _cacheWindow;
-    private readonly ChainStepType _stepType;
+    private readonly RatchetChainStepType _stepType;
     private readonly SodiumSecureMemoryHandle _chainKeyHandle;
     private uint _currentIndex;
     private SodiumSecureMemoryHandle? _dhPrivateKeyHandle;
@@ -26,7 +28,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
     private readonly SortedDictionary<uint, RatchetChainKey> _messageKeys;
 
     private EcliptixProtocolChainStep(
-        ChainStepType stepType,
+        RatchetChainStepType stepType,
         SodiumSecureMemoryHandle chainKeyHandle,
         SodiumSecureMemoryHandle? dhPrivateKeyHandle,
         byte[]? dhPublicKey,
@@ -52,7 +54,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
     internal SodiumSecureMemoryHandle? GetDhPrivateKeyHandle() => _dhPrivateKeyHandle;
 
-    public static Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> FromProtoState(ChainStepType stepType,
+    public static Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> FromProtoState(RatchetChainStepType stepType,
         ChainStepState proto)
     {
         SecureByteStringInterop.SecureCopyWithCleanup(proto.ChainKey, out byte[] chainKeyBytes);
@@ -147,7 +149,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                         ikm: currentChainKey,
                         output: msgKey,
                         salt: null,
-                        info: Constants.MsgInfo
+                        info: MsgInfo
                     );
 
                     System.Security.Cryptography.HKDF.DeriveKey(
@@ -155,7 +157,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                         ikm: currentChainKey,
                         output: nextChainKey,
                         salt: null,
-                        info: Constants.ChainInfo
+                        info: ChainInfo
                     );
                 }
                 catch (Exception ex)
@@ -310,7 +312,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
     }
 
     public static Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> Create(
-        ChainStepType stepType,
+        RatchetChainStepType stepType,
         byte[] initialChainKey,
         byte[]? initialDhPrivateKey,
         byte[]? initialDhPublicKey,

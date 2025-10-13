@@ -1,6 +1,6 @@
 namespace Ecliptix.Utilities.Failures.Sodium;
 
-public class SodiumFailure
+public sealed class SodiumFailure
 {
     private SodiumFailure(SodiumFailureType type, string message, Exception? innerException = null)
     {

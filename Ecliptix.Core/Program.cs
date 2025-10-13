@@ -99,7 +99,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
                .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
     });
 
-    builder.Services.AddSingleton<SessionKeepAliveInterceptor>();
+    builder.Services.AddSingleton<SecrecyHandshakeKeepAliveInterceptor>();
     builder.Services.AddSingleton<TelemetryInterceptor>();
     builder.Services.AddSingleton<FailureHandlingInterceptor>();
     builder.Services.AddSingleton<RequestMetaDataInterceptor>();
@@ -114,6 +114,8 @@ static void ConfigureServices(WebApplicationBuilder builder)
         builder.Configuration.GetSection(AppConstants.Configuration.TwilioSettings));
     builder.Services.Configure<SecurityKeysSettings>(
         builder.Configuration.GetSection(AppConstants.Configuration.SecurityKeys));
+    builder.Services.Configure<SecurityConfiguration>(
+        builder.Configuration.GetSection(SecurityConfiguration.SectionName));
 
     IConfigurationSection securityKeysSection =
         builder.Configuration.GetSection(AppConstants.Configuration.SecurityKeys);
@@ -210,10 +212,10 @@ static void ConfigureMiddleware(WebApplication app)
         {
             diagnosticContext.Set(AppConstants.DiagnosticContext.RequestHost, httpContext.Request.Host.Value!);
             diagnosticContext.Set(AppConstants.DiagnosticContext.UserAgent,
-                httpContext.Request.Headers[AppConstants.HttpHeaders.UserAgent].ToString());
+                httpContext.Request.Headers[SecurityConstants.HttpHeaders.UserAgent].ToString());
             diagnosticContext.Set(AppConstants.DiagnosticContext.Protocol, httpContext.Request.Protocol);
 
-            if (httpContext.Request.Headers.TryGetValue(AppConstants.HttpHeaders.ConnectId, out StringValues connectId))
+            if (httpContext.Request.Headers.TryGetValue(SecurityConstants.HttpHeaders.XConnectId, out StringValues connectId))
             {
                 diagnosticContext.Set(AppConstants.DiagnosticContext.ConnectId, connectId.ToString());
             }
@@ -332,7 +334,7 @@ static void RegisterGrpc(IServiceCollection services)
         options.ResponseCompressionAlgorithm = Compression.Algorithm;
         options.EnableDetailedErrors = true;
         options.Interceptors.Add<RequestMetaDataInterceptor>();
-        options.Interceptors.Add<SessionKeepAliveInterceptor>();
+        options.Interceptors.Add<SecrecyHandshakeKeepAliveInterceptor>();
         options.Interceptors.Add<TelemetryInterceptor>();
         options.Interceptors.Add<ThreadCultureInterceptor>();
         options.Interceptors.Add<FailureHandlingInterceptor>();

@@ -8,6 +8,15 @@ public static class SodiumInterop
     private const string LibSodium = "libsodium";
     private const int MaxBufferSize = 1_000_000_000;
     private const int SmallBufferThreshold = 64;
+    private const int crypto_generichash_BYTES = 32;
+    private const int crypto_generichash_SALTBYTES = 16;
+    private const int crypto_generichash_PERSONALBYTES = 16;
+    private const int crypto_scalarmult_BYTES = 32;
+    private const int crypto_scalarmult_SCALARBYTES = 32;
+    private const int crypto_sign_PUBLICKEYBYTES = 32;
+    private const int crypto_sign_SECRETKEYBYTES = 64;
+    private const int crypto_sign_SEEDBYTES = 32;
+    private const int crypto_sign_BYTES = 64;
 
     private static readonly Result<Unit, SodiumFailure> InitializationResult;
 
@@ -74,37 +83,6 @@ public static class SodiumInterop
         byte[] m, ulong mlen,
         byte[] pk);
 
-    private const int crypto_generichash_BYTES = 32;
-    private const int crypto_generichash_SALTBYTES = 16;
-    private const int crypto_generichash_PERSONALBYTES = 16;
-    private const int crypto_scalarmult_BYTES = 32;
-    private const int crypto_scalarmult_SCALARBYTES = 32;
-    private const int crypto_sign_PUBLICKEYBYTES = 32;
-    private const int crypto_sign_SECRETKEYBYTES = 64;
-    private const int crypto_sign_SEEDBYTES = 32;
-    private const int crypto_sign_BYTES = 64;
-
-    private static Result<Unit, SodiumFailure> InitializeSodium()
-    {
-        return Result<Unit, SodiumFailure>.Try(
-            () =>
-            {
-                int result = sodium_init();
-                const int dllImportSuccess = 0;
-                if (result < dllImportSuccess)
-                    throw new InvalidOperationException("sodium_init returned error");
-            },
-            ex => ex switch
-            {
-                DllNotFoundException dllEx => SodiumFailure.LibraryNotFound(
-                    string.Format(SodiumFailureMessages.LibraryLoadFailed, LibSodium), dllEx),
-                InvalidOperationException opEx when opEx.Message.Contains("sodium_init") =>
-                    SodiumFailure.InitializationFailed("Initialization failed", opEx),
-                _ => SodiumFailure.InitializationFailed("Unexpected initialization error", ex)
-            }
-        );
-    }
-
     public static Result<Unit, SodiumFailure> SecureWipe(byte[]? buffer)
     {
         if (!IsInitialized)
@@ -156,47 +134,6 @@ public static class SodiumInterop
             return Result<bool, SodiumFailure>.Err(
                 SodiumFailure.ComparisonFailed("libsodium constant-time comparison failed.", ex));
         }
-    }
-
-    private static Result<Unit, SodiumFailure> WipeSmallBuffer(byte[] buffer)
-    {
-        return Result<Unit, SodiumFailure>.Try(
-            () => { Array.Clear(buffer, 0, buffer.Length); },
-            ex =>
-                SodiumFailure.SecureWipeFailed(
-                    string.Format(SodiumFailureMessages.SmallBufferClearFailed, buffer.Length), ex));
-    }
-
-    private static Result<Unit, SodiumFailure> WipeLargeBuffer(byte[] buffer)
-    {
-        GCHandle handle = default;
-        return Result<Unit, SodiumFailure>.Try(
-            () =>
-            {
-                handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
-                IntPtr ptr = handle.AddrOfPinnedObject();
-                if (ptr == IntPtr.Zero && buffer.Length > 0)
-                    throw new InvalidOperationException(SodiumFailureMessages.AddressOfPinnedObjectFailed);
-
-                sodium_memzero(ptr, (UIntPtr)buffer.Length);
-            },
-            ex => ex switch
-            {
-                ArgumentException argEx => SodiumFailure.MemoryPinningFailed(
-                    SodiumFailureMessages.PinningFailed, argEx),
-                OutOfMemoryException oomEx => SodiumFailure.MemoryPinningFailed(
-                    SodiumFailureMessages.InsufficientMemory, oomEx),
-                InvalidOperationException opEx when opEx.Message.Contains(SodiumExceptionMessagePatterns
-                        .AddressPinnedObjectPattern) =>
-                    SodiumFailure.MemoryPinningFailed(SodiumFailureMessages.GetPinnedAddressFailed, opEx),
-                _ => SodiumFailure.MemoryPinningFailed(
-                    string.Format(SodiumFailureMessages.SecureWipeFailed, buffer.Length), ex)
-            },
-            () =>
-            {
-                if (handle.IsAllocated) handle.Free();
-            }
-        );
     }
 
     public static Result<byte[], SodiumFailure> Blake2bHash(
@@ -512,5 +449,67 @@ public static class SodiumInterop
             if (secretKeyBytes != null)
                 SecureWipe(secretKeyBytes).IgnoreResult();
         }
+    }
+
+    private static Result<Unit, SodiumFailure> InitializeSodium()
+    {
+        return Result<Unit, SodiumFailure>.Try(
+            () =>
+            {
+                int result = sodium_init();
+                const int dllImportSuccess = 0;
+                if (result < dllImportSuccess)
+                    throw new InvalidOperationException("sodium_init returned error");
+            },
+            ex => ex switch
+            {
+                DllNotFoundException dllEx => SodiumFailure.LibraryNotFound(
+                    string.Format(SodiumFailureMessages.LibraryLoadFailed, LibSodium), dllEx),
+                InvalidOperationException opEx when opEx.Message.Contains("sodium_init") =>
+                    SodiumFailure.InitializationFailed("Initialization failed", opEx),
+                _ => SodiumFailure.InitializationFailed("Unexpected initialization error", ex)
+            }
+        );
+    }
+
+    private static Result<Unit, SodiumFailure> WipeSmallBuffer(byte[] buffer)
+    {
+        return Result<Unit, SodiumFailure>.Try(
+            () => { Array.Clear(buffer, 0, buffer.Length); },
+            ex =>
+                SodiumFailure.SecureWipeFailed(
+                    string.Format(SodiumFailureMessages.SmallBufferClearFailed, buffer.Length), ex));
+    }
+
+    private static Result<Unit, SodiumFailure> WipeLargeBuffer(byte[] buffer)
+    {
+        GCHandle handle = default;
+        return Result<Unit, SodiumFailure>.Try(
+            () =>
+            {
+                handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+                IntPtr ptr = handle.AddrOfPinnedObject();
+                if (ptr == IntPtr.Zero && buffer.Length > 0)
+                    throw new InvalidOperationException(SodiumFailureMessages.AddressOfPinnedObjectFailed);
+
+                sodium_memzero(ptr, (UIntPtr)buffer.Length);
+            },
+            ex => ex switch
+            {
+                ArgumentException argEx => SodiumFailure.MemoryPinningFailed(
+                    SodiumFailureMessages.PinningFailed, argEx),
+                OutOfMemoryException oomEx => SodiumFailure.MemoryPinningFailed(
+                    SodiumFailureMessages.InsufficientMemory, oomEx),
+                InvalidOperationException opEx when opEx.Message.Contains(SodiumExceptionMessagePatterns
+                        .AddressPinnedObjectPattern) =>
+                    SodiumFailure.MemoryPinningFailed(SodiumFailureMessages.GetPinnedAddressFailed, opEx),
+                _ => SodiumFailure.MemoryPinningFailed(
+                    string.Format(SodiumFailureMessages.SecureWipeFailed, buffer.Length), ex)
+            },
+            () =>
+            {
+                if (handle.IsAllocated) handle.Free();
+            }
+        );
     }
 }

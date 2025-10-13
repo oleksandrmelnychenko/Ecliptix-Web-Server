@@ -44,8 +44,8 @@ public static class MembershipQueries
                 ctx.Memberships
                     .Include(m => m.MobileNumber)
                     .Include(m => m.VerificationFlow)
-                    .Where(m => m.MobileNumber!.UniqueId == mobileUniqueId && 
-                                !m.IsDeleted && 
+                    .Where(m => m.MobileNumber!.UniqueId == mobileUniqueId &&
+                                !m.IsDeleted &&
                                 !m.MobileNumber.IsDeleted)
                     .OrderByDescending(m => m.UpdatedAt)
                 .FirstOrDefault());

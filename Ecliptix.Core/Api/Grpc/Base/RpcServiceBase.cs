@@ -102,7 +102,7 @@ public class RpcServiceBase(IGrpcCipherService cipherService)
         activity?.SetTag(GrpcServiceConstants.ActivityTags.PayloadSize, encryptedPayload.EncryptedPayload.Length);
 
         Result<byte[], FailureBase> decryptResult =
-            await cipherService.DecryptPayload(encryptedPayload, connectId, context);
+            await cipherService.DecryptEnvelop(encryptedPayload, connectId, context);
 
         if (decryptResult.IsErr)
         {
@@ -143,7 +143,7 @@ public class RpcServiceBase(IGrpcCipherService cipherService)
         activity?.SetTag(GrpcServiceConstants.ActivityTags.ResponseSize, responseBytes.Length);
 
         Result<SecureEnvelope, FailureBase> encryptResult =
-            await cipherService.EncryptPayload(responseBytes, connectId, context);
+            await cipherService.EncryptEnvelop(responseBytes, connectId, context);
 
         if (encryptResult.IsErr)
         {

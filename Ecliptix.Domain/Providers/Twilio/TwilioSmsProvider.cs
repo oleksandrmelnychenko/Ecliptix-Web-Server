@@ -4,7 +4,7 @@ using Twilio.Types;
 
 namespace Ecliptix.Domain.Providers.Twilio;
 
-public class TwilioSmsProvider : ISmsProvider
+public sealed class TwilioSmsProvider : ISmsProvider
 {
     private readonly TwilioSettings _settings;
 

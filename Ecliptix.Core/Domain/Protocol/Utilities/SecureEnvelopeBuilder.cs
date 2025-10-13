@@ -1,4 +1,5 @@
 using System;
+using System.Security.Cryptography;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Utilities;
 using Google.Protobuf;
@@ -74,71 +75,10 @@ public static class SecureEnvelopeBuilder
         return envelope;
     }
 
-    public static Result<EnvelopeMetadata, EcliptixProtocolFailure> ParseEnvelopeMetadata(ByteString metaDataBytes)
-    {
-        try
-        {
-            SecureByteStringInterop.SecureCopyWithCleanup(metaDataBytes, out byte[] metaDataArray);
-            try
-            {
-                EnvelopeMetadata metadata = EnvelopeMetadata.Parser.ParseFrom(metaDataArray);
-                return Result<EnvelopeMetadata, EcliptixProtocolFailure>.Ok(metadata);
-            }
-            finally
-            {
-                SodiumInterop.SecureWipe(metaDataArray);
-            }
-        }
-        catch (Exception ex)
-        {
-            return Result<EnvelopeMetadata, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Decode($"Failed to parse EnvelopeMetadata: {ex.Message}", ex));
-        }
-    }
-
-    public static Result<EnvelopeResultCode, EcliptixProtocolFailure> ParseResultCode(ByteString resultCodeBytes)
-    {
-        try
-        {
-            if (resultCodeBytes.Length != sizeof(int))
-            {
-                return Result<EnvelopeResultCode, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Decode("Invalid result code length"));
-            }
-
-            int resultCodeValue = BitConverter.ToInt32(resultCodeBytes.Span);
-            if (!global::System.Enum.IsDefined(typeof(EnvelopeResultCode), resultCodeValue))
-            {
-                return Result<EnvelopeResultCode, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Decode($"Unknown result code value: {resultCodeValue}"));
-            }
-
-            EnvelopeResultCode resultCode = (EnvelopeResultCode)resultCodeValue;
-            return Result<EnvelopeResultCode, EcliptixProtocolFailure>.Ok(resultCode);
-        }
-        catch (Exception ex)
-        {
-            return Result<EnvelopeResultCode, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Decode($"Failed to parse result code: {ex.Message}", ex));
-        }
-    }
-
-    public static uint ExtractRequestIdFromEnvelopeId(string envelopeId)
-    {
-        if (uint.TryParse(envelopeId, out uint requestId))
-        {
-            return requestId;
-        }
-
-        byte[] buffer = new byte[sizeof(uint)];
-        global::System.Security.Cryptography.RandomNumberGenerator.Fill(buffer);
-        return BitConverter.ToUInt32(buffer, 0);
-    }
-
     private static ByteString GenerateChannelKeyId()
     {
         byte[] keyId = new byte[16];
-        global::System.Security.Cryptography.RandomNumberGenerator.Fill(keyId);
+        RandomNumberGenerator.Fill(keyId);
         return ByteString.CopyFrom(keyId);
     }
 
@@ -158,7 +98,7 @@ public static class SecureEnvelopeBuilder
             ciphertext = new byte[metadataBytes.Length];
             tag = new byte[Constants.AesGcmTagSize];
 
-            using (global::System.Security.Cryptography.AesGcm aesGcm =
+            using (AesGcm aesGcm =
                 new(headerEncryptionKey, Constants.AesGcmTagSize))
             {
                 aesGcm.Encrypt(headerNonce, metadataBytes, ciphertext, tag, associatedData);
@@ -202,7 +142,7 @@ public static class SecureEnvelopeBuilder
 
             plaintext = new byte[cipherLength];
 
-            using (global::System.Security.Cryptography.AesGcm aesGcm =
+            using (AesGcm aesGcm =
                 new(headerEncryptionKey, Constants.AesGcmTagSize))
             {
                 aesGcm.Decrypt(headerNonce, ciphertextSpan, tagSpan, plaintext, associatedData);
@@ -211,7 +151,7 @@ public static class SecureEnvelopeBuilder
             EnvelopeMetadata metadata = EnvelopeMetadata.Parser.ParseFrom(plaintext);
             return Result<EnvelopeMetadata, EcliptixProtocolFailure>.Ok(metadata);
         }
-        catch (global::System.Security.Cryptography.CryptographicException cryptoEx)
+        catch (CryptographicException cryptoEx)
         {
             return Result<EnvelopeMetadata, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Header authentication failed", cryptoEx));

@@ -15,7 +15,7 @@ public interface IIdentityKeyDerivationService
         Guid membershipId);
 }
 
-public class IdentityKeyDerivationService : IIdentityKeyDerivationService
+internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationService
 {
     private const uint DefaultOneTimeKeyCount = 100;
     private const int MasterKeyReadSize = 32;

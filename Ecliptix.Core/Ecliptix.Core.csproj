@@ -126,10 +126,6 @@
         <ProjectReference Include="..\Ecliptix.Protobufs\Ecliptix.Protobufs.csproj" />
     </ItemGroup>
 
-    <ItemGroup>
-      <Folder Include="Infrastructure\Utilities\" />
-    </ItemGroup>
-
     <!-- Commented out: Using AOT-safe hardcoded FrozenDictionary instead of ResourceManager
     <ItemGroup>
         <EmbeddedResource Update="Resources\VerificationFlowRes.resx">

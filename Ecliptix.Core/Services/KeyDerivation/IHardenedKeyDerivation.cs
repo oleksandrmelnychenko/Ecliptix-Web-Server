@@ -11,7 +11,7 @@ public interface IHardenedKeyDerivation
         KeyDerivationOptions options);
 }
 
-public class KeyDerivationOptions
+public sealed class KeyDerivationOptions
 {
     public int MemorySize { get; set; } = 262144;
     public int Iterations { get; set; } = 4;

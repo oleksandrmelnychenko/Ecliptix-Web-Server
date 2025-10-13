@@ -5,7 +5,7 @@ using Serilog;
 
 namespace Ecliptix.Core.Domain.Actors;
 
-public class EcliptixProtocolSystemActor : ReceiveActor
+public sealed class EcliptixProtocolSystemActor : ReceiveActor
 {
     public EcliptixProtocolSystemActor()
     {

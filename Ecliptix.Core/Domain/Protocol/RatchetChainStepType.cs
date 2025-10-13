@@ -1,6 +1,6 @@
 namespace Ecliptix.Core.Domain.Protocol;
 
-public enum ChainStepType
+public enum RatchetChainStepType
 {
     Sender,
     Receiver

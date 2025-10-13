@@ -301,7 +301,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 VerificationFlowFailure.PersistorAccess($"Update flow status failed: {ex.Message}"));
         }
     }
-    
+
     private static async Task<Result<ExistingMembershipResult, VerificationFlowFailure>> CheckExistingMembershipAsync(
         EcliptixSchemaContext ctx, CheckExistingMembershipActorEvent cmd)
     {

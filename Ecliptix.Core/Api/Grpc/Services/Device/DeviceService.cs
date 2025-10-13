@@ -22,7 +22,7 @@ using Grpc.Core;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Device;
 
-public class DeviceService(
+internal sealed class DeviceService(
     IGrpcCipherService cipherService,
     IEcliptixActorRegistry actorRegistry,
     ISecureChannelEstablisher secureChannelEstablisher,

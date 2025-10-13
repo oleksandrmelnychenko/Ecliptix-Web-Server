@@ -1,4 +1,5 @@
 using Akka.Actor;
+using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.Memberships.Persistors;
@@ -6,10 +7,11 @@ using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Domain.Providers.Twilio;
 using Ecliptix.Domain;
-using Ecliptix.Core.Configuration;
+using Ecliptix.Utilities.Configuration;
 using Ecliptix.Domain.Services.Security;
 using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
+using Microsoft.Extensions.Options;
 
 namespace Ecliptix.Core.Services;
 
@@ -26,6 +28,7 @@ public sealed class ActorSystemInitializationHost(
         ISmsProvider smsProvider = serviceProvider.GetRequiredService<ISmsProvider>();
         ILocalizationProvider localizationProvider = serviceProvider.GetRequiredService<ILocalizationProvider>();
         IMasterKeyService masterKeyService = serviceProvider.GetRequiredService<IMasterKeyService>();
+        IOptions<SecurityConfiguration> securityConfig = serviceProvider.GetRequiredService<IOptions<SecurityConfiguration>>();
 
         IActorRef protocolSystemActor = actorSystem.ActorOf(
             EcliptixProtocolSystemActor.Build(),
@@ -64,7 +67,8 @@ public sealed class ActorSystemInitializationHost(
                 verificationFlowPersistorActor,
                 membershipActor,
                 smsProvider,
-                localizationProvider),
+                localizationProvider,
+                securityConfig),
             ApplicationConstants.ActorNames.VerificationFlowManagerActor);
 
         registry.Register(ActorIds.EcliptixProtocolSystemActor, protocolSystemActor);

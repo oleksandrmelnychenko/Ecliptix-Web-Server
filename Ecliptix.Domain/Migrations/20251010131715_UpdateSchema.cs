@@ -4,10 +4,8 @@
 
 namespace Ecliptix.Domain.Migrations
 {
-    /// <inheritdoc />
     public partial class UpdateSchema : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropIndex(
@@ -27,7 +25,6 @@ namespace Ecliptix.Domain.Migrations
                 unique: true);
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropIndex(

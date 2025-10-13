@@ -13,27 +13,24 @@ using Unit = Ecliptix.Utilities.Unit;
 
 namespace Ecliptix.Core.Domain.Actors;
 
-public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWithTimers
+public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWithTimers
 {
     public ITimerScheduler Timers { get; set; } = null!;
 
     public override string PersistenceId { get; } = $"{ActorConstants.ActorNamePrefixes.Connect}{connectId}";
+
     private const int SnapshotInterval = ActorConstants.Constants.SnapshotInterval;
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(ActorConstants.Timeouts.IdleTimeoutMinutes);
     private const int MaxRecoveryRetries = ActorConstants.Recovery.MaxRetries;
-
     private const string RecoveryRetryTimerKey = ActorConstants.Recovery.RetryTimerKey;
 
     private EcliptixSessionState? _state;
     private readonly Dictionary<PubKeyExchangeType, EcliptixProtocolSystem> _protocolSystems = new();
     private int _recoveryRetryCount;
-
     private bool _savingFinalSnapshot;
     private bool _pendingMessageDeletion;
     private bool _pendingSnapshotDeletion;
-
     private PubKeyExchangeType? _currentExchangeType;
-
     private readonly EncryptionHandler _encryptionHandler = new();
     private readonly DecryptionHandler _decryptionHandler = new();
     private readonly StateValidationHandler _stateValidationHandler = new();
@@ -140,6 +137,20 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         }
     }
 
+    protected override void PreStart()
+    {
+        base.PreStart();
+        Context.GetLogger().Info("[PROTOCOL_ACTOR] Starting and subscribing to ProtocolCleanupRequiredEvent - ConnectId: {0}", connectId);
+        Context.System.EventStream.Subscribe(Self, typeof(ProtocolCleanupRequiredEvent));
+    }
+
+    protected override void PostStop()
+    {
+        Timers.CancelAll();
+        DisposeAllSystems();
+        base.PostStop();
+    }
+
     private void HandleRestoreSecrecyChannelState()
     {
         if (_currentExchangeType == PubKeyExchangeType.ServerStreaming)
@@ -233,18 +244,10 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
         Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(reply));
     }
 
-
     private DateTime GetLastPersistenceTime()
     {
         return DateTime.UtcNow.AddMinutes(-((SnapshotSequenceNr % ActorConstants.Constants.SnapshotModulus) *
                                             ActorConstants.Constants.SnapshotMinuteMultiplier));
-    }
-
-    protected override void PreStart()
-    {
-        base.PreStart();
-        Context.GetLogger().Info("[PROTOCOL_ACTOR] Starting and subscribing to ProtocolCleanupRequiredEvent - ConnectId: {0}", connectId);
-        Context.System.EventStream.Subscribe(Self, typeof(ProtocolCleanupRequiredEvent));
     }
 
     private void HandleInitialKeyExchange(DeriveSharedSecretActorEvent cmd)
@@ -786,13 +789,6 @@ public class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWi
             Context.GetLogger().Info("All cleanup operations completed. Stopping actor.");
             Context.Stop(Self);
         }
-    }
-
-    protected override void PostStop()
-    {
-        Timers.CancelAll();
-        DisposeAllSystems();
-        base.PostStop();
     }
 
     private void DisposeAllSystems()

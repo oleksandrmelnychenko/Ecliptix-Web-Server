@@ -2,7 +2,7 @@ using Grpc.Core;
 
 namespace Ecliptix.Utilities;
 
-public class GrpcFailureException(Status grpcStatus, object? structuredLogPayload = null) : Exception(grpcStatus.Detail)
+public sealed class GrpcFailureException(Status grpcStatus, object? structuredLogPayload = null) : Exception(grpcStatus.Detail)
 {
     public Status GrpcStatus { get; } = grpcStatus;
     public object? StructuredLogPayload { get; } = structuredLogPayload;

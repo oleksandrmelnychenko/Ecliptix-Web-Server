@@ -6,14 +6,19 @@ namespace Ecliptix.Core.Domain.Protocol;
 
 public sealed class RatchetChainKey : IDisposable, IEquatable<RatchetChainKey>
 {
-    private bool _disposed;
     private SodiumSecureMemoryHandle _keyHandle;
+    private bool _disposed;
 
     private RatchetChainKey(uint index, SodiumSecureMemoryHandle keyHandle)
     {
         Index = index;
         _keyHandle = keyHandle;
         _disposed = false;
+    }
+
+    ~RatchetChainKey()
+    {
+        Dispose(false);
     }
 
     public uint Index { get; }
@@ -30,6 +35,20 @@ public sealed class RatchetChainKey : IDisposable, IEquatable<RatchetChainKey>
             Index == other.Index &&
             _disposed ==
             other._disposed;
+    }
+
+    public Result<Unit, EcliptixProtocolFailure> ReadKeyMaterial(Span<byte> destination)
+    {
+        if (_disposed)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.ObjectDisposed(nameof(RatchetChainKey)));
+
+        if (destination.Length < Constants.AesKeySize)
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.BufferTooSmall(
+                    $"Destination buffer must be at least {Constants.AesKeySize} bytes, but was {destination.Length}."));
+
+        return _keyHandle.Read(destination[..Constants.AesKeySize]).MapSodiumFailure();
     }
 
     public static Result<RatchetChainKey, EcliptixProtocolFailure> New(uint index, ReadOnlySpan<byte> keyMaterial)
@@ -58,20 +77,6 @@ public sealed class RatchetChainKey : IDisposable, IEquatable<RatchetChainKey>
         return Result<RatchetChainKey, EcliptixProtocolFailure>.Ok(messageKey);
     }
 
-    public Result<Unit, EcliptixProtocolFailure> ReadKeyMaterial(Span<byte> destination)
-    {
-        if (_disposed)
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.ObjectDisposed(nameof(RatchetChainKey)));
-
-        if (destination.Length < Constants.AesKeySize)
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.BufferTooSmall(
-                    $"Destination buffer must be at least {Constants.AesKeySize} bytes, but was {destination.Length}."));
-
-        return _keyHandle.Read(destination[..Constants.AesKeySize]).MapSodiumFailure();
-    }
-
     public static Result<RatchetChainKey, EcliptixProtocolFailure> DeriveFromChainKey(byte[] chainKey, uint messageIndex)
     {
         if (chainKey.Length != Constants.X25519KeySize)
@@ -88,7 +93,7 @@ public sealed class RatchetChainKey : IDisposable, IEquatable<RatchetChainKey>
                     ikm: chainKey,
                     output: messageKeyBytes.AsSpan(0, Constants.AesKeySize),
                     salt: null,
-                    info: Constants.MsgInfo
+                    info: EcliptixProtocolChainStep.MsgInfo
                 );
 
                 return New(messageIndex, messageKeyBytes.AsSpan(0, Constants.AesKeySize));
@@ -103,23 +108,6 @@ public sealed class RatchetChainKey : IDisposable, IEquatable<RatchetChainKey>
             return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.DeriveKey("Failed to derive message key from chain key using HKDF", ex));
         }
-    }
-
-    private void Dispose(bool disposing)
-    {
-        if (_disposed) return;
-        if (disposing)
-        {
-            _keyHandle.Dispose();
-            _keyHandle = null!;
-        }
-
-        _disposed = true;
-    }
-
-    ~RatchetChainKey()
-    {
-        Dispose(false);
     }
 
     public override bool Equals(object? obj)
@@ -142,5 +130,17 @@ public sealed class RatchetChainKey : IDisposable, IEquatable<RatchetChainKey>
     public static bool operator !=(RatchetChainKey? left, RatchetChainKey? right)
     {
         return !(left == right);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (_disposed) return;
+        if (disposing)
+        {
+            _keyHandle.Dispose();
+            _keyHandle = null!;
+        }
+
+        _disposed = true;
     }
 }

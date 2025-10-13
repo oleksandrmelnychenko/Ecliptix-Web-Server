@@ -12,12 +12,4 @@ public static class CryptoHelpers
         string hexString = Convert.ToHexString(hash);
         return hexString[..Math.Min(length, hexString.Length)];
     }
-
-    public static string ComputeSha256Fingerprint(ReadOnlySpan<byte> data, int length = DefaultFingerprintLength)
-    {
-        Span<byte> hash = stackalloc byte[32];
-        SHA256.HashData(data, hash);
-        string hexString = Convert.ToHexString(hash);
-        return hexString[..Math.Min(length, hexString.Length)];
-    }
 }

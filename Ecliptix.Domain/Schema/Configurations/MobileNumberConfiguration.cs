@@ -18,7 +18,7 @@ public class MobileNumberConfiguration : EntityBaseMap<MobileNumberEntity>
 
         builder.Property(e => e.Region)
             .HasMaxLength(2);
-        
+
         builder.HasIndex(e => e.Number)
             .IsUnique()
             .HasDatabaseName("UQ_MobileNumbers_Number");

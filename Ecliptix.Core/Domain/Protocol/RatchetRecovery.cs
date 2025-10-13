@@ -75,33 +75,6 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
         }
     }
 
-    private static Result<Unit, EcliptixProtocolFailure> AdvanceChainKey(byte[] chainKey)
-    {
-        return Result<Unit, EcliptixProtocolFailure>.Try(
-            () =>
-            {
-                byte[] newChainKey = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
-                try
-                {
-                    System.Security.Cryptography.HKDF.DeriveKey(
-                        System.Security.Cryptography.HashAlgorithmName.SHA256,
-                        ikm: chainKey,
-                        output: newChainKey.AsSpan(0, Constants.X25519KeySize),
-                        salt: null,
-                        info: Constants.ChainInfo
-                    );
-
-                    newChainKey.AsSpan(0, Constants.X25519KeySize).CopyTo(chainKey);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(newChainKey, clearArray: true);
-                }
-            },
-            ex => EcliptixProtocolFailure.DeriveKey("Failed to advance chain key using HKDF", ex)
-        );
-    }
-
     public void CleanupOldKeys(uint beforeIndex)
     {
         if (_disposed) return;
@@ -120,13 +93,6 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
         }
     }
 
-    private void CleanupSkippedKeys()
-    {
-        foreach (RatchetChainKey key in _skippedMessageKeys.Values)
-            key.Dispose();
-        _skippedMessageKeys.Clear();
-    }
-
     public void Dispose()
     {
         if (_disposed) return;
@@ -136,6 +102,40 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
         {
             CleanupSkippedKeys();
         }
+    }
+
+    private static Result<Unit, EcliptixProtocolFailure> AdvanceChainKey(byte[] chainKey)
+    {
+        return Result<Unit, EcliptixProtocolFailure>.Try(
+            () =>
+            {
+                byte[] newChainKey = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
+                try
+                {
+                    System.Security.Cryptography.HKDF.DeriveKey(
+                        System.Security.Cryptography.HashAlgorithmName.SHA256,
+                        ikm: chainKey,
+                        output: newChainKey.AsSpan(0, Constants.X25519KeySize),
+                        salt: null,
+                        info: EcliptixProtocolChainStep.ChainInfo
+                    );
+
+                    newChainKey.AsSpan(0, Constants.X25519KeySize).CopyTo(chainKey);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(newChainKey, clearArray: true);
+                }
+            },
+            ex => EcliptixProtocolFailure.DeriveKey("Failed to advance chain key using HKDF", ex)
+        );
+    }
+
+    private void CleanupSkippedKeys()
+    {
+        foreach (RatchetChainKey key in _skippedMessageKeys.Values)
+            key.Dispose();
+        _skippedMessageKeys.Clear();
     }
 }
 

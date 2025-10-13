@@ -17,7 +17,7 @@ using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Authentication;
 
-public class VerificationFlowServices(
+internal sealed class VerificationFlowServices(
     IEcliptixActorRegistry actorRegistry,
     IMobileNumberValidator phoneNumberValidator,
     IGrpcCipherService grpcCipherService)
@@ -220,7 +220,7 @@ public class VerificationFlowServices(
                     VerificationCountdownUpdate update = updateResult.Unwrap();
 
                     Result<SecureEnvelope, FailureBase> encryptResult =
-                        await grpcCipherService.EncryptPayload(update.ToByteArray(), connectId, context);
+                        await grpcCipherService.EncryptEnvelop(update.ToByteArray(), connectId, context);
 
                     if (encryptResult.IsErr)
                     {

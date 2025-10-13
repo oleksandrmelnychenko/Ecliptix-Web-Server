@@ -70,7 +70,6 @@ public static class PersistorSupervisorStrategy
 
     private static Directive HandlePermanentFailure(string reason, Directive directive)
     {
-
         return directive;
     }
 
@@ -78,7 +77,6 @@ public static class PersistorSupervisorStrategy
     {
         if (ShouldThrottleRestart(actorType))
         {
-
             return Directive.Stop;
         }
 
@@ -88,7 +86,6 @@ public static class PersistorSupervisorStrategy
 
     private static Directive HandleApplicationError(string reason, Directive directive)
     {
-
         return directive;
     }
 

@@ -4,36 +4,32 @@ using Ecliptix.Core;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Services.KeyDerivation;
 using Ecliptix.Domain.Memberships.ActorEvents;
-using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
+using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
-using Ecliptix.Domain.Schema;
-using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Domain.Services.Security;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures;
 using Ecliptix.Utilities.Failures.Sodium;
 using Google.Protobuf;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 namespace Ecliptix.Core.Services.Security;
 
-public class MasterKeyService(
+internal sealed class MasterKeyService(
     IHardenedKeyDerivation hardenedKeyDerivation,
     ISecretSharingService secretSharingService,
     IEcliptixActorRegistry actorRegistry,
-    IIdentityKeyDerivationService identityKeyDerivationService,
-    IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
+    IIdentityKeyDerivationService identityKeyDerivationService)
     : IMasterKeyService
 {
     private const int Argon2MemorySize = 262144;
     private const int Argon2Iterations = 4;
     private const int Argon2DegreeOfParallelism = 4;
     private const int EnhancedKeyOutputLength = 64;
+    private const int MasterKeySize = 32;
     private const int DefaultThreshold = 3;
     private const int DefaultTotalShares = 5;
-    private const int MasterKeySize = 32;
     private const int AskTimeoutSeconds = 30;
 
     private const string KeyDerivationContext = "ecliptix-signin-session";
@@ -58,6 +54,7 @@ public class MasterKeyService(
     private const string ErrorMessageMasterKeyReadFailed = "Failed to read master key bytes";
     private const string ErrorMessageUnexpectedIdentityKeyDerivationError = "Unexpected error during identity key derivation";
     private const string ErrorMessageSharesCheckFailed = "Unexpected error checking shares";
+
     public async Task<Result<dynamic, FailureBase>> DeriveMasterKeyAndSplitAsync(
         dynamic sessionKeyHandle,
         Guid membershipId)
@@ -149,143 +146,6 @@ public class MasterKeyService(
             enhancedMasterKeyHandle?.Dispose();
             masterKeyHandle?.Dispose();
             hmacKeyHandle?.Dispose();
-        }
-    }
-
-    public async Task<Result<dynamic, FailureBase>> ReconstructMasterKeyAsync(Guid membershipId)
-    {
-        try
-        {
-            Result<MasterKeyShareQueryRecord[], KeySplittingFailure> sharesResult =
-                await RetrieveSharesAsync(membershipId);
-
-            if (sharesResult.IsErr)
-            {
-                KeySplittingFailure error = sharesResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(error);
-            }
-
-            MasterKeyShareQueryRecord[] shareRecords = sharesResult.Unwrap();
-
-            if (shareRecords.Length < DefaultThreshold)
-            {
-                return Result<dynamic, FailureBase>.Err(
-                    KeySplittingFailure.KeyReconstructionFailed(string.Format(ErrorMessageInsufficientShares, shareRecords.Length)));
-            }
-
-            List<KeyShare> shares = [];
-            foreach (MasterKeyShareQueryRecord record in shareRecords)
-            {
-                ShareMetadata? metadata = System.Text.Json.JsonSerializer.Deserialize<ShareMetadata>(record.ShareMetadata);
-                if (metadata == null)
-                {
-                    return Result<dynamic, FailureBase>.Err(
-                        KeySplittingFailure.KeyReconstructionFailed(ErrorMessageMetadataDeserializationFailed));
-                }
-
-                KeyShare share = new KeyShare(
-                    shareData: record.EncryptedShare,
-                    index: record.ShareIndex,
-                    location: Enum.Parse<ShareLocation>(record.StorageLocation),
-                    sessionId: metadata.SessionId
-                );
-
-                shares.Add(share);
-            }
-
-            Result<SodiumSecureMemoryHandle, KeySplittingFailure> reconstructResult =
-                await secretSharingService.ReconstructKeyHandleAsync(shares.ToArray(), hmacKeyHandle: null);
-
-            if (reconstructResult.IsErr)
-            {
-                KeySplittingFailure error = reconstructResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(error);
-            }
-
-            SodiumSecureMemoryHandle masterKeyHandle = reconstructResult.Unwrap();
-
-            return Result<dynamic, FailureBase>.Ok(masterKeyHandle);
-        }
-        catch (Exception ex)
-        {
-            return Result<dynamic, FailureBase>.Err(
-                KeySplittingFailure.KeyReconstructionFailed(ErrorMessageUnexpectedReconstructionError, ex));
-        }
-    }
-
-    private async Task<Result<InsertMasterKeySharesResult, KeySplittingFailure>> PersistSharesAsync(
-        Guid membershipId, KeySplitResult keySplitResult)
-    {
-        try
-        {
-            IActorRef masterKeySharePersistor = actorRegistry.Get(ActorIds.MasterKeySharePersistorActor);
-            List<ShareData> shareDataList = [];
-
-            foreach (KeyShare share in keySplitResult.Shares)
-            {
-                string metadata = System.Text.Json.JsonSerializer.Serialize(new
-                {
-                    ShareId = Convert.ToBase64String(share.ShareId),
-                    SessionId = share.SessionId,
-                    CreatedAt = share.CreatedAt,
-                    HasHmac = share.Hmac != null
-                });
-
-                shareDataList.Add(new ShareData(
-                    share.ShareIndex,
-                    share.ShareData,
-                    metadata,
-                    share.Location.ToString()
-                ));
-            }
-
-            InsertMasterKeySharesEvent insertEvent = new(
-                membershipId,
-                shareDataList
-            );
-
-            Result<InsertMasterKeySharesResult, KeySplittingFailure> result =
-                await masterKeySharePersistor.Ask<Result<InsertMasterKeySharesResult, KeySplittingFailure>>(
-                    insertEvent,
-                    TimeSpan.FromSeconds(AskTimeoutSeconds));
-
-            return result;
-        }
-        catch (TimeoutException)
-        {
-            return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
-                KeySplittingFailure.KeySplittingFailed(ErrorMessagePersistSharesTimeout));
-        }
-        catch (Exception ex)
-        {
-            return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
-                KeySplittingFailure.KeySplittingFailed($"{ErrorMessagePersistSharesFailed}: {ex.Message}", ex));
-        }
-    }
-
-    private async Task<Result<MasterKeyShareQueryRecord[], KeySplittingFailure>> RetrieveSharesAsync(Guid membershipId)
-    {
-        try
-        {
-            IActorRef masterKeySharePersistor = actorRegistry.Get(ActorIds.MasterKeySharePersistorActor);
-            GetMasterKeySharesEvent getEvent = new GetMasterKeySharesEvent(membershipId);
-
-            Result<MasterKeyShareQueryRecord[], KeySplittingFailure> result =
-                await masterKeySharePersistor.Ask<Result<MasterKeyShareQueryRecord[], KeySplittingFailure>>(
-                    getEvent,
-                    TimeSpan.FromSeconds(AskTimeoutSeconds));
-
-            return result;
-        }
-        catch (TimeoutException)
-        {
-            return Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Err(
-                KeySplittingFailure.KeyReconstructionFailed(ErrorMessageRetrieveSharesTimeout));
-        }
-        catch (Exception ex)
-        {
-            return Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Err(
-                KeySplittingFailure.KeyReconstructionFailed($"{ErrorMessageRetrieveSharesFailed}: {ex.Message}", ex));
         }
     }
 
@@ -445,14 +305,21 @@ public class MasterKeyService(
                     KeySplittingFailure.KeyReconstructionFailed("No shares found for membership"));
             }
 
-            await using EcliptixSchemaContext ctx = await dbContextFactory.CreateDbContextAsync();
-            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, membershipId);
-            if (membership == null)
+            IActorRef membershipPersistor = actorRegistry.Get(ActorIds.MembershipPersistorActor);
+            GetMembershipByUniqueIdEvent getMembershipEvent = new(membershipId);
+
+            Result<MembershipQueryRecord, VerificationFlowFailure> membershipResult =
+                await membershipPersistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(
+                    getMembershipEvent,
+                    TimeSpan.FromSeconds(AskTimeoutSeconds));
+
+            if (membershipResult.IsErr)
             {
                 return Result<string, FailureBase>.Err(
                     KeySplittingFailure.KeyReconstructionFailed("Membership not found"));
             }
 
+            MembershipQueryRecord membership = membershipResult.Unwrap();
             int currentVersion = membership.CredentialsVersion;
             int storedVersion = shares[0].CredentialsVersion;
 
@@ -557,6 +424,143 @@ public class MasterKeyService(
         {
             expectedMasterKeyHandle?.Dispose();
             actualMasterKeyHandle?.Dispose();
+        }
+    }
+
+    private async Task<Result<dynamic, FailureBase>> ReconstructMasterKeyAsync(Guid membershipId)
+    {
+        try
+        {
+            Result<MasterKeyShareQueryRecord[], KeySplittingFailure> sharesResult =
+                await RetrieveSharesAsync(membershipId);
+
+            if (sharesResult.IsErr)
+            {
+                KeySplittingFailure error = sharesResult.UnwrapErr();
+                return Result<dynamic, FailureBase>.Err(error);
+            }
+
+            MasterKeyShareQueryRecord[] shareRecords = sharesResult.Unwrap();
+
+            if (shareRecords.Length < DefaultThreshold)
+            {
+                return Result<dynamic, FailureBase>.Err(
+                    KeySplittingFailure.KeyReconstructionFailed(string.Format(ErrorMessageInsufficientShares, shareRecords.Length)));
+            }
+
+            List<KeyShare> shares = [];
+            foreach (MasterKeyShareQueryRecord record in shareRecords)
+            {
+                ShareMetadata? metadata = System.Text.Json.JsonSerializer.Deserialize<ShareMetadata>(record.ShareMetadata);
+                if (metadata == null)
+                {
+                    return Result<dynamic, FailureBase>.Err(
+                        KeySplittingFailure.KeyReconstructionFailed(ErrorMessageMetadataDeserializationFailed));
+                }
+
+                KeyShare share = new(
+                    shareData: record.EncryptedShare,
+                    index: record.ShareIndex,
+                    location: Enum.Parse<ShareLocation>(record.StorageLocation),
+                    sessionId: metadata.SessionId
+                );
+
+                shares.Add(share);
+            }
+
+            Result<SodiumSecureMemoryHandle, KeySplittingFailure> reconstructResult =
+                await secretSharingService.ReconstructKeyHandleAsync(shares.ToArray(), hmacKeyHandle: null);
+
+            if (reconstructResult.IsErr)
+            {
+                KeySplittingFailure error = reconstructResult.UnwrapErr();
+                return Result<dynamic, FailureBase>.Err(error);
+            }
+
+            SodiumSecureMemoryHandle masterKeyHandle = reconstructResult.Unwrap();
+
+            return Result<dynamic, FailureBase>.Ok(masterKeyHandle);
+        }
+        catch (Exception ex)
+        {
+            return Result<dynamic, FailureBase>.Err(
+                KeySplittingFailure.KeyReconstructionFailed(ErrorMessageUnexpectedReconstructionError, ex));
+        }
+    }
+
+    private async Task<Result<InsertMasterKeySharesResult, KeySplittingFailure>> PersistSharesAsync(
+        Guid membershipId, KeySplitResult keySplitResult)
+    {
+        try
+        {
+            IActorRef masterKeySharePersistor = actorRegistry.Get(ActorIds.MasterKeySharePersistorActor);
+            List<ShareData> shareDataList = [];
+
+            foreach (KeyShare share in keySplitResult.Shares)
+            {
+                string metadata = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    ShareId = Convert.ToBase64String(share.ShareId),
+                    SessionId = share.SessionId,
+                    CreatedAt = share.CreatedAt,
+                    HasHmac = share.Hmac != null
+                });
+
+                shareDataList.Add(new ShareData(
+                    share.ShareIndex,
+                    share.ShareData,
+                    metadata,
+                    share.Location.ToString()
+                ));
+            }
+
+            InsertMasterKeySharesEvent insertEvent = new(
+                membershipId,
+                shareDataList
+            );
+
+            Result<InsertMasterKeySharesResult, KeySplittingFailure> result =
+                await masterKeySharePersistor.Ask<Result<InsertMasterKeySharesResult, KeySplittingFailure>>(
+                    insertEvent,
+                    TimeSpan.FromSeconds(AskTimeoutSeconds));
+
+            return result;
+        }
+        catch (TimeoutException)
+        {
+            return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
+                KeySplittingFailure.KeySplittingFailed(ErrorMessagePersistSharesTimeout));
+        }
+        catch (Exception ex)
+        {
+            return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
+                KeySplittingFailure.KeySplittingFailed($"{ErrorMessagePersistSharesFailed}: {ex.Message}", ex));
+        }
+    }
+
+    private async Task<Result<MasterKeyShareQueryRecord[], KeySplittingFailure>> RetrieveSharesAsync(Guid membershipId)
+    {
+        try
+        {
+            IActorRef masterKeySharePersistor = actorRegistry.Get(ActorIds.MasterKeySharePersistorActor);
+            GetMasterKeySharesEvent getEvent = new(membershipId);
+
+            Result<MasterKeyShareQueryRecord[], KeySplittingFailure> result =
+                await masterKeySharePersistor.Ask<Result<MasterKeyShareQueryRecord[], KeySplittingFailure>>(
+                    getEvent,
+                    TimeSpan.FromSeconds(AskTimeoutSeconds));
+
+            return result;
+        }
+        catch (TimeoutException)
+        {
+            return Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Err(
+                KeySplittingFailure.KeyReconstructionFailed(ErrorMessageRetrieveSharesTimeout));
+        }
+        catch (Exception ex)
+        {
+            return Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Err(
+                KeySplittingFailure.KeyReconstructionFailed($"{ErrorMessageRetrieveSharesFailed}: {ex.Message}", ex));
         }
     }
 }

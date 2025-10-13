@@ -53,6 +53,10 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             ExecuteWithContext(ctx => GetMembershipByVerificationFlowAsync(ctx, cmd), "GetMembershipByVerificationFlow")
                 .PipeTo(Sender));
 
+        Receive<GetMembershipByUniqueIdEvent>(cmd =>
+            ExecuteWithContext(ctx => GetMembershipByUniqueIdAsync(ctx, cmd), "GetMembershipByUniqueId")
+                .PipeTo(Sender));
+
         Receive<ValidatePasswordRecoveryFlowEvent>(cmd =>
             ExecuteWithContext(ctx => ValidatePasswordRecoveryFlowAsync(ctx, cmd), "ValidatePasswordRecoveryFlow")
                 .PipeTo(Sender));
@@ -157,6 +161,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         UniqueIdentifier = membership.UniqueId,
                         ActivityStatus = activityStatus,
                         CreationStatus = ProtoMembership.Types.CreationStatus.OtpVerified,
+                        CredentialsVersion = membership.CredentialsVersion,
                         SecureKey = membership.SecureKey ?? [],
                         MaskingKey = membership.MaskingKey ?? []
                     }),
@@ -229,6 +234,8 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             await transaction.CommitAsync();
 
+            int newCredentialsVersion = membership.CredentialsVersion + 1;
+
             return MapActivityStatus("active").Match(
                 status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
                     new MembershipQueryRecord
@@ -236,6 +243,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         UniqueIdentifier = cmd.MembershipIdentifier,
                         ActivityStatus = status,
                         CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum("secure_key_set"),
+                        CredentialsVersion = newCredentialsVersion,
                         MaskingKey = cmd.MaskingKey
                     }),
                 () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
@@ -330,7 +338,8 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         {
                             UniqueIdentifier = existingMembership.UniqueId,
                             ActivityStatus = status,
-                            CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(existingMembership.CreationStatus ?? "otp_verified")
+                            CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(existingMembership.CreationStatus ?? "otp_verified"),
+                            CredentialsVersion = existingMembership.CredentialsVersion
                         }),
                     () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                         VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
@@ -397,7 +406,8 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     {
                         UniqueIdentifier = newMembership.UniqueId,
                         ActivityStatus = status,
-                        CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(newMembership.CreationStatus)
+                        CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(newMembership.CreationStatus),
+                        CredentialsVersion = newMembership.CredentialsVersion
                     }),
                 () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
@@ -463,6 +473,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         UniqueIdentifier = membership.UniqueId,
                         ActivityStatus = status,
                         CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(membership.CreationStatus ?? "otp_verified"),
+                        CredentialsVersion = membership.CredentialsVersion,
                         SecureKey = [],
                         MaskingKey = []
                     }),
@@ -474,6 +485,41 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         {
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Get membership by flow failed: {ex.Message}"));
+        }
+    }
+
+    private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> GetMembershipByUniqueIdAsync(
+        EcliptixSchemaContext ctx, GetMembershipByUniqueIdEvent cmd)
+    {
+        try
+        {
+            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId);
+
+            if (membership == null)
+            {
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.NotFound("Membership not found"));
+            }
+
+            return MapActivityStatus(membership.Status).Match(
+                status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
+                    new MembershipQueryRecord
+                    {
+                        UniqueIdentifier = membership.UniqueId,
+                        ActivityStatus = status,
+                        CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(membership.CreationStatus ?? "otp_verified"),
+                        CredentialsVersion = membership.CredentialsVersion,
+                        SecureKey = membership.SecureKey ?? [],
+                        MaskingKey = membership.MaskingKey ?? []
+                    }),
+                () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
+            );
+        }
+        catch (Exception ex)
+        {
+            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Get membership by unique ID failed: {ex.Message}"));
         }
     }
 

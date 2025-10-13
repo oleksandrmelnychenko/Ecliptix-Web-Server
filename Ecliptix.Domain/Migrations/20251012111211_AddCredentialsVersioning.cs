@@ -4,10 +4,8 @@
 
 namespace Ecliptix.Domain.Migrations
 {
-    /// <inheritdoc />
     public partial class AddCredentialsVersioning : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<int>(
@@ -25,7 +23,6 @@ namespace Ecliptix.Domain.Migrations
                 defaultValue: 1);
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(

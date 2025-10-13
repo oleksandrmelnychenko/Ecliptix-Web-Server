@@ -8,11 +8,11 @@ public sealed class ReplayProtection : IDisposable
     private readonly ConcurrentDictionary<string, DateTime> _processedNonces;
     private readonly ConcurrentDictionary<ulong, MessageWindow> _messageWindows;
     private readonly TimeSpan _nonceLifetime;
-    private ulong _maxOutOfOrderWindow;
     private readonly Timer _cleanupTimer;
     private readonly Lock _lock = new();
     private readonly ulong _baseWindow;
     private readonly ulong _maxWindow;
+    private ulong _maxOutOfOrderWindow;
     private int _recentMessageCount;
     private DateTime _lastWindowAdjustment = DateTime.UtcNow;
     private bool _disposed;
@@ -75,6 +75,26 @@ public sealed class ReplayProtection : IDisposable
         }
     }
 
+    public void OnRatchetRotation()
+    {
+        if (_disposed) return;
+
+        lock (_lock)
+        {
+            _messageWindows.Clear();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        _cleanupTimer?.Dispose();
+        _processedNonces.Clear();
+        _messageWindows.Clear();
+    }
+
     private void CleanupExpiredEntries()
     {
         if (_disposed) return;
@@ -120,26 +140,6 @@ public sealed class ReplayProtection : IDisposable
 
             _recentMessageCount = 0;
             _lastWindowAdjustment = DateTime.UtcNow;
-        }
-    }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-
-        _cleanupTimer?.Dispose();
-        _processedNonces.Clear();
-        _messageWindows.Clear();
-    }
-
-    public void OnRatchetRotation()
-    {
-        if (_disposed) return;
-
-        lock (_lock)
-        {
-            _messageWindows.Clear();
         }
     }
 }

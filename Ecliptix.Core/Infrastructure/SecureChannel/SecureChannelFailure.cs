@@ -10,10 +10,6 @@ public sealed record SecureChannelFailure(
     Exception? InnerException = null)
     : FailureBase(Message, InnerException)
 {
-
-    public static SecureChannelFailure CryptographicError(string message)
-        => new(SecureChannelFailureType.CryptographicError, message);
-
     public static SecureChannelFailure ProtocolError(string message)
         => new(SecureChannelFailureType.ProtocolError, message);
 
@@ -35,8 +31,6 @@ public sealed record SecureChannelFailure(
         {
             SecureChannelFailureType.InvalidPayload => StatusCode.InvalidArgument,
             SecureChannelFailureType.CryptographicError => StatusCode.InvalidArgument,
-            SecureChannelFailureType.ProtocolError => StatusCode.Internal,
-            SecureChannelFailureType.ActorCommunicationError => StatusCode.Internal,
             _ => StatusCode.Internal
         };
 

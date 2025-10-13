@@ -34,13 +34,6 @@ public static class ApplicationConstants
         public const string UkrainianCulture = "uk-ua";
     }
 
-    public static class HealthChecks
-    {
-        public const string ProtocolHealth = "protocol_health";
-        public const string VerificationFlowHealth = "verification_flow_health";
-        public const string DatabaseHealth = "database_health";
-    }
-
     public static class Configuration
     {
         public const string TwilioSettings = "TwilioSettings";
@@ -58,12 +51,6 @@ public static class ApplicationConstants
         public const string StopAcceptingNewConnections = "stop-accepting-new-connections";
         public const string DrainActiveRequests = "drain-active-requests";
         public const string CleanupResources = "cleanup-resources";
-    }
-
-    public static class HttpHeaders
-    {
-        public const string UserAgent = "User-Agent";
-        public const string ConnectId = "X-Connect-Id";
     }
 
     public static class DiagnosticContext

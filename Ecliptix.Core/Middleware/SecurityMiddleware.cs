@@ -5,7 +5,7 @@ using Ecliptix.Core.Configuration;
 
 namespace Ecliptix.Core.Middleware;
 
-public class SecurityMiddleware(RequestDelegate next)
+internal sealed class SecurityMiddleware(RequestDelegate next)
 {
     private static readonly HashSet<string> AllowedContentTypes =
     [
@@ -44,12 +44,6 @@ public class SecurityMiddleware(RequestDelegate next)
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.ResourceExhausted)
         {
-
-            throw;
-        }
-        catch (Exception ex)
-        {
-
             throw;
         }
     }

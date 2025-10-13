@@ -137,37 +137,9 @@ public static class GrpcMetadataHandler
         return requestHeaders.GetValueAsResult(LocaleKey).Unwrap();
     }
 
-    public static string GetAppDeviceId(Metadata requestHeaders)
-    {
-        return requestHeaders.GetValueAsResult(AppDeviceId).Unwrap();
-    }
-
     public static string GetConnectionContextId(Metadata requestHeaders)
     {
         return requestHeaders.GetValueAsResult(ConnectionContextId).Unwrap();
-    }
-
-    public static Result<string, MetaDataSystemFailure> GetOperationContextId(Metadata requestHeaders)
-    {
-        return requestHeaders.GetValueAsResult(OperationContextId);
-    }
-
-    public static Result<ExtractedMetadata, MetaDataSystemFailure> ExtractRequiredMetaData(ServerCallContext context)
-    {
-        Result<string, MetaDataSystemFailure> requestIdResult = context.RequestHeaders.GetValueAsResult(RequestIdKey);
-        Result<string, MetaDataSystemFailure> requestDateResult = context.RequestHeaders.GetValueAsResult(DateTimeKey);
-        Result<string, MetaDataSystemFailure> localIpAddressResult =
-            context.RequestHeaders.GetValueAsResult(LocalIpAddressKey);
-        Result<string, MetaDataSystemFailure> publicIpAddressResult =
-            context.RequestHeaders.GetValueAsResult(PublicIpAddressKey);
-
-        ExtractedMetadata metadata = new(
-            requestIdResult.IsOk ? requestIdResult.Unwrap() : null,
-            requestDateResult.IsOk ? requestDateResult.Unwrap() : null,
-            localIpAddressResult.IsOk ? localIpAddressResult.Unwrap() : null,
-            publicIpAddressResult.IsOk ? publicIpAddressResult.Unwrap() : null);
-
-        return Result<ExtractedMetadata, MetaDataSystemFailure>.Ok(metadata);
     }
 
     public record ExtractedMetadata(

@@ -12,6 +12,9 @@ namespace Ecliptix.Core.Domain.Protocol;
 public sealed class EcliptixProtocolConnection : IDisposable
 {
     private const int AesGcmNonceSize = 12;
+    
+    private const int MaxNonceCounter = 10_000_000;
+    
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromHours(24);
     private static ReadOnlySpan<byte> InitialSenderChainInfo => "ShieldInitSend"u8;
     private static ReadOnlySpan<byte> InitialReceiverChainInfo => "ShieldInitRecv"u8;
@@ -134,7 +137,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
             byte[] initialSkBytes = initialSkResult.Unwrap();
             byte[] tempChainKey = new byte[Constants.X25519KeySize];
 
-            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> stepResult = EcliptixProtocolChainStep.Create(ChainStepType.Sender, tempChainKey, initialSkBytes,
+            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> stepResult = EcliptixProtocolChainStep.Create(RatchetChainStepType.Sender, tempChainKey, initialSkBytes,
                 initialSendingDhPublicKey);
             Result<Unit, EcliptixProtocolFailure> wipeResult = WipeIfNotNull(initialSkBytes);
             if (wipeResult.IsErr)
@@ -219,13 +222,13 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
         try
         {
-            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> sendingStepResult = EcliptixProtocolChainStep.FromProtoState(ChainStepType.Sender, proto.SendingStep);
+            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> sendingStepResult = EcliptixProtocolChainStep.FromProtoState(RatchetChainStepType.Sender, proto.SendingStep);
             if (sendingStepResult.IsErr)
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(sendingStepResult.UnwrapErr());
             sendingStep = sendingStepResult.Unwrap();
 
             Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> receivingStepResult =
-                EcliptixProtocolChainStep.FromProtoState(ChainStepType.Receiver, proto.ReceivingStep);
+                EcliptixProtocolChainStep.FromProtoState(RatchetChainStepType.Receiver, proto.ReceivingStep);
             if (receivingStepResult.IsErr)
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(receivingStepResult.UnwrapErr());
             receivingStep = receivingStepResult.Unwrap();
@@ -430,7 +433,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
                 byte[] receiverKey = localReceiverCk.AsSpan(0, Constants.X25519KeySize).ToArray();
                 Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> createReceiverResult = EcliptixProtocolChainStep.Create(
-                    ChainStepType.Receiver, receiverKey, persistentPrivKeyBytes, _persistentDhPublicKey);
+                    RatchetChainStepType.Receiver, receiverKey, persistentPrivKeyBytes, _persistentDhPublicKey);
                 if (createReceiverResult.IsErr)
                 {
                     tempRootHandle?.Dispose();
@@ -440,7 +443,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 EcliptixProtocolChainStep receivingStep = createReceiverResult.Unwrap();
 
                 _rootKeyHandle = tempRootHandle;
-                tempRootHandle = null;
                 _receivingStep = receivingStep;
                 _peerDhPublicKey = peerDhPublicCopy;
                 peerDhPublicCopy = null;
@@ -531,7 +533,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
             Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> receivingStepResult = EnsureReceivingStepInitialized();
             if (receivingStepResult.IsErr) return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(receivingStepResult.UnwrapErr());
 
-            Result<uint, EcliptixProtocolFailure> currentIndexResult = _receivingStep!.GetCurrentIndex();
+            _receivingStep!.GetCurrentIndex();
 
             Result<RatchetChainKey, EcliptixProtocolFailure> derivedKeyResult = _receivingStep!.GetOrDeriveKeyFor(receivedIndex);
             if (derivedKeyResult.IsErr) return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(derivedKeyResult.UnwrapErr());
@@ -587,6 +589,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
         }
     }
 
+    
+    
     internal Result<byte[], EcliptixProtocolFailure> GenerateNextNonce()
     {
         lock (_lock)
@@ -598,7 +602,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
             RandomNumberGenerator.Fill(nonceBuffer.AsSpan(0, 8));
 
             long nextCounter = Interlocked.Increment(ref _nonceCounter);
-            if (nextCounter > ProtocolConstants.Protocol.MaxNonceCounter)
+            if (nextCounter > MaxNonceCounter)
             {
                 return Result<byte[], EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic("Nonce counter overflow detected - connection must be rekeyed"));
@@ -665,8 +669,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
             _disposed = true;
             if (disposing)
             {
-                _replayProtection?.Dispose();
-                _ratchetRecovery?.Dispose();
+                _replayProtection.Dispose();
+                _ratchetRecovery.Dispose();
                 _profiler?.Reset();
 
                 _rootKeyHandle?.Dispose();

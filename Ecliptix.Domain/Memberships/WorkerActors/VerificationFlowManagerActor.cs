@@ -5,18 +5,21 @@ using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Providers.Twilio;
 using Ecliptix.Utilities;
+using Ecliptix.Utilities.Configuration;
 using Ecliptix.Protobuf.Membership;
+using Microsoft.Extensions.Options;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors;
 
 public record FlowCompletedGracefullyActorEvent(IActorRef ActorRef);
 
-public class VerificationFlowManagerActor : ReceiveActor
+public sealed class VerificationFlowManagerActor : ReceiveActor
 {
     private readonly ILocalizationProvider _localizationProvider;
     private readonly IActorRef _membershipActor;
     private readonly IActorRef _persistor;
     private readonly ISmsProvider _smsProvider;
+    private readonly IOptions<SecurityConfiguration> _securityConfig;
 
     private readonly Dictionary<IActorRef, ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>>
         _flowWriters = new();
@@ -25,12 +28,14 @@ public class VerificationFlowManagerActor : ReceiveActor
         IActorRef persistor,
         IActorRef membershipActor,
         ISmsProvider smsProvider,
-        ILocalizationProvider localizationProvider)
+        ILocalizationProvider localizationProvider,
+        IOptions<SecurityConfiguration> securityConfig)
     {
         _persistor = persistor;
         _membershipActor = membershipActor;
         _smsProvider = smsProvider;
         _localizationProvider = localizationProvider;
+        _securityConfig = securityConfig;
 
         Become(Ready);
     }
@@ -70,7 +75,8 @@ public class VerificationFlowManagerActor : ReceiveActor
                 _membershipActor,
                 _smsProvider,
                 _localizationProvider,
-                actorEvent.CultureName
+                actorEvent.CultureName,
+                _securityConfig
             ), baseActorName);
 
             Context.Watch(newFlowActor);
@@ -177,8 +183,8 @@ public class VerificationFlowManagerActor : ReceiveActor
         $"flow-{connectId}";
 
     public static Props Build(IActorRef persistor, IActorRef membershipActor, ISmsProvider smsProvider,
-        ILocalizationProvider localizationProvider)
+        ILocalizationProvider localizationProvider, IOptions<SecurityConfiguration> securityConfig)
     {
-        return Props.Create(() => new VerificationFlowManagerActor(persistor, membershipActor, smsProvider, localizationProvider));
+        return Props.Create(() => new VerificationFlowManagerActor(persistor, membershipActor, smsProvider, localizationProvider, securityConfig));
     }
 }

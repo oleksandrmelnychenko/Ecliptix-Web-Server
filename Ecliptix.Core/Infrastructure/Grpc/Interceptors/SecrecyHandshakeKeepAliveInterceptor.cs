@@ -8,7 +8,7 @@ using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 
-public class SessionKeepAliveInterceptor(IEcliptixActorRegistry actorRegistry) : Interceptor
+public class SecrecyHandshakeKeepAliveInterceptor(IEcliptixActorRegistry actorRegistry) : Interceptor
 {
     private readonly Lazy<IActorRef> _protocolSystemActor = new(() => actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor));
 

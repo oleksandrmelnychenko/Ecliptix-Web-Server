@@ -24,7 +24,7 @@ using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Membership;
 
-public class MembershipServices(
+internal sealed class MembershipServices(
     IEcliptixActorRegistry actorRegistry,
     IMobileNumberValidator phoneNumberValidator,
     IGrpcCipherService grpcCipherService,
