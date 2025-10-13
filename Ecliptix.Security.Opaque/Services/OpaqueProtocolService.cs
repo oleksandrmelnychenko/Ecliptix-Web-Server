@@ -16,12 +16,6 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
     private nint _currentServerState;
     private DerivedServerKeys? _serverKeys;
 
-    private class DerivedServerKeys
-    {
-        public byte[] PrivateKey { get; set; } = new byte[OpaqueConstants.PRIVATE_KEY_LENGTH];
-        public byte[] PublicKey { get; set; } = new byte[OpaqueConstants.PUBLIC_KEY_LENGTH];
-    }
-
     public Result<Unit, OpaqueServerFailure> Initialize(string secretKeySeed)
     {
         try
@@ -153,6 +147,14 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
         }
     }
 
+    public Result<byte[], OpaqueServerFailure> GetServerPublicKey()
+    {
+        byte[] publicKeyCopy = new byte[OpaqueConstants.PUBLIC_KEY_LENGTH];
+        Array.Copy(_serverKeys!.PublicKey, publicKeyCopy, OpaqueConstants.PUBLIC_KEY_LENGTH);
+
+        return Result<byte[], OpaqueServerFailure>.Ok(publicKeyCopy);
+    }
+
     public void Dispose()
     {
         if (_serverKeys != null)
@@ -175,14 +177,6 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
         }
     }
 
-    public Result<byte[], OpaqueServerFailure> GetServerPublicKey()
-    {
-        byte[] publicKeyCopy = new byte[OpaqueConstants.PUBLIC_KEY_LENGTH];
-        Array.Copy(_serverKeys!.PublicKey, publicKeyCopy, OpaqueConstants.PUBLIC_KEY_LENGTH);
-
-        return Result<byte[], OpaqueServerFailure>.Ok(publicKeyCopy);
-    }
-
     private static Result<DerivedServerKeys, OpaqueServerFailure> DeriveKeysFromMaterial(string keyMaterial)
     {
         byte[] keyMaterialBytes = Convert.FromHexString(keyMaterial);
@@ -202,5 +196,11 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
                 OpaqueServerFailure.LibraryInitializationFailed($"Failed to derive keys from seed: {result}"));
 
         return Result<DerivedServerKeys, OpaqueServerFailure>.Ok(keys);
+    }
+
+    private class DerivedServerKeys
+    {
+        public byte[] PrivateKey { get; set; } = new byte[OpaqueConstants.PRIVATE_KEY_LENGTH];
+        public byte[] PublicKey { get; set; } = new byte[OpaqueConstants.PUBLIC_KEY_LENGTH];
     }
 }

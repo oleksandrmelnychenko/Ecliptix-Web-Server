@@ -12,44 +12,6 @@ public sealed class CertificatePinningService : IDisposable
     private volatile bool _isInitialized;
     private volatile bool _disposed;
 
-    private static class Ed25519Validation
-    {
-        private const int PublicKeySize = 32;
-        private const int PrivateKeySize = 32;
-        private const int SignatureSize = 64;
-        private const int MaxMessageSize = 1024 * 1024;
-
-        public static Result<Unit, CertificatePinningFailure> ValidatePublicKey(ReadOnlyMemory<byte> publicKey)
-        {
-            if (publicKey.Length != PublicKeySize)
-                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidPublicKey());
-            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
-        }
-
-        public static Result<Unit, CertificatePinningFailure> ValidatePrivateKey(ReadOnlyMemory<byte> privateKey)
-        {
-            if (privateKey.Length != PrivateKeySize)
-                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidPrivateKey());
-            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
-        }
-
-        public static Result<Unit, CertificatePinningFailure> ValidateSignature(ReadOnlyMemory<byte> signature)
-        {
-            if (signature.Length != SignatureSize)
-                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidSignature());
-            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
-        }
-
-        public static Result<Unit, CertificatePinningFailure> ValidateMessage(ReadOnlyMemory<byte> message)
-        {
-            if (message.Length == 0)
-                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.MessageRequired());
-            if (message.Length > MaxMessageSize)
-                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.MessageRequired());
-            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
-        }
-    }
-
     public Result<Unit, CertificatePinningFailure> Initialize()
     {
         lock (_lock)
@@ -473,6 +435,44 @@ public sealed class CertificatePinningService : IDisposable
             {
                 _isInitialized = false;
             }
+        }
+    }
+
+    private static class Ed25519Validation
+    {
+        private const int PublicKeySize = 32;
+        private const int PrivateKeySize = 32;
+        private const int SignatureSize = 64;
+        private const int MaxMessageSize = 1024 * 1024;
+
+        public static Result<Unit, CertificatePinningFailure> ValidatePublicKey(ReadOnlyMemory<byte> publicKey)
+        {
+            if (publicKey.Length != PublicKeySize)
+                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidPublicKey());
+            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+        }
+
+        public static Result<Unit, CertificatePinningFailure> ValidatePrivateKey(ReadOnlyMemory<byte> privateKey)
+        {
+            if (privateKey.Length != PrivateKeySize)
+                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidPrivateKey());
+            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+        }
+
+        public static Result<Unit, CertificatePinningFailure> ValidateSignature(ReadOnlyMemory<byte> signature)
+        {
+            if (signature.Length != SignatureSize)
+                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidSignature());
+            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+        }
+
+        public static Result<Unit, CertificatePinningFailure> ValidateMessage(ReadOnlyMemory<byte> message)
+        {
+            if (message.Length == 0)
+                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.MessageRequired());
+            if (message.Length > MaxMessageSize)
+                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.MessageRequired());
+            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
         }
     }
 }

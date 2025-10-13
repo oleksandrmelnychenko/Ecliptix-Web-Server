@@ -11,7 +11,7 @@ using Google.Protobuf;
 
 namespace Ecliptix.Security.Opaque.Services;
 
-public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeService) : IOpaqueProtocolService
+public sealed class OpaqueProtocolAdapter : IOpaqueProtocolService
 {
     private const int ContextTokenSize = 64;
     private const int ServerOprfResponseSize = 32;
@@ -28,6 +28,13 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
     private const string AuthenticationSuccessful = "Authentication successful";
     private const string AuthenticationFailed = "Authentication failed";
 
+    private readonly INativeOpaqueProtocolService _nativeService;
+
+    public OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeService)
+    {
+        _nativeService = nativeService;
+    }
+
     public (byte[] Response, byte[] MaskingKey) ProcessOprfRequest(byte[] oprfRequest)
     {
         Result<RegistrationRequest, OpaqueServerFailure> registrationRequestResult =
@@ -41,7 +48,7 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
 
         RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
         Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
-            nativeService.CreateRegistrationResponse(registrationRequest);
+            _nativeService.CreateRegistrationResponse(registrationRequest);
 
         return result.Match(
             ok =>
@@ -67,7 +74,7 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
 
         RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
         Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
-            nativeService.CreateRegistrationResponse(registrationRequest);
+            _nativeService.CreateRegistrationResponse(registrationRequest);
 
         return result.Match(
             ok =>
@@ -84,6 +91,90 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         );
     }
 
+    public Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure> InitiateSignIn(
+        OpaqueSignInInitRequest request, MembershipOpaqueQueryRecord queryRecord)
+    {
+        Result<KE1, OpaqueFailure> ke1ValidationResult = ValidateKe1(request);
+        if (ke1ValidationResult.IsErr)
+            return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(ke1ValidationResult.UnwrapErr());
+
+        KE1 ke1 = ke1ValidationResult.Unwrap();
+        byte[] serverCredentials =
+            ConstructServerCredentials(queryRecord.RegistrationRecord, queryRecord.MaskingKey);
+
+        Result<KE2, OpaqueServerFailure> ke2Result =
+            _nativeService.GenerateKe2(ke1, serverCredentials);
+
+        return ke2Result.Match(
+            ok =>
+            {
+                Span<byte> serverMacSpan = stackalloc byte[ServerMacSize];
+                ExtractServerMac(ok.Data, serverMacSpan);
+                byte[] serverMac = serverMacSpan.ToArray();
+
+                OpaqueSignInInitResponse response =
+                    BuildSignInInitResponse(ok.Data, queryRecord.RegistrationRecord);
+                return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Ok((response, serverMac));
+            },
+            err => Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(
+                OpaqueFailure.InvalidInput($"KE2 generation failed: {err.Message}")));
+    }
+
+    public Result<(SodiumSecureMemoryHandle SessionKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure> CompleteSignIn(
+        OpaqueSignInFinalizeRequest request,
+        byte[] serverMac)
+    {
+        Result<KE3, OpaqueFailure> ke3ValidationResult = ValidateKe3(request);
+        if (ke3ValidationResult.IsErr)
+            return Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(ke3ValidationResult.UnwrapErr());
+
+        KE3 ke3 = ke3ValidationResult.Unwrap();
+
+        Result<SodiumSecureMemoryHandle, OpaqueServerFailure> sessionKeyResult =
+            _nativeService.FinishAuthentication(ke3);
+
+        return sessionKeyResult.Match(
+            ok => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
+                (ok, BuildSuccessfulFinalizeResponse(serverMac))),
+            err => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
+                (null!, BuildFailedFinalizeResponse()))
+        );
+    }
+
+    public Result<byte[], OpaqueFailure> CompleteRegistrationWithSessionKey(byte[] peerRegistrationRecord)
+    {
+        try
+        {
+            Result<RegistrationRequest, OpaqueServerFailure> registrationRequestResult =
+                RegistrationRequest.Create(peerRegistrationRecord);
+
+            if (registrationRequestResult.IsErr)
+            {
+                return Result<byte[], OpaqueFailure>.Err(
+                    OpaqueFailure.InvalidInput($"Invalid registration record: {registrationRequestResult.UnwrapErr().Message}"));
+            }
+
+            RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
+            Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
+                _nativeService.CreateRegistrationResponse(registrationRequest);
+
+            return result.Match(
+                ok =>
+                {
+                    ReadOnlySpan<byte> exportKeySpan = ok.ServerCredentials.AsSpan(CredentialsExportKeyOffset, MaskingKeySize);
+                    byte[] sessionKey = exportKeySpan.ToArray();
+                    return Result<byte[], OpaqueFailure>.Ok(sessionKey);
+                },
+                err => Result<byte[], OpaqueFailure>.Err(
+                    OpaqueFailure.InvalidInput($"Registration completion failed: {err.Message}"))
+            );
+        }
+        catch (Exception ex)
+        {
+            return Result<byte[], OpaqueFailure>.Err(
+                OpaqueFailure.InvalidInput($"Registration completion failed: {ex.Message}"));
+        }
+    }
 
     private static Result<KE1, OpaqueFailure> ValidateKe1(OpaqueSignInInitRequest request)
     {
@@ -174,91 +265,6 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         finally
         {
             ArrayPool<byte>.Shared.Return(credentials, clearArray: true);
-        }
-    }
-
-    public Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure> InitiateSignIn(
-        OpaqueSignInInitRequest request, MembershipOpaqueQueryRecord queryRecord)
-    {
-        Result<KE1, OpaqueFailure> ke1ValidationResult = ValidateKe1(request);
-        if (ke1ValidationResult.IsErr)
-            return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(ke1ValidationResult.UnwrapErr());
-
-        KE1 ke1 = ke1ValidationResult.Unwrap();
-        byte[] serverCredentials =
-            ConstructServerCredentials(queryRecord.RegistrationRecord, queryRecord.MaskingKey);
-
-        Result<KE2, OpaqueServerFailure> ke2Result =
-            nativeService.GenerateKe2(ke1, serverCredentials);
-
-        return ke2Result.Match(
-            ok =>
-            {
-                Span<byte> serverMacSpan = stackalloc byte[ServerMacSize];
-                ExtractServerMac(ok.Data, serverMacSpan);
-                byte[] serverMac = serverMacSpan.ToArray();
-
-                OpaqueSignInInitResponse response =
-                    BuildSignInInitResponse(ok.Data, queryRecord.RegistrationRecord);
-                return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Ok((response, serverMac));
-            },
-            err => Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(
-                OpaqueFailure.InvalidInput($"KE2 generation failed: {err.Message}")));
-    }
-
-    public Result<(SodiumSecureMemoryHandle SessionKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure> CompleteSignIn(
-        OpaqueSignInFinalizeRequest request,
-        byte[] serverMac)
-    {
-        Result<KE3, OpaqueFailure> ke3ValidationResult = ValidateKe3(request);
-        if (ke3ValidationResult.IsErr)
-            return Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(ke3ValidationResult.UnwrapErr());
-
-        KE3 ke3 = ke3ValidationResult.Unwrap();
-
-        Result<SodiumSecureMemoryHandle, OpaqueServerFailure> sessionKeyResult =
-            nativeService.FinishAuthentication(ke3);
-
-        return sessionKeyResult.Match(
-            ok => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
-                (ok, BuildSuccessfulFinalizeResponse(serverMac))),
-            err => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
-                (null!, BuildFailedFinalizeResponse()))
-        );
-    }
-
-    public Result<byte[], OpaqueFailure> CompleteRegistrationWithSessionKey(byte[] peerRegistrationRecord)
-    {
-        try
-        {
-            Result<RegistrationRequest, OpaqueServerFailure> registrationRequestResult =
-                RegistrationRequest.Create(peerRegistrationRecord);
-
-            if (registrationRequestResult.IsErr)
-            {
-                return Result<byte[], OpaqueFailure>.Err(
-                    OpaqueFailure.InvalidInput($"Invalid registration record: {registrationRequestResult.UnwrapErr().Message}"));
-            }
-
-            RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
-            Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
-                nativeService.CreateRegistrationResponse(registrationRequest);
-
-            return result.Match(
-                ok =>
-                {
-                    ReadOnlySpan<byte> exportKeySpan = ok.ServerCredentials.AsSpan(CredentialsExportKeyOffset, MaskingKeySize);
-                    byte[] sessionKey = exportKeySpan.ToArray();
-                    return Result<byte[], OpaqueFailure>.Ok(sessionKey);
-                },
-                err => Result<byte[], OpaqueFailure>.Err(
-                    OpaqueFailure.InvalidInput($"Registration completion failed: {err.Message}"))
-            );
-        }
-        catch (Exception ex)
-        {
-            return Result<byte[], OpaqueFailure>.Err(
-                OpaqueFailure.InvalidInput($"Registration completion failed: {ex.Message}"));
         }
     }
 }

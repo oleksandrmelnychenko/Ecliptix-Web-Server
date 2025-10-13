@@ -19,19 +19,7 @@ using ByteString = Google.Protobuf.ByteString;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors;
 
-public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey, byte[] MaskingKey);
-
-public record GenerateMembershipOprfRegistrationRequestEvent(Guid MembershipIdentifier, byte[] OprfRequest);
-
-public record CompleteRegistrationRecordActorEvent(Guid MembershipIdentifier, byte[] PeerRegistrationRecord, uint ConnectId);
-
-public record OprfInitRecoverySecureKeyEvent(Guid MembershipIdentifier, byte[] OprfRequest, string CultureName);
-
-public record OprfCompleteRecoverySecureKeyEvent(Guid MembershipIdentifier, byte[] PeerRecoveryRecord);
-
-public record SignInCompleteEvent(uint ConnectId, OpaqueSignInFinalizeRequest Request);
-
-public class MembershipActor : ReceiveActor
+public sealed class MembershipActor : ReceiveActor
 {
     private readonly ILocalizationProvider _localizationProvider;
     private readonly IActorRef _persistor;
@@ -667,5 +655,18 @@ public class MembershipActor : ReceiveActor
     }
 }
 
+public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey, byte[] MaskingKey);
+
+public record GenerateMembershipOprfRegistrationRequestEvent(Guid MembershipIdentifier, byte[] OprfRequest);
+
+public record CompleteRegistrationRecordActorEvent(Guid MembershipIdentifier, byte[] PeerRegistrationRecord, uint ConnectId);
+
+public record OprfInitRecoverySecureKeyEvent(Guid MembershipIdentifier, byte[] OprfRequest, string CultureName);
+
+public record OprfCompleteRecoverySecureKeyEvent(Guid MembershipIdentifier, byte[] PeerRecoveryRecord);
+
+public record SignInCompleteEvent(uint ConnectId, OpaqueSignInFinalizeRequest Request);
+
 internal record CleanupExpiredPendingSignIns;
+
 internal record CleanupExpiredPasswordRecovery;
