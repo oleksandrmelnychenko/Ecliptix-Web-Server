@@ -34,10 +34,5 @@ public class MobileNumberConfiguration : EntityBaseMap<MobileNumberEntity>
         builder.HasIndex(e => e.Region)
             .HasFilter("IsDeleted = 0 AND Region IS NOT NULL")
             .HasDatabaseName("IX_MobileNumbers_Region");
-
-        builder.HasIndex(e => e.CreatedAt)
-            .IsDescending()
-            .HasFilter("IsDeleted = 0")
-            .HasDatabaseName("IX_MobileNumbers_CreatedAt");
     }
 }

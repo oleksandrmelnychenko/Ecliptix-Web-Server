@@ -63,14 +63,21 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntit
         builder.HasOne(e => e.MobileNumber)
             .WithMany(p => p.VerificationFlows)
             .HasForeignKey(e => e.MobileNumberId)
-            .OnDelete(DeleteBehavior.Cascade)
+            .OnDelete(DeleteBehavior.NoAction)
             .HasConstraintName("FK_VerificationFlows_MobileNumbers");
 
         builder.HasOne(e => e.Device)
             .WithMany(d => d.VerificationFlows)
             .HasForeignKey(e => e.AppDeviceId)
             .HasPrincipalKey(d => d.UniqueId)
-            .OnDelete(DeleteBehavior.Cascade)
+            .OnDelete(DeleteBehavior.NoAction)
             .HasConstraintName("FK_VerificationFlows_Devices");
+        
+        builder.HasOne(e => e.Account)
+            .WithMany()
+            .HasForeignKey(e => e.AccountId)
+            .HasPrincipalKey(a => a.UniqueId)
+            .OnDelete(DeleteBehavior.Cascade)
+            .HasConstraintName("FK_VerificationFlows_Accounts");
     }
 }

@@ -12,9 +12,6 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
 
         builder.ToTable("LoginAttempts");
 
-        builder.Property(e => e.MobileNumber)
-            .HasMaxLength(18);
-
         builder.Property(e => e.Outcome)
             .HasMaxLength(200);
 
@@ -52,18 +49,18 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
             .HasFilter("IsDeleted = 0 AND SessionId IS NOT NULL")
             .HasDatabaseName("IX_LoginAttempts_SessionId");
 
-        builder.HasIndex(e => e.MobileNumber)
-            .HasFilter("IsDeleted = 0 AND MobileNumber IS NOT NULL")
-            .HasDatabaseName("IX_LoginAttempts_MobileNumber");
+        builder.HasIndex(e => e.MobileNumberId)
+            .HasFilter("IsDeleted = 0 AND MobileNumberId IS NOT NULL")
+            .HasDatabaseName("IX_LoginAttempts_MobileNumberId");
 
         SqlServerIndexBuilderExtensions.IncludeProperties(
-            builder.HasIndex(e => new { e.MobileNumber, e.Timestamp })
+            builder.HasIndex(e => new { e.MobileNumberId, e.Timestamp })
                 .IsDescending(false, true)
-                .HasFilter("IsDeleted = 0 AND MobileNumber IS NOT NULL AND LockedUntil IS NULL"),
+                .HasFilter("IsDeleted = 0 AND MobileNumberId IS NOT NULL AND LockedUntil IS NULL"),
             e => e.IsSuccess)
             .HasDatabaseName("IX_LoginAttempts_RateLimiting");
 
-        builder.HasIndex(e => new { e.MobileNumber, e.LockedUntil })
+        builder.HasIndex(e => new { e.MobileNumberId, e.LockedUntil })
             .HasFilter("IsDeleted = 0 AND LockedUntil IS NOT NULL")
             .HasDatabaseName("IX_LoginAttempts_Lockout");
 
@@ -74,9 +71,17 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
         builder.HasOne(e => e.Account)
             .WithMany(a => a.LoginAttempts)
             .HasForeignKey(e => e.AccountId)
-            .HasPrincipalKey(m => m.UniqueId)
+            .HasPrincipalKey(a => a.UniqueId)
             .OnDelete(DeleteBehavior.Cascade)
+            .IsRequired()
+            .HasConstraintName("FK_LoginAttempts_Accounts");
+        
+        builder.HasOne(e => e.MobileNumber)
+            .WithMany()
+            .HasForeignKey(e => e.MobileNumberId)
+            .HasPrincipalKey(m => m.UniqueId)
+            .OnDelete(DeleteBehavior.NoAction)
             .IsRequired(false)
-            .HasConstraintName("FK_LoginAttempts_Memberships");
+            .HasConstraintName("FK_LoginAttempts_MobileNumbers");
     }
 }

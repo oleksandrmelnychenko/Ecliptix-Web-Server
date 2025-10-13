@@ -41,12 +41,14 @@ public class MobileDeviceConfiguration : EntityBaseMap<MobileDeviceEntity>
         builder.HasOne(e => e.Account)
             .WithMany(a => a.MobileDevices)
             .HasForeignKey(e => e.AccountId)
+            .HasPrincipalKey(a => a.UniqueId)
             .OnDelete(DeleteBehavior.Cascade)
             .HasConstraintName("FK_MobileDevices_Accounts");
 
         builder.HasOne(e => e.Device)
             .WithMany(d => d.MobileDevices)
             .HasForeignKey(e => e.DeviceId)
+            .HasPrincipalKey(a => a.UniqueId)
             .OnDelete(DeleteBehavior.Cascade)
             .HasConstraintName("FK_MobileDevices_Devices");
     }
