@@ -12,11 +12,8 @@ public class MobileDeviceConfiguration : EntityBaseMap<MobileDeviceEntity>
 
         builder.ToTable("MobileDevices");
 
-        builder.Property(e => e.MobileNumberId)
-            .IsRequired();
-
-        builder.Property(e => e.DeviceId)
-            .IsRequired();
+        builder.Property(e => e.AccountId).IsRequired();
+        builder.Property(e => e.DeviceId).IsRequired();
 
         builder.Property(e => e.RelationshipType)
             .HasMaxLength(50)
@@ -25,15 +22,12 @@ public class MobileDeviceConfiguration : EntityBaseMap<MobileDeviceEntity>
         builder.Property(e => e.IsActive)
             .HasDefaultValue(true);
 
-        builder.HasIndex(e => new { e.MobileNumberId, e.DeviceId })
+        builder.HasIndex(e => new { e.AccountId, e.DeviceId })
             .IsUnique()
-            .HasDatabaseName("UQ_MobileDevices_PhoneDevice");
+            .HasDatabaseName("UQ_MobileDevices_AccountDevice");
 
-        builder.HasIndex(e => e.MobileNumberId)
-            .HasDatabaseName("IX_MobileDevices_MobileNumberId");
-
-        builder.HasIndex(e => e.DeviceId)
-            .HasDatabaseName("IX_MobileDevices_DeviceId");
+        builder.HasIndex(e => e.AccountId)
+            .HasDatabaseName("IX_MobileDevices_AccountId");
 
         builder.HasIndex(e => e.IsActive)
             .HasFilter("IsDeleted = 0")
@@ -44,11 +38,11 @@ public class MobileDeviceConfiguration : EntityBaseMap<MobileDeviceEntity>
             .HasFilter("IsDeleted = 0 AND LastUsedAt IS NOT NULL")
             .HasDatabaseName("IX_MobileDevices_LastUsedAt");
 
-        builder.HasOne(e => e.MobileNumber)
-            .WithMany(p => p.MobileDevices)
-            .HasForeignKey(e => e.MobileNumberId)
+        builder.HasOne(e => e.Account)
+            .WithMany(a => a.MobileDevices)
+            .HasForeignKey(e => e.AccountId)
             .OnDelete(DeleteBehavior.Cascade)
-            .HasConstraintName("FK_MobileDevices_MobileNumbers");
+            .HasConstraintName("FK_MobileDevices_Accounts");
 
         builder.HasOne(e => e.Device)
             .WithMany(d => d.MobileDevices)

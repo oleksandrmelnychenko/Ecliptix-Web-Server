@@ -39,10 +39,10 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
         builder.Property(e => e.AttemptedAt)
             .HasDefaultValueSql("GETUTCDATE()");
 
-        builder.HasIndex(e => new { e.MembershipUniqueId, e.AttemptedAt })
+        builder.HasIndex(e => new { e.AccountId, e.AttemptedAt })
             .IsDescending(false, true)
             .HasFilter("IsDeleted = 0")
-            .HasDatabaseName("IX_LoginAttempts_Membership_AttemptedAt");
+            .HasDatabaseName("IX_LoginAttempts_Account_AttemptedAt");
 
         builder.HasIndex(e => e.Status)
             .HasFilter("IsDeleted = 0")
@@ -56,7 +56,7 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
             .HasFilter("IsDeleted = 0 AND MobileNumber IS NOT NULL")
             .HasDatabaseName("IX_LoginAttempts_MobileNumber");
 
-        Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
+        SqlServerIndexBuilderExtensions.IncludeProperties(
             builder.HasIndex(e => new { e.MobileNumber, e.Timestamp })
                 .IsDescending(false, true)
                 .HasFilter("IsDeleted = 0 AND MobileNumber IS NOT NULL AND LockedUntil IS NULL"),
@@ -71,9 +71,9 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_LoginAttempts_IsSuccess");
 
-        builder.HasOne(e => e.Membership)
-            .WithMany(m => m.LoginAttempts)
-            .HasForeignKey(e => e.MembershipUniqueId)
+        builder.HasOne(e => e.Account)
+            .WithMany(a => a.LoginAttempts)
+            .HasForeignKey(e => e.AccountId)
             .HasPrincipalKey(m => m.UniqueId)
             .OnDelete(DeleteBehavior.Cascade)
             .IsRequired(false)

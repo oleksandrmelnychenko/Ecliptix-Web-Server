@@ -54,7 +54,7 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntit
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_VerificationFlows_ExpiresAt");
 
-        Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
+        SqlServerIndexBuilderExtensions.IncludeProperties(
             builder.HasIndex(e => new { e.MobileNumberId, e.AppDeviceId, e.Purpose, e.Status, e.ExpiresAt })
                 .HasFilter("IsDeleted = 0 AND Status = 'pending'"),
             e => new { e.UniqueId, e.ConnectionId, e.OtpCount, e.CreatedAt, e.UpdatedAt })
@@ -66,7 +66,7 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntit
             .OnDelete(DeleteBehavior.Cascade)
             .HasConstraintName("FK_VerificationFlows_MobileNumbers");
 
-        builder.HasOne(e => e.AppDevice)
+        builder.HasOne(e => e.Device)
             .WithMany(d => d.VerificationFlows)
             .HasForeignKey(e => e.AppDeviceId)
             .HasPrincipalKey(d => d.UniqueId)
