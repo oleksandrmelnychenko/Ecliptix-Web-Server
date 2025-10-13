@@ -7,29 +7,30 @@ using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
-using Ecliptix.Protobuf.Membership;
 using Serilog;
-using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
-using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteResponse;
-using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitResponse;
-using OprfRegistrationInitResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationInitResponse;
-using OprfRegistrationCompleteRequest = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteRequest;
-using OprfRecoverySecretKeyCompleteRequest = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteRequest;
-using OprfRegistrationInitRequest = Ecliptix.Protobuf.Membership.OpaqueRegistrationInitRequest;
-using OprfRecoverySecureKeyInitRequest = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitRequest;
+using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Account.OpaqueRegistrationCompleteResponse;
+using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Account.OpaqueRecoverySecretKeyCompleteResponse;
+using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Account.OpaqueRecoverySecureKeyInitResponse;
+using OprfRegistrationInitResponse = Ecliptix.Protobuf.Account.OpaqueRegistrationInitResponse;
+using OprfRegistrationCompleteRequest = Ecliptix.Protobuf.Account.OpaqueRegistrationCompleteRequest;
+using OprfRecoverySecretKeyCompleteRequest = Ecliptix.Protobuf.Account.OpaqueRecoverySecretKeyCompleteRequest;
+using OprfRegistrationInitRequest = Ecliptix.Protobuf.Account.OpaqueRegistrationInitRequest;
+using OprfRecoverySecureKeyInitRequest = Ecliptix.Protobuf.Account.OpaqueRecoverySecureKeyInitRequest;
 using Grpc.Core;
 using System.Globalization;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
+using Ecliptix.Domain.Account.WorkerActors;
+using Ecliptix.Protobuf.Account;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Membership;
 
-internal sealed class MembershipServices(
+internal sealed class AccountServices(
     IEcliptixActorRegistry actorRegistry,
     IMobileNumberValidator phoneNumberValidator,
     IGrpcCipherService grpcCipherService,
     ActorSystem actorSystem
-) : Protobuf.Membership.MembershipServices.MembershipServicesBase
+) : Protobuf.Account.AccountServices.AccountServicesBase
 
 {
     private readonly RpcServiceBase _baseService = new(grpcCipherService);
@@ -107,7 +108,7 @@ internal sealed class MembershipServices(
                 async (message, connectId, ct) =>
                 {
                     CompleteRegistrationRecordActorEvent @event = new(
-                        Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                        Helpers.FromByteStringToGuid(message.AccountIdentifier),
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory),
                         connectId);
 
@@ -130,7 +131,7 @@ internal sealed class MembershipServices(
             async (message, _, ct) =>
             {
                 OprfCompleteRecoverySecureKeyEvent @event = new(
-                    Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                    Helpers.FromByteStringToGuid(message.AccountIdentifier),
                     Helpers.ReadMemoryToRetrieveBytes(message.PeerRecoveryRecord.Memory));
 
                 Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure> completeRecoverySecretKeyResult =
@@ -152,7 +153,7 @@ internal sealed class MembershipServices(
                 async (message, _, ct) =>
                 {
                     GenerateMembershipOprfRegistrationRequestEvent @event = new(
-                        Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                        Helpers.FromByteStringToGuid(message.AccountIdentifier),
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory));
 
                     Result<OprfRegistrationInitResponse, VerificationFlowFailure> updateOperationResult =
@@ -172,7 +173,7 @@ internal sealed class MembershipServices(
                 async (message, _, ct) =>
                 {
                     OprfInitRecoverySecureKeyEvent @event = new(
-                        Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                        Helpers.FromByteStringToGuid(message.AccountIdentifier),
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory),
                         _cultureName);
 
@@ -196,7 +197,7 @@ internal sealed class MembershipServices(
             {
                 try
                 {
-                    Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
+                    Guid membershipId = Helpers.FromByteStringToGuid(message.AccountIdentifier);
 
                     long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     long timestampDiff = Math.Abs(serverTimestamp - message.Timestamp);

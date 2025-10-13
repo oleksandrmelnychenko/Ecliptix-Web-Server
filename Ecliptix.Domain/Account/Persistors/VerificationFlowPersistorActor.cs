@@ -307,7 +307,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            Membership? membership = await MembershipQueries.GetByMobileUniqueId(
+            Membership? membership = await AccountQueries.GetByMobileUniqueId(
                 ctx, cmd.MobileNumberId);
 
             if (membership == null)

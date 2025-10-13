@@ -1,23 +1,23 @@
 using System.Security.Cryptography;
 using Akka.Actor;
-using Ecliptix.Utilities;
-using Ecliptix.Domain.Services.Security;
+using Ecliptix.Domain.Account.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Security.Opaque.Models;
-using Ecliptix.Security.Opaque.Contracts;
-using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.Protobuf.Membership;
+using Ecliptix.Domain.Services.Security;
+using Ecliptix.Protobuf.Account;
+using Ecliptix.Security.Opaque.Contracts;
+using Ecliptix.Security.Opaque.Models;
+using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures.Sodium;
 using Serilog;
-using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
-using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteResponse;
-using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitResponse;
-using OprfRegistrationInitResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationInitResponse;
+using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Account.OpaqueRegistrationCompleteResponse;
+using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Account.OpaqueRecoverySecretKeyCompleteResponse;
+using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Account.OpaqueRecoverySecureKeyInitResponse;
+using OprfRegistrationInitResponse = Ecliptix.Protobuf.Account.OpaqueRegistrationInitResponse;
 using ByteString = Google.Protobuf.ByteString;
 
-namespace Ecliptix.Domain.Memberships.WorkerActors;
+namespace Ecliptix.Domain.Account.WorkerActors;
 
 public sealed class MembershipActor : ReceiveActor
 {
@@ -27,8 +27,8 @@ public sealed class MembershipActor : ReceiveActor
     private readonly IMasterKeyService _masterKeyService;
 
     private readonly
-        Dictionary<uint, (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Membership.Types.ActivityStatus
-            ActivityStatus, Membership.Types.CreationStatus CreationStatus, DateTime CreatedAt, byte[] ServerMac)>
+        Dictionary<uint, (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Protobuf.Account.Account.Types.ActivityStatus
+            ActivityStatus, Protobuf.Account.Account.Types.CreationStatus CreationStatus, DateTime CreatedAt, byte[] ServerMac)>
         _pendingSignIns = new();
 
     private readonly Dictionary<Guid, byte[]> _pendingMaskingKeys = new();
@@ -129,8 +129,8 @@ public sealed class MembershipActor : ReceiveActor
         Log.Information("[REGISTRATION-COMPLETE] Updating OPAQUE credentials in database for membership {MembershipId}",
             @event.MembershipIdentifier);
 
-        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
+        Result<AccountQueryRecord, VerificationFlowFailure> persistorResult =
+            await _persistor.Ask<Result<AccountQueryRecord, VerificationFlowFailure>>(updateEvent);
 
         if (persistorResult.IsErr)
         {
@@ -229,8 +229,8 @@ public sealed class MembershipActor : ReceiveActor
         Log.Information("[PASSWORD-RECOVERY-COMPLETE] Updating OPAQUE credentials in database for membership {MembershipId}",
             @event.MembershipIdentifier);
 
-        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
+        Result<AccountQueryRecord, VerificationFlowFailure> persistorResult =
+            await _persistor.Ask<Result<AccountQueryRecord, VerificationFlowFailure>>(updateEvent);
 
         if (persistorResult.IsErr)
         {
@@ -356,11 +356,11 @@ public sealed class MembershipActor : ReceiveActor
 
         OprfRecoverySecureKeyInitResponse response = new()
         {
-            Membership = new Membership
+            Account = new Protobuf.Account.Account()
             {
                 UniqueIdentifier = Helpers.GuidToByteString(@event.MembershipIdentifier),
-                Status = Membership.Types.ActivityStatus.Active,
-                CreationStatus = Membership.Types.CreationStatus.SecureKeySet
+                Status = Protobuf.Account.Account.Types.ActivityStatus.Active,
+                CreationStatus = Protobuf.Account.Account.Types.CreationStatus.SecureKeySet
             },
             PeerOprf = ByteString.CopyFrom(oprfResponse),
             Result = OprfRecoverySecureKeyInitResponse.Types.RecoveryResult.Succeeded
@@ -381,11 +381,11 @@ public sealed class MembershipActor : ReceiveActor
 
         OprfRegistrationInitResponse response = new()
         {
-            Membership = new Membership
+            Account = new Protobuf.Account.Account
             {
                 UniqueIdentifier = Helpers.GuidToByteString(@event.MembershipIdentifier),
-                Status = Membership.Types.ActivityStatus.Inactive,
-                CreationStatus = Membership.Types.CreationStatus.OtpVerified
+                Status = Protobuf.Account.Account.Types.ActivityStatus.Inactive,
+                CreationStatus = Protobuf.Account.Account.Types.CreationStatus.OtpVerified
             },
             PeerOprf = ByteString.CopyFrom(oprfResponse),
             Result = OprfRegistrationInitResponse.Types.UpdateResult.Succeeded
@@ -397,22 +397,22 @@ public sealed class MembershipActor : ReceiveActor
 
     private async Task HandleCreateMembership(CreateMembershipActorEvent @event)
     {
-        Result<MembershipQueryRecord, VerificationFlowFailure> operationResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
+        Result<AccountQueryRecord, VerificationFlowFailure> operationResult =
+            await _persistor.Ask<Result<AccountQueryRecord, VerificationFlowFailure>>(@event);
         Sender.Tell(operationResult);
     }
 
     private async Task HandleGetMembershipByVerificationFlow(GetMembershipByVerificationFlowEvent @event)
     {
-        Result<MembershipQueryRecord, VerificationFlowFailure> operationResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
+        Result<AccountQueryRecord, VerificationFlowFailure> operationResult =
+            await _persistor.Ask<Result<AccountQueryRecord, VerificationFlowFailure>>(@event);
         Sender.Tell(operationResult);
     }
 
     private async Task HandleSignInMembership(SignInMembershipActorEvent @event)
     {
-        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
+        Result<AccountQueryRecord, VerificationFlowFailure> persistorResult =
+            await _persistor.Ask<Result<AccountQueryRecord, VerificationFlowFailure>>(@event);
 
         Result<OpaqueSignInInitResponse, VerificationFlowFailure> finalResult = persistorResult.Match(
             record =>
@@ -443,8 +443,8 @@ public sealed class MembershipActor : ReceiveActor
     private async Task HandleSignInComplete(SignInCompleteEvent @event)
     {
         if (!_pendingSignIns.TryGetValue(@event.ConnectId,
-                out (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Membership.Types.ActivityStatus
-                ActivityStatus, Membership.Types.CreationStatus CreationStatus, DateTime CreatedAt, byte[] ServerMac) membershipInfo))
+                out (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Protobuf.Account.Account.Types.ActivityStatus
+                ActivityStatus, Protobuf.Account.Account.Types.CreationStatus CreationStatus, DateTime CreatedAt, byte[] ServerMac) membershipInfo))
         {
             Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.InvalidOpaque("No matching sign-in initiation found for this connection")));
@@ -482,7 +482,7 @@ public sealed class MembershipActor : ReceiveActor
 
         SecureRemovePendingSignIn(@event.ConnectId);
 
-        finalizeResponse.Membership = new Membership
+        finalizeResponse.Account = new Protobuf.Account.Account()
         {
             UniqueIdentifier = Helpers.GuidToByteString(membershipInfo.MembershipId),
             Status = membershipInfo.ActivityStatus,
@@ -494,7 +494,10 @@ public sealed class MembershipActor : ReceiveActor
 
     private void SecureRemovePendingSignIn(uint connectId)
     {
-        if (_pendingSignIns.TryGetValue(connectId, out (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Membership.Types.ActivityStatus ActivityStatus, Membership.Types.CreationStatus CreationStatus, DateTime CreatedAt, byte[] ServerMac) membershipInfo))
+        if (_pendingSignIns.TryGetValue(connectId,
+                out (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Protobuf.Account.Account.Types.ActivityStatus
+                ActivityStatus, Protobuf.Account.Account.Types.CreationStatus CreationStatus, DateTime CreatedAt, byte[] ServerMac)
+                membershipInfo))
         {
             CryptographicOperations.ZeroMemory(membershipInfo.ServerMac);
             _pendingSignIns.Remove(connectId);

@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Akka.Actor;
+using Ecliptix.Domain.Account.WorkerActors;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
@@ -124,7 +125,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     VerificationFlowFailure.Validation(VerificationFlowMessageKeys.MobileNumberCannotBeEmpty));
             }
 
-            MembershipEntity? membership = await MembershipQueries.GetByMobileNumber(ctx, cmd.MobileNumber);
+            MembershipEntity? membership = await AccountQueries.GetByMobileNumber(ctx, cmd.MobileNumber);
             if (membership == null)
             {
                 await LogLoginAttemptAsync(ctx, cmd.MobileNumber, "mobile_number_not_found", false);
@@ -208,7 +209,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     VerificationFlowFailure.Validation("Masking key must be exactly 32 bytes"));
             }
 
-            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipIdentifier);
+            MembershipEntity? membership = await AccountQueries.GetByUniqueId(ctx, cmd.MembershipIdentifier);
             if (membership == null)
             {
                 return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
@@ -311,7 +312,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 }
             }
 
-            MembershipEntity? existingMembership = await MembershipQueries.GetByMobileUniqueIdAndDevice(
+            MembershipEntity? existingMembership = await AccountQueries.GetByMobileUniqueIdAndDevice(
                 ctx, mobileUniqueId, flow.AppDeviceId);
 
             if (existingMembership != null)
@@ -493,7 +494,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         try
         {
-            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId);
+            MembershipEntity? membership = await AccountQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId);
 
             if (membership == null)
             {

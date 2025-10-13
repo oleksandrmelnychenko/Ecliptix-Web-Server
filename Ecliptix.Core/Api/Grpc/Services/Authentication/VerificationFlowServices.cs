@@ -8,12 +8,11 @@ using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
-using Ecliptix.Protobuf.Membership;
 using Google.Protobuf;
 using Grpc.Core;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
-using Ecliptix.Domain.Memberships.Persistors.QueryResults;
+using Ecliptix.Protobuf.Account;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Authentication;
 

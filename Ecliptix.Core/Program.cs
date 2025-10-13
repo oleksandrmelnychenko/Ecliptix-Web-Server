@@ -241,7 +241,7 @@ static void ConfigureEndpoints(WebApplication app)
 {
     app.MapGrpcService<DeviceService>();
     app.MapGrpcService<VerificationFlowServices>();
-    app.MapGrpcService<MembershipServices>();
+    app.MapGrpcService<AccountServices>();
 
     app.MapHealthChecks(AppConstants.Endpoints.Health);
 

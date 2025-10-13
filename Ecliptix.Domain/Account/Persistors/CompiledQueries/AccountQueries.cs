@@ -4,14 +4,14 @@ using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
-public static class MembershipQueries
+public static class AccountQueries
 {
-    public static readonly Func<EcliptixSchemaContext, string, Task<MembershipEntity?>>
+    public static readonly Func<EcliptixSchemaContext, string, Task<AccountEntity?>>
         GetByMobileNumber = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, string mobileNumber) =>
-                ctx.Memberships
+                ctx.Accounts
                     .Join(ctx.MobileNumbers,
-                        m => m.MobileNumberId,
+                        a => a.MobileNumberId,
                         mn => mn.UniqueId,
                         (m, mn) => new { m, mn })
                     .Where(x => x.mn.Number == mobileNumber &&
@@ -21,32 +21,32 @@ public static class MembershipQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, Guid, Task<MembershipEntity?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Guid, Task<AccountEntity?>>
         GetByMobileUniqueIdAndDevice = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid mobileUniqueId, Guid deviceId) =>
-                ctx.Memberships
-                    .Where(m => m.MobileNumberId == mobileUniqueId &&
-                                m.AppDeviceId == deviceId &&
-                                !m.IsDeleted)
+                ctx.Accounts
+                    .Where(a => a.MobileNumberId == mobileUniqueId &&
+                                a.AppDeviceId == deviceId &&
+                                !a.IsDeleted)
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<MembershipEntity?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<AccountEntity?>>
         GetByUniqueId = EF.CompileAsyncQuery((EcliptixSchemaContext ctx, Guid uniqueId) =>
-            ctx.Memberships
-                .Where(m => m.UniqueId == uniqueId && !m.IsDeleted)
+            ctx.Accounts
+                .Where(a => a.UniqueId == uniqueId && !a.IsDeleted)
                 .AsNoTracking()
                 .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<MembershipEntity?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<AccountEntity?>>
         GetByMobileUniqueId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid mobileUniqueId) =>
-                ctx.Memberships
-                    .Include(m => m.MobileNumber)
-                    .Include(m => m.VerificationFlow)
-                    .Where(m => m.MobileNumber!.UniqueId == mobileUniqueId &&
-                                !m.IsDeleted &&
-                                !m.MobileNumber.IsDeleted)
+                ctx.Accounts
+                    .Include(a => a.MobileNumber)
+                    .Include(a => a.VerificationFlow)
+                    .Where(a => a.MobileNumber!.UniqueId == mobileUniqueId &&
+                                !a.IsDeleted &&
+                                !a.MobileNumber.IsDeleted)
                     .OrderByDescending(m => m.UpdatedAt)
                 .FirstOrDefault());
 }

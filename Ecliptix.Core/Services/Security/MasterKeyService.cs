@@ -3,6 +3,7 @@ using Akka.Actor;
 using Ecliptix.Core;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Services.KeyDerivation;
+using Ecliptix.Domain.Account.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
@@ -285,14 +286,14 @@ internal sealed class MasterKeyService(
     }
 
     public async Task<Result<string, FailureBase>> ValidateMasterKeySharesAsync(
-        dynamic sessionKeyHandle, Guid membershipId)
+        dynamic sessionKeyHandle, Guid accountId)
     {
         SodiumSecureMemoryHandle? expectedMasterKeyHandle = null;
         SodiumSecureMemoryHandle? actualMasterKeyHandle = null;
 
         try
         {
-            Result<MasterKeyShareQueryRecord[], KeySplittingFailure> sharesResult = await RetrieveSharesAsync(membershipId);
+            Result<MasterKeyShareQueryRecord[], KeySplittingFailure> sharesResult = await RetrieveSharesAsync(accountId);
             if (sharesResult.IsErr)
             {
                 return Result<string, FailureBase>.Err(sharesResult.UnwrapErr());
@@ -306,35 +307,35 @@ internal sealed class MasterKeyService(
             }
 
             IActorRef membershipPersistor = actorRegistry.Get(ActorIds.MembershipPersistorActor);
-            GetMembershipByUniqueIdEvent getMembershipEvent = new(membershipId);
+            GetMembershipByUniqueIdEvent getMembershipEvent = new(accountId);
 
-            Result<MembershipQueryRecord, VerificationFlowFailure> membershipResult =
-                await membershipPersistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(
+            Result<AccountQueryRecord, VerificationFlowFailure> accountResult =
+                await membershipPersistor.Ask<Result<AccountQueryRecord, VerificationFlowFailure>>(
                     getMembershipEvent,
                     TimeSpan.FromSeconds(AskTimeoutSeconds));
 
-            if (membershipResult.IsErr)
+            if (accountResult.IsErr)
             {
                 return Result<string, FailureBase>.Err(
                     KeySplittingFailure.KeyReconstructionFailed("Membership not found"));
             }
 
-            MembershipQueryRecord membership = membershipResult.Unwrap();
-            int currentVersion = membership.CredentialsVersion;
+            AccountQueryRecord account = accountResult.Unwrap();
+            int currentVersion = account.CredentialsVersion;
             int storedVersion = shares[0].CredentialsVersion;
 
-            Log.Information("[CREDENTIALS-VERSION-CHECK] Membership {MembershipId}: Current={Current}, Stored={Stored}",
-                membershipId, currentVersion, storedVersion);
+            Log.Information("[CREDENTIALS-VERSION-CHECK] Account {AccountId}: Current={Current}, Stored={Stored}",
+                accountId, currentVersion, storedVersion);
 
             if (currentVersion != storedVersion)
             {
-                Log.Warning("[CREDENTIALS-VERSION-MISMATCH] Credentials version mismatch for membership {MembershipId}. Current: {Current}, Stored: {Stored}. Credentials changed since shares were created.",
-                    membershipId, currentVersion, storedVersion);
+                Log.Warning("[CREDENTIALS-VERSION-MISMATCH] Credentials version mismatch for membership {AccountId}. Current: {Current}, Stored: {Stored}. Credentials changed since shares were created.",
+                    accountId, currentVersion, storedVersion);
                 return Result<string, FailureBase>.Ok("mismatch");
             }
 
-            Log.Information("[CREDENTIALS-VERSION-MATCH] Versions match for membership {MembershipId}. Proceeding with fingerprint validation.",
-                membershipId);
+            Log.Information("[CREDENTIALS-VERSION-MATCH] Versions match for membership {AccountId}. Proceeding with fingerprint validation.",
+                accountId);
 
             KeyDerivationOptions options = new()
             {
@@ -360,7 +361,7 @@ internal sealed class MasterKeyService(
 
             try
             {
-                ByteString membershipIdentifier = Helpers.GuidToByteString(membershipId);
+                ByteString membershipIdentifier = Helpers.GuidToByteString(accountId);
                 Result<SodiumSecureMemoryHandle, SodiumFailure> expectedMasterKeyResult =
                     MasterKeyDerivation.DeriveMasterKeyHandle(enhancedKeyHandle, membershipIdentifier);
 
@@ -377,7 +378,7 @@ internal sealed class MasterKeyService(
                 enhancedKeyHandle?.Dispose();
             }
 
-            Result<dynamic, FailureBase> actualMasterKeyResult = await ReconstructMasterKeyAsync(membershipId);
+            Result<dynamic, FailureBase> actualMasterKeyResult = await ReconstructMasterKeyAsync(accountId);
             if (actualMasterKeyResult.IsErr)
             {
                 return Result<string, FailureBase>.Err(actualMasterKeyResult.UnwrapErr());
@@ -404,8 +405,8 @@ internal sealed class MasterKeyService(
 
                 bool matches = CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes);
 
-                Log.Information("[MASTER-KEY-VALIDATE] Fingerprint comparison for membership {MembershipId}. Expected: {Expected}, Actual: {Actual}, Match: {Match}",
-                    membershipId, expectedFingerprint, actualFingerprint, matches);
+                Log.Information("[MASTER-KEY-VALIDATE] Fingerprint comparison for membership {AccountId}. Expected: {Expected}, Actual: {Actual}, Match: {Match}",
+                    accountId, expectedFingerprint, actualFingerprint, matches);
 
                 return Result<string, FailureBase>.Ok(matches ? "valid" : "mismatch");
             }

@@ -53,7 +53,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                     KeySplittingFailure.KeySplittingFailed("No shares provided"));
             }
 
-            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId);
+            MembershipEntity? membership = await AccountQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId);
             if (membership == null)
             {
                 await transaction.RollbackAsync();

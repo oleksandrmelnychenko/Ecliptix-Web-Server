@@ -390,7 +390,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
                 Context.GetLogger().Info(
                     "[SERVER-AUTH-REUSE] Reusing existing authenticated session. ConnectId: {0}, MembershipId: {1}, Sending: {2}, Receiving: {3}, ExchangeType: {4}, RootKeyHash: {5}",
-                    cmd.ConnectId, cmd.MembershipId, _state?.RatchetState?.SendingStep?.CurrentIndex, _state?.RatchetState?.ReceivingStep?.CurrentIndex, exchangeType, reuseRootKeyHash);
+                    cmd.ConnectId, cmd.AccountId, _state?.RatchetState?.SendingStep?.CurrentIndex, _state?.RatchetState?.ReceivingStep?.CurrentIndex, exchangeType, reuseRootKeyHash);
 
                 Result<PubKeyExchange, EcliptixProtocolFailure> existingReplyResult =
                     existingSystem.ProcessAuthenticatedPubKeyExchange(cmd.ConnectId, cmd.ClientPubKeyExchange, cmd.RootKey);
@@ -447,11 +447,11 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         }
 
         Context.GetLogger().Info("[SERVER-AUTH-NEW] Creating new authenticated session. ConnectId: {0}, MembershipId: {1}, ExchangeType: {2}",
-            cmd.ConnectId, cmd.MembershipId, exchangeType);
+            cmd.ConnectId, cmd.AccountId, exchangeType);
 
         string rootKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(cmd.RootKey))[..16];
         Context.GetLogger().Info("[SERVER-AUTH-ROOTKEY] Received root key for authenticated session. ConnectId: {0}, MembershipId: {1}, RootKeyHash: {2}",
-            cmd.ConnectId, cmd.MembershipId, rootKeyHash);
+            cmd.ConnectId, cmd.AccountId, rootKeyHash);
 
         EcliptixProtocolSystem system = new(cmd.IdentityKeys);
 
@@ -476,7 +476,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         }
 
         EcliptixSessionState newState = stateToPersistResult.Unwrap();
-        newState.MembershipId = Helpers.GuidToByteString(cmd.MembershipId);
+        newState.AccountId = Helpers.GuidToByteString(cmd.AccountId);
 
         PubKeyExchange reply = replyResult.Unwrap();
         IActorRef? originalSender = Sender;
@@ -508,7 +508,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
             Context.GetLogger().Info(
                 "[SERVER-AUTH-PERSISTED] Authenticated session persisted. ConnectId: {0}, MembershipId: {1}, Sending: {2}, Receiving: {3}",
-                cmd.ConnectId, cmd.MembershipId, state.RatchetState.SendingStep.CurrentIndex, state.RatchetState.ReceivingStep.CurrentIndex);
+                cmd.ConnectId, cmd.AccountId, state.RatchetState.SendingStep.CurrentIndex, state.RatchetState.ReceivingStep.CurrentIndex);
 
             SaveSnapshot(_state);
             Context.GetLogger().Info(

@@ -7,6 +7,7 @@ using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Domain.Providers.Twilio;
 using Ecliptix.Domain;
+using Ecliptix.Domain.Account.WorkerActors;
 using Ecliptix.Utilities.Configuration;
 using Ecliptix.Domain.Services.Security;
 using Microsoft.EntityFrameworkCore;

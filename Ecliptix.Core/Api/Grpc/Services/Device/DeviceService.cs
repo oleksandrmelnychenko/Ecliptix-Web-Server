@@ -129,7 +129,7 @@ internal sealed class DeviceService(
 
         try
         {
-            Guid membershipId = Helpers.FromByteStringToGuid(request.MembershipUniqueId);
+            Guid membershipId = Helpers.FromByteStringToGuid(request.AccountUniqueId);
 
             Result<(dynamic IdentityKeys, byte[] RootKey), FailureBase> deriveKeysResult =
                 await masterKeyService.DeriveIdentityKeysAsync(membershipId);
