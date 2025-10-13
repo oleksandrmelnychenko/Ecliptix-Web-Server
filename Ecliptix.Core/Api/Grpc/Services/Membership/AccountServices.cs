@@ -34,7 +34,7 @@ internal sealed class AccountServices(
 
 {
     private readonly RpcServiceBase _baseService = new(grpcCipherService);
-    private readonly IActorRef _membershipActor = actorRegistry.Get(ActorIds.MembershipActor);
+    private readonly IActorRef _membershipActor = actorRegistry.Get(ActorIds.AccountActor);
     private readonly IActorRef _logoutAuditPersistor = actorRegistry.Get(ActorIds.LogoutAuditPersistorActor);
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
 

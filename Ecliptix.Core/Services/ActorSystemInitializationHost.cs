@@ -43,7 +43,7 @@ public sealed class ActorSystemInitializationHost(
             VerificationFlowPersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.VerificationFlowPersistorActor);
 
-        IActorRef membershipPersistorActor = actorSystem.ActorOf(
+        IActorRef accountPersistorActor = actorSystem.ActorOf(
             MembershipPersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.MembershipPersistorActor);
 
@@ -55,9 +55,9 @@ public sealed class ActorSystemInitializationHost(
             LogoutAuditPersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.LogoutAuditPersistorActor);
 
-        IActorRef membershipActor = actorSystem.ActorOf(
+        IActorRef accountActor = actorSystem.ActorOf(
             MembershipActor.Build(
-                membershipPersistorActor,
+                accountPersistorActor,
                 opaqueProtocolService,
                 localizationProvider,
                 masterKeyService),
@@ -66,7 +66,7 @@ public sealed class ActorSystemInitializationHost(
         IActorRef verificationFlowManagerActor = actorSystem.ActorOf(
             VerificationFlowManagerActor.Build(
                 verificationFlowPersistorActor,
-                membershipActor,
+                accountActor,
                 smsProvider,
                 localizationProvider,
                 securityConfig),
@@ -76,10 +76,10 @@ public sealed class ActorSystemInitializationHost(
         registry.Register(ActorIds.AppDevicePersistorActor, appDevicePersistor);
         registry.Register(ActorIds.VerificationFlowPersistorActor, verificationFlowPersistorActor);
         registry.Register(ActorIds.VerificationFlowManagerActor, verificationFlowManagerActor);
-        registry.Register(ActorIds.MembershipPersistorActor, membershipPersistorActor);
+        registry.Register(ActorIds.AccountPersistorActor, accountPersistorActor);
         registry.Register(ActorIds.MasterKeySharePersistorActor, masterKeySharePersistorActor);
         registry.Register(ActorIds.LogoutAuditPersistorActor, logoutAuditPersistorActor);
-        registry.Register(ActorIds.MembershipActor, membershipActor);
+        registry.Register(ActorIds.AccountActor, accountActor);
 
         return Task.CompletedTask;
     }

@@ -1,4 +1,4 @@
-namespace Ecliptix.Domain.Memberships.Persistors.QueryResults;
+namespace Ecliptix.Domain.Account.Persistors.QueryResults;
 
 public record InsertMasterKeySharesResult
 {

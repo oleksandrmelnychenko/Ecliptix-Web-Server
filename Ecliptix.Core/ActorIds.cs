@@ -6,8 +6,8 @@ public static class ActorIds
     public const int AppDevicePersistorActor = 2;
     public const int VerificationFlowPersistorActor = 3;
     public const int VerificationFlowManagerActor = 4;
-    public const int MembershipPersistorActor = 5;
-    public const int MembershipActor = 6;
+    public const int AccountPersistorActor = 5;
+    public const int AccountActor = 6;
     public const int MasterKeySharePersistorActor = 7;
     public const int LogoutAuditPersistorActor = 8;
 }
@@ -20,8 +20,8 @@ public static class ActorTypeMap
         { ActorIds.AppDevicePersistorActor, "AppDevicePersistorActor" },
         { ActorIds.VerificationFlowPersistorActor, "VerificationFlowPersistorActor" },
         { ActorIds.VerificationFlowManagerActor, "VerificationFlowManagerActor" },
-        { ActorIds.MembershipPersistorActor, "MembershipPersistorActor" },
-        { ActorIds.MembershipActor, "MembershipActor" },
+        { ActorIds.AccountPersistorActor, "AccountPersistorActor" },
+        { ActorIds.AccountActor, "AccountActor" },
         { ActorIds.MasterKeySharePersistorActor, "MasterKeySharePersistorActor" },
         { ActorIds.LogoutAuditPersistorActor, "LogoutAuditPersistorActor" },
     };
