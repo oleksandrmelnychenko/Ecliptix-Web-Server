@@ -94,7 +94,9 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["authentication_code_is"] = "Your verification code is",
                 ["resend_cooldown_active"] = "Please wait a moment before requesting a new code",
                 ["max_otp_attempts_reached"] =
-                    "You've reached the maximum number of OTP requests. Please try again later"
+                    "You've reached the maximum number of OTP requests. Please try again later",
+                ["mobile_number_not_found"] = "Mobile number not found.",
+                ["device_not_found"] = "Device not found.",
             }.ToFrozenDictionary(),
 
             ["uk-UA"] = new Dictionary<string, string>
@@ -184,7 +186,9 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["authentication_code_is"] = "Ваш код перевірки",
                 ["resend_cooldown_active"] = "Будь ласка, зачекайте хвилинку перед запитом нового коду",
                 ["max_otp_attempts_reached"] =
-                    "Ви досягли максимальної кількості запитів OTP. Будь ласка, спробуйте пізніше"
+                    "Ви досягли максимальної кількості запитів OTP. Будь ласка, спробуйте пізніше",
+                ["mobile_number_not_found"] = "Номер телефону не знайдено.",
+                ["device_not_found"] = "Пристрій не знайдено.",
             }.ToFrozenDictionary()
         }.ToFrozenDictionary();
 
