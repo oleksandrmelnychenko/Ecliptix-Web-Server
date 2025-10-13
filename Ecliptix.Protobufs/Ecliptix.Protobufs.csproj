@@ -38,10 +38,10 @@
     <Protobuf Include="Protobuf\authentication\verification_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
     <Protobuf Include="Protobuf\authentication\auth_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
 
-    <!-- Membership proto files -->
-    <Protobuf Include="Protobuf\membership\membership_core.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\membership\opaque_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\membership\membership_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <!-- Account proto files -->
+    <Protobuf Include="Protobuf\account\account_core.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\account\opaque_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\account\account_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
   </ItemGroup>
 
 </Project>

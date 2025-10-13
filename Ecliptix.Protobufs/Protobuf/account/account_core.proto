@@ -1,9 +1,9 @@
 syntax = "proto3";
 
-package ecliptix.proto.membership;
-option csharp_namespace = "Ecliptix.Protobuf.Membership";
+package ecliptix.proto.account;
+option csharp_namespace = "Ecliptix.Protobuf.Account";
 
-message Membership {
+message Account {
   bytes unique_identifier = 1;
 
   enum ActivityStatus {
@@ -27,7 +27,7 @@ enum LogoutScope {
 }
 
 message LogoutRequest {
-  bytes membership_identifier = 1;
+  bytes account_identifier = 1;
   string logout_reason = 2;
   int64 timestamp = 3;
   bytes hmac_proof = 4;

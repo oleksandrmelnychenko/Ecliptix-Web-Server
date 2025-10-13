@@ -1,11 +1,11 @@
 syntax = "proto3";
 import "common/secure_envelope.proto";
-import "membership/membership_core.proto";
+import "account/account_core.proto";
 
-package ecliptix.proto.membership;
-option csharp_namespace = "Ecliptix.Protobuf.Membership";
+package ecliptix.proto.Account;
+option csharp_namespace = "Ecliptix.Protobuf.Account";
 
-service MembershipServices {
+service AccountServices {
   rpc OpaqueRegistrationInitRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
   rpc OpaqueRegistrationCompleteRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
   rpc OpaqueRecoverySecretKeyInitRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);

@@ -1,8 +1,8 @@
 syntax = "proto3";
-import "membership/membership_core.proto";
+import "account/account_core.proto";
 
-package ecliptix.proto.membership;
-option csharp_namespace = "Ecliptix.Protobuf.Membership";
+package ecliptix.proto.Account;
+option csharp_namespace = "Ecliptix.Protobuf.Account";
 
 enum VerificationPurpose {
   REGISTRATION = 0;
@@ -64,7 +64,7 @@ message VerifyCodeRequest {
 message VerifyCodeResponse {
   VerificationResult result = 1;
   optional string message = 2;
-  optional ecliptix.proto.membership.Membership membership = 3;
+  optional ecliptix.proto.account.Account account = 3;
 }
 
 message ValidateMobileNumberRequest {

@@ -1,5 +1,5 @@
+using Ecliptix.Protobuf.Account;
 using Ecliptix.Utilities;
-using Ecliptix.Protobuf.Membership;
 using Ecliptix.Security.Opaque.Models;
 
 namespace Ecliptix.Security.Opaque.Contracts;

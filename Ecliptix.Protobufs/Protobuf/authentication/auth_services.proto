@@ -1,8 +1,8 @@
 syntax = "proto3";
 import "common/secure_envelope.proto";
 
-package ecliptix.proto.membership;
-option csharp_namespace = "Ecliptix.Protobuf.Membership";
+package ecliptix.proto.account;
+option csharp_namespace = "Ecliptix.Protobuf.Account";
 
 service AuthVerificationServices {
   rpc InitiateVerification(ecliptix.proto.common.SecureEnvelope) returns (stream ecliptix.proto.common.SecureEnvelope);

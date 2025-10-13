@@ -10,6 +10,7 @@ public class EcliptixSchemaContext : DbContext
     {
     }
 
+    public DbSet<AccountEntity> Accounts { get; set; }
     public DbSet<MobileNumberEntity> MobileNumbers { get; set; }
     public DbSet<DeviceEntity> Devices { get; set; }
     public DbSet<VerificationFlowEntity> VerificationFlows { get; set; }
@@ -25,6 +26,7 @@ public class EcliptixSchemaContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        modelBuilder.AddConfiguration(new AccountConfiguration());
         modelBuilder.AddConfiguration(new MobileNumberConfiguration());
         modelBuilder.AddConfiguration(new DeviceConfiguration());
         modelBuilder.AddConfiguration(new VerificationFlowConfiguration());

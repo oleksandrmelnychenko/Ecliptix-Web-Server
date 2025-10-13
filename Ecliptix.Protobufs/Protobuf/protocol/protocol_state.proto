@@ -15,8 +15,8 @@ message EcliptixSessionState {
   RatchetState ratchet_state = 4;
   AdaptiveRatchetState adaptive_ratchet_state = 5;
 
-  // Optional: MembershipId for authenticated sessions (empty for anonymous sessions)
-  bytes membership_id = 6;
+  // Optional: Account ID for authenticated sessions (empty for anonymous sessions)
+  bytes account_id = 6;
 }
 
 message IdentityKeysState {

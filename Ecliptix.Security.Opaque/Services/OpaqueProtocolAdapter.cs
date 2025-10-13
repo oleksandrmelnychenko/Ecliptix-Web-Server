@@ -1,9 +1,8 @@
 using System.Buffers;
-using System.Security.Cryptography;
 using Ecliptix.Utilities;
 using Ecliptix.Security.Opaque.Models;
 using Ecliptix.Security.Opaque.Contracts;
-using Ecliptix.Protobuf.Membership;
+using Ecliptix.Protobuf.Account;
 using Ecliptix.Security.Opaque.Models.AuthenticationMessages;
 using Ecliptix.Security.Opaque.Models.RegistrationMessages;
 using Ecliptix.Security.Opaque.Failures;
