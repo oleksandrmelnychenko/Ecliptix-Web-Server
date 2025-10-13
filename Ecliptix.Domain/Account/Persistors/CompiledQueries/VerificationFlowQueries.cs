@@ -1,8 +1,8 @@
-using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Microsoft.EntityFrameworkCore;
 
-namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
+namespace Ecliptix.Domain.Account.Persistors.CompiledQueries;
 
 public static class VerificationFlowQueries
 {
@@ -51,37 +51,50 @@ public static class VerificationFlowQueries
                 ctx.VerificationFlows
                     .Join(ctx.MobileNumbers,
                         vf => vf.MobileNumberId,
-                        mn => mn.Id,
+                        mn => mn.UniqueId,
                         (vf, mn) => new { vf, mn })
+                    .Join(ctx.Devices,
+                        x => x.vf.AppDeviceId,
+                        d => d.UniqueId,
+                        (x, d) => new { x.vf, x.mn, d })
                     .Where(x => x.mn.UniqueId == mobileUniqueId &&
-                                x.vf.AppDeviceId == deviceId &&
+                                x.d.DeviceId == deviceId &&
                                 x.vf.Purpose == purpose &&
                                 x.vf.Status == "pending" &&
                                 x.vf.ExpiresAt > DateTime.UtcNow &&
-                                !x.vf.IsDeleted)
+                                !x.vf.IsDeleted &&
+                                !x.mn.IsDeleted &&
+                                !x.d.IsDeleted)
                     .AsNoTracking()
                     .Any());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, Guid, string, Task<VerificationFlowEntity?>>
+public static readonly Func<EcliptixSchemaContext, Guid, Guid, string, Task<VerificationFlowEntity?>>
         GetActiveFlowForRecovery = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid mobileUniqueId, Guid deviceId, string purpose) =>
                 ctx.VerificationFlows
                     .Join(ctx.MobileNumbers,
                         vf => vf.MobileNumberId,
-                        mn => mn.Id,
+                        mn => mn.UniqueId,
                         (vf, mn) => new { vf, mn })
+                    .Join(ctx.Devices,
+                        x => x.vf.AppDeviceId,
+                        d => d.UniqueId,
+                        (x, d) => new { x.vf, x.mn, d })
                     .Where(x => x.mn.UniqueId == mobileUniqueId &&
-                                x.vf.AppDeviceId == deviceId &&
+                                x.d.DeviceId == deviceId &&
                                 x.vf.Purpose == purpose &&
                                 x.vf.Status == "pending" &&
                                 x.vf.ExpiresAt > DateTime.UtcNow &&
-                                !x.vf.IsDeleted)
+                                !x.vf.IsDeleted &&
+                                !x.mn.IsDeleted &&
+                                !x.d.IsDeleted)
                     .Select(x => x.vf)
+                    .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, long, DateTime, Task<int>>
+    public static readonly Func<EcliptixSchemaContext, Guid, DateTime, Task<int>>
         CountRecentByMobileId = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, long mobileId, DateTime since) =>
+            (EcliptixSchemaContext ctx, Guid mobileId, DateTime since) =>
                 ctx.VerificationFlows
                     .Where(f => f.MobileNumberId == mobileId &&
                                 f.CreatedAt > since &&
@@ -99,9 +112,9 @@ public static class VerificationFlowQueries
                     .AsNoTracking()
                     .Count());
 
-    public static readonly Func<EcliptixSchemaContext, long, DateTime, Task<int>>
+    public static readonly Func<EcliptixSchemaContext, Guid, DateTime, Task<int>>
         CountRecentPasswordRecovery = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, long mobileId, DateTime since) =>
+            (EcliptixSchemaContext ctx, Guid mobileId, DateTime since) =>
                 ctx.VerificationFlows
                     .Where(f => f.MobileNumberId == mobileId &&
                                 f.Purpose == "password_recovery" &&

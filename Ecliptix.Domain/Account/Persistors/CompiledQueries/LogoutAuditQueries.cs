@@ -1,16 +1,16 @@
-using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Microsoft.EntityFrameworkCore;
 
-namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
+namespace Ecliptix.Domain.Account.Persistors.CompiledQueries;
 
 public static class LogoutAuditQueries
 {
     public static readonly Func<EcliptixSchemaContext, Guid, Task<LogoutAuditEntity?>>
-        GetMostRecentByMembership = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, Guid membershipUniqueId) =>
+        GetMostRecentByAccount = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, Guid accountUniqueId) =>
                 ctx.LogoutAudits
-                    .Where(l => l.MembershipUniqueId == membershipUniqueId &&
+                    .Where(l => l.AccountUniqueId == accountUniqueId &&
                                 !l.IsDeleted)
                     .OrderByDescending(l => l.LoggedOutAt)
                     .AsNoTracking()
@@ -18,9 +18,9 @@ public static class LogoutAuditQueries
 
     public static readonly Func<EcliptixSchemaContext, Guid, int, Task<List<LogoutAuditEntity>>>
         GetLogoutHistory = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, Guid membershipUniqueId, int limit) =>
+            (EcliptixSchemaContext ctx, Guid accountUniqueId, int limit) =>
                 ctx.LogoutAudits
-                    .Where(l => l.MembershipUniqueId == membershipUniqueId &&
+                    .Where(l => l.AccountUniqueId == accountUniqueId &&
                                 !l.IsDeleted)
                     .OrderByDescending(l => l.LoggedOutAt)
                     .Take(limit)
