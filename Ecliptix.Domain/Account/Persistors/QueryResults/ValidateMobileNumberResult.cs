@@ -1,9 +1,9 @@
-using Ecliptix.Protobuf.Membership;
+using AccountProto = Ecliptix.Protobuf.Account;
 
-namespace Ecliptix.Domain.Memberships.Persistors.QueryResults;
+namespace Ecliptix.Domain.Account.Persistors.QueryResults;
 
 public class ValidateMobileNumberResult
 {
     public Guid MobileNumberId { get; set; }
-    public Membership? Membership { get; set; }
+    public AccountProto.Account? Account { get; set; }
 }

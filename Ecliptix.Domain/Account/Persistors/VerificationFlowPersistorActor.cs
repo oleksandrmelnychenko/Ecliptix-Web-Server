@@ -1,23 +1,24 @@
 using System.Data.Common;
 using Akka.Actor;
-using Ecliptix.Domain.Account;
 using Ecliptix.Domain.Account.ActorEvents;
+using Ecliptix.Domain.Account.Persistors.CompiledQueries;
+using Ecliptix.Domain.Account.Persistors.QueryRecords;
 using Ecliptix.Domain.Account.Persistors.QueryResults;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
+using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Protobuf.Account;
 using Ecliptix.Utilities;
-using Ecliptix.Protobuf.Membership;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
-using Membership = Ecliptix.Domain.Schema.Entities.MembershipEntity;
+using AccountProto = Ecliptix.Protobuf.Account;
 
-namespace Ecliptix.Domain.Memberships.Persistors;
+namespace Ecliptix.Domain.Account.Persistors;
 
 public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFailure>
 {
@@ -100,7 +101,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 await ctx.VerificationFlows
                     .Where(vf => vf.Id == existingActiveFlow.Id)
                     .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(vf => vf.ConnectionId, (long?)cmd.ConnectId)
+                        .SetProperty(vf => vf.ConnectionId, cmd.ConnectId)
                         .SetProperty(vf => vf.UpdatedAt, DateTime.UtcNow));
 
                 await ctx.OtpCodes
@@ -126,7 +127,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 Log.Information("Password recovery flow initiated for mobile ID {MobileId}", mobile.Id);
 
                 int recoveryCount = await VerificationFlowQueries.CountRecentPasswordRecovery(
-                    ctx, mobile.Id, DateTime.UtcNow.AddHours(-1));
+                    ctx, mobile.UniqueId, DateTime.UtcNow.AddHours(-1));
 
                 Log.Information("Recent password recovery count: {Count} for mobile ID {MobileId}", recoveryCount, mobile.Id);
 
@@ -138,7 +139,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 }
 
                 List<VerificationFlowEntity> oldPendingFlows = await ctx.VerificationFlows
-                    .Where(vf => vf.MobileNumberId == mobile.Id &&
+                    .Where(vf => vf.MobileNumberId == mobile.UniqueId &&
                                  vf.Purpose == "password_recovery" &&
                                  vf.Status == "pending" &&
                                  !vf.IsDeleted)
@@ -157,7 +158,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             }
 
             int mobileFlowCount = await VerificationFlowQueries.CountRecentByMobileId(
-                ctx, mobile.Id, DateTime.UtcNow.AddHours(-1));
+                ctx, mobile.UniqueId, DateTime.UtcNow.AddHours(-1));
             if (mobileFlowCount >= 30)
             {
                 await transaction.RollbackAsync();
@@ -177,7 +178,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             VerificationFlowEntity flow = new()
             {
                 UniqueId = Guid.NewGuid(),
-                MobileNumberId = mobile.Id,
+                MobileNumberId = mobile.UniqueId,
                 AppDeviceId = cmd.AppDeviceId,
                 Purpose = ConvertPurposeToString(cmd.Purpose),
                 Status = "pending",
@@ -305,32 +306,32 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         }
     }
 
-    private static async Task<Result<ExistingMembershipResult, VerificationFlowFailure>> CheckExistingMembershipAsync(
+    private static async Task<Result<ExistingAccountResult, VerificationFlowFailure>> CheckExistingMembershipAsync(
         EcliptixSchemaContext ctx, CheckExistingAccountActorEvent cmd)
     {
         try
         {
-            Membership? membership = await AccountQueries.GetByMobileUniqueId(
+            AccountEntity? account = await AccountQueries.GetByMobileUniqueId(
                 ctx, cmd.MobileNumberId);
 
-            if (membership == null)
+            if (account == null)
             {
-                return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(new ExistingMembershipResult
+                return Result<ExistingAccountResult, VerificationFlowFailure>.Ok(new ExistingAccountResult
                 {
-                    MembershipExists = false,
-                    Membership = null
+                    AccountExists = false,
+                    Account = null
                 });
             }
 
-            return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(new ExistingMembershipResult
+            return Result<ExistingAccountResult, VerificationFlowFailure>.Ok(new ExistingAccountResult
             {
-                MembershipExists = true,
-                Membership = MapToProtoMembership(membership)
+                AccountExists = true,
+                Account = MapToProtoAccount(account)
             });
         }
         catch (Exception ex)
         {
-            return Result<ExistingMembershipResult, VerificationFlowFailure>.Err(
+            return Result<ExistingAccountResult, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Check existing membership failed: {ex.Message}", ex));
         }
     }
@@ -469,25 +470,25 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         }
     }
 
-    private static Ecliptix.Protobuf.Membership.Membership? MapToProtoMembership(Membership? domainMembership)
+    private static AccountProto.Account? MapToProtoAccount(AccountEntity? domainAccount)
     {
-        if (domainMembership == null)
+        if (domainAccount == null)
             return null;
 
-        return new Ecliptix.Protobuf.Membership.Membership
+        return new AccountProto.Account
         {
-            UniqueIdentifier = Helpers.GuidToByteString(domainMembership.UniqueId),
-            Status = domainMembership.Status switch
+            UniqueIdentifier = Helpers.GuidToByteString(domainAccount.UniqueId),
+            Status = domainAccount.Status switch
             {
-                "active" => Ecliptix.Protobuf.Membership.Membership.Types.ActivityStatus.Active,
-                _ => Ecliptix.Protobuf.Membership.Membership.Types.ActivityStatus.Inactive
+                "active" => AccountProto.Account.Types.ActivityStatus.Active,
+                _ => AccountProto.Account.Types.ActivityStatus.Inactive
             },
-            CreationStatus = domainMembership.CreationStatus switch
+            CreationStatus = domainAccount.CreationStatus switch
             {
-                "otp_verified" => Ecliptix.Protobuf.Membership.Membership.Types.CreationStatus.OtpVerified,
-                "secure_key_set" => Ecliptix.Protobuf.Membership.Membership.Types.CreationStatus.SecureKeySet,
-                "passphrase_set" => Ecliptix.Protobuf.Membership.Membership.Types.CreationStatus.PassphraseSet,
-                _ => Ecliptix.Protobuf.Membership.Membership.Types.CreationStatus.OtpVerified
+                "otp_verified" => AccountProto.Account.Types.CreationStatus.OtpVerified,
+                "secure_key_set" => AccountProto.Account.Types.CreationStatus.SecureKeySet,
+                "passphrase_set" => AccountProto.Account.Types.CreationStatus.PassphraseSet,
+                _ => AccountProto.Account.Types.CreationStatus.OtpVerified
             }
         };
     }
@@ -580,18 +581,23 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             DateTime tenMinutesAgo = DateTime.UtcNow.AddMinutes(-10);
 
             VerificationFlowEntity? recoveryFlow = await ctx.VerificationFlows
-                .Join(ctx.Memberships,
-                    vf => vf.UniqueId,
-                    m => m.VerificationFlowId,
-                    (vf, m) => new { VerificationFlow = vf, Membership = m })
-                .Where(x => x.Membership.UniqueId == cmd.MembershipIdentifier &&
-                            x.VerificationFlow.Purpose == "password_recovery" &&
-                            x.VerificationFlow.Status == "verified" &&
-                            x.VerificationFlow.UpdatedAt >= tenMinutesAgo &&
-                            !x.VerificationFlow.IsDeleted &&
-                            !x.Membership.IsDeleted)
-                .Select(x => x.VerificationFlow)
-                .OrderByDescending(vf => vf.UpdatedAt)
+                .Join(ctx.MobileNumbers,
+                    vf => vf.MobileNumberId,
+                    mn => mn.UniqueId,
+                    (vf, mn) => new { vf, mn })
+                .Join(ctx.Accounts,
+                    x => x.mn.UniqueId,
+                    a => a.MobileNumberId,
+                    (x, a) => new { x.vf, x.mn, a })
+                .Where(x => x.a.UniqueId == cmd.AccountIdentifier &&
+                            x.vf.Purpose == "password_recovery" &&
+                            x.vf.Status == "verified" &&
+                            x.vf.UpdatedAt >= tenMinutesAgo &&
+                            !x.vf.IsDeleted &&
+                            !x.mn.IsDeleted &&
+                            !x.a.IsDeleted)
+                .OrderByDescending(x => x.vf.UpdatedAt)
+                .Select(x => x.vf)
                 .FirstOrDefaultAsync();
 
             if (recoveryFlow == null)
@@ -616,18 +622,23 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         try
         {
             await ctx.VerificationFlows
-                .Join(ctx.Memberships,
-                    vf => vf.UniqueId,
-                    m => m.VerificationFlowId,
-                    (vf, m) => new { VerificationFlow = vf, Membership = m })
-                .Where(x => x.Membership.UniqueId == cmd.MembershipIdentifier &&
-                            x.VerificationFlow.Purpose == "password_recovery" &&
-                            x.VerificationFlow.Status == "verified" &&
-                            !x.VerificationFlow.IsDeleted)
-                .Select(x => x.VerificationFlow)
+                .Join(ctx.MobileNumbers,
+                    vf => vf.MobileNumberId,
+                    mn => mn.UniqueId,
+                    (vf, mn) => new { vf, mn })
+                .Join(ctx.Accounts,
+                    x => x.mn.UniqueId,
+                    a => a.MobileNumberId,
+                    (x, a) => new { x.vf, x.mn, a })
+                .Where(x => x.a.UniqueId == cmd.AccountIdentifier &&
+                            x.vf.Purpose == "password_recovery" &&
+                            x.vf.Status == "verified" &&
+                            !x.vf.IsDeleted &&
+                            !x.mn.IsDeleted &&
+                            !x.a.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(vf => vf.Status, "expired")
-                    .SetProperty(vf => vf.UpdatedAt, DateTime.UtcNow));
+                    .SetProperty(x => x.vf.Status, "expired")
+                    .SetProperty(x => x.vf.UpdatedAt, DateTime.UtcNow));
 
             return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
         }

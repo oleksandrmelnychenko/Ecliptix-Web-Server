@@ -44,7 +44,7 @@ public sealed class ActorSystemInitializationHost(
             ApplicationConstants.ActorNames.VerificationFlowPersistorActor);
 
         IActorRef accountPersistorActor = actorSystem.ActorOf(
-            MembershipPersistorActor.Build(dbContextFactory),
+            AccountPersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.MembershipPersistorActor);
 
         IActorRef masterKeySharePersistorActor = actorSystem.ActorOf(
@@ -56,7 +56,7 @@ public sealed class ActorSystemInitializationHost(
             ApplicationConstants.ActorNames.LogoutAuditPersistorActor);
 
         IActorRef accountActor = actorSystem.ActorOf(
-            MembershipActor.Build(
+            AccountActor.Build(
                 accountPersistorActor,
                 opaqueProtocolService,
                 localizationProvider,

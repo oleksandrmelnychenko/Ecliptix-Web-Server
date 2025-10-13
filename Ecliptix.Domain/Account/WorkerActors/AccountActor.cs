@@ -20,7 +20,7 @@ using ByteString = Google.Protobuf.ByteString;
 
 namespace Ecliptix.Domain.Account.WorkerActors;
 
-public sealed class MembershipActor : ReceiveActor
+public sealed class AccountActor : ReceiveActor
 {
     private readonly ILocalizationProvider _localizationProvider;
     private readonly IActorRef _persistor;
@@ -40,7 +40,7 @@ public sealed class MembershipActor : ReceiveActor
     private static readonly TimeSpan PendingPasswordRecoveryTimeout = TimeSpan.FromMinutes(10);
     private ICancelable? _cleanupTimer;
 
-    public MembershipActor(IActorRef persistor,
+    public AccountActor(IActorRef persistor,
         IOpaqueProtocolService opaqueProtocolService,
         ILocalizationProvider localizationProvider,
         IMasterKeyService masterKeyService)
@@ -58,7 +58,7 @@ public sealed class MembershipActor : ReceiveActor
         ILocalizationProvider localizationProvider,
         IMasterKeyService masterKeyService)
     {
-        return Props.Create(() => new MembershipActor(persistor, opaqueProtocolService,
+        return Props.Create(() => new AccountActor(persistor, opaqueProtocolService,
             localizationProvider, masterKeyService));
     }
 

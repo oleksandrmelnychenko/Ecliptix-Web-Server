@@ -1,17 +1,17 @@
-using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Microsoft.EntityFrameworkCore;
 
-namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
+namespace Ecliptix.Domain.Account.Persistors.CompiledQueries;
 
 public static class MasterKeyShareQueries
 {
-    public static async Task<List<MasterKeyShareEntity>> GetByMembershipUniqueId(
+    public static async Task<List<MasterKeyShareEntity>> GetByAccountUniqueId(
         EcliptixSchemaContext ctx,
-        Guid membershipUniqueId)
+        Guid accountUniqueId)
     {
         return await ctx.MasterKeyShares
-            .Where(s => s.MembershipUniqueId == membershipUniqueId && !s.IsDeleted)
+            .Where(s => s.AccountUniqueId == accountUniqueId && !s.IsDeleted)
             .OrderBy(s => s.ShareIndex)
             .AsNoTracking()
             .ToListAsync();

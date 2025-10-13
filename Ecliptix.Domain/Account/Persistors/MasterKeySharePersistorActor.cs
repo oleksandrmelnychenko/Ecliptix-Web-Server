@@ -1,18 +1,20 @@
 using System.Data.Common;
 using Akka.Actor;
 using Ecliptix.Domain.Account.ActorEvents;
-using Ecliptix.Domain.Memberships.ActorEvents;
+using Ecliptix.Domain.Account.Persistors.CompiledQueries;
+using Ecliptix.Domain.Account.Persistors.QueryRecords;
+using Ecliptix.Domain.Account.Persistors.QueryResults;
+using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.Domain.Memberships.Persistors.QueryResults;
+using Ecliptix.Domain.Schema;
+using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Ecliptix.Domain.Schema;
-using Ecliptix.Domain.Schema.Entities;
 
-namespace Ecliptix.Domain.Memberships.Persistors;
+namespace Ecliptix.Domain.Account.Persistors;
 
 public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
 {
@@ -54,7 +56,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                     KeySplittingFailure.KeySplittingFailed("No shares provided"));
             }
 
-            MembershipEntity? membership = await AccountQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId);
+            AccountEntity? membership = await AccountQueries.GetByUniqueId(ctx, cmd.AccountUniqueId);
             if (membership == null)
             {
                 await transaction.RollbackAsync();
@@ -62,7 +64,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                     KeySplittingFailure.InvalidIdentifier("Membership not found or inactive"));
             }
 
-            List<MasterKeyShareEntity> existingShares = await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId);
+            List<MasterKeyShareEntity> existingShares = await MasterKeyShareQueries.GetByAccountUniqueId(ctx, cmd.AccountUniqueId);
             if (existingShares.Any())
             {
                 await transaction.RollbackAsync();
@@ -89,7 +91,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
 
             List<MasterKeyShareEntity> sharesToInsert = cmd.Shares.Select(s => new MasterKeyShareEntity
             {
-                MembershipUniqueId = cmd.MembershipUniqueId,
+                AccountUniqueId = cmd.AccountUniqueId,
                 ShareIndex = s.ShareIndex,
                 EncryptedShare = s.EncryptedShare,
                 ShareMetadata = s.ShareMetadata,
@@ -122,7 +124,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
     {
         try
         {
-            List<MasterKeyShareEntity> shares = await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId);
+            List<MasterKeyShareEntity> shares = await MasterKeyShareQueries.GetByAccountUniqueId(ctx, cmd.AccountUniqueId);
 
             if (shares.Count == 0)
             {
@@ -136,7 +138,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                 MasterKeyShareEntity s = shares[i];
                 queryRecords[i] = new MasterKeyShareQueryRecord
                 {
-                    MembershipUniqueId = s.MembershipUniqueId,
+                    AccountUniqueId = s.AccountUniqueId,
                     ShareIndex = s.ShareIndex,
                     EncryptedShare = s.EncryptedShare,
                     ShareMetadata = s.ShareMetadata,
@@ -161,7 +163,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
         try
         {
             await ctx.MasterKeyShares
-                .Where(mks => mks.MembershipUniqueId == cmd.MembershipId && !mks.IsDeleted)
+                .Where(mks => mks.AccountUniqueId == cmd.AccountId && !mks.IsDeleted)
                 .ExecuteDeleteAsync();
 
             return Result<Unit, KeySplittingFailure>.Ok(Unit.Value);

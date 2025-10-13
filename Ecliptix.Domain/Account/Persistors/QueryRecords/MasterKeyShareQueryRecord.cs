@@ -1,8 +1,8 @@
-namespace Ecliptix.Domain.Memberships.Persistors.QueryRecords;
+namespace Ecliptix.Domain.Account.Persistors.QueryRecords;
 
 public record MasterKeyShareQueryRecord
 {
-    public required Guid MembershipUniqueId { get; init; }
+    public required Guid AccountUniqueId { get; init; }
     public required int ShareIndex { get; init; }
     public required byte[] EncryptedShare { get; init; }
     public required string ShareMetadata { get; init; }

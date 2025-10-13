@@ -1,33 +1,45 @@
-using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Microsoft.EntityFrameworkCore;
 
-namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
+namespace Ecliptix.Domain.Account.Persistors.CompiledQueries;
 
 public static class LoginAttemptQueries
 {
-    public static readonly Func<EcliptixSchemaContext, MobileNumberEntity, Task<LoginAttemptEntity?>>
+    public static readonly Func<EcliptixSchemaContext, string, Task<LoginAttemptEntity?>>
         GetMostRecentLockout = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, MobileNumberEntity mobileNumber) =>
+            (EcliptixSchemaContext ctx, string mobileNumber) =>
                 ctx.LoginAttempts
-                    .Where(l => l.MobileNumber == mobileNumber &&
-                                l.LockedUntil != null &&
-                                !l.IsDeleted)
-                    .OrderByDescending(l => l.Timestamp)
+                    .Join(ctx.MobileNumbers,
+                        la => la.MobileNumberId,
+                        mn => mn.UniqueId,
+                        (la, mn) => new { la, mn })
+                    .Where(x => x.mn.Number == mobileNumber &&
+                                x.la.LockedUntil != null &&
+                                !x.la.IsDeleted &&
+                                !x.mn.IsDeleted)
+                    .OrderByDescending(x => x.la.Timestamp)
+                    .Select(x => x.la)
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, MobileNumberEntity, DateTime, Task<int>>
+    public static readonly Func<EcliptixSchemaContext, string, DateTime, Task<int>>
         CountFailedSince = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, MobileNumberEntity mobileNumber, DateTime since) =>
+            (EcliptixSchemaContext ctx, string mobileNumber, DateTime since) =>
                 ctx.LoginAttempts
-                    .Where(l => l.MobileNumber == mobileNumber &&
-                                l.Timestamp > since &&
-                                l.LockedUntil == null &&
-                                !l.IsDeleted)
+                    .Join(ctx.MobileNumbers,
+                        la => la.MobileNumberId,
+                        mn => mn.UniqueId,
+                        (la, mn) => new { la, mn })
+                    .Where(x => x.mn.Number == mobileNumber &&
+                                x.la.Timestamp > since &&
+                                x.la.LockedUntil == null &&
+                                !x.la.IsDeleted &&
+                                !x.mn.IsDeleted)
                     .AsNoTracking()
                     .Count());
 
+    
     public static readonly Func<EcliptixSchemaContext, Guid, DateTime, Task<int>>
         CountFailedMembershipCreationSince = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid mobileUniqueId, DateTime since) =>

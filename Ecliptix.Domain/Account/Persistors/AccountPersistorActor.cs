@@ -1,31 +1,30 @@
 using System.Data.Common;
 using Akka.Actor;
-using Ecliptix.Domain.Account;
 using Ecliptix.Domain.Account.ActorEvents;
+using Ecliptix.Domain.Account.Persistors.CompiledQueries;
+using Ecliptix.Domain.Account.Persistors.QueryRecords;
 using Ecliptix.Domain.Account.WorkerActors;
-using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
-using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.Domain.Memberships.Persistors;
+using Ecliptix.Domain.Schema;
+using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Ecliptix.Domain.Schema;
-using Ecliptix.Domain.Schema.Entities;
 using Microsoft.EntityFrameworkCore.Storage;
-using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
+using AccountProto = Ecliptix.Protobuf.Account.Account;
 
-namespace Ecliptix.Domain.Memberships.Persistors;
+namespace Ecliptix.Domain.Account.Persistors;
 
-public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
+public class AccountPersistorActor : PersistorBase<VerificationFlowFailure>
 {
-    private static readonly Dictionary<string, ProtoMembership.Types.ActivityStatus> MembershipStatusMap = new()
+    private static readonly Dictionary<string, AccountProto.Types.ActivityStatus> MembershipStatusMap = new()
     {
-        ["active"] = ProtoMembership.Types.ActivityStatus.Active,
-        ["inactive"] = ProtoMembership.Types.ActivityStatus.Inactive
+        ["active"] = AccountProto.Types.ActivityStatus.Active,
+        ["inactive"] = AccountProto.Types.ActivityStatus.Inactive
     };
 
-    public MembershipPersistorActor(
+    public AccountPersistorActor(
         IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
         : base(dbContextFactory)
     {
@@ -34,7 +33,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
     public static Props Build(IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
     {
-        return Props.Create(() => new MembershipPersistorActor(dbContextFactory));
+        return Props.Create(() => new AccountPersistorActor(dbContextFactory));
     }
 
     private void Ready()
@@ -68,7 +67,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 .PipeTo(Sender));
     }
 
-    private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> SignInMembershipAsync(
+    private async Task<Result<AccountQueryRecord, VerificationFlowFailure>> SignInMembershipAsync(
         EcliptixSchemaContext ctx, SignInAccountActorEvent cmd)
     {
         const int lockoutDurationMinutes = 5;
@@ -84,13 +83,13 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 if (currentTime < lockoutMarker.LockedUntil.Value)
                 {
                     int remainingMinutes = (int)Math.Ceiling((lockoutMarker.LockedUntil.Value - currentTime).TotalMinutes);
-                    return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                         VerificationFlowFailure.RateLimitExceeded(remainingMinutes.ToString()));
                 }
                 else
                 {
                     await ctx.LoginAttempts
-                        .Where(la => la.MobileNumber == cmd.MobileNumber &&
+                        .Where(la => la.MobileNumber.Number == cmd.MobileNumber &&
                                      la.Timestamp <= lockoutMarker.Timestamp &&
                                      !la.IsDeleted)
                         .ExecuteDeleteAsync();
@@ -102,10 +101,30 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             if (failedCount >= maxAttemptsInPeriod)
             {
+                AccountEntity? account = await AccountQueries.GetByMobileNumber(ctx, cmd.MobileNumber);
+    
+                if (account == null)
+                {
+                    return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.Validation(VerificationFlowMessageKeys.MobileNotFound));
+                }
+                
+                MobileNumberEntity? mobileNumberEntity = await ctx.MobileNumbers
+                    .Where(mn => mn.Number == cmd.MobileNumber && !mn.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (mobileNumberEntity == null)
+                {
+                    return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.Validation(VerificationFlowMessageKeys.MobileNotFound));
+                }
+
+                
                 DateTime lockedUntil = currentTime.AddMinutes(lockoutDurationMinutes);
                 LoginAttemptEntity lockoutAttempt = new()
                 {
-                    MobileNumber = cmd.MobileNumber,
+                    AccountId = account.UniqueId,
+                    MobileNumberId = mobileNumberEntity.UniqueId,
                     LockedUntil = lockedUntil,
                     Outcome = "rate_limit_exceeded",
                     IsSuccess = false,
@@ -115,36 +134,37 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 ctx.LoginAttempts.Add(lockoutAttempt);
                 await ctx.SaveChangesAsync();
 
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.RateLimitExceeded(lockoutDurationMinutes.ToString()));
             }
 
             if (string.IsNullOrEmpty(cmd.MobileNumber))
             {
                 await LogLoginAttemptAsync(ctx, cmd.MobileNumber, "mobile_number_cannot_be_empty", false);
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation(VerificationFlowMessageKeys.MobileNumberCannotBeEmpty));
             }
 
-            MembershipEntity? membership = await AccountQueries.GetByMobileNumber(ctx, cmd.MobileNumber);
+            AccountEntity? membership = await AccountQueries.GetByMobileNumber(ctx, cmd.MobileNumber);
             if (membership == null)
             {
                 await LogLoginAttemptAsync(ctx, cmd.MobileNumber, "mobile_number_not_found", false);
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation(VerificationFlowMessageKeys.MobileNotFound));
             }
 
             if (membership.SecureKey == null || membership.SecureKey.Length == 0)
             {
                 await LogLoginAttemptAsync(ctx, cmd.MobileNumber, "secure_key_not_set", false);
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation(VerificationFlowMessageKeys.SecureKeyNotSet));
             }
 
             if (membership.Status != "active")
             {
                 await LogLoginAttemptAsync(ctx, cmd.MobileNumber, "inactive_membership", false);
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation(VerificationFlowMessageKeys.InactiveMembership));
             }
 
@@ -157,23 +177,23 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 .ExecuteDeleteAsync();
 
             return MapActivityStatus(membership.Status).Match(
-                activityStatus => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
-                    new MembershipQueryRecord
+                activityStatus => Result<AccountQueryRecord, VerificationFlowFailure>.Ok(
+                    new AccountQueryRecord
                     {
                         UniqueIdentifier = membership.UniqueId,
                         ActivityStatus = activityStatus,
-                        CreationStatus = ProtoMembership.Types.CreationStatus.OtpVerified,
+                        CreationStatus = AccountProto.Types.CreationStatus.OtpVerified,
                         CredentialsVersion = membership.CredentialsVersion,
                         SecureKey = membership.SecureKey ?? [],
                         MaskingKey = membership.MaskingKey ?? []
                     }),
-                () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                () => Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
             );
         }
         catch (Exception ex)
         {
-            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+            return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Login failed: {ex.Message}"));
         }
     }
@@ -192,7 +212,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         await ctx.SaveChangesAsync();
     }
 
-    private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> UpdateMembershipSecureKeyAsync(
+    private async Task<Result<AccountQueryRecord, VerificationFlowFailure>> UpdateMembershipSecureKeyAsync(
         EcliptixSchemaContext ctx, UpdateMembershipSecureKeyEvent cmd)
     {
         await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
@@ -200,20 +220,20 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         {
             if (cmd.SecureKey.Length == 0)
             {
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation("Secure key cannot be empty"));
             }
 
             if (cmd.MaskingKey.Length != 32)
             {
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation("Masking key must be exactly 32 bytes"));
             }
 
             MembershipEntity? membership = await AccountQueries.GetByUniqueId(ctx, cmd.MembershipIdentifier);
             if (membership == null)
             {
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation("Membership not found or deleted"));
             }
 
@@ -230,7 +250,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             if (rowsAffected == 0)
             {
                 await transaction.RollbackAsync();
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.PersistorAccess("Failed to update membership"));
             }
 
@@ -239,8 +259,8 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             int newCredentialsVersion = membership.CredentialsVersion + 1;
 
             return MapActivityStatus("active").Match(
-                status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
-                    new MembershipQueryRecord
+                status => Result<AccountQueryRecord, VerificationFlowFailure>.Ok(
+                    new AccountQueryRecord
                     {
                         UniqueIdentifier = cmd.MembershipIdentifier,
                         ActivityStatus = status,
@@ -248,19 +268,19 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         CredentialsVersion = newCredentialsVersion,
                         MaskingKey = cmd.MaskingKey
                     }),
-                () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                () => Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
             );
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+            return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Update secure key failed: {ex.Message}"));
         }
     }
 
-    private static async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> CreateMembershipAsync(
+    private static async Task<Result<AccountQueryRecord, VerificationFlowFailure>> CreateMembershipAsync(
         EcliptixSchemaContext ctx, CreateAccountActorEvent cmd)
     {
         await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
@@ -275,7 +295,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             if (flow?.MobileNumber == null)
             {
                 await transaction.RollbackAsync();
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation(VerificationFlowMessageKeys.CreateMembershipVerificationFlowNotFound));
             }
 
@@ -308,7 +328,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     await ctx.SaveChangesAsync();
 
                     await transaction.RollbackAsync();
-                    return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                         VerificationFlowFailure.RateLimitExceeded(waitMinutes.ToString()));
                 }
             }
@@ -335,15 +355,15 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 await transaction.RollbackAsync();
 
                 return MapActivityStatus(existingMembership.Status).Match(
-                    status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
-                        new MembershipQueryRecord
+                    status => Result<AccountQueryRecord, VerificationFlowFailure>.Ok(
+                        new AccountQueryRecord
                         {
                             UniqueIdentifier = existingMembership.UniqueId,
                             ActivityStatus = status,
                             CreationStatus = AccountCreationStatusHelper.GetCreationStatusEnum(existingMembership.CreationStatus ?? "otp_verified"),
                             CredentialsVersion = existingMembership.CredentialsVersion
                         }),
-                    () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    () => Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                         VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
                 );
             }
@@ -403,28 +423,28 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             await transaction.CommitAsync();
 
             return MapActivityStatus(newMembership.Status).Match(
-                status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
-                    new MembershipQueryRecord
+                status => Result<AccountQueryRecord, VerificationFlowFailure>.Ok(
+                    new AccountQueryRecord
                     {
                         UniqueIdentifier = newMembership.UniqueId,
                         ActivityStatus = status,
                         CreationStatus = AccountCreationStatusHelper.GetCreationStatusEnum(newMembership.CreationStatus),
                         CredentialsVersion = newMembership.CredentialsVersion
                     }),
-                () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                () => Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
             );
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+            return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Create membership failed: {ex.Message}"));
         }
     }
 
 
-    private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> GetMembershipByVerificationFlowAsync(
+    private async Task<Result<AccountQueryRecord, VerificationFlowFailure>> GetMembershipByVerificationFlowAsync(
         EcliptixSchemaContext ctx, GetAccountByVerificationFlowEvent cmd)
     {
         try
@@ -435,7 +455,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             if (verificationFlow == null)
             {
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Verification flow not found"));
             }
 
@@ -464,13 +484,13 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             if (membership == null)
             {
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Membership not found for verification flow"));
             }
 
             return MapActivityStatus(membership.Status).Match(
-                status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
-                    new MembershipQueryRecord
+                status => Result<AccountQueryRecord, VerificationFlowFailure>.Ok(
+                    new AccountQueryRecord
                     {
                         UniqueIdentifier = membership.UniqueId,
                         ActivityStatus = status,
@@ -479,18 +499,18 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         SecureKey = [],
                         MaskingKey = []
                     }),
-                () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                () => Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
             );
         }
         catch (Exception ex)
         {
-            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+            return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Get membership by flow failed: {ex.Message}"));
         }
     }
 
-    private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> GetMembershipByUniqueIdAsync(
+    private async Task<Result<AccountQueryRecord, VerificationFlowFailure>> GetMembershipByUniqueIdAsync(
         EcliptixSchemaContext ctx, GetAccountByUniqueIdEvent cmd)
     {
         try
@@ -499,13 +519,13 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             if (membership == null)
             {
-                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Membership not found"));
             }
 
             return MapActivityStatus(membership.Status).Match(
-                status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
-                    new MembershipQueryRecord
+                status => Result<AccountQueryRecord, VerificationFlowFailure>.Ok(
+                    new AccountQueryRecord
                     {
                         UniqueIdentifier = membership.UniqueId,
                         ActivityStatus = status,
@@ -514,24 +534,24 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         SecureKey = membership.SecureKey ?? [],
                         MaskingKey = membership.MaskingKey ?? []
                     }),
-                () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                () => Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.PersistorAccess(VerificationFlowMessageKeys.ActivityStatusInvalid))
             );
         }
         catch (Exception ex)
         {
-            return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+            return Result<AccountQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Get membership by unique ID failed: {ex.Message}"));
         }
     }
 
-    private static Option<ProtoMembership.Types.ActivityStatus> MapActivityStatus(string? statusStr)
+    private static Option<AccountProto.Types.ActivityStatus> MapActivityStatus(string? statusStr)
     {
         if (string.IsNullOrEmpty(statusStr) ||
-            !MembershipStatusMap.TryGetValue(statusStr, out ProtoMembership.Types.ActivityStatus status))
-            return Option<ProtoMembership.Types.ActivityStatus>.None;
+            !MembershipStatusMap.TryGetValue(statusStr, out AccountProto.Types.ActivityStatus status))
+            return Option<AccountProto.Types.ActivityStatus>.None;
 
-        return Option<ProtoMembership.Types.ActivityStatus>.Some(status);
+        return Option<AccountProto.Types.ActivityStatus>.Some(status);
     }
 
     private async Task<Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>> ValidatePasswordRecoveryFlowAsync(
