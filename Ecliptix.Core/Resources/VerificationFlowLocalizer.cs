@@ -97,6 +97,8 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                     "You've reached the maximum number of OTP requests. Please try again later",
                 ["mobile_number_not_found"] = "Mobile number not found.",
                 ["device_not_found"] = "Device not found.",
+                ["flow_not_found_or_invalid"] = "Verification session not found or expired.",
+                ["invalid_mobile_number"] = "Invalid mobile number format.",
             }.ToFrozenDictionary(),
 
             ["uk-UA"] = new Dictionary<string, string>
@@ -189,6 +191,8 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                     "Ви досягли максимальної кількості запитів OTP. Будь ласка, спробуйте пізніше",
                 ["mobile_number_not_found"] = "Номер телефону не знайдено.",
                 ["device_not_found"] = "Пристрій не знайдено.",
+                ["flow_not_found_or_invalid"] = "Сесію верифікації не знайдено або вона закінчилася.",
+                ["invalid_mobile_number"] = "Неправильний формат номера телефону.",
             }.ToFrozenDictionary()
         }.ToFrozenDictionary();
 

@@ -455,7 +455,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             if (mobile == null)
                 return Result<Guid, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.Validation("mobile_not_found"));
+                    VerificationFlowFailure.Validation("mobile_number_not_found"));
 
             return Result<Guid, VerificationFlowFailure>.Ok(mobile.UniqueId);
         }
