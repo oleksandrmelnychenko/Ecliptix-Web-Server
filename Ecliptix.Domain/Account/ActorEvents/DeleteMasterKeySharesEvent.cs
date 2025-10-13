@@ -1,3 +1,3 @@
-namespace Ecliptix.Domain.Memberships.ActorEvents;
+namespace Ecliptix.Domain.Account.ActorEvents;
 
-public record DeleteMasterKeySharesEvent(Guid MembershipId);
+public record DeleteMasterKeySharesEvent(Guid AccountId);

@@ -1,6 +1,8 @@
 using System.Data.Common;
 using Akka.Actor;
+using Ecliptix.Domain.Account;
 using Ecliptix.Domain.Account.ActorEvents;
+using Ecliptix.Domain.Account.Persistors.QueryResults;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
@@ -61,7 +63,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         Receive<ExpirePasswordRecoveryFlowsEvent>(actorEvent =>
             ExecuteWithContext(ctx => ExpirePasswordRecoveryFlowsAsync(ctx, actorEvent), "ExpirePasswordRecoveryFlows")
                 .PipeTo(Sender));
-        Receive<CheckExistingMembershipActorEvent>(actorEvent =>
+        Receive<CheckExistingAccountActorEvent>(actorEvent =>
             ExecuteWithContext(ctx => CheckExistingMembershipAsync(ctx, actorEvent), "CheckExistingMembership")
                 .PipeTo(Sender));
     }
@@ -304,7 +306,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     }
 
     private static async Task<Result<ExistingMembershipResult, VerificationFlowFailure>> CheckExistingMembershipAsync(
-        EcliptixSchemaContext ctx, CheckExistingMembershipActorEvent cmd)
+        EcliptixSchemaContext ctx, CheckExistingAccountActorEvent cmd)
     {
         try
         {

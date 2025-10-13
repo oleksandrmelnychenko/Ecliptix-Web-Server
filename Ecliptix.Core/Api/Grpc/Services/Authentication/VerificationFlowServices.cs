@@ -10,8 +10,9 @@ using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Google.Protobuf;
 using Grpc.Core;
-using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Domain.Account.ActorEvents;
+using Ecliptix.Domain.Account.WorkerActors;
 using Ecliptix.Protobuf.Account;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Authentication;

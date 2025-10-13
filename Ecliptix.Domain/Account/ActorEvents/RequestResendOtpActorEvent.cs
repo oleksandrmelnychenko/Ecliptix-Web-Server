@@ -1,4 +1,4 @@
-namespace Ecliptix.Domain.Memberships.ActorEvents;
+namespace Ecliptix.Domain.Account.ActorEvents;
 
 public record RequestResendOtpActorEvent(
     Guid FlowUniqueId

@@ -7,7 +7,6 @@ using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Utilities;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -48,15 +47,15 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             ExecuteWithContext(ctx => CreateMembershipAsync(ctx, cmd), "CreateMembership")
                 .PipeTo(Sender));
 
-        Receive<SignInMembershipActorEvent>(cmd =>
+        Receive<SignInAccountActorEvent>(cmd =>
             ExecuteWithContext(ctx => SignInMembershipAsync(ctx, cmd), "LoginMembership")
                 .PipeTo(Sender));
 
-        Receive<GetMembershipByVerificationFlowEvent>(cmd =>
+        Receive<GetAccountByVerificationFlowEvent>(cmd =>
             ExecuteWithContext(ctx => GetMembershipByVerificationFlowAsync(ctx, cmd), "GetMembershipByVerificationFlow")
                 .PipeTo(Sender));
 
-        Receive<GetMembershipByUniqueIdEvent>(cmd =>
+        Receive<GetAccountByUniqueIdEvent>(cmd =>
             ExecuteWithContext(ctx => GetMembershipByUniqueIdAsync(ctx, cmd), "GetMembershipByUniqueId")
                 .PipeTo(Sender));
 
@@ -70,7 +69,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     }
 
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> SignInMembershipAsync(
-        EcliptixSchemaContext ctx, SignInMembershipActorEvent cmd)
+        EcliptixSchemaContext ctx, SignInAccountActorEvent cmd)
     {
         const int lockoutDurationMinutes = 5;
         const int maxAttemptsInPeriod = 5;
@@ -426,7 +425,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
 
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> GetMembershipByVerificationFlowAsync(
-        EcliptixSchemaContext ctx, GetMembershipByVerificationFlowEvent cmd)
+        EcliptixSchemaContext ctx, GetAccountByVerificationFlowEvent cmd)
     {
         try
         {
@@ -492,7 +491,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     }
 
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> GetMembershipByUniqueIdAsync(
-        EcliptixSchemaContext ctx, GetMembershipByUniqueIdEvent cmd)
+        EcliptixSchemaContext ctx, GetAccountByUniqueIdEvent cmd)
     {
         try
         {

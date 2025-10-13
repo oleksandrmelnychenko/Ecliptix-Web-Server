@@ -1,15 +1,14 @@
 using System.Threading.Channels;
 using Akka.Actor;
-using Ecliptix.Domain.Memberships.ActorEvents;
+using Ecliptix.Domain.Account.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Providers.Twilio;
+using Ecliptix.Protobuf.Account;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
-using Ecliptix.Protobuf.Membership;
 using Microsoft.Extensions.Options;
 
-namespace Ecliptix.Domain.Memberships.WorkerActors;
+namespace Ecliptix.Domain.Account.WorkerActors;
 
 public record FlowCompletedGracefullyActorEvent(IActorRef ActorRef);
 

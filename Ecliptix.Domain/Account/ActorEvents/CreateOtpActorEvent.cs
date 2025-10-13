@@ -1,5 +1,5 @@
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 
-namespace Ecliptix.Domain.Memberships.ActorEvents;
+namespace Ecliptix.Domain.Account.ActorEvents;
 
 public record CreateOtpActorEvent(OtpQueryRecord OtpRecord);

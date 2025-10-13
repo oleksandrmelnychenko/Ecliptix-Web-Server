@@ -1,4 +1,4 @@
-namespace Ecliptix.Domain.Memberships;
+namespace Ecliptix.Domain.Account;
 
 public enum VerificationFlowStatus
 {

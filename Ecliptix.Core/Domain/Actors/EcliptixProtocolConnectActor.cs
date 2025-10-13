@@ -4,7 +4,7 @@ using Akka.Persistence;
 using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Domain.Protocol.Handlers;
-using Ecliptix.Domain.Memberships.WorkerActors;
+using Ecliptix.Domain.Account.WorkerActors;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.Common;

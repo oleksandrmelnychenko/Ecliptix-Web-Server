@@ -1,5 +1,5 @@
-namespace Ecliptix.Domain.Memberships.ActorEvents;
+namespace Ecliptix.Domain.Account.ActorEvents;
 
-public record ValidatePasswordRecoveryFlowEvent(Guid MembershipIdentifier);
+public record ValidatePasswordRecoveryFlowEvent(Guid AccountIdentifier);
 
 public record PasswordRecoveryFlowValidation(bool IsValid, Guid? FlowId);

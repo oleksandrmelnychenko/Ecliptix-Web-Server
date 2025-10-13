@@ -1,14 +1,15 @@
 using System.Data.Common;
 using Akka.Actor;
-using Ecliptix.Domain.Memberships.ActorEvents;
+using Ecliptix.Domain.Account.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
+using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
-namespace Ecliptix.Domain.Memberships.Persistors;
+namespace Ecliptix.Domain.Account.Persistors;
 
 public class LogoutAuditPersistorActor : PersistorBase<VerificationFlowFailure>
 {
@@ -37,7 +38,7 @@ public class LogoutAuditPersistorActor : PersistorBase<VerificationFlowFailure>
         {
             LogoutAuditEntity audit = new()
             {
-                MembershipUniqueId = cmd.MembershipUniqueId,
+                AccountUniqueId = cmd.AccountUniqueId,
                 ConnectId = cmd.ConnectId,
                 Reason = cmd.Reason,
                 LoggedOutAt = DateTime.UtcNow
@@ -47,14 +48,14 @@ public class LogoutAuditPersistorActor : PersistorBase<VerificationFlowFailure>
             await ctx.SaveChangesAsync();
 
             Log.Information(
-                "Logout audit recorded - MembershipId: {MembershipId}, ConnectId: {ConnectId}, Reason: {Reason}",
-                cmd.MembershipUniqueId, cmd.ConnectId, cmd.Reason);
+                "Logout audit recorded - AccountUniqueId: {AccountUniqueId}, ConnectId: {ConnectId}, Reason: {Reason}",
+                cmd.AccountUniqueId, cmd.ConnectId, cmd.Reason);
 
             return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to record logout audit for MembershipId: {MembershipId}", cmd.MembershipUniqueId);
+            Log.Error(ex, "Failed to record logout audit for MembershipId: {AccountUniqueId}", cmd.AccountUniqueId);
             return Result<Unit, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess("Failed to record logout audit", ex));
         }

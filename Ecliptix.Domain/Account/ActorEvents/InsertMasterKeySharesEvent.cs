@@ -1,4 +1,4 @@
-namespace Ecliptix.Domain.Memberships.ActorEvents;
+namespace Ecliptix.Domain.Account.ActorEvents;
 
 public record ShareData(
     int ShareIndex,
@@ -8,6 +8,6 @@ public record ShareData(
 );
 
 public record InsertMasterKeySharesEvent(
-    Guid MembershipUniqueId,
+    Guid AccountUniqueId,
     IReadOnlyList<ShareData> Shares
 );

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Akka.Actor;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Services.KeyDerivation;
+using Ecliptix.Domain.Account.ActorEvents;
 using Ecliptix.Domain.Account.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
@@ -306,11 +307,11 @@ internal sealed class MasterKeyService(
             }
 
             IActorRef membershipPersistor = actorRegistry.Get(ActorIds.MembershipPersistorActor);
-            GetMembershipByUniqueIdEvent getMembershipEvent = new(accountId);
+            GetAccountByUniqueIdEvent getAccountEvent = new(accountId);
 
             Result<AccountQueryRecord, VerificationFlowFailure> accountResult =
                 await membershipPersistor.Ask<Result<AccountQueryRecord, VerificationFlowFailure>>(
-                    getMembershipEvent,
+                    getAccountEvent,
                     TimeSpan.FromSeconds(AskTimeoutSeconds));
 
             if (accountResult.IsErr)

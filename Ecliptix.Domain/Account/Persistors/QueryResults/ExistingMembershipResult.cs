@@ -1,7 +1,7 @@
-namespace Ecliptix.Domain.Memberships.Persistors.QueryResults;
+namespace Ecliptix.Domain.Account.Persistors.QueryResults;
 
-public class ExistingMembershipResult
+public class ExistingAccountResult
 {
-    public bool MembershipExists { get; set; }
-    public Protobuf.Membership.Membership? Membership { get; set; }
+    public bool AccountExists { get; set; }
+    public Protobuf.Account.Account? Account { get; set; }
 }

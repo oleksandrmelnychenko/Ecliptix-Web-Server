@@ -3,7 +3,7 @@ using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Protobuf.Account;
 using Ecliptix.Utilities;
 
-namespace Ecliptix.Domain.Memberships.ActorEvents;
+namespace Ecliptix.Domain.Account.ActorEvents;
 
 public record InitiateVerificationFlowActorEvent(
     uint ConnectId,

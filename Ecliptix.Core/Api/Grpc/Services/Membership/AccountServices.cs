@@ -3,7 +3,6 @@ using Ecliptix.Core.Api.Grpc.Base;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
-using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
@@ -20,6 +19,7 @@ using Grpc.Core;
 using System.Globalization;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
+using Ecliptix.Domain.Account.ActorEvents;
 using Ecliptix.Domain.Account.WorkerActors;
 using Ecliptix.Protobuf.Account;
 
@@ -70,7 +70,7 @@ internal sealed class AccountServices(
                     });
                 }
 
-                SignInMembershipActorEvent signInEvent = new(
+                SignInAccountActorEvent signInEvent = new(
                     connectId, phoneNumberResult.ParsedMobileNumberE164!, message, _cultureName);
 
                 Result<OpaqueSignInInitResponse, VerificationFlowFailure> initSignInResult =

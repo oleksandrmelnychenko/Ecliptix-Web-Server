@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Akka.Actor;
+using Ecliptix.Domain.Account.ActorEvents;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;

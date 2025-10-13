@@ -1,3 +1,3 @@
-namespace Ecliptix.Domain.Memberships.ActorEvents;
+namespace Ecliptix.Domain.Account.ActorEvents;
 
-public record GetMasterKeySharesEvent(Guid MembershipUniqueId);
+public record GetMasterKeySharesEvent(Guid AccountUniqueId);

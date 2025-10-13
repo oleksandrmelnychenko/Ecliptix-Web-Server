@@ -1,3 +1,4 @@
+using Ecliptix.Domain.Account;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Utilities;

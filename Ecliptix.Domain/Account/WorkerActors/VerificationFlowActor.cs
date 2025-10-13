@@ -2,19 +2,22 @@ using System.Text;
 using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.Domain.Account.ActorEvents;
-using Ecliptix.Utilities.Configuration;
+using Ecliptix.Domain.Account.Persistors.QueryRecords;
+using Ecliptix.Domain.Account.Persistors.QueryResults;
+using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Providers.Twilio;
+using Ecliptix.Protobuf.Account;
 using Ecliptix.Utilities;
-using Ecliptix.Protobuf.Membership;
+using Ecliptix.Utilities.Configuration;
 using Google.Protobuf;
 using Microsoft.Extensions.Options;
-using Serilog;
+using AccountProto = Ecliptix.Protobuf.Account.Account;
 
-namespace Ecliptix.Domain.Memberships.WorkerActors;
+namespace Ecliptix.Domain.Account.WorkerActors;
 
 public record ProtocolCleanupRequiredEvent(uint ConnectId);
 
@@ -29,7 +32,7 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
     private readonly uint _connectId;
     private readonly string _cultureName;
     private readonly ILocalizationProvider _localizationProvider;
-    private readonly IActorRef _membershipActor;
+    private readonly IActorRef _accountActor;
     private readonly IActorRef _persistor;
     private readonly Guid _phoneNumberIdentifier;
     private readonly ISmsProvider _smsProvider;
@@ -53,7 +56,7 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
     public VerificationFlowActor(
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> writer,
-        IActorRef persistor, IActorRef membershipActor, ISmsProvider smsProvider,
+        IActorRef persistor, IActorRef accountActor, ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider, string cultureName,
         IOptions<SecurityConfiguration> securityConfig)
     {
@@ -61,7 +64,7 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
         _phoneNumberIdentifier = phoneNumberIdentifier;
         _writer = writer;
         _persistor = persistor;
-        _membershipActor = membershipActor;
+        _accountActor = accountActor;
         _smsProvider = smsProvider;
         _localizationProvider = localizationProvider;
         _cultureName = cultureName;
@@ -82,12 +85,12 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
     public static Props Build(
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> writer,
-        IActorRef persistor, IActorRef membershipActor, ISmsProvider smsProvider,
+        IActorRef persistor, IActorRef accountActor, ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider, string cultureName,
         IOptions<SecurityConfiguration> securityConfig)
     {
         return Props.Create(() => new VerificationFlowActor(connectId, phoneNumberIdentifier, appDeviceIdentifier,
-            purpose, writer, persistor, membershipActor, smsProvider, localizationProvider, cultureName, securityConfig));
+            purpose, writer, persistor, accountActor, smsProvider, localizationProvider, cultureName, securityConfig));
     }
 
     private void WaitingForFlow()
@@ -297,20 +300,20 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
         {
             try
             {
-                GetMembershipByVerificationFlowEvent getMembershipEvent = new(_verificationFlow.Value!.UniqueIdentifier);
-                Result<MembershipQueryRecord, VerificationFlowFailure> result =
-                    await _membershipActor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(
-                        getMembershipEvent, _timeouts.MembershipCreationTimeout);
+                GetAccountByVerificationFlowEvent getAccountEvent = new(_verificationFlow.Value!.UniqueIdentifier);
+                Result<AccountQueryRecord, VerificationFlowFailure> result =
+                    await _accountActor.Ask<Result<AccountQueryRecord, VerificationFlowFailure>>(
+                        getAccountEvent, _timeouts.AccountCreationTimeout);
 
                 result.Switch(
-                    membership => { Sender.Tell(CreateSuccessResponse(membership)); },
+                    account => { Sender.Tell(CreateSuccessResponse(account)); },
                     failure => { Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(failure)); }
                 );
             }
             catch
             {
                 Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.Generic("Failed to fetch membership for password recovery")));
+                    VerificationFlowFailure.Generic("Failed to fetch account for password recovery")));
             }
 
             await TerminateActor(graceful: true, publishCleanupEvent: true);
@@ -319,28 +322,28 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
 
         try
         {
-            CheckExistingMembershipActorEvent checkMembershipEvent = new(
+            CheckExistingAccountActorEvent checkAccountEvent = new(
                 _phoneNumberIdentifier);
 
-            Result<ExistingMembershipResult, VerificationFlowFailure> membershipResult =
-                await _persistor.Ask<Result<ExistingMembershipResult, VerificationFlowFailure>>(
-                    checkMembershipEvent, _timeouts.MembershipCreationTimeout);
+            Result<ExistingAccountResult, VerificationFlowFailure> accountResult =
+                await _persistor.Ask<Result<ExistingAccountResult, VerificationFlowFailure>>(
+                    checkAccountEvent, _timeouts.AccountCreationTimeout);
 
-            if (membershipResult.IsErr)
+            if (accountResult.IsErr)
             {
-                Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(membershipResult.UnwrapErr()));
+                Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(accountResult.UnwrapErr()));
                 await TerminateActor(graceful: true, publishCleanupEvent: true);
                 return;
             }
 
-            ExistingMembershipResult existingMembership = membershipResult.Unwrap();
+            ExistingAccountResult existingAccount = accountResult.Unwrap();
 
-            if (existingMembership is { MembershipExists: true, Membership: not null })
+            if (existingAccount is { AccountExists: true, Account: not null })
             {
                 Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
                 {
                     Result = VerificationResult.Succeeded,
-                    Membership = existingMembership.Membership
+                    Account = existingAccount.Account
                 }));
 
                 await TerminateActor(graceful: true, publishCleanupEvent: true);
@@ -350,29 +353,29 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
         catch
         {
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Generic("Failed to check existing membership")));
+                VerificationFlowFailure.Generic("Failed to check existing account")));
             await TerminateActor(graceful: true, publishCleanupEvent: true);
             return;
         }
 
         CreateAccountActorEvent createEvent = new(_connectId, _verificationFlow.Value!.UniqueIdentifier,
-            _activeOtp.UniqueIdentifier, Membership.Types.CreationStatus.OtpVerified);
+            _activeOtp.UniqueIdentifier, AccountProto.Types.CreationStatus.OtpVerified);
 
         try
         {
-            Result<MembershipQueryRecord, VerificationFlowFailure> result =
-                await _membershipActor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(
-                    createEvent, _timeouts.MembershipCreationTimeout);
+            Result<AccountQueryRecord, VerificationFlowFailure> result =
+                await _accountActor.Ask<Result<AccountQueryRecord, VerificationFlowFailure>>(
+                    createEvent, _timeouts.AccountCreationTimeout);
 
             result.Switch(
-                membership => { Sender.Tell(CreateSuccessResponse(membership)); },
+                account => { Sender.Tell(CreateSuccessResponse(account)); },
                 failure => { Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(failure)); }
             );
         }
         catch
         {
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Generic("Failed to create membership due to system error")));
+                VerificationFlowFailure.Generic("Failed to create account due to system error")));
         }
 
         await TerminateActor(graceful: true, publishCleanupEvent: true);
@@ -808,16 +811,16 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
     }
 
     private static Result<VerifyCodeResponse, VerificationFlowFailure>
-        CreateSuccessResponse(MembershipQueryRecord membership)
+        CreateSuccessResponse(AccountQueryRecord account)
     {
         return Result<VerifyCodeResponse, VerificationFlowFailure>.Ok(new VerifyCodeResponse
         {
             Result = VerificationResult.Succeeded,
-            Membership = new Membership
+            Account = new Protobuf.Account.Account
             {
-                UniqueIdentifier = Helpers.GuidToByteString(membership.UniqueIdentifier),
-                Status = membership.ActivityStatus,
-                CreationStatus = membership.CreationStatus
+                UniqueIdentifier = Helpers.GuidToByteString(account.UniqueIdentifier),
+                Status = account.ActivityStatus,
+                CreationStatus = account.CreationStatus
             }
         });
     }

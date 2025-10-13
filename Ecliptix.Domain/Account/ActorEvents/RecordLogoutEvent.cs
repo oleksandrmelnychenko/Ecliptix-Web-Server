@@ -1,8 +1,8 @@
 using Ecliptix.Domain.Schema.Entities;
 
-namespace Ecliptix.Domain.Memberships.ActorEvents;
+namespace Ecliptix.Domain.Account.ActorEvents;
 
 public record RecordLogoutEvent(
-    Guid MembershipUniqueId,
+    Guid AccountUniqueId,
     uint ConnectId,
     LogoutReason Reason);

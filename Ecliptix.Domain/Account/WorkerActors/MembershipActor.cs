@@ -109,11 +109,11 @@ public sealed class MembershipActor : ReceiveActor
         Receive<CleanupExpiredPasswordRecovery>(_ => CleanupExpiredPasswordRecovery());
         ReceiveAsync<GenerateMembershipOprfRegistrationRequestEvent>(HandleGenerateMembershipOprfRegistrationRecord);
         ReceiveAsync<CreateAccountActorEvent>(HandleCreateMembership);
-        ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembership);
+        ReceiveAsync<SignInAccountActorEvent>(HandleSignInMembership);
         ReceiveAsync<CompleteRegistrationRecordActorEvent>(HandleCompleteRegistrationRecord);
         ReceiveAsync<OprfInitRecoverySecureKeyEvent>(HandleInitRecoveryRequestEvent);
         ReceiveAsync<OprfCompleteRecoverySecureKeyEvent>(HandleCompleteRecoverySecureKeyEvent);
-        ReceiveAsync<GetMembershipByVerificationFlowEvent>(HandleGetMembershipByVerificationFlow);
+        ReceiveAsync<GetAccountByVerificationFlowEvent>(HandleGetMembershipByVerificationFlow);
     }
 
     private async Task HandleCompleteRegistrationRecord(CompleteRegistrationRecordActorEvent @event)
@@ -403,14 +403,14 @@ public sealed class MembershipActor : ReceiveActor
         Sender.Tell(operationResult);
     }
 
-    private async Task HandleGetMembershipByVerificationFlow(GetMembershipByVerificationFlowEvent @event)
+    private async Task HandleGetMembershipByVerificationFlow(GetAccountByVerificationFlowEvent @event)
     {
         Result<AccountQueryRecord, VerificationFlowFailure> operationResult =
             await _persistor.Ask<Result<AccountQueryRecord, VerificationFlowFailure>>(@event);
         Sender.Tell(operationResult);
     }
 
-    private async Task HandleSignInMembership(SignInMembershipActorEvent @event)
+    private async Task HandleSignInMembership(SignInAccountActorEvent @event)
     {
         Result<AccountQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<AccountQueryRecord, VerificationFlowFailure>>(@event);

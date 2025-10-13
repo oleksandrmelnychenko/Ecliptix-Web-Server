@@ -21,7 +21,7 @@ public sealed class VerificationFlowTimeouts
 
     public int OtpExpirationSeconds { get; set; } = 30;
 
-    public int MembershipCreationTimeoutSeconds { get; set; } = 10;
+    public int AccountCreationTimeoutSeconds { get; set; } = 10;
 
     public int ResendOtpCheckTimeoutSeconds { get; set; } = 15;
 
@@ -39,7 +39,7 @@ public sealed class VerificationFlowTimeouts
     public TimeSpan SessionTimeout => TimeSpan.FromSeconds(SessionTimeoutSeconds);
     public TimeSpan OtpUpdateInterval => TimeSpan.FromSeconds(OtpUpdateIntervalSeconds);
     public TimeSpan OtpExpiration => TimeSpan.FromSeconds(OtpExpirationSeconds);
-    public TimeSpan MembershipCreationTimeout => TimeSpan.FromSeconds(MembershipCreationTimeoutSeconds);
+    public TimeSpan AccountCreationTimeout => TimeSpan.FromSeconds(AccountCreationTimeoutSeconds);
     public TimeSpan ResendOtpCheckTimeout => TimeSpan.FromSeconds(ResendOtpCheckTimeoutSeconds);
     public TimeSpan CreateOtpTimeout => TimeSpan.FromSeconds(CreateOtpTimeoutSeconds);
     public TimeSpan UpdateOtpStatusTimeout => TimeSpan.FromSeconds(UpdateOtpStatusTimeoutSeconds);
