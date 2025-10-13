@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
 using Microsoft.EntityFrameworkCore.Storage;
+using Serilog;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
@@ -29,6 +30,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         Become(Ready);
     }
+
 
     public static Props Build(IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
     {
@@ -64,6 +66,33 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         Receive<ExpirePasswordRecoveryFlowsEvent>(cmd =>
             ExecuteWithContext(ctx => ExpirePasswordRecoveryFlowsAsync(ctx, cmd), "ExpirePasswordRecoveryFlows")
                 .PipeTo(Sender));
+
+        ReceiveAsync<UpdateMembershipVerificationFlowEvent>(async cmd =>
+        {
+            Log.Information("[UPDATE-MEMBERSHIP-FLOW-RECEIVED] Received UpdateMembershipVerificationFlowEvent for FlowId: {FlowId}, Purpose: {Purpose}, Status: {Status}",
+                cmd.VerificationFlowId, cmd.Purpose, cmd.FlowStatus);
+
+            Result<Unit, VerificationFlowFailure> result = await ExecuteWithContext(
+                ctx => UpdateMembershipVerificationFlowAsync(ctx, cmd),
+                "UpdateMembershipVerificationFlow");
+
+            result.Match<Unit>(
+                ok =>
+                {
+                    Log.Information("[UPDATE-MEMBERSHIP-FLOW-RECEIVED] Successfully processed event for FlowId: {FlowId}", cmd.VerificationFlowId);
+                    return Unit.Value;
+                },
+                err =>
+                {
+                    Log.Error("[UPDATE-MEMBERSHIP-FLOW-RECEIVED] Failed to process event for FlowId: {FlowId}, Error: {Error}",
+                        cmd.VerificationFlowId, err.Message);
+                    return Unit.Value;
+                }
+            );
+
+            // Send result back to sender (for Ask pattern)
+            Sender.Tell(result);
+        });
     }
 
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> SignInMembershipAsync(
@@ -428,11 +457,13 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         try
         {
             VerificationFlowEntity? verificationFlow = await ctx.VerificationFlows
+                .Include(vf => vf.MobileNumber)
                 .Where(vf => vf.UniqueId == cmd.VerificationFlowId && !vf.IsDeleted)
                 .FirstOrDefaultAsync();
 
             if (verificationFlow == null)
             {
+                Log.Warning("[GET-MEMBERSHIP-BY-FLOW] Verification flow not found: {FlowId}", cmd.VerificationFlowId);
                 return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Verification flow not found"));
             }
@@ -441,16 +472,21 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             if (verificationFlow.Purpose == "password_recovery")
             {
+                if (verificationFlow.MobileNumber == null)
+                {
+                    Log.Error("[GET-MEMBERSHIP-BY-FLOW] Mobile number not loaded for flow: {FlowId}", cmd.VerificationFlowId);
+                    return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.NotFound("Mobile number not found for verification flow"));
+                }
+
                 membership = await ctx.Memberships
-                    .Join(ctx.MobileNumbers,
-                        m => m.MobileNumberId,
-                        mn => mn.UniqueId,
-                        (m, mn) => new { Membership = m, MobileNumber = mn })
-                    .Where(x => x.MobileNumber.Id == verificationFlow.MobileNumberId &&
-                                !x.Membership.IsDeleted)
-                    .Select(x => x.Membership)
+                    .Where(m => m.MobileNumberId == verificationFlow.MobileNumber.UniqueId &&
+                                !m.IsDeleted)
                     .OrderByDescending(m => m.CreatedAt)
                     .FirstOrDefaultAsync();
+
+                Log.Information("[GET-MEMBERSHIP-BY-FLOW] Password recovery - looking for membership by MobileNumberId: {MobileNumberId}, Found: {Found}",
+                    verificationFlow.MobileNumber.UniqueId, membership != null);
             }
             else
             {
@@ -458,13 +494,21 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     .Where(m => m.VerificationFlowId == cmd.VerificationFlowId &&
                                 !m.IsDeleted)
                     .FirstOrDefaultAsync();
+
+                Log.Information("[GET-MEMBERSHIP-BY-FLOW] {Purpose} - looking for membership by VerificationFlowId: {FlowId}, Found: {Found}",
+                    verificationFlow.Purpose, cmd.VerificationFlowId, membership != null);
             }
 
             if (membership == null)
             {
+                Log.Warning("[GET-MEMBERSHIP-BY-FLOW] Membership not found for flow: {FlowId}, Purpose: {Purpose}",
+                    cmd.VerificationFlowId, verificationFlow.Purpose);
                 return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Membership not found for verification flow"));
             }
+
+            Log.Information("[GET-MEMBERSHIP-BY-FLOW] Membership found: {MembershipId} for flow: {FlowId}",
+                membership.UniqueId, cmd.VerificationFlowId);
 
             return MapActivityStatus(membership.Status).Match(
                 status => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(
@@ -483,6 +527,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "[GET-MEMBERSHIP-BY-FLOW] Exception while getting membership for flow: {FlowId}", cmd.VerificationFlowId);
             return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Get membership by flow failed: {ex.Message}"));
         }
@@ -545,35 +590,50 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             if (membership == null)
             {
+                Log.Warning("[PASSWORD-RECOVERY-VALIDATION] Membership not found: {MembershipId}", cmd.MembershipIdentifier);
                 return Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>.Ok(
                     new PasswordRecoveryFlowValidation(false, null));
             }
 
             VerificationFlowEntity? recoveryFlow = await ctx.VerificationFlows
-                .Join(ctx.MobileNumbers,
-                    vf => vf.MobileNumberId,
-                    mn => mn.Id,
-                    (vf, mn) => new { VerificationFlow = vf, MobileNumber = mn })
-                .Where(x => x.MobileNumber.UniqueId == membership.MobileNumberId &&
-                            x.VerificationFlow.Purpose == "password_recovery" &&
-                            x.VerificationFlow.Status == "verified" &&
-                            x.VerificationFlow.UpdatedAt >= tenMinutesAgo &&
-                            !x.VerificationFlow.IsDeleted)
-                .Select(x => x.VerificationFlow)
-                .OrderByDescending(vf => vf.UpdatedAt)
+                .Where(vf => vf.UniqueId == membership.VerificationFlowId &&
+                            vf.Purpose == "password_recovery" &&
+                            vf.Status == "verified" &&
+                            vf.UpdatedAt >= tenMinutesAgo &&
+                            !vf.IsDeleted)
                 .FirstOrDefaultAsync();
 
             if (recoveryFlow == null)
             {
+                VerificationFlowEntity? existingFlow = await ctx.VerificationFlows
+                    .Where(vf => vf.UniqueId == membership.VerificationFlowId && !vf.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (existingFlow != null)
+                {
+                    TimeSpan elapsed = DateTime.UtcNow - existingFlow.UpdatedAt;
+                    Log.Warning("[PASSWORD-RECOVERY-VALIDATION] Recovery flow invalid. MembershipId: {MembershipId}, FlowId: {FlowId}, Purpose: {Purpose}, Status: {Status}, ElapsedMinutes: {Minutes}",
+                        cmd.MembershipIdentifier, existingFlow.UniqueId, existingFlow.Purpose, existingFlow.Status, elapsed.TotalMinutes);
+                }
+                else
+                {
+                    Log.Warning("[PASSWORD-RECOVERY-VALIDATION] No verification flow found for membership: {MembershipId}, ExpectedFlowId: {FlowId}",
+                        cmd.MembershipIdentifier, membership.VerificationFlowId);
+                }
+
                 return Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>.Ok(
                     new PasswordRecoveryFlowValidation(false, null));
             }
+
+            Log.Information("[PASSWORD-RECOVERY-VALIDATION] Valid recovery flow found. MembershipId: {MembershipId}, FlowId: {FlowId}",
+                cmd.MembershipIdentifier, recoveryFlow.UniqueId);
 
             return Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>.Ok(
                 new PasswordRecoveryFlowValidation(true, recoveryFlow.UniqueId));
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "[PASSWORD-RECOVERY-VALIDATION] Exception during validation for MembershipId: {MembershipId}", cmd.MembershipIdentifier);
             return Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Validate password recovery flow failed: {ex.Message}"));
         }
@@ -590,29 +650,125 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             if (membership == null)
             {
+                Log.Warning("[PASSWORD-RECOVERY-EXPIRE] Membership not found: {MembershipId}", cmd.MembershipIdentifier);
                 return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
             }
 
             int rowsAffected = await ctx.VerificationFlows
-                .Join(ctx.MobileNumbers,
-                    vf => vf.MobileNumberId,
-                    mn => mn.Id,
-                    (vf, mn) => new { VerificationFlow = vf, MobileNumber = mn })
-                .Where(x => x.MobileNumber.UniqueId == membership.MobileNumberId &&
-                            x.VerificationFlow.Purpose == "password_recovery" &&
-                            x.VerificationFlow.Status == "verified" &&
-                            !x.VerificationFlow.IsDeleted)
-                .Select(x => x.VerificationFlow)
+                .Where(vf => vf.UniqueId == membership.VerificationFlowId &&
+                            vf.Purpose == "password_recovery" &&
+                            vf.Status == "verified" &&
+                            !vf.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(vf => vf.Status, "expired")
                     .SetProperty(vf => vf.UpdatedAt, DateTime.UtcNow));
+
+            if (rowsAffected > 0)
+            {
+                Log.Information("[PASSWORD-RECOVERY-EXPIRE] Expired {Count} recovery flow(s) for MembershipId: {MembershipId}, FlowId: {FlowId}",
+                    rowsAffected, cmd.MembershipIdentifier, membership.VerificationFlowId);
+            }
+            else
+            {
+                Log.Warning("[PASSWORD-RECOVERY-EXPIRE] No verified recovery flows to expire for MembershipId: {MembershipId}, FlowId: {FlowId}",
+                    cmd.MembershipIdentifier, membership.VerificationFlowId);
+            }
 
             return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "[PASSWORD-RECOVERY-EXPIRE] Exception while expiring flows for MembershipId: {MembershipId}", cmd.MembershipIdentifier);
             return Result<Unit, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Expire password recovery flows failed: {ex.Message}"));
+        }
+    }
+
+    private async Task<Result<Unit, VerificationFlowFailure>> UpdateMembershipVerificationFlowAsync(
+        EcliptixSchemaContext ctx, UpdateMembershipVerificationFlowEvent cmd)
+    {
+        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        try
+        {
+            if (cmd.Purpose != "password_recovery" || cmd.FlowStatus != "verified")
+            {
+                await transaction.RollbackAsync();
+                Log.Warning("[UPDATE-MEMBERSHIP-FLOW] Skipping update - Purpose: {Purpose}, Status: {Status}. Only password_recovery + verified are processed",
+                    cmd.Purpose, cmd.FlowStatus);
+                return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+            }
+
+            VerificationFlowEntity? newFlow = await ctx.VerificationFlows
+                .Include(vf => vf.MobileNumber)
+                .Where(vf => vf.UniqueId == cmd.VerificationFlowId && !vf.IsDeleted)
+                .FirstOrDefaultAsync();
+
+            if (newFlow?.MobileNumber == null)
+            {
+                await transaction.RollbackAsync();
+                Log.Warning("[UPDATE-MEMBERSHIP-FLOW] Verification flow or mobile number not found: {FlowId}", cmd.VerificationFlowId);
+                return Result<Unit, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.NotFound("Verification flow or mobile number not found"));
+            }
+
+            MembershipEntity? membership = await ctx.Memberships
+                .Where(m => m.MobileNumberId == newFlow.MobileNumber.UniqueId && !m.IsDeleted)
+                .OrderByDescending(m => m.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (membership == null)
+            {
+                await transaction.RollbackAsync();
+                Log.Warning("[UPDATE-MEMBERSHIP-FLOW] Membership not found for MobileNumberId: {MobileNumberId}", newFlow.MobileNumber.UniqueId);
+                return Result<Unit, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.NotFound("Membership not found"));
+            }
+
+            VerificationFlowEntity? currentFlow = await ctx.VerificationFlows
+                .Where(vf => vf.UniqueId == membership.VerificationFlowId && !vf.IsDeleted)
+                .FirstOrDefaultAsync();
+
+            if (currentFlow != null && currentFlow.UpdatedAt >= newFlow.UpdatedAt)
+            {
+                await transaction.RollbackAsync();
+                Log.Warning("[UPDATE-MEMBERSHIP-FLOW] Skipping update - current flow {CurrentFlowId} (updated: {CurrentUpdated}) is newer than or equal to new flow {NewFlowId} (updated: {NewUpdated})",
+                    currentFlow.UniqueId, currentFlow.UpdatedAt, newFlow.UniqueId, newFlow.UpdatedAt);
+                return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+            }
+
+            Guid oldFlowId = membership.VerificationFlowId;
+
+            int rowsAffected = await ctx.Memberships
+                .Where(m => m.UniqueId == membership.UniqueId &&
+                           m.VerificationFlowId == oldFlowId &&
+                           !m.IsDeleted)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(m => m.VerificationFlowId, newFlow.UniqueId)
+                    .SetProperty(m => m.UpdatedAt, DateTime.UtcNow));
+
+            if (rowsAffected == 0)
+            {
+                await transaction.RollbackAsync();
+                Log.Warning("[UPDATE-MEMBERSHIP-FLOW] Optimistic concurrency failure - membership {MembershipId} was modified by another transaction",
+                    membership.UniqueId);
+                return Result<Unit, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.ConcurrencyConflict("Membership was modified by another transaction"));
+            }
+
+            await transaction.CommitAsync();
+
+            Log.Information("[UPDATE-MEMBERSHIP-FLOW] ✅ Successfully updated membership {MembershipId} VerificationFlowId: {OldFlowId} → {NewFlowId} (Purpose: {Purpose}, CurrentFlowUpdated: {CurrentUpdated}, NewFlowUpdated: {NewUpdated})",
+                membership.UniqueId, oldFlowId, newFlow.UniqueId, cmd.Purpose,
+                currentFlow?.UpdatedAt.ToString("O") ?? "null", newFlow.UpdatedAt.ToString("O"));
+
+            return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            Log.Error(ex, "[UPDATE-MEMBERSHIP-FLOW] Exception while updating membership verification flow for FlowId: {FlowId}", cmd.VerificationFlowId);
+            return Result<Unit, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Update membership verification flow failed: {ex.Message}"));
         }
     }
 

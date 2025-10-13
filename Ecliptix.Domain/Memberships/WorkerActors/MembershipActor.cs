@@ -155,8 +155,13 @@ public sealed class MembershipActor : ReceiveActor
 
     private async Task HandleCompleteRecoverySecureKeyEvent(OprfCompleteRecoverySecureKeyEvent @event)
     {
+        Log.Information("[PASSWORD-RECOVERY-COMPLETE] Starting password recovery completion for membership {MembershipId}",
+            @event.MembershipIdentifier);
+
         if (!_pendingRecoveryTimestamps.TryGetValue(@event.MembershipIdentifier, out DateTime initTimestamp))
         {
+            Log.Warning("[PASSWORD-RECOVERY-COMPLETE] No recovery session found for membership {MembershipId}",
+                @event.MembershipIdentifier);
             Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.InvalidOpaque("No password recovery session found. Please restart the password recovery process.")));
             return;
@@ -165,13 +170,16 @@ public sealed class MembershipActor : ReceiveActor
         TimeSpan elapsed = DateTime.UtcNow - initTimestamp;
         if (elapsed > PendingPasswordRecoveryTimeout)
         {
-            Log.Warning("Password recovery timeout exceeded for membership {MembershipId}. Elapsed: {Elapsed}, Max: {Max}",
+            Log.Warning("[PASSWORD-RECOVERY-COMPLETE] Password recovery timeout exceeded for membership {MembershipId}. Elapsed: {Elapsed}, Max: {Max}",
                 @event.MembershipIdentifier, elapsed, PendingPasswordRecoveryTimeout);
             CleanupPasswordRecoveryState(@event.MembershipIdentifier);
             Sender.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Generic($"Password recovery session expired. Please restart the password recovery process.")));
             return;
         }
+
+        Log.Information("[PASSWORD-RECOVERY-COMPLETE] Recovery session validated. MembershipId: {MembershipId}, SessionAge: {Elapsed}",
+            @event.MembershipIdentifier, elapsed);
 
         if (!_pendingMaskingKeys.TryGetValue(@event.MembershipIdentifier, out byte[]? maskingKey))
         {
@@ -266,12 +274,17 @@ public sealed class MembershipActor : ReceiveActor
 
     private async Task HandleInitRecoveryRequestEvent(OprfInitRecoverySecureKeyEvent @event)
     {
+        Log.Information("[PASSWORD-RECOVERY-INIT] Starting password recovery init for membership {MembershipId}",
+            @event.MembershipIdentifier);
+
         Result<PasswordRecoveryFlowValidation, VerificationFlowFailure> flowValidation =
             await _persistor.Ask<Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>>(
                 new ValidatePasswordRecoveryFlowEvent(@event.MembershipIdentifier));
 
         if (flowValidation.IsErr)
         {
+            Log.Error("[PASSWORD-RECOVERY-INIT] Flow validation failed for membership {MembershipId}: {Error}",
+                @event.MembershipIdentifier, flowValidation.UnwrapErr().Message);
             Sender.Tell(Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Err(flowValidation.UnwrapErr()));
             return;
         }
@@ -279,6 +292,9 @@ public sealed class MembershipActor : ReceiveActor
         PasswordRecoveryFlowValidation validation = flowValidation.Unwrap();
         if (!validation.IsValid)
         {
+            Log.Warning("[PASSWORD-RECOVERY-INIT] Invalid recovery flow for membership {MembershipId}. OTP verification required.",
+                @event.MembershipIdentifier);
+
             string errorMessage = _localizationProvider.Localize(
                 VerificationFlowMessageKeys.PasswordRecoveryOtpRequired,
                 @event.CultureName);
@@ -287,6 +303,9 @@ public sealed class MembershipActor : ReceiveActor
                 VerificationFlowFailure.Unauthorized(errorMessage)));
             return;
         }
+
+        Log.Information("[PASSWORD-RECOVERY-INIT] Recovery flow validated. MembershipId: {MembershipId}, FlowId: {FlowId}",
+            @event.MembershipIdentifier, validation.FlowId);
 
         if (_pendingRecoveryTimestamps.TryGetValue(@event.MembershipIdentifier, out DateTime existingTimestamp))
         {

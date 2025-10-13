@@ -38,13 +38,13 @@ public sealed class ActorSystemInitializationHost(
             AppDevicePersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.AppDevicePersistor);
 
-        IActorRef verificationFlowPersistorActor = actorSystem.ActorOf(
-            VerificationFlowPersistorActor.Build(dbContextFactory),
-            ApplicationConstants.ActorNames.VerificationFlowPersistorActor);
-
         IActorRef membershipPersistorActor = actorSystem.ActorOf(
             MembershipPersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.MembershipPersistorActor);
+
+        IActorRef verificationFlowPersistorActor = actorSystem.ActorOf(
+            VerificationFlowPersistorActor.Build(dbContextFactory, membershipPersistorActor),
+            ApplicationConstants.ActorNames.VerificationFlowPersistorActor);
 
         IActorRef masterKeySharePersistorActor = actorSystem.ActorOf(
             MasterKeySharePersistorActor.Build(dbContextFactory),

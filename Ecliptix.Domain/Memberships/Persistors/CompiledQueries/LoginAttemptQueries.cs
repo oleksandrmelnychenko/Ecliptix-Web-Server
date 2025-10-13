@@ -23,6 +23,7 @@ public static class LoginAttemptQueries
                 ctx.LoginAttempts
                     .Where(l => l.MobileNumber == mobileNumber &&
                                 l.Timestamp > since &&
+                                !l.IsSuccess &&
                                 l.LockedUntil == null &&
                                 !l.IsDeleted)
                     .AsNoTracking()
