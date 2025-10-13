@@ -1,5 +1,7 @@
 using System.Data.Common;
 using Akka.Actor;
+using Ecliptix.Domain.Account;
+using Ecliptix.Domain.Account.ActorEvents;
 using Ecliptix.Domain.Account.WorkerActors;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
@@ -42,7 +44,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             ExecuteWithContext(ctx => UpdateMembershipSecureKeyAsync(ctx, cmd), "UpdateMembershipSecureKey")
                 .PipeTo(Sender));
 
-        Receive<CreateMembershipActorEvent>(cmd =>
+        Receive<CreateAccountActorEvent>(cmd =>
             ExecuteWithContext(ctx => CreateMembershipAsync(ctx, cmd), "CreateMembership")
                 .PipeTo(Sender));
 
@@ -243,7 +245,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     {
                         UniqueIdentifier = cmd.MembershipIdentifier,
                         ActivityStatus = status,
-                        CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum("secure_key_set"),
+                        CreationStatus = AccountCreationStatusHelper.GetCreationStatusEnum("secure_key_set"),
                         CredentialsVersion = newCredentialsVersion,
                         MaskingKey = cmd.MaskingKey
                     }),
@@ -260,7 +262,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     }
 
     private static async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> CreateMembershipAsync(
-        EcliptixSchemaContext ctx, CreateMembershipActorEvent cmd)
+        EcliptixSchemaContext ctx, CreateAccountActorEvent cmd)
     {
         await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
         try
@@ -339,7 +341,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         {
                             UniqueIdentifier = existingMembership.UniqueId,
                             ActivityStatus = status,
-                            CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(existingMembership.CreationStatus ?? "otp_verified"),
+                            CreationStatus = AccountCreationStatusHelper.GetCreationStatusEnum(existingMembership.CreationStatus ?? "otp_verified"),
                             CredentialsVersion = existingMembership.CredentialsVersion
                         }),
                     () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
@@ -353,7 +355,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 AppDeviceId = flow.AppDeviceId,
                 VerificationFlowId = flow.UniqueId,
                 Status = "active",
-                CreationStatus = MembershipCreationStatusHelper.GetCreationStatusString(cmd.CreationStatus)
+                CreationStatus = AccountCreationStatusHelper.GetCreationStatusString(cmd.CreationStatus)
             };
             ctx.Memberships.Add(newMembership);
             await ctx.SaveChangesAsync();
@@ -407,7 +409,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     {
                         UniqueIdentifier = newMembership.UniqueId,
                         ActivityStatus = status,
-                        CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(newMembership.CreationStatus),
+                        CreationStatus = AccountCreationStatusHelper.GetCreationStatusEnum(newMembership.CreationStatus),
                         CredentialsVersion = newMembership.CredentialsVersion
                     }),
                 () => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
@@ -473,7 +475,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     {
                         UniqueIdentifier = membership.UniqueId,
                         ActivityStatus = status,
-                        CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(membership.CreationStatus ?? "otp_verified"),
+                        CreationStatus = AccountCreationStatusHelper.GetCreationStatusEnum(membership.CreationStatus ?? "otp_verified"),
                         CredentialsVersion = membership.CredentialsVersion,
                         SecureKey = [],
                         MaskingKey = []
@@ -508,7 +510,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     {
                         UniqueIdentifier = membership.UniqueId,
                         ActivityStatus = status,
-                        CreationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(membership.CreationStatus ?? "otp_verified"),
+                        CreationStatus = AccountCreationStatusHelper.GetCreationStatusEnum(membership.CreationStatus ?? "otp_verified"),
                         CredentialsVersion = membership.CredentialsVersion,
                         SecureKey = membership.SecureKey ?? [],
                         MaskingKey = membership.MaskingKey ?? []

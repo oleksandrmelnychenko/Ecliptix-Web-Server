@@ -1,6 +1,7 @@
 using System.Text;
 using System.Threading.Channels;
 using Akka.Actor;
+using Ecliptix.Domain.Account.ActorEvents;
 using Ecliptix.Utilities.Configuration;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
@@ -354,7 +355,7 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
             return;
         }
 
-        CreateMembershipActorEvent createEvent = new(_connectId, _verificationFlow.Value!.UniqueIdentifier,
+        CreateAccountActorEvent createEvent = new(_connectId, _verificationFlow.Value!.UniqueIdentifier,
             _activeOtp.UniqueIdentifier, Membership.Types.CreationStatus.OtpVerified);
 
         try

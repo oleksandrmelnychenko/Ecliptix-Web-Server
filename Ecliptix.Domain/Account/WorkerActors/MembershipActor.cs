@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Akka.Actor;
+using Ecliptix.Domain.Account.ActorEvents;
 using Ecliptix.Domain.Account.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
@@ -107,7 +108,7 @@ public sealed class MembershipActor : ReceiveActor
         Receive<CleanupExpiredPendingSignIns>(_ => CleanupExpiredPendingSignIns());
         Receive<CleanupExpiredPasswordRecovery>(_ => CleanupExpiredPasswordRecovery());
         ReceiveAsync<GenerateMembershipOprfRegistrationRequestEvent>(HandleGenerateMembershipOprfRegistrationRecord);
-        ReceiveAsync<CreateMembershipActorEvent>(HandleCreateMembership);
+        ReceiveAsync<CreateAccountActorEvent>(HandleCreateMembership);
         ReceiveAsync<SignInMembershipActorEvent>(HandleSignInMembership);
         ReceiveAsync<CompleteRegistrationRecordActorEvent>(HandleCompleteRegistrationRecord);
         ReceiveAsync<OprfInitRecoverySecureKeyEvent>(HandleInitRecoveryRequestEvent);
@@ -395,7 +396,7 @@ public sealed class MembershipActor : ReceiveActor
         return Task.CompletedTask;
     }
 
-    private async Task HandleCreateMembership(CreateMembershipActorEvent @event)
+    private async Task HandleCreateMembership(CreateAccountActorEvent @event)
     {
         Result<AccountQueryRecord, VerificationFlowFailure> operationResult =
             await _persistor.Ask<Result<AccountQueryRecord, VerificationFlowFailure>>(@event);

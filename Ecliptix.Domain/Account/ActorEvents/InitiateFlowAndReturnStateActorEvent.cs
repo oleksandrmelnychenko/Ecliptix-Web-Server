@@ -1,6 +1,6 @@
-using Ecliptix.Protobuf.Membership;
+using Ecliptix.Protobuf.Account;
 
-namespace Ecliptix.Domain.Memberships.ActorEvents;
+namespace Ecliptix.Domain.Account.ActorEvents;
 
 public record InitiateFlowAndReturnStateActorEvent(
     Guid AppDeviceId,

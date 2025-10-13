@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using Akka.Actor;
-using Ecliptix.Core;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Services.KeyDerivation;
 using Ecliptix.Domain.Account.Persistors.QueryRecords;
