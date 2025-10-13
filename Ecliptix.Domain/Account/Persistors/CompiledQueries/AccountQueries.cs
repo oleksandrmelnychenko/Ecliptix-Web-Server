@@ -1,8 +1,8 @@
-using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Microsoft.EntityFrameworkCore;
 
-namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
+namespace Ecliptix.Domain.Account.Persistors.CompiledQueries;
 
 public static class AccountQueries
 {
@@ -25,9 +25,21 @@ public static class AccountQueries
         GetByMobileUniqueIdAndDevice = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid mobileUniqueId, Guid deviceId) =>
                 ctx.Accounts
-                    .Where(a => a.MobileNumberId == mobileUniqueId &&
-                                a.AppDeviceId == deviceId &&
-                                !a.IsDeleted)
+                    .Join(ctx.MobileDevices,
+                        a => a.UniqueId,
+                        md => md.AccountId,
+                        (a, md) => new { a, md })
+                    .Join(ctx.Devices,
+                        x => x.md.DeviceId,
+                        d => d.UniqueId,
+                        (x, d) => new { x.a, x.md, d })
+                    .Where(x => x.a.MobileNumberId == mobileUniqueId &&
+                                x.d.DeviceId == deviceId &&
+                                x.md.IsActive &&
+                                !x.a.IsDeleted &&
+                                !x.md.IsDeleted &&
+                                !x.d.IsDeleted)
+                    .Select(x => x.a)
                     .AsNoTracking()
                     .FirstOrDefault());
 
@@ -42,11 +54,15 @@ public static class AccountQueries
         GetByMobileUniqueId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid mobileUniqueId) =>
                 ctx.Accounts
-                    .Include(a => a.MobileNumber)
-                    .Include(a => a.VerificationFlow)
-                    .Where(a => a.MobileNumber!.UniqueId == mobileUniqueId &&
-                                !a.IsDeleted &&
-                                !a.MobileNumber.IsDeleted)
-                    .OrderByDescending(m => m.UpdatedAt)
-                .FirstOrDefault());
+                    .Join(ctx.MobileNumbers,
+                        a => a.MobileNumberId,
+                        mn => mn.UniqueId,
+                        (a, mn) => new { a, mn })
+                    .Where(x => x.mn.UniqueId == mobileUniqueId &&
+                                !x.a.IsDeleted &&
+                                !x.mn.IsDeleted)
+                    .OrderByDescending(x => x.a.UpdatedAt)
+                    .Select(x => x.a)
+                    .AsNoTracking()
+                    .FirstOrDefault());
 }

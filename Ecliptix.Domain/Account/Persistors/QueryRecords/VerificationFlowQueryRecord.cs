@@ -1,7 +1,7 @@
-using Ecliptix.Domain.Account;
-using Ecliptix.Protobuf.Membership;
+using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.Protobuf.Account;
 
-namespace Ecliptix.Domain.Memberships.Persistors.QueryRecords;
+namespace Ecliptix.Domain.Account.Persistors.QueryRecords;
 
 public record VerificationFlowQueryRecord
 {
