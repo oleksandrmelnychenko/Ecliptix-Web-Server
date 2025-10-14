@@ -5,8 +5,6 @@ using Ecliptix.Domain.Account.Persistors.CompiledQueries;
 using Ecliptix.Domain.Account.Persistors.QueryRecords;
 using Ecliptix.Domain.Account.Persistors.QueryResults;
 using Ecliptix.Domain.Memberships.Persistors;
-using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
-using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
@@ -36,7 +34,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                 .PipeTo(Sender));
 
         Receive<GetMasterKeySharesEvent>(cmd =>
-            ExecuteWithContext(ctx => GetMasterKeySharesByMembershipIdAsync(ctx, cmd), "GetMasterKeyShares")
+            ExecuteWithContext(ctx => GetMasterKeySharesByAccountIdAsync(ctx, cmd), "GetMasterKeyShares")
                 .PipeTo(Sender));
 
         Receive<DeleteMasterKeySharesEvent>(cmd =>
@@ -56,12 +54,12 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                     KeySplittingFailure.KeySplittingFailed("No shares provided"));
             }
 
-            AccountEntity? membership = await AccountQueries.GetByUniqueId(ctx, cmd.AccountUniqueId);
-            if (membership == null)
+            AccountEntity? account = await AccountQueries.GetByUniqueId(ctx, cmd.AccountUniqueId);
+            if (account == null)
             {
                 await transaction.RollbackAsync();
                 return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
-                    KeySplittingFailure.InvalidIdentifier("Membership not found or inactive"));
+                    KeySplittingFailure.InvalidIdentifier("Account not found or inactive"));
             }
 
             List<MasterKeyShareEntity> existingShares = await MasterKeyShareQueries.GetByAccountUniqueId(ctx, cmd.AccountUniqueId);
@@ -69,7 +67,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
             {
                 await transaction.RollbackAsync();
                 return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
-                    KeySplittingFailure.KeySplittingFailed("Master key shares already exist for this membership"));
+                    KeySplittingFailure.KeySplittingFailed("Master key shares already exist for this account"));
             }
 
             int distinctIndexes = cmd.Shares.Select(s => s.ShareIndex).Distinct().Count();
@@ -96,7 +94,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                 EncryptedShare = s.EncryptedShare,
                 ShareMetadata = s.ShareMetadata,
                 StorageLocation = s.StorageLocation,
-                CredentialsVersion = membership.CredentialsVersion
+                CredentialsVersion = account.CredentialsVersion
             }).ToList();
 
             ctx.MasterKeyShares.AddRange(sharesToInsert);
@@ -119,7 +117,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
         }
     }
 
-    private static async Task<Result<MasterKeyShareQueryRecord[], KeySplittingFailure>> GetMasterKeySharesByMembershipIdAsync(
+    private static async Task<Result<MasterKeyShareQueryRecord[], KeySplittingFailure>> GetMasterKeySharesByAccountIdAsync(
         EcliptixSchemaContext ctx, GetMasterKeySharesEvent cmd)
     {
         try

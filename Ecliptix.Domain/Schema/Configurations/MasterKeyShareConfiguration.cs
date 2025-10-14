@@ -12,7 +12,7 @@ public class MasterKeyShareConfiguration : EntityBaseMap<MasterKeyShareEntity>
 
         builder.ToTable("MasterKeyShares");
 
-        builder.Property(e => e.MembershipUniqueId)
+        builder.Property(e => e.AccountUniqueId)
             .IsRequired();
 
         builder.Property(e => e.ShareIndex)
@@ -33,13 +33,13 @@ public class MasterKeyShareConfiguration : EntityBaseMap<MasterKeyShareEntity>
         builder.HasIndex(e => e.ShareIndex)
             .HasDatabaseName("IX_MasterKeyShares_ShareIndex");
 
-        builder.HasIndex(e => new { e.MembershipUniqueId, e.ShareIndex })
+        builder.HasIndex(e => new { e.AccountUniqueId, e.ShareIndex })
             .IsUnique()
             .HasDatabaseName("UQ_MasterKeyShares_MembershipShare");
 
-        builder.HasOne(e => e.Membership)
+        builder.HasOne(e => e.Account)
             .WithMany(m => m.MasterKeyShares)
-            .HasForeignKey(e => e.MembershipUniqueId)
+            .HasForeignKey(e => e.AccountUniqueId)
             .HasPrincipalKey(m => m.UniqueId)
             .OnDelete(DeleteBehavior.NoAction)
             .HasConstraintName("FK_MasterKeyShares_Memberships");

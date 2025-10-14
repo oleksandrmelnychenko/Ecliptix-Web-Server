@@ -16,4 +16,5 @@ public class AccountEntity : EntityBase
     public virtual MobileNumberEntity MobileNumber { get; set; } = null!;
     public virtual ICollection<MobileDeviceEntity> MobileDevices { get; set; } = new List<MobileDeviceEntity>();
     public virtual ICollection<LoginAttemptEntity> LoginAttempts { get; set; } = new List<LoginAttemptEntity>();
+    public virtual ICollection<MasterKeyShareEntity> MasterKeyShares { get; set; } = new List<MasterKeyShareEntity>();
 }
