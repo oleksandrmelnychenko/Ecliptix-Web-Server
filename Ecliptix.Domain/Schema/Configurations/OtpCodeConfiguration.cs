@@ -28,11 +28,11 @@ public class OtpCodeConfiguration : EntityBaseMap<OtpCodeEntity>
             .HasMaxLength(20)
             .HasDefaultValue("active");
 
-        builder.Property(e => e.ExpiresAt)
-            .IsRequired();
-
         builder.Property(e => e.AttemptCount)
             .HasDefaultValue((short)0);
+
+        builder.Property(e => e.ExpiresAt)
+            .IsRequired();
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_OtpCodes_Status",
             "Status IN ('active', 'used', 'expired', 'invalid')"));

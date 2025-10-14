@@ -15,6 +15,9 @@ public class LogoutAuditConfiguration : EntityBaseMap<LogoutAuditEntity>
         builder.Property(e => e.MembershipUniqueId)
             .IsRequired();
 
+        builder.Property(e => e.AccountId)
+            .IsRequired(false);
+
         builder.Property(e => e.DeviceId)
             .IsRequired(false);
 
@@ -23,12 +26,15 @@ public class LogoutAuditConfiguration : EntityBaseMap<LogoutAuditEntity>
             .IsRequired()
             .HasConversion<string>();
 
+        builder.Property(e => e.IpAddress)
+            .HasMaxLength(45);
+
+        builder.Property(e => e.Platform)
+            .HasMaxLength(50);
+
         builder.Property(e => e.LoggedOutAt)
             .IsRequired()
             .HasDefaultValueSql("SYSDATETIMEOFFSET()");
-
-        builder.Property(e => e.IpAddress)
-            .HasMaxLength(45);
 
         builder.HasIndex(e => new { e.MembershipUniqueId, e.LoggedOutAt })
             .IsDescending(false, true)

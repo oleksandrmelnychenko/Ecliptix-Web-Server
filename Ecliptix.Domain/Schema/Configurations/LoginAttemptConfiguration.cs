@@ -12,6 +12,15 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
 
         builder.ToTable("LoginAttempts");
 
+        builder.Property(e => e.MembershipUniqueId)
+            .IsRequired(false);
+
+        builder.Property(e => e.AccountId)
+            .IsRequired(false);
+
+        builder.Property(e => e.DeviceId)
+            .IsRequired(false);
+
         builder.Property(e => e.MobileNumber)
             .HasMaxLength(18);
 
@@ -20,6 +29,15 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
 
         builder.Property(e => e.IsSuccess)
             .HasDefaultValue(false);
+
+        builder.Property(e => e.ErrorMessage)
+            .HasMaxLength(500);
+
+        builder.Property(e => e.IpAddress)
+            .HasMaxLength(45);
+
+        builder.Property(e => e.Platform)
+            .HasMaxLength(50);
 
         builder.Property(e => e.AttemptedAt)
             .HasDefaultValueSql("SYSDATETIMEOFFSET()");
@@ -30,14 +48,11 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
         builder.Property(e => e.LockedUntil)
             .HasColumnType("DATETIMEOFFSET");
 
-        builder.Property(e => e.ErrorMessage)
-            .HasMaxLength(500);
+        builder.ToTable(t => t.HasCheckConstraint("CHK_LoginAttempts_Success_CompletedAt",
+            "(IsSuccess = 0) OR (CompletedAt IS NOT NULL)"));
 
-        builder.Property(e => e.IpAddress)
-            .HasMaxLength(45);
-
-        builder.Property(e => e.UserAgent)
-            .HasMaxLength(500);
+        builder.ToTable(t => t.HasCheckConstraint("CHK_LoginAttempts_LockedUntil_Future",
+            "LockedUntil IS NULL OR LockedUntil > AttemptedAt"));
 
         builder.HasIndex(e => new { e.MembershipUniqueId, e.AttemptedAt })
             .IsDescending(false, true)
@@ -65,12 +80,6 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
         builder.HasIndex(e => e.IsSuccess)
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_LoginAttempts_IsSuccess");
-
-        builder.ToTable(t => t.HasCheckConstraint("CHK_LoginAttempts_Success_CompletedAt",
-            "(IsSuccess = 0) OR (CompletedAt IS NOT NULL)"));
-
-        builder.ToTable(t => t.HasCheckConstraint("CHK_LoginAttempts_LockedUntil_Future",
-            "LockedUntil IS NULL OR LockedUntil > AttemptedAt"));
 
         builder.HasOne(e => e.Membership)
             .WithMany(m => m.LoginAttempts)

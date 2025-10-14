@@ -43,7 +43,8 @@ public class LogoutAuditPersistorActor : PersistorBase<VerificationFlowFailure>
                 DeviceId = cmd.DeviceId,
                 Reason = cmd.Reason,
                 LoggedOutAt = DateTimeOffset.UtcNow,
-                IpAddress = cmd.IpAddress
+                IpAddress = cmd.IpAddress,
+                Platform = cmd.Platform
             };
 
             ctx.LogoutAudits.Add(audit);

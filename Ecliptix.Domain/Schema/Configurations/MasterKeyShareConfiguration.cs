@@ -1,6 +1,6 @@
-using Ecliptix.Domain.Schema.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
@@ -19,23 +19,26 @@ public class MasterKeyShareConfiguration : EntityBaseMap<MasterKeyShareEntity>
             .IsRequired();
 
         builder.Property(e => e.EncryptedShare)
-            .HasColumnType("VARBINARY(128)")
-            .IsRequired();
+            .IsRequired()
+            .HasColumnType("VARBINARY(128)");
 
         builder.Property(e => e.ShareMetadata)
-            .HasColumnType("NVARCHAR(500)")
-            .IsRequired();
+            .IsRequired()
+            .HasColumnType("NVARCHAR(500)");
 
         builder.Property(e => e.StorageLocation)
-            .HasMaxLength(100)
-            .IsRequired();
+            .IsRequired()
+            .HasMaxLength(100);
 
-        builder.HasIndex(e => e.ShareIndex)
-            .HasDatabaseName("IX_MasterKeyShares_ShareIndex");
+        builder.Property(e => e.CredentialsVersion)
+            .HasDefaultValue(1);
 
         builder.HasIndex(e => new { e.MembershipUniqueId, e.ShareIndex })
             .IsUnique()
             .HasDatabaseName("UQ_MasterKeyShares_MembershipShare");
+
+        builder.HasIndex(e => e.ShareIndex)
+            .HasDatabaseName("IX_MasterKeyShares_ShareIndex");
 
         builder.HasOne(e => e.Membership)
             .WithMany(m => m.MasterKeyShares)

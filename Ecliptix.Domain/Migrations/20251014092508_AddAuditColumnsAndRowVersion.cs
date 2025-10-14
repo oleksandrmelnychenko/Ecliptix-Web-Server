@@ -368,6 +368,9 @@ namespace Ecliptix.Domain.Migrations
                 oldType: "datetime2",
                 oldDefaultValueSql: "GETUTCDATE()");
 
+            migrationBuilder.Sql("ALTER TABLE [LoginAttempts] DROP CONSTRAINT [CHK_LoginAttempts_LockedUntil_Future]");
+            migrationBuilder.Sql("ALTER TABLE [LoginAttempts] DROP CONSTRAINT [CHK_LoginAttempts_Success_CompletedAt]");
+
             migrationBuilder.AlterColumn<DateTimeOffset>(
                 name: "LockedUntil",
                 table: "LoginAttempts",
@@ -438,6 +441,9 @@ namespace Ecliptix.Domain.Migrations
                 type: "uniqueidentifier",
                 nullable: true);
 
+            migrationBuilder.Sql("ALTER TABLE [LoginAttempts] ADD CONSTRAINT [CHK_LoginAttempts_LockedUntil_Future] CHECK (LockedUntil IS NULL OR LockedUntil > AttemptedAt)");
+            migrationBuilder.Sql("ALTER TABLE [LoginAttempts] ADD CONSTRAINT [CHK_LoginAttempts_Success_CompletedAt] CHECK ((IsSuccess = 0) OR (CompletedAt IS NOT NULL))");
+
             migrationBuilder.AlterColumn<DateTimeOffset>(
                 name: "UpdatedAt",
                 table: "FailedOtpAttempts",
@@ -551,6 +557,9 @@ namespace Ecliptix.Domain.Migrations
                 table: "Devices",
                 type: "uniqueidentifier",
                 nullable: true);
+
+            migrationBuilder.Sql("ALTER TABLE [DeviceContexts] DROP CONSTRAINT [CHK_DeviceContexts_Expiry_Future]");
+            migrationBuilder.Sql("ALTER TABLE [DeviceContexts] DROP CONSTRAINT [CHK_DeviceContexts_Activity_Valid]");
 
             migrationBuilder.AlterColumn<DateTimeOffset>(
                 name: "UpdatedAt",
@@ -630,6 +639,9 @@ namespace Ecliptix.Domain.Migrations
                 table: "DeviceContexts",
                 type: "uniqueidentifier",
                 nullable: true);
+
+            migrationBuilder.Sql("ALTER TABLE [DeviceContexts] ADD CONSTRAINT [CHK_DeviceContexts_Expiry_Future] CHECK (ContextExpiresAt > ContextEstablishedAt)");
+            migrationBuilder.Sql("ALTER TABLE [DeviceContexts] ADD CONSTRAINT [CHK_DeviceContexts_Activity_Valid] CHECK (LastActivityAt IS NULL OR LastActivityAt >= ContextEstablishedAt)");
 
             migrationBuilder.AlterColumn<DateTimeOffset>(
                 name: "UpdatedAt",

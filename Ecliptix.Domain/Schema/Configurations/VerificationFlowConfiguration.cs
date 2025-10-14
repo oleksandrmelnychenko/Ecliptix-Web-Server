@@ -28,11 +28,11 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntit
             .HasMaxLength(30)
             .HasDefaultValue("unspecified");
 
-        builder.Property(e => e.ExpiresAt)
-            .IsRequired();
-
         builder.Property(e => e.OtpCount)
             .HasDefaultValue((short)0);
+
+        builder.Property(e => e.ExpiresAt)
+            .IsRequired();
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_VerificationFlows_Status",
             "Status IN ('pending', 'verified', 'expired', 'failed')"));

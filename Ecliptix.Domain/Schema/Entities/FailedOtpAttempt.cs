@@ -8,7 +8,6 @@ public class FailedOtpAttemptEntity : EntityBase
     public long OtpRecordId { get; set; }
 
     public string AttemptedValue { get; set; } = string.Empty;
-
     public string FailureReason { get; set; } = string.Empty;
 
     public DateTimeOffset AttemptedAt { get; set; } = DateTimeOffset.UtcNow;

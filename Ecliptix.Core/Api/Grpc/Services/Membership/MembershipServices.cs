@@ -232,12 +232,12 @@ internal sealed class MembershipServices(
                     Guid? accountId = message.AccountIdentifier != null && message.AccountIdentifier.Length > 0
                         ? Helpers.FromByteStringToGuid(message.AccountIdentifier)
                         : null;
-                    string? ipAddress = context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
+                    AuditContext auditContext = AuditContextExtractor.ExtractFromContext(context);
 
                     Log.Information("Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
                         membershipId, connectId, deviceId, accountId, reason, message.Scope);
 
-                    RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason, ipAddress);
+                    RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason, auditContext.IpAddress, auditContext.Platform);
                     Result<Unit, VerificationFlowFailure> auditResult =
                         await _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(logoutEvent, ct);
 

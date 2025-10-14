@@ -4,6 +4,7 @@ using Ecliptix.Domain.Schema;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Ecliptix.Domain.Migrations
 {
     [DbContext(typeof(EcliptixSchemaContext))]
-    partial class EcliptixSchemaContextModelSnapshot : ModelSnapshot
+    [Migration("20251014112717_RenameUserAgentToPlatformAndAddToLogoutAudit")]
+    partial class RenameUserAgentToPlatformAndAddToLogoutAudit
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -732,9 +735,7 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("CredentialsVersion")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(1);
+                        .HasColumnType("int");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("datetimeoffset");
@@ -835,9 +836,7 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("nvarchar(20)");
 
                     b.Property<int>("CredentialsVersion")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(1);
+                        .HasColumnType("int");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("datetimeoffset");

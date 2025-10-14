@@ -146,7 +146,9 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     LockedUntil = lockedUntil,
                     Outcome = "rate_limit_exceeded",
                     IsSuccess = false,
-                    AttemptedAt = now
+                    AttemptedAt = now,
+                    IpAddress = null,
+                    Platform = null
                 };
                 ctx.LoginAttempts.Add(lockoutAttempt);
                 await ctx.SaveChangesAsync(cancellationToken);
@@ -296,15 +298,17 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         }
     }
 
-    private static void LogLoginAttempt(EcliptixSchemaContext ctx, string mobileNumber, string outcome, bool isSuccess, DateTimeOffset timestamp)
+    private static void LogLoginAttempt(EcliptixSchemaContext ctx, string mobileNumber, string outcome, bool isSuccess, DateTimeOffset timestamp, string? ipAddress = null, string? platform = null)
     {
-        LoginAttemptEntity attempt = new LoginAttemptEntity
+        LoginAttemptEntity attempt = new()
         {
             MobileNumber = mobileNumber,
             Outcome = outcome,
             IsSuccess = isSuccess,
             AttemptedAt = timestamp,
-            CompletedAt = isSuccess ? timestamp : null
+            CompletedAt = isSuccess ? timestamp : null,
+            IpAddress = ipAddress,
+            Platform = platform
         };
         ctx.LoginAttempts.Add(attempt);
     }
@@ -417,7 +421,9 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         Outcome = "membership_creation",
                         IsSuccess = false,
                         ErrorMessage = "rate_limit_exceeded",
-                        AttemptedAt = DateTimeOffset.UtcNow
+                        AttemptedAt = DateTimeOffset.UtcNow,
+                        IpAddress = null,
+                        Platform = null
                     };
                     ctx.LoginAttempts.Add(rateLimitAttempt);
                     await ctx.SaveChangesAsync();
@@ -440,7 +446,9 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     Outcome = "membership_creation",
                     IsSuccess = false,
                     ErrorMessage = "membership_already_exists",
-                    AttemptedAt = DateTimeOffset.UtcNow
+                    AttemptedAt = DateTimeOffset.UtcNow,
+                    IpAddress = null,
+                    Platform = null
                 };
                 ctx.LoginAttempts.Add(attempt);
                 await ctx.SaveChangesAsync();
@@ -461,7 +469,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 );
             }
 
-            MembershipEntity newMembership = new MembershipEntity
+            MembershipEntity newMembership = new()
             {
                 MobileNumberId = mobileUniqueId,
                 AppDeviceId = flow.AppDeviceId,
@@ -478,7 +486,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     .SetProperty(o => o.Status, "used")
                     .SetProperty(o => o.UpdatedAt, DateTimeOffset.UtcNow));
 
-            LoginAttemptEntity successAttempt = new LoginAttemptEntity
+            LoginAttemptEntity successAttempt = new()
             {
                 MembershipUniqueId = newMembership.UniqueId,
                 MobileNumber = mobileNumber,
@@ -486,7 +494,9 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 IsSuccess = true,
                 ErrorMessage = "created",
                 AttemptedAt = DateTimeOffset.UtcNow,
-                CompletedAt = DateTimeOffset.UtcNow
+                CompletedAt = DateTimeOffset.UtcNow,
+                IpAddress = null,
+                Platform = null
             };
             ctx.LoginAttempts.Add(successAttempt);
             await ctx.SaveChangesAsync();
@@ -670,9 +680,9 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             AccountEntity personalAccount = new()
             {
                 MembershipId = cmd.MembershipId,
-                AccountType = Ecliptix.Protobuf.Account.AccountType.Personal,
+                AccountType = Protobuf.Account.AccountType.Personal,
                 AccountName = "Personal",
-                Status = Ecliptix.Protobuf.Account.AccountStatus.Active,
+                Status = Protobuf.Account.AccountStatus.Active,
                 IsDefaultAccount = true,
                 CredentialsVersion = 1
             };
@@ -680,16 +690,16 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             ctx.Accounts.Add(personalAccount);
             await ctx.SaveChangesAsync();
 
-            List<AccountInfo> accounts = new()
-            {
-                new AccountInfo(
+            List<AccountInfo> accounts =
+            [
+                new(
                     personalAccount.UniqueId,
                     cmd.MembershipId,
-                    Ecliptix.Protobuf.Account.AccountType.Personal,
+                    Protobuf.Account.AccountType.Personal,
                     "Personal",
                     true,
-                    Ecliptix.Protobuf.Account.AccountStatus.Active)
-            };
+                    Protobuf.Account.AccountStatus.Active)
+            ];
 
             await transaction.CommitAsync();
             return Result<AccountCreationResult, VerificationFlowFailure>.Ok(

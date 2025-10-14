@@ -19,13 +19,16 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
             .IsRequired();
 
         builder.Property(e => e.VerificationFlowId)
-            .IsRequired(false); // Nullable - only set during password recovery
+            .IsRequired(false);
 
         builder.Property(e => e.SecureKey)
             .HasColumnType("VARBINARY(176)");
 
         builder.Property(e => e.MaskingKey)
             .HasColumnType("VARBINARY(32)");
+
+        builder.Property(e => e.CredentialsVersion)
+            .HasDefaultValue(1);
 
         builder.Property(e => e.Status)
             .IsRequired()

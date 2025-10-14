@@ -7,4 +7,5 @@ public record RecordLogoutEvent(
     Guid? AccountId,
     Guid DeviceId,
     LogoutReason Reason,
-    string? IpAddress = null);
+    string? IpAddress = null,
+    string? Platform = null);

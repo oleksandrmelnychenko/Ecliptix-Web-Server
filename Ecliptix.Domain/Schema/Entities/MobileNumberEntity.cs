@@ -1,4 +1,3 @@
-
 namespace Ecliptix.Domain.Schema.Entities;
 
 public class MobileNumberEntity : EntityBase
