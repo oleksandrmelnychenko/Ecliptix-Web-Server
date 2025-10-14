@@ -8,7 +8,7 @@ namespace Ecliptix.Domain.Memberships.Persistors;
 public static class PersistorSupervisorStrategy
 {
     private static readonly Dictionary<Type, int> RestartCounts = new();
-    private static readonly Dictionary<Type, DateTime> LastRestartTimes = new();
+    private static readonly Dictionary<Type, DateTimeOffset> LastRestartTimes = new();
     private static readonly TimeSpan RestartCooldown = TimeSpan.FromMinutes(5);
     private const int MaxRestartsPerCooldown = 3;
 
@@ -115,12 +115,12 @@ public static class PersistorSupervisorStrategy
 
     private static bool ShouldThrottleRestart(Type actorType)
     {
-        DateTime now = DateTime.UtcNow;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
 
         CleanupOldRestartRecords(now);
 
         if (!RestartCounts.TryGetValue(actorType, out int count) ||
-            !LastRestartTimes.TryGetValue(actorType, out DateTime lastRestart))
+            !LastRestartTimes.TryGetValue(actorType, out DateTimeOffset lastRestart))
         {
             return false;
         }
@@ -140,14 +140,14 @@ public static class PersistorSupervisorStrategy
 
     private static void RecordRestart(Type actorType)
     {
-        DateTime now = DateTime.UtcNow;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
 
         RestartCounts.TryGetValue(actorType, out int currentCount);
         RestartCounts[actorType] = currentCount + 1;
         LastRestartTimes[actorType] = now;
     }
 
-    private static void CleanupOldRestartRecords(DateTime now)
+    private static void CleanupOldRestartRecords(DateTimeOffset now)
     {
         List<Type> keysToRemove = [];
         keysToRemove.AddRange(from kvp in LastRestartTimes.ToList() where now - kvp.Value > RestartCooldown select kvp.Key);

@@ -16,23 +16,27 @@ public static class LogoutAuditQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, int, Task<List<LogoutAuditEntity>>>
-        GetLogoutHistory = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, Guid membershipUniqueId, int limit) =>
+    public static async Task<List<LogoutAuditEntity>> GetLogoutHistory(
+        EcliptixSchemaContext ctx,
+        Guid membershipUniqueId,
+        int limit)
+    {
+        return await ctx.LogoutAudits
+            .Where(l => l.MembershipUniqueId == membershipUniqueId &&
+                        !l.IsDeleted)
+            .OrderByDescending(l => l.LoggedOutAt)
+            .Take(limit)
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
+    public static readonly Func<EcliptixSchemaContext, Guid, Task<LogoutAuditEntity?>>
+        GetByDeviceId = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, Guid deviceId) =>
                 ctx.LogoutAudits
-                    .Where(l => l.MembershipUniqueId == membershipUniqueId &&
+                    .Where(l => l.DeviceId == deviceId &&
                                 !l.IsDeleted)
                     .OrderByDescending(l => l.LoggedOutAt)
-                    .Take(limit)
-                    .AsNoTracking()
-                    .ToList());
-
-    public static readonly Func<EcliptixSchemaContext, uint, Task<LogoutAuditEntity?>>
-        GetByConnectId = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, uint connectId) =>
-                ctx.LogoutAudits
-                    .Where(l => l.ConnectId == connectId &&
-                                !l.IsDeleted)
                     .AsNoTracking()
                     .FirstOrDefault());
 }

@@ -15,15 +15,8 @@ public class DeviceConfiguration : EntityBaseMap<DeviceEntity>
         builder.Property(e => e.AppInstanceId)
             .IsRequired();
 
-        builder.Property(e => e.DeviceId)
-            .IsRequired();
-
         builder.Property(e => e.DeviceType)
             .HasDefaultValue(1);
-
-        builder.HasIndex(e => e.DeviceId)
-            .IsUnique()
-            .HasDatabaseName("UQ_Devices_DeviceId");
 
         builder.HasIndex(e => e.AppInstanceId)
             .HasDatabaseName("IX_Devices_AppInstanceId");

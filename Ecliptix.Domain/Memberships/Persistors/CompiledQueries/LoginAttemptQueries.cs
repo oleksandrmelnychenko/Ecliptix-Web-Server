@@ -13,25 +13,25 @@ public static class LoginAttemptQueries
                     .Where(l => l.MobileNumber == mobileNumber &&
                                 l.LockedUntil != null &&
                                 !l.IsDeleted)
-                    .OrderByDescending(l => l.Timestamp)
+                    .OrderByDescending(l => l.AttemptedAt)
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, string, DateTime, Task<int>>
+    public static readonly Func<EcliptixSchemaContext, string, DateTimeOffset, Task<int>>
         CountFailedSince = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, string mobileNumber, DateTime since) =>
+            (EcliptixSchemaContext ctx, string mobileNumber, DateTimeOffset since) =>
                 ctx.LoginAttempts
                     .Where(l => l.MobileNumber == mobileNumber &&
-                                l.Timestamp > since &&
+                                l.AttemptedAt > since &&
                                 !l.IsSuccess &&
                                 l.LockedUntil == null &&
                                 !l.IsDeleted)
                     .AsNoTracking()
                     .Count());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, DateTime, Task<int>>
+    public static readonly Func<EcliptixSchemaContext, Guid, DateTimeOffset, Task<int>>
         CountFailedMembershipCreationSince = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, Guid mobileUniqueId, DateTime since) =>
+            (EcliptixSchemaContext ctx, Guid mobileUniqueId, DateTimeOffset since) =>
                 ctx.LoginAttempts
                     .Join(ctx.Memberships,
                         la => la.MembershipUniqueId,
@@ -39,16 +39,16 @@ public static class LoginAttemptQueries
                         (la, m) => new { la, m })
                     .Where(x => x.m.MobileNumberId == mobileUniqueId &&
                                 x.la.Outcome == "membership_creation" &&
-                                x.la.Status == "failed" &&
+                                !x.la.IsSuccess &&
                                 x.la.AttemptedAt > since &&
                                 !x.la.IsDeleted &&
                                 !x.m.IsDeleted)
                     .AsNoTracking()
                     .Count());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, DateTime, Task<DateTime?>>
+    public static readonly Func<EcliptixSchemaContext, Guid, DateTimeOffset, Task<DateTimeOffset?>>
         GetEarliestFailedMembershipCreationSince = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, Guid mobileUniqueId, DateTime since) =>
+            (EcliptixSchemaContext ctx, Guid mobileUniqueId, DateTimeOffset since) =>
                 ctx.LoginAttempts
                     .AsNoTracking()
                     .Join(ctx.Memberships,
@@ -57,9 +57,9 @@ public static class LoginAttemptQueries
                         (la, m) => new { la, m })
                     .Where(x => x.m.MobileNumberId == mobileUniqueId &&
                                 x.la.Outcome == "membership_creation" &&
-                                x.la.Status == "failed" &&
+                                !x.la.IsSuccess &&
                                 x.la.AttemptedAt > since &&
                                 !x.la.IsDeleted)
-                    .Select(x => (DateTime?)x.la.AttemptedAt)
+                    .Select(x => (DateTimeOffset?)x.la.AttemptedAt)
                     .Min());
 }

@@ -24,7 +24,7 @@ public class FailedOtpAttemptConfiguration : EntityBaseMap<FailedOtpAttemptEntit
             .HasMaxLength(50);
 
         builder.Property(e => e.AttemptedAt)
-            .HasDefaultValueSql("GETUTCDATE()");
+            .HasDefaultValueSql("SYSDATETIMEOFFSET()");
 
         builder.HasIndex(e => e.OtpRecordId)
             .HasDatabaseName("IX_FailedOtpAttempts_OtpRecordId");

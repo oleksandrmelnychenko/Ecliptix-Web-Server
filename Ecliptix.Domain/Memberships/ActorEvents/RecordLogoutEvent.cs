@@ -4,5 +4,7 @@ namespace Ecliptix.Domain.Memberships.ActorEvents;
 
 public record RecordLogoutEvent(
     Guid MembershipUniqueId,
-    uint ConnectId,
-    LogoutReason Reason);
+    Guid? AccountId,
+    Guid DeviceId,
+    LogoutReason Reason,
+    string? IpAddress = null);

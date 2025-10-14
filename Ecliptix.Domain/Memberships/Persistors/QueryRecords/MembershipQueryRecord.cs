@@ -11,4 +11,7 @@ public record MembershipQueryRecord
 
     public byte[] SecureKey { get; init; } = [];
     public byte[] MaskingKey { get; init; } = [];
+
+    public List<AccountInfo> AvailableAccounts { get; init; } = new();
+    public Guid? ActiveAccountId { get; init; }
 }

@@ -49,16 +49,12 @@ public static class VerificationFlowQueries
         HasActiveFlow = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid mobileUniqueId, Guid deviceId, string purpose) =>
                 ctx.VerificationFlows
-                    .Join(ctx.MobileNumbers,
-                        vf => vf.MobileNumberId,
-                        mn => mn.Id,
-                        (vf, mn) => new { vf, mn })
-                    .Where(x => x.mn.UniqueId == mobileUniqueId &&
-                                x.vf.AppDeviceId == deviceId &&
-                                x.vf.Purpose == purpose &&
-                                x.vf.Status == "pending" &&
-                                x.vf.ExpiresAt > DateTime.UtcNow &&
-                                !x.vf.IsDeleted)
+                    .Where(vf => vf.MobileNumberId == mobileUniqueId &&
+                                vf.AppDeviceId == deviceId &&
+                                vf.Purpose == purpose &&
+                                vf.Status == "pending" &&
+                                vf.ExpiresAt > DateTimeOffset.UtcNow &&
+                                !vf.IsDeleted)
                     .AsNoTracking()
                     .Any());
 
@@ -66,32 +62,27 @@ public static class VerificationFlowQueries
         GetActiveFlowForRecovery = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid mobileUniqueId, Guid deviceId, string purpose) =>
                 ctx.VerificationFlows
-                    .Join(ctx.MobileNumbers,
-                        vf => vf.MobileNumberId,
-                        mn => mn.Id,
-                        (vf, mn) => new { vf, mn })
-                    .Where(x => x.mn.UniqueId == mobileUniqueId &&
-                                x.vf.AppDeviceId == deviceId &&
-                                x.vf.Purpose == purpose &&
-                                x.vf.Status == "pending" &&
-                                x.vf.ExpiresAt > DateTime.UtcNow &&
-                                !x.vf.IsDeleted)
-                    .Select(x => x.vf)
+                    .Where(vf => vf.MobileNumberId == mobileUniqueId &&
+                                vf.AppDeviceId == deviceId &&
+                                vf.Purpose == purpose &&
+                                vf.Status == "pending" &&
+                                vf.ExpiresAt > DateTimeOffset.UtcNow &&
+                                !vf.IsDeleted)
                     .FirstOrDefault());
 
-    public static readonly Func<EcliptixSchemaContext, long, DateTime, Task<int>>
+    public static readonly Func<EcliptixSchemaContext, Guid, DateTimeOffset, Task<int>>
         CountRecentByMobileId = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, long mobileId, DateTime since) =>
+            (EcliptixSchemaContext ctx, Guid mobileUniqueId, DateTimeOffset since) =>
                 ctx.VerificationFlows
-                    .Where(f => f.MobileNumberId == mobileId &&
+                    .Where(f => f.MobileNumberId == mobileUniqueId &&
                                 f.CreatedAt > since &&
                                 !f.IsDeleted)
                     .AsNoTracking()
                     .Count());
 
-    public static readonly Func<EcliptixSchemaContext, Guid, DateTime, Task<int>>
+    public static readonly Func<EcliptixSchemaContext, Guid, DateTimeOffset, Task<int>>
         CountRecentByDevice = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, Guid deviceId, DateTime since) =>
+            (EcliptixSchemaContext ctx, Guid deviceId, DateTimeOffset since) =>
                 ctx.VerificationFlows
                     .Where(f => f.AppDeviceId == deviceId &&
                                 f.CreatedAt > since &&
@@ -99,11 +90,11 @@ public static class VerificationFlowQueries
                     .AsNoTracking()
                     .Count());
 
-    public static readonly Func<EcliptixSchemaContext, long, DateTime, Task<int>>
+    public static readonly Func<EcliptixSchemaContext, Guid, DateTimeOffset, Task<int>>
         CountRecentPasswordRecovery = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, long mobileId, DateTime since) =>
+            (EcliptixSchemaContext ctx, Guid mobileUniqueId, DateTimeOffset since) =>
                 ctx.VerificationFlows
-                    .Where(f => f.MobileNumberId == mobileId &&
+                    .Where(f => f.MobileNumberId == mobileUniqueId &&
                                 f.Purpose == "password_recovery" &&
                                 f.CreatedAt >= since &&
                                 !f.IsDeleted)

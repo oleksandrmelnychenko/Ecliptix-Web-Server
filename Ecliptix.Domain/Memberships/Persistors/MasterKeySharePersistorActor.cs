@@ -157,16 +157,19 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
     private static async Task<Result<Unit, KeySplittingFailure>> DeleteMasterKeySharesAsync(
         EcliptixSchemaContext ctx, DeleteMasterKeySharesEvent cmd)
     {
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
         try
         {
             await ctx.MasterKeyShares
                 .Where(mks => mks.MembershipUniqueId == cmd.MembershipId && !mks.IsDeleted)
                 .ExecuteDeleteAsync();
 
+            await transaction.CommitAsync();
             return Result<Unit, KeySplittingFailure>.Ok(Unit.Value);
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             return Result<Unit, KeySplittingFailure>.Err(
                 KeySplittingFailure.KeySplittingFailed($"Delete shares failed: {ex.Message}"));
         }

@@ -7,11 +7,9 @@ public class DeviceEntity : EntityBase
 {
     public Guid AppInstanceId { get; set; }
 
-    public Guid DeviceId { get; set; }
-
     public int DeviceType { get; set; } = 1;
 
     public virtual ICollection<VerificationFlowEntity> VerificationFlows { get; set; } = new List<VerificationFlowEntity>();
     public virtual ICollection<MembershipEntity> Memberships { get; set; } = new List<MembershipEntity>();
-    public virtual ICollection<MobileDeviceEntity> MobileDevices { get; set; } = new List<MobileDeviceEntity>();
+    public virtual ICollection<DeviceContextEntity> DeviceContexts { get; set; } = new List<DeviceContextEntity>();
 }

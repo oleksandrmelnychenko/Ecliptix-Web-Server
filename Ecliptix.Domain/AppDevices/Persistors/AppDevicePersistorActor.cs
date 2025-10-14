@@ -33,6 +33,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
     private static async Task<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>> RegisterAppDeviceAsync(
         EcliptixSchemaContext ctx, AppDevice appDevice)
     {
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
         try
         {
             Guid appInstanceId = Helpers.FromByteStringToGuid(appDevice.AppInstanceId);
@@ -41,6 +42,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 
             if (appInstanceId == Guid.Empty || deviceId == Guid.Empty)
             {
+                await transaction.RollbackAsync();
                 return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
                 {
                     Status = AppDeviceRegisteredStateReply.Types.Status.FailureInvalidRequest,
@@ -53,6 +55,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 
             if (existingDevice != null)
             {
+                await transaction.RollbackAsync();
                 return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
                 {
                     Status = AppDeviceRegisteredStateReply.Types.Status.SuccessAlreadyExists,
@@ -64,13 +67,13 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
             DeviceEntity newDevice = new()
             {
                 AppInstanceId = appInstanceId,
-                DeviceId = deviceId,
                 DeviceType = deviceType
             };
 
             ctx.Devices.Add(newDevice);
             await ctx.SaveChangesAsync();
 
+            await transaction.CommitAsync();
             return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
             {
                 Status = AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration,
@@ -80,6 +83,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Err(
                 AppDeviceFailure.InfrastructureFailure($"Device registration failed: {ex.Message}"));
         }

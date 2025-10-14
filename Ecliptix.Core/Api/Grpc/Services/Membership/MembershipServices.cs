@@ -21,6 +21,7 @@ using Grpc.Core;
 using System.Globalization;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Membership;
 
@@ -69,8 +70,10 @@ internal sealed class MembershipServices(
                     });
                 }
 
+                Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+
                 SignInMembershipActorEvent signInEvent = new(
-                    connectId, phoneNumberResult.ParsedMobileNumberE164!, message, _cultureName);
+                    connectId, phoneNumberResult.ParsedMobileNumberE164!, deviceId, message, _cultureName);
 
                 Result<OpaqueSignInInitResponse, VerificationFlowFailure> initSignInResult =
                     await _membershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent, ct);
@@ -106,10 +109,13 @@ internal sealed class MembershipServices(
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRegistrationCompleteRequest, OprfRegistrationCompleteResponse>(request, context,
                 async (message, connectId, ct) =>
                 {
+                    Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+
                     CompleteRegistrationRecordActorEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory),
-                        connectId);
+                        connectId,
+                        deviceId);
 
                     Result<OprfRegistrationCompleteResponse, VerificationFlowFailure> completeRegistrationRecordResult =
                         await _membershipActor.Ask<Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>>(
@@ -222,10 +228,16 @@ internal sealed class MembershipServices(
                         }
                     }
 
-                    Log.Information("Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, Reason: {Reason}, Scope: {Scope}",
-                        membershipId, connectId, reason, message.Scope);
+                    Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+                    Guid? accountId = message.AccountIdentifier != null && message.AccountIdentifier.Length > 0
+                        ? Helpers.FromByteStringToGuid(message.AccountIdentifier)
+                        : null;
+                    string? ipAddress = context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
 
-                    RecordLogoutEvent logoutEvent = new(membershipId, connectId, reason);
+                    Log.Information("Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
+                        membershipId, connectId, deviceId, accountId, reason, message.Scope);
+
+                    RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason, ipAddress);
                     Result<Unit, VerificationFlowFailure> auditResult =
                         await _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(logoutEvent, ct);
 

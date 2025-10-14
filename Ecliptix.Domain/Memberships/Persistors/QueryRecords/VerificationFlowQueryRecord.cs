@@ -8,7 +8,7 @@ public record VerificationFlowQueryRecord
     public required Guid MobileNumberIdentifier { get; init; }
     public required Guid AppDeviceIdentifier { get; init; }
     public uint? ConnectId { get; init; }
-    public required DateTime ExpiresAt { get; init; }
+    public required DateTimeOffset ExpiresAt { get; init; }
     public required VerificationPurpose Purpose { get; init; }
     public required VerificationFlowStatus Status { get; init; }
     public required int OtpCount { get; init; }

@@ -3,6 +3,8 @@ namespace Ecliptix.Domain.Schema.Entities;
 public class LoginAttemptEntity : EntityBase
 {
     public Guid? MembershipUniqueId { get; set; }
+    public Guid? AccountId { get; set; }
+    public Guid? DeviceId { get; set; }
 
     public string? MobileNumber { get; set; }
 
@@ -10,19 +12,19 @@ public class LoginAttemptEntity : EntityBase
 
     public bool IsSuccess { get; set; }
 
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset AttemptedAt { get; set; } = DateTimeOffset.UtcNow;
 
-    public DateTime? LockedUntil { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
 
-    public string? Status { get; set; }
+    public DateTimeOffset? LockedUntil { get; set; }
 
     public string? ErrorMessage { get; set; }
 
-    public string? SessionId { get; set; }
+    public string? IpAddress { get; set; }
 
-    public DateTime AttemptedAt { get; set; } = DateTime.UtcNow;
-
-    public DateTime? SuccessfulAt { get; set; }
+    public string? UserAgent { get; set; }
 
     public virtual MembershipEntity? Membership { get; set; }
+    public virtual AccountEntity? Account { get; set; }
+    public virtual DeviceEntity? Device { get; set; }
 }

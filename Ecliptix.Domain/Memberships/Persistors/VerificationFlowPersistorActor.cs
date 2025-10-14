@@ -96,7 +96,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     .Where(vf => vf.Id == existingActiveFlow.Id)
                     .ExecuteUpdateAsync(setters => setters
                         .SetProperty(vf => vf.ConnectionId, (long?)cmd.ConnectId)
-                        .SetProperty(vf => vf.UpdatedAt, DateTime.UtcNow));
+                        .SetProperty(vf => vf.UpdatedAt, DateTimeOffset.UtcNow));
 
                 await ctx.OtpCodes
                     .Where(o => o.VerificationFlowId == existingActiveFlow.Id &&
@@ -104,12 +104,12 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                                 !o.IsDeleted)
                     .ExecuteUpdateAsync(setters => setters
                         .SetProperty(o => o.Status, "expired")
-                        .SetProperty(o => o.UpdatedAt, DateTime.UtcNow));
+                        .SetProperty(o => o.UpdatedAt, DateTimeOffset.UtcNow));
 
                 await transaction.CommitAsync();
 
                 existingActiveFlow.ConnectionId = cmd.ConnectId;
-                existingActiveFlow.UpdatedAt = DateTime.UtcNow;
+                existingActiveFlow.UpdatedAt = DateTimeOffset.UtcNow;
                 existingActiveFlow.MobileNumber = mobile;
                 existingActiveFlow.OtpCodes = new List<OtpCodeEntity>();
 
@@ -118,12 +118,12 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             if (cmd.Purpose == VerificationPurpose.PasswordRecovery)
             {
-                Log.Information("[INITIATE-PASSWORD-RECOVERY] Password recovery flow initiated for mobile ID {MobileId}", mobile.Id);
+                Log.Information("[INITIATE-PASSWORD-RECOVERY] Password recovery flow initiated for mobile ID {MobileId}", mobile.UniqueId);
 
                 int recoveryCount = await VerificationFlowQueries.CountRecentPasswordRecovery(
-                    ctx, mobile.Id, DateTime.UtcNow.AddHours(-1));
+                    ctx, mobile.UniqueId, DateTimeOffset.UtcNow.AddHours(-1));
 
-                Log.Information("[INITIATE-PASSWORD-RECOVERY] Recent password recovery count: {Count} for mobile ID {MobileId}", recoveryCount, mobile.Id);
+                Log.Information("[INITIATE-PASSWORD-RECOVERY] Recent password recovery count: {Count} for mobile ID {MobileId}", recoveryCount, mobile.UniqueId);
 
                 if (recoveryCount >= 3)
                 {
@@ -132,17 +132,15 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                         VerificationFlowFailure.RateLimitExceeded("password_recovery_rate_limit_exceeded"));
                 }
 
-                // Expire old password recovery flows (both pending AND verified)
-                // This prevents orphaned verified flows from being used after a new recovery is initiated
                 List<VerificationFlowEntity> oldActiveFlows = await ctx.VerificationFlows
-                    .Where(vf => vf.MobileNumberId == mobile.Id &&
+                    .Where(vf => vf.MobileNumberId == mobile.UniqueId &&
                                  vf.Purpose == "password_recovery" &&
                                  (vf.Status == "pending" || vf.Status == "verified") &&
                                  !vf.IsDeleted)
                     .ToListAsync();
 
                 Log.Information("[INITIATE-PASSWORD-RECOVERY] Found {Count} old password recovery flows (pending + verified) to expire for mobile ID {MobileId}",
-                    oldActiveFlows.Count, mobile.Id);
+                    oldActiveFlows.Count, mobile.UniqueId);
 
                 if (oldActiveFlows.Count > 0)
                 {
@@ -150,9 +148,9 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     {
                         string oldStatus = oldFlow.Status;
                         oldFlow.Status = "expired";
-                        oldFlow.UpdatedAt = DateTime.UtcNow;
+                        oldFlow.UpdatedAt = DateTimeOffset.UtcNow;
                         Log.Information("[INITIATE-PASSWORD-RECOVERY] Expiring flow {FlowId} with status '{OldStatus}' for mobile ID {MobileId}",
-                            oldFlow.UniqueId, oldStatus, mobile.Id);
+                            oldFlow.UniqueId, oldStatus, mobile.UniqueId);
                     }
 
                     Log.Information("[INITIATE-PASSWORD-RECOVERY] Successfully expired {Count} old password recovery flows", oldActiveFlows.Count);
@@ -160,7 +158,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             }
 
             int mobileFlowCount = await VerificationFlowQueries.CountRecentByMobileId(
-                ctx, mobile.Id, DateTime.UtcNow.AddHours(-1));
+                ctx, mobile.UniqueId, DateTimeOffset.UtcNow.AddHours(-1));
             if (mobileFlowCount >= 30)
             {
                 await transaction.RollbackAsync();
@@ -169,7 +167,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             }
 
             int deviceFlowCount = await VerificationFlowQueries.CountRecentByDevice(
-                ctx, cmd.AppDeviceId, DateTime.UtcNow.AddHours(-1));
+                ctx, cmd.AppDeviceId, DateTimeOffset.UtcNow.AddHours(-1));
             if (deviceFlowCount >= 10)
             {
                 await transaction.RollbackAsync();
@@ -180,15 +178,15 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             VerificationFlowEntity flow = new()
             {
                 UniqueId = Guid.NewGuid(),
-                MobileNumberId = mobile.Id,
+                MobileNumberId = mobile.UniqueId,
                 AppDeviceId = cmd.AppDeviceId,
                 Purpose = ConvertPurposeToString(cmd.Purpose),
                 Status = "pending",
-                ExpiresAt = DateTime.UtcNow.AddMinutes(15),
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(15),
                 ConnectionId = cmd.ConnectId,
                 OtpCount = 0,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
                 IsDeleted = false
             };
 
@@ -239,22 +237,32 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     private async Task<Result<Unit, VerificationFlowFailure>> UpdateOtpStatusAsync(
         EcliptixSchemaContext ctx, UpdateOtpStatusActorEvent cmd)
     {
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
         try
         {
+            string newStatus = ConvertVerificationFlowStatusToOtpStatus(cmd.Status);
+            DateTimeOffset utcNow = DateTimeOffset.UtcNow;
+
             int rowsAffected = await ctx.OtpCodes
                 .Where(o => o.UniqueId == cmd.OtpIdentified && !o.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(o => o.Status, ConvertVerificationFlowStatusToOtpStatus(cmd.Status))
-                    .SetProperty(o => o.UpdatedAt, DateTime.UtcNow));
+                    .SetProperty(o => o.Status, newStatus)
+                    .SetProperty(o => o.UpdatedAt, utcNow)
+                    .SetProperty(o => o.VerifiedAt, newStatus == "used" ? utcNow : (DateTimeOffset?)null));
 
             if (rowsAffected == 0)
+            {
+                await transaction.RollbackAsync();
                 return Result<Unit, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("OTP not found"));
+            }
 
+            await transaction.CommitAsync();
             return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             return Result<Unit, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Update OTP status failed: {ex.Message}"));
         }
@@ -287,6 +295,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     private async Task<Result<int, VerificationFlowFailure>> UpdateVerificationFlowStatusAsync(
         EcliptixSchemaContext ctx, UpdateVerificationFlowStatusActorEvent cmd)
     {
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
         try
         {
             VerificationFlowEntity? flow = await ctx.VerificationFlows
@@ -294,8 +303,11 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 .FirstOrDefaultAsync();
 
             if (flow == null)
+            {
+                await transaction.RollbackAsync();
                 return Result<int, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Flow not found"));
+            }
 
             string newStatus = cmd.Status.ToString().ToLowerInvariant();
             string purpose = flow.Purpose;
@@ -304,15 +316,22 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 .Where(f => f.UniqueId == cmd.FlowIdentifier && !f.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(f => f.Status, newStatus)
-                    .SetProperty(f => f.UpdatedAt, DateTime.UtcNow));
+                    .SetProperty(f => f.UpdatedAt, DateTimeOffset.UtcNow));
 
             if (rowsAffected == 0)
+            {
+                await transaction.RollbackAsync();
                 return Result<int, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Flow not found"));
+            }
 
+            // Commit the flow status update FIRST, then update membership separately
+            await transaction.CommitAsync();
+
+            // After committing, trigger membership update asynchronously for password recovery
             if (purpose == "password_recovery" && newStatus == "verified" && _membershipPersistorActor != null)
             {
-                Log.Information("[UPDATE-FLOW-STATUS] Password recovery flow {FlowId} marked as verified. Requesting membership persistor to update VerificationFlowId",
+                Log.Information("[UPDATE-FLOW-STATUS] Password recovery flow {FlowId} marked as verified. Sending async request to update membership VerificationFlowId",
                     cmd.FlowIdentifier);
 
                 UpdateMembershipVerificationFlowEvent updateMembershipEvent = new(
@@ -320,37 +339,18 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     purpose,
                     newStatus);
 
-                try
-                {
-                    // Use Ask pattern to wait for membership update to complete
-                    Result<Unit, VerificationFlowFailure> membershipUpdateResult = await _membershipPersistorActor.Ask<Result<Unit, VerificationFlowFailure>>(
-                        updateMembershipEvent,
-                        TimeSpan.FromSeconds(5));
+                // Send the update request asynchronously using Tell (fire-and-forget)
+                // This prevents timeout issues and allows the flow status to remain "verified"
+                _membershipPersistorActor.Tell(updateMembershipEvent);
 
-                    membershipUpdateResult.Match<Unit>(
-                        ok =>
-                        {
-                            Log.Information("[UPDATE-FLOW-STATUS] Membership VerificationFlowId updated successfully for flow {FlowId}", cmd.FlowIdentifier);
-                            return Unit.Value;
-                        },
-                        err =>
-                        {
-                            Log.Warning("[UPDATE-FLOW-STATUS] Failed to update membership VerificationFlowId for flow {FlowId}: {Error}",
-                                cmd.FlowIdentifier, err.Message);
-                            return Unit.Value;
-                        }
-                    );
-                }
-                catch (AskTimeoutException)
-                {
-                    Log.Error("[UPDATE-FLOW-STATUS] Timeout waiting for membership update for flow {FlowId}", cmd.FlowIdentifier);
-                }
+                Log.Information("[UPDATE-FLOW-STATUS] Membership update request sent for flow {FlowId}", cmd.FlowIdentifier);
             }
 
             return Result<int, VerificationFlowFailure>.Ok(rowsAffected);
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             return Result<int, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Update flow status failed: {ex.Message}"));
         }
@@ -394,7 +394,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         try
         {
             VerificationFlowEntity? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.OtpRecord.FlowUniqueId);
-            if (flow == null || flow.ExpiresAt <= DateTime.UtcNow)
+            if (flow == null || flow.ExpiresAt <= DateTimeOffset.UtcNow)
             {
                 await transaction.RollbackAsync();
                 return Result<CreateOtpResult, VerificationFlowFailure>.Err(
@@ -412,7 +412,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 .Where(o => o.VerificationFlowId == flow.Id && o.Status == "active" && !o.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(o => o.Status, "expired")
-                    .SetProperty(o => o.UpdatedAt, DateTime.UtcNow));
+                    .SetProperty(o => o.UpdatedAt, DateTimeOffset.UtcNow));
 
             OtpCodeEntity otp = new()
             {
@@ -423,8 +423,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 Status = ConvertVerificationFlowStatusToOtpStatus(cmd.OtpRecord.Status),
                 ExpiresAt = cmd.OtpRecord.ExpiresAt,
                 AttemptCount = 0,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
                 IsDeleted = false
             };
 
@@ -434,7 +434,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 .Where(f => f.Id == flow.Id)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(f => f.OtpCount, f => f.OtpCount + 1)
-                    .SetProperty(f => f.UpdatedAt, DateTime.UtcNow));
+                    .SetProperty(f => f.UpdatedAt, DateTimeOffset.UtcNow));
 
             await ctx.SaveChangesAsync();
 
@@ -479,8 +479,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 UniqueId = Guid.NewGuid(),
                 Number = cmd.MobileNumber,
                 Region = cmd.RegionCode,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
                 IsDeleted = false
             };
 

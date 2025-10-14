@@ -19,7 +19,7 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
             .IsRequired();
 
         builder.Property(e => e.VerificationFlowId)
-            .IsRequired();
+            .IsRequired(false); // Nullable - only set during password recovery
 
         builder.Property(e => e.SecureKey)
             .HasColumnType("VARBINARY(176)");
@@ -41,6 +41,9 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
         builder.ToTable(t => t.HasCheckConstraint("CHK_Memberships_CreationStatus",
             "CreationStatus IN ('otp_verified', 'secure_key_set', 'passphrase_set')"));
 
+        builder.ToTable(t => t.HasCheckConstraint("CHK_Memberships_Credentials_Consistency",
+            "(SecureKey IS NULL AND MaskingKey IS NULL) OR (SecureKey IS NOT NULL AND MaskingKey IS NOT NULL)"));
+
         builder.HasIndex(e => e.UniqueId)
             .IsUnique()
             .HasDatabaseName("UQ_Memberships_UniqueId");
@@ -50,7 +53,7 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
             .HasDatabaseName("UQ_Memberships_ActiveMembership");
 
         builder.HasIndex(e => e.MobileNumberId)
-            .IsUnique()
+            .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_Memberships_MobileNumberId");
 
         builder.HasIndex(e => e.AppDeviceId)
@@ -59,6 +62,12 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
         builder.HasIndex(e => e.Status)
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_Memberships_Status");
+
+        Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
+            builder.HasIndex(e => e.MobileNumberId)
+                .HasFilter("IsDeleted = 0 AND Status = 'active'"),
+            e => new { e.UniqueId, e.SecureKey, e.MaskingKey, e.CredentialsVersion, e.CreationStatus })
+            .HasDatabaseName("IX_Memberships_Login_Covering");
 
         builder.HasOne(e => e.MobileNumber)
             .WithMany(p => p.Memberships)

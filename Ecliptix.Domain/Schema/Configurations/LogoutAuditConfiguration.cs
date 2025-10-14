@@ -15,8 +15,8 @@ public class LogoutAuditConfiguration : EntityBaseMap<LogoutAuditEntity>
         builder.Property(e => e.MembershipUniqueId)
             .IsRequired();
 
-        builder.Property(e => e.ConnectId)
-            .IsRequired();
+        builder.Property(e => e.DeviceId)
+            .IsRequired(false);
 
         builder.Property(e => e.Reason)
             .HasMaxLength(50)
@@ -25,16 +25,19 @@ public class LogoutAuditConfiguration : EntityBaseMap<LogoutAuditEntity>
 
         builder.Property(e => e.LoggedOutAt)
             .IsRequired()
-            .HasDefaultValueSql("GETUTCDATE()");
+            .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+        builder.Property(e => e.IpAddress)
+            .HasMaxLength(45);
 
         builder.HasIndex(e => new { e.MembershipUniqueId, e.LoggedOutAt })
             .IsDescending(false, true)
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_LogoutAudits_Membership_LoggedOutAt");
 
-        builder.HasIndex(e => e.ConnectId)
+        builder.HasIndex(e => e.DeviceId)
             .HasFilter("IsDeleted = 0")
-            .HasDatabaseName("IX_LogoutAudits_ConnectId");
+            .HasDatabaseName("IX_LogoutAudits_DeviceId");
 
         builder.HasIndex(e => e.LoggedOutAt)
             .IsDescending(true)
@@ -48,5 +51,21 @@ public class LogoutAuditConfiguration : EntityBaseMap<LogoutAuditEntity>
             .OnDelete(DeleteBehavior.Cascade)
             .IsRequired()
             .HasConstraintName("FK_LogoutAudits_Memberships");
+
+        builder.HasOne(e => e.Account)
+            .WithMany(a => a.LogoutAudits)
+            .HasForeignKey(e => e.AccountId)
+            .HasPrincipalKey(a => a.UniqueId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false)
+            .HasConstraintName("FK_LogoutAudits_Accounts");
+
+        builder.HasOne(e => e.Device)
+            .WithMany()
+            .HasForeignKey(e => e.DeviceId)
+            .HasPrincipalKey(d => d.UniqueId)
+            .OnDelete(DeleteBehavior.NoAction)
+            .IsRequired(false)
+            .HasConstraintName("FK_LogoutAudits_Devices");
     }
 }

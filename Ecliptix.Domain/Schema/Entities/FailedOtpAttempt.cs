@@ -11,7 +11,7 @@ public class FailedOtpAttemptEntity : EntityBase
 
     public string FailureReason { get; set; } = string.Empty;
 
-    public DateTime AttemptedAt { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset AttemptedAt { get; set; } = DateTimeOffset.UtcNow;
 
     [ForeignKey(nameof(OtpRecordId))]
     public virtual OtpCodeEntity OtpRecord { get; set; } = null!;

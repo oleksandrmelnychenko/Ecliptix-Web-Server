@@ -1,5 +1,6 @@
 syntax = "proto3";
 import "membership/membership_core.proto";
+import "account/account_models.proto";
 import "google/protobuf/timestamp.proto";
 
 package ecliptix.proto.membership;
@@ -37,6 +38,8 @@ message OpaqueRegistrationCompleteResponse {
   RegistrationResult result = 1;
   optional string message = 2;
   optional bytes session_key = 3;
+  repeated ecliptix.proto.account.Account available_accounts = 4;
+  optional ecliptix.proto.account.Account active_account = 5;
 }
 
 // OPAQUE Sign In Messages
@@ -75,6 +78,8 @@ message OpaqueSignInFinalizeResponse {
   SignInResult result = 3;
   optional string message = 4;
   optional int32 minutes_until_retry = 5;
+  repeated ecliptix.proto.account.Account available_accounts = 6;
+  optional ecliptix.proto.account.Account active_account = 7;
 
   enum SignInResult {
     SUCCEEDED = 0;

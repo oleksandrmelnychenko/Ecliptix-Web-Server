@@ -1,5 +1,5 @@
-using System.Data;
 using System.Data.Common;
+using System.Threading;
 using Akka.Actor;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Utilities;
@@ -20,15 +20,21 @@ public abstract class PersistorBase<TFailure> : ReceiveActor
         GetOperationTimeouts();
     }
 
-    protected async Task<Result<TResult, TFailure>> ExecuteWithContext<TResult>(
+    protected Task<Result<TResult, TFailure>> ExecuteWithContext<TResult>(
         Func<EcliptixSchemaContext, Task<Result<TResult, TFailure>>> operation,
-        string operationName)
+        string operationName) =>
+        ExecuteWithContext((ctx, _) => operation(ctx), operationName, CancellationToken.None);
+
+    protected async Task<Result<TResult, TFailure>> ExecuteWithContext<TResult>(
+        Func<EcliptixSchemaContext, CancellationToken, Task<Result<TResult, TFailure>>> operation,
+        string operationName,
+        CancellationToken cancellationToken = default)
     {
         return await PersistorRetryPolicy.ExecuteWithRetryAsync(
             async () =>
             {
-                await using EcliptixSchemaContext ctx = await _dbContextFactory.CreateDbContextAsync();
-                return await operation(ctx);
+                await using EcliptixSchemaContext ctx = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+                return await operation(ctx, cancellationToken);
             },
             operationName,
             (dbEx, opName) => MapDbException(dbEx),

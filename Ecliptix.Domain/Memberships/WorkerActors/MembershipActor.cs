@@ -19,6 +19,24 @@ using ByteString = Google.Protobuf.ByteString;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors;
 
+internal sealed class PendingSignInState : IDisposable
+{
+    public required Guid MembershipId { get; init; }
+    public required Guid MobileNumberId { get; init; }
+    public required string MobileNumber { get; init; }
+    public required Membership.Types.ActivityStatus ActivityStatus { get; init; }
+    public required Membership.Types.CreationStatus CreationStatus { get; init; }
+    public required DateTime CreatedAt { get; init; }
+    public required byte[] ServerMac { get; init; }
+    public List<AccountInfo>? AvailableAccounts { get; init; }
+    public Guid? ActiveAccountId { get; init; }
+
+    public void Dispose()
+    {
+        CryptographicOperations.ZeroMemory(ServerMac);
+    }
+}
+
 public sealed class MembershipActor : ReceiveActor
 {
     private readonly ILocalizationProvider _localizationProvider;
@@ -26,10 +44,7 @@ public sealed class MembershipActor : ReceiveActor
     private readonly IOpaqueProtocolService _opaqueProtocolService;
     private readonly IMasterKeyService _masterKeyService;
 
-    private readonly
-        Dictionary<uint, (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Membership.Types.ActivityStatus
-            ActivityStatus, Membership.Types.CreationStatus CreationStatus, DateTime CreatedAt, byte[] ServerMac)>
-        _pendingSignIns = new();
+    private readonly Dictionary<uint, PendingSignInState> _pendingSignIns = new();
 
     private readonly Dictionary<Guid, byte[]> _pendingMaskingKeys = new();
     private readonly Dictionary<Guid, SodiumSecureMemoryHandle> _pendingSessionKeys = new();
@@ -82,6 +97,11 @@ public sealed class MembershipActor : ReceiveActor
     protected override void PostStop()
     {
         _cleanupTimer?.Cancel();
+
+        foreach (PendingSignInState state in _pendingSignIns.Values)
+        {
+            state.Dispose();
+        }
         _pendingSignIns.Clear();
 
         foreach (byte[] maskingKey in _pendingMaskingKeys.Values)
@@ -126,9 +146,6 @@ public sealed class MembershipActor : ReceiveActor
 
         UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRegistrationRecord, maskingKey);
 
-        Log.Information("[REGISTRATION-COMPLETE] Updating OPAQUE credentials in database for membership {MembershipId}",
-            @event.MembershipIdentifier);
-
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
             await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
 
@@ -139,17 +156,38 @@ public sealed class MembershipActor : ReceiveActor
             return;
         }
 
-        Log.Information("[REGISTRATION-COMPLETE] OPAQUE credentials successfully stored in database for membership {MembershipId}",
-            @event.MembershipIdentifier);
-
         _pendingMaskingKeys.Remove(@event.MembershipIdentifier);
+
+        Result<AccountCreationResult, VerificationFlowFailure> accountResult =
+            await _persistor.Ask<Result<AccountCreationResult, VerificationFlowFailure>>(
+                new CreateDefaultAccountEvent(@event.MembershipIdentifier));
+
+        if (accountResult.IsErr)
+        {
+            Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Err(accountResult.UnwrapErr()));
+            return;
+        }
+
+        AccountCreationResult accountInfo = accountResult.Unwrap();
+
+        List<Protobuf.Account.Account> availableAccounts = accountInfo.Accounts.Select(a => new Protobuf.Account.Account
+        {
+            UniqueIdentifier = Helpers.GuidToByteString(a.AccountId),
+            MembershipIdentifier = Helpers.GuidToByteString(a.MembershipId),
+            AccountType = a.Type,
+            AccountName = a.Name,
+            Status = a.Status,
+            IsDefaultAccount = a.IsDefault
+        }).ToList();
 
         Sender.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Ok(
             new OprfRegistrationCompleteResponse
             {
                 Result = OprfRegistrationCompleteResponse.Types.RegistrationResult.Succeeded,
                 Message = "Registration completed successfully.",
-                SessionKey = ByteString.Empty
+                SessionKey = ByteString.Empty,
+                AvailableAccounts = { availableAccounts },
+                ActiveAccount = availableAccounts.First()
             }));
     }
 
@@ -449,8 +487,18 @@ public sealed class MembershipActor : ReceiveActor
 
                 (OpaqueSignInInitResponse response, byte[] serverMac) = initiateSignInResult.Unwrap();
 
-                _pendingSignIns[@event.ConnectId] = (record.UniqueIdentifier, Guid.NewGuid(), @event.MobileNumber,
-                    record.ActivityStatus, record.CreationStatus, DateTime.UtcNow, serverMac);
+                _pendingSignIns[@event.ConnectId] = new PendingSignInState
+                {
+                    MembershipId = record.UniqueIdentifier,
+                    MobileNumberId = Guid.NewGuid(),
+                    MobileNumber = @event.MobileNumber,
+                    ActivityStatus = record.ActivityStatus,
+                    CreationStatus = record.CreationStatus,
+                    CreatedAt = DateTime.UtcNow,
+                    ServerMac = serverMac,
+                    AvailableAccounts = record.AvailableAccounts,
+                    ActiveAccountId = record.ActiveAccountId
+                };
 
                 return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(response);
             },
@@ -461,9 +509,7 @@ public sealed class MembershipActor : ReceiveActor
 
     private async Task HandleSignInComplete(SignInCompleteEvent @event)
     {
-        if (!_pendingSignIns.TryGetValue(@event.ConnectId,
-                out (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Membership.Types.ActivityStatus
-                ActivityStatus, Membership.Types.CreationStatus CreationStatus, DateTime CreatedAt, byte[] ServerMac) membershipInfo))
+        if (!_pendingSignIns.TryGetValue(@event.ConnectId, out PendingSignInState? state))
         {
             Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.InvalidOpaque("No matching sign-in initiation found for this connection")));
@@ -471,7 +517,7 @@ public sealed class MembershipActor : ReceiveActor
         }
 
         Result<(SodiumSecureMemoryHandle SessionKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure> opaqueResult =
-            _opaqueProtocolService.CompleteSignIn(@event.Request, membershipInfo.ServerMac);
+            _opaqueProtocolService.CompleteSignIn(@event.Request, state.ServerMac);
 
         if (opaqueResult.IsErr)
         {
@@ -489,33 +535,54 @@ public sealed class MembershipActor : ReceiveActor
             byte[] sessionKeyBytes = sessionKeyBytesResult.Unwrap();
             string sessionKeyFingerprint = Convert.ToHexString(SHA256.HashData(sessionKeyBytes))[..16];
             Log.Information("[SERVER-OPAQUE-EXPORTKEY] OPAQUE export_key (session key) derived. MembershipId: {MembershipId}, SessionKeyFingerprint: {SessionKeyFingerprint}",
-                membershipInfo.MembershipId, sessionKeyFingerprint);
+                state.MembershipId, sessionKeyFingerprint);
             CryptographicOperations.ZeroMemory(sessionKeyBytes);
         }
 
         if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
             !sessionKeyHandle.IsInvalid)
         {
-            await EnsureMasterKeySharesExist(sessionKeyHandle, membershipInfo.MembershipId);
+            await EnsureMasterKeySharesExist(sessionKeyHandle, state.MembershipId);
         }
 
         SecureRemovePendingSignIn(@event.ConnectId);
 
         finalizeResponse.Membership = new Membership
         {
-            UniqueIdentifier = Helpers.GuidToByteString(membershipInfo.MembershipId),
-            Status = membershipInfo.ActivityStatus,
-            CreationStatus = membershipInfo.CreationStatus
+            UniqueIdentifier = Helpers.GuidToByteString(state.MembershipId),
+            Status = state.ActivityStatus,
+            CreationStatus = state.CreationStatus
         };
+
+        if (state.AvailableAccounts != null && state.AvailableAccounts.Any())
+        {
+            List<Ecliptix.Protobuf.Account.Account> availableAccounts = state.AvailableAccounts.Select(a => new Ecliptix.Protobuf.Account.Account
+            {
+                UniqueIdentifier = Helpers.GuidToByteString(a.AccountId),
+                MembershipIdentifier = Helpers.GuidToByteString(a.MembershipId),
+                AccountType = (Ecliptix.Protobuf.Account.AccountType)a.Type,
+                AccountName = a.Name,
+                Status = (Ecliptix.Protobuf.Account.AccountStatus)a.Status,
+                IsDefaultAccount = a.IsDefault
+            }).ToList();
+
+            finalizeResponse.AvailableAccounts.AddRange(availableAccounts);
+
+            if (state.ActiveAccountId.HasValue)
+            {
+                finalizeResponse.ActiveAccount = availableAccounts.FirstOrDefault(a =>
+                    Helpers.FromByteStringToGuid(a.UniqueIdentifier) == state.ActiveAccountId.Value);
+            }
+        }
 
         Sender.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Ok(finalizeResponse));
     }
 
     private void SecureRemovePendingSignIn(uint connectId)
     {
-        if (_pendingSignIns.TryGetValue(connectId, out (Guid MembershipId, Guid MobileNumberId, string MobileNumber, Membership.Types.ActivityStatus ActivityStatus, Membership.Types.CreationStatus CreationStatus, DateTime CreatedAt, byte[] ServerMac) membershipInfo))
+        if (_pendingSignIns.TryGetValue(connectId, out PendingSignInState? state))
         {
-            CryptographicOperations.ZeroMemory(membershipInfo.ServerMac);
+            state.Dispose(); // Securely zeros ServerMac
             _pendingSignIns.Remove(connectId);
         }
     }
@@ -678,7 +745,7 @@ public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] S
 
 public record GenerateMembershipOprfRegistrationRequestEvent(Guid MembershipIdentifier, byte[] OprfRequest);
 
-public record CompleteRegistrationRecordActorEvent(Guid MembershipIdentifier, byte[] PeerRegistrationRecord, uint ConnectId);
+public record CompleteRegistrationRecordActorEvent(Guid MembershipIdentifier, byte[] PeerRegistrationRecord, uint ConnectId, Guid DeviceId);
 
 public record OprfInitRecoverySecureKeyEvent(Guid MembershipIdentifier, byte[] OprfRequest, string CultureName);
 

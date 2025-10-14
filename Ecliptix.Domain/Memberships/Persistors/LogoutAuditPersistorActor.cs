@@ -33,27 +33,33 @@ public class LogoutAuditPersistorActor : PersistorBase<VerificationFlowFailure>
     private async Task<Result<Unit, VerificationFlowFailure>> RecordLogoutAsync(
         EcliptixSchemaContext ctx, RecordLogoutEvent cmd)
     {
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
         try
         {
             LogoutAuditEntity audit = new()
             {
                 MembershipUniqueId = cmd.MembershipUniqueId,
-                ConnectId = cmd.ConnectId,
+                AccountId = cmd.AccountId,
+                DeviceId = cmd.DeviceId,
                 Reason = cmd.Reason,
-                LoggedOutAt = DateTime.UtcNow
+                LoggedOutAt = DateTimeOffset.UtcNow,
+                IpAddress = cmd.IpAddress
             };
 
             ctx.LogoutAudits.Add(audit);
             await ctx.SaveChangesAsync();
 
+            await transaction.CommitAsync();
+
             Log.Information(
-                "Logout audit recorded - MembershipId: {MembershipId}, ConnectId: {ConnectId}, Reason: {Reason}",
-                cmd.MembershipUniqueId, cmd.ConnectId, cmd.Reason);
+                "Logout audit recorded - MembershipId: {MembershipId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}",
+                cmd.MembershipUniqueId, cmd.DeviceId, cmd.AccountId, cmd.Reason);
 
             return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             Log.Error(ex, "Failed to record logout audit for MembershipId: {MembershipId}", cmd.MembershipUniqueId);
             return Result<Unit, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess("Failed to record logout audit", ex));

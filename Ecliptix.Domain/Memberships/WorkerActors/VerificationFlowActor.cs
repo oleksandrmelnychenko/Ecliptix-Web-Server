@@ -39,7 +39,7 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
     private ICancelable? _sessionTimer = Cancelable.CreateCanceled();
     private ICancelable? _cleanupFallbackTimer = Cancelable.CreateCanceled();
     private Option<VerificationFlowQueryRecord> _verificationFlow = Option<VerificationFlowQueryRecord>.None;
-    private DateTime _sessionDeadline;
+    private DateTimeOffset _sessionDeadline;
     private bool _sessionTimerPaused;
 
     private ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? _writer;
@@ -126,7 +126,7 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
 
             VerificationFlowQueryRecord currentFlow = result.Unwrap();
             _verificationFlow = Option<VerificationFlowQueryRecord>.Some(currentFlow);
-            _sessionDeadline = DateTime.UtcNow.Add(_timeouts.SessionTimeout);
+            _sessionDeadline = DateTimeOffset.UtcNow.Add(_timeouts.SessionTimeout);
 
             if (currentFlow.Status == VerificationFlowStatus.Verified)
             {
@@ -447,7 +447,7 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
                 CancelTimers();
                 _writer?.TryComplete();
                 _writer = actorEvent.ChannelWriter;
-                _sessionDeadline = DateTime.UtcNow.Add(_timeouts.SessionTimeout);
+                _sessionDeadline = DateTimeOffset.UtcNow.Add(_timeouts.SessionTimeout);
                 await ContinueWithOtp();
                 break;
             case VerificationFlowMessageKeys.OtpMaxAttemptsReached:
@@ -516,7 +516,7 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
         if (!_verificationFlow.HasValue)
             return;
 
-        TimeSpan sessionDelay = _sessionDeadline - DateTime.UtcNow;
+        TimeSpan sessionDelay = _sessionDeadline - DateTimeOffset.UtcNow;
         if (sessionDelay > TimeSpan.Zero)
         {
             _sessionTimer = Context.System.Scheduler.ScheduleTellOnceCancelable(sessionDelay, Self,
@@ -794,9 +794,9 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
                 new UpdateOtpStatusActorEvent(_activeOtp.UniqueIdentifier, status), _timeouts.UpdateOtpStatusTimeout);
     }
 
-    private static uint CalculateRemainingSeconds(DateTime expiresAt)
+    private static uint CalculateRemainingSeconds(DateTimeOffset expiresAt)
     {
-        return (uint)Math.Max(0, Math.Ceiling((expiresAt - DateTime.UtcNow).TotalSeconds));
+        return (uint)Math.Max(0, Math.Ceiling((expiresAt - DateTimeOffset.UtcNow).TotalSeconds));
     }
 
     private static Result<VerifyCodeResponse, VerificationFlowFailure> CreateVerifyResponse(VerificationResult result,
@@ -911,7 +911,7 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
         if (!_sessionTimerPaused || _isCompleting || !_verificationFlow.HasValue)
             return;
 
-        TimeSpan remaining = _sessionDeadline - DateTime.UtcNow;
+        TimeSpan remaining = _sessionDeadline - DateTimeOffset.UtcNow;
         if (remaining > TimeSpan.Zero)
         {
             _sessionTimer = Context.System.Scheduler.ScheduleTellOnceCancelable(remaining, Self,

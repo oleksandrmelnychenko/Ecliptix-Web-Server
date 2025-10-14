@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package ecliptix.proto.account;
+option csharp_namespace = "Ecliptix.Protobuf.Account";
+
+enum AccountType {
+  PERSONAL = 0;
+  MILITARY = 1;
+  BUSINESS = 2;
+}
+
+enum AccountStatus {
+  INACTIVE = 0;
+  ACTIVE = 1;
+  SUSPENDED = 2;
+  LOCKED = 3;
+}
+
+message Account {
+  bytes unique_identifier = 1;
+  bytes membership_identifier = 2;
+  AccountType account_type = 3;
+  string account_name = 4;
+  AccountStatus status = 5;
+  bool is_default_account = 6;
+  optional string preferred_language = 7;
+  optional string time_zone_id = 8;
+  optional string region = 9;
+}

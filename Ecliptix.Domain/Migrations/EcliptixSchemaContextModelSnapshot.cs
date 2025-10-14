@@ -22,6 +22,276 @@ namespace Ecliptix.Domain.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.AccountEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AccountName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("AccountType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("nvarchar(2)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("CredentialsVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
+                    b.Property<string>("DataResidencyRegion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDefaultAccount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTimeOffset?>("LastAccessedAt")
+                        .HasColumnType("DATETIMEOFFSET");
+
+                    b.Property<byte[]>("MaskingKey")
+                        .HasColumnType("VARBINARY(32)");
+
+                    b.Property<Guid>("MembershipId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PreferredLanguage")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<byte[]>("SecureKey")
+                        .HasColumnType("VARBINARY(176)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_AccountEntity_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MembershipId")
+                        .HasDatabaseName("IX_Accounts_Membership_Active_Covering")
+                        .HasFilter("IsDeleted = 0 AND Status = 1");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("MembershipId"), new[] { "UniqueId", "AccountType", "AccountName", "IsDefaultAccount" });
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_Accounts_Status")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_AccountEntity_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_AccountEntity_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MembershipId", "AccountType")
+                        .HasDatabaseName("IX_Accounts_Membership_Type")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MembershipId", "IsDefaultAccount")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Accounts_Membership_Default")
+                        .HasFilter("IsDeleted = 0 AND IsDefaultAccount = 1");
+
+                    b.ToTable("Accounts", null, t =>
+                        {
+                            t.HasCheckConstraint("CHK_Accounts_Default_Active", "(IsDefaultAccount = 0) OR (Status != 2)");
+                        });
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.DeviceContextEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid?>("ActiveAccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ContextEstablishedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<DateTimeOffset>("ContextExpiresAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("DeviceEntityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTimeOffset?>("LastActivityAt")
+                        .HasColumnType("DATETIMEOFFSET");
+
+                    b.Property<Guid>("MembershipId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActiveAccountId");
+
+                    b.HasIndex("ContextExpiresAt")
+                        .HasDatabaseName("IX_DeviceContexts_ExpiresAt")
+                        .HasFilter("IsDeleted = 0 AND IsActive = 1");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_DeviceContextEntity_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("DeviceEntityId");
+
+                    b.HasIndex("DeviceId")
+                        .HasDatabaseName("IX_DeviceContexts_DeviceId_Active")
+                        .HasFilter("IsDeleted = 0 AND IsActive = 1");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_DeviceContextEntity_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_DeviceContextEntity_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("ContextExpiresAt", "IsActive")
+                        .HasDatabaseName("IX_DeviceContexts_ExpiresAt_Cleanup")
+                        .HasFilter("IsDeleted = 0 AND IsActive = 1");
+
+                    b.HasIndex("MembershipId", "DeviceId")
+                        .HasDatabaseName("IX_DeviceContexts_Active_Covering")
+                        .HasFilter("IsDeleted = 0 AND IsActive = 1");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("MembershipId", "DeviceId"), new[] { "UniqueId", "ActiveAccountId", "ContextExpiresAt", "LastActivityAt" });
+
+                    b.HasIndex("MembershipId", "IsActive")
+                        .HasDatabaseName("IX_DeviceContexts_Membership_IsActive")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("MembershipId", "LastActivityAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_DeviceContexts_MembershipActivity")
+                        .HasFilter("IsDeleted = 0 AND IsActive = 1");
+
+                    b.HasIndex("MembershipId", "DeviceId", "IsActive")
+                        .IsUnique()
+                        .HasDatabaseName("UX_DeviceContexts_Membership_Device_Active")
+                        .HasFilter("IsDeleted = 0 AND IsActive = 1");
+
+                    b.ToTable("DeviceContexts", null, t =>
+                        {
+                            t.HasCheckConstraint("CHK_DeviceContexts_Activity_Valid", "LastActivityAt IS NULL OR LastActivityAt >= ContextEstablishedAt");
+
+                            t.HasCheckConstraint("CHK_DeviceContexts_Expiry_Future", "ContextExpiresAt > ContextEstablishedAt");
+                        });
+                });
+
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.DeviceEntity", b =>
                 {
                     b.Property<long>("Id")
@@ -33,12 +303,18 @@ namespace Ecliptix.Domain.Migrations
                     b.Property<Guid>("AppInstanceId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
 
-                    b.Property<Guid>("DeviceId")
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("DeviceType")
@@ -51,15 +327,24 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid>("UniqueId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
@@ -70,10 +355,6 @@ namespace Ecliptix.Domain.Migrations
                         .IsDescending()
                         .HasDatabaseName("IX_DeviceEntity_CreatedAt")
                         .HasFilter("IsDeleted = 0");
-
-                    b.HasIndex("DeviceId")
-                        .IsUnique()
-                        .HasDatabaseName("UQ_Devices_DeviceId");
 
                     b.HasIndex("DeviceType")
                         .HasDatabaseName("IX_Devices_DeviceType")
@@ -99,20 +380,29 @@ namespace Ecliptix.Domain.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<DateTime>("AttemptedAt")
+                    b.Property<DateTimeOffset>("AttemptedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
 
                     b.Property<string>("AttemptedValue")
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("FailureReason")
                         .IsRequired()
@@ -127,15 +417,24 @@ namespace Ecliptix.Domain.Migrations
                     b.Property<long>("OtpRecordId")
                         .HasColumnType("bigint");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid>("UniqueId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
@@ -172,19 +471,41 @@ namespace Ecliptix.Domain.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<DateTime>("AttemptedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("AttemptedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("DATETIMEOFFSET");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("ErrorMessage")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
 
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
@@ -196,8 +517,8 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
-                    b.Property<DateTime?>("LockedUntil")
-                        .HasColumnType("DATETIME2");
+                    b.Property<DateTimeOffset?>("LockedUntil")
+                        .HasColumnType("DATETIMEOFFSET");
 
                     b.Property<Guid?>("MembershipUniqueId")
                         .HasColumnType("uniqueidentifier");
@@ -210,33 +531,32 @@ namespace Ecliptix.Domain.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
-                    b.Property<string>("SessionId")
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("Status")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTime?>("SuccessfulAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("Timestamp")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<Guid>("UniqueId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
 
                     b.HasIndex("CreatedAt")
                         .IsDescending()
@@ -250,14 +570,6 @@ namespace Ecliptix.Domain.Migrations
                     b.HasIndex("MobileNumber")
                         .HasDatabaseName("IX_LoginAttempts_MobileNumber")
                         .HasFilter("IsDeleted = 0 AND MobileNumber IS NOT NULL");
-
-                    b.HasIndex("SessionId")
-                        .HasDatabaseName("IX_LoginAttempts_SessionId")
-                        .HasFilter("IsDeleted = 0 AND SessionId IS NOT NULL");
-
-                    b.HasIndex("Status")
-                        .HasDatabaseName("IX_LoginAttempts_Status")
-                        .HasFilter("IsDeleted = 0");
 
                     b.HasIndex("UniqueId")
                         .IsUnique()
@@ -277,14 +589,22 @@ namespace Ecliptix.Domain.Migrations
                         .HasDatabaseName("IX_LoginAttempts_Lockout")
                         .HasFilter("IsDeleted = 0 AND LockedUntil IS NOT NULL");
 
-                    b.HasIndex("MobileNumber", "Timestamp")
-                        .IsDescending(false, true)
-                        .HasDatabaseName("IX_LoginAttempts_RateLimiting")
-                        .HasFilter("IsDeleted = 0 AND MobileNumber IS NOT NULL AND LockedUntil IS NULL");
+                    b.HasIndex("DeviceId", "AttemptedAt", "IsSuccess")
+                        .IsDescending(false, true, false)
+                        .HasDatabaseName("IX_LoginAttempts_DeviceRateLimiting")
+                        .HasFilter("IsDeleted = 0 AND DeviceId IS NOT NULL");
 
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("MobileNumber", "Timestamp"), new[] { "IsSuccess" });
+                    b.HasIndex("MobileNumber", "AttemptedAt", "IsSuccess", "LockedUntil")
+                        .IsDescending(false, true, false, false)
+                        .HasDatabaseName("IX_LoginAttempts_RateLimiting_Optimized")
+                        .HasFilter("IsDeleted = 0 AND LockedUntil IS NULL AND MobileNumber IS NOT NULL");
 
-                    b.ToTable("LoginAttempts", (string)null);
+                    b.ToTable("LoginAttempts", null, t =>
+                        {
+                            t.HasCheckConstraint("CHK_LoginAttempts_LockedUntil_Future", "LockedUntil IS NULL OR LockedUntil > AttemptedAt");
+
+                            t.HasCheckConstraint("CHK_LoginAttempts_Success_CompletedAt", "(IsSuccess = 0) OR (CompletedAt IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.LogoutAuditEntity", b =>
@@ -295,23 +615,39 @@ namespace Ecliptix.Domain.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<long>("ConnectId")
-                        .HasColumnType("bigint");
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
 
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
-                    b.Property<DateTime>("LoggedOutAt")
+                    b.Property<DateTimeOffset>("LoggedOutAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
 
                     b.Property<Guid>("MembershipUniqueId")
                         .HasColumnType("uniqueidentifier");
@@ -321,25 +657,36 @@ namespace Ecliptix.Domain.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid>("UniqueId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ConnectId")
-                        .HasDatabaseName("IX_LogoutAudits_ConnectId")
-                        .HasFilter("IsDeleted = 0");
+                    b.HasIndex("AccountId");
 
                     b.HasIndex("CreatedAt")
                         .IsDescending()
                         .HasDatabaseName("IX_LogoutAuditEntity_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("DeviceId")
+                        .HasDatabaseName("IX_LogoutAudits_DeviceId")
                         .HasFilter("IsDeleted = 0");
 
                     b.HasIndex("LoggedOutAt")
@@ -372,13 +719,22 @@ namespace Ecliptix.Domain.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("CredentialsVersion")
                         .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<byte[]>("EncryptedShare")
                         .IsRequired()
@@ -391,6 +747,12 @@ namespace Ecliptix.Domain.Migrations
 
                     b.Property<Guid>("MembershipUniqueId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<int>("ShareIndex")
                         .HasColumnType("int");
@@ -409,10 +771,13 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
@@ -451,10 +816,13 @@ namespace Ecliptix.Domain.Migrations
                     b.Property<Guid>("AppDeviceId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("CreationStatus")
                         .HasMaxLength(20)
@@ -462,6 +830,12 @@ namespace Ecliptix.Domain.Migrations
 
                     b.Property<int>("CredentialsVersion")
                         .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
@@ -473,6 +847,12 @@ namespace Ecliptix.Domain.Migrations
 
                     b.Property<Guid>("MobileNumberId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<byte[]>("SecureKey")
                         .HasColumnType("VARBINARY(176)");
@@ -489,12 +869,15 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
 
-                    b.Property<Guid>("VerificationFlowId")
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("VerificationFlowId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
@@ -508,8 +891,10 @@ namespace Ecliptix.Domain.Migrations
                         .HasFilter("IsDeleted = 0");
 
                     b.HasIndex("MobileNumberId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_Memberships_MobileNumberId");
+                        .HasDatabaseName("IX_Memberships_Login_Covering")
+                        .HasFilter("IsDeleted = 0 AND Status = 'active'");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("MobileNumberId"), new[] { "UniqueId", "SecureKey", "MaskingKey", "CredentialsVersion", "CreationStatus" });
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Memberships_Status")
@@ -534,94 +919,10 @@ namespace Ecliptix.Domain.Migrations
                         {
                             t.HasCheckConstraint("CHK_Memberships_CreationStatus", "CreationStatus IN ('otp_verified', 'secure_key_set', 'passphrase_set')");
 
+                            t.HasCheckConstraint("CHK_Memberships_Credentials_Consistency", "(SecureKey IS NULL AND MaskingKey IS NULL) OR (SecureKey IS NOT NULL AND MaskingKey IS NOT NULL)");
+
                             t.HasCheckConstraint("CHK_Memberships_Status", "Status IN ('active', 'inactive')");
                         });
-                });
-
-            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MobileDeviceEntity", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<long>("DeviceId")
-                        .HasColumnType("bigint");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
-
-                    b.Property<bool>("IsDeleted")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<DateTime?>("LastUsedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long>("MobileNumberId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("RelationshipType")
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)")
-                        .HasDefaultValue("primary");
-
-                    b.Property<Guid>("UniqueId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier")
-                        .HasDefaultValueSql("NEWID()");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAt")
-                        .IsDescending()
-                        .HasDatabaseName("IX_MobileDeviceEntity_CreatedAt")
-                        .HasFilter("IsDeleted = 0");
-
-                    b.HasIndex("DeviceId")
-                        .HasDatabaseName("IX_MobileDevices_DeviceId");
-
-                    b.HasIndex("IsActive")
-                        .HasDatabaseName("IX_MobileDevices_IsActive")
-                        .HasFilter("IsDeleted = 0");
-
-                    b.HasIndex("LastUsedAt")
-                        .IsDescending()
-                        .HasDatabaseName("IX_MobileDevices_LastUsedAt")
-                        .HasFilter("IsDeleted = 0 AND LastUsedAt IS NOT NULL");
-
-                    b.HasIndex("MobileNumberId")
-                        .HasDatabaseName("IX_MobileDevices_MobileNumberId");
-
-                    b.HasIndex("UniqueId")
-                        .IsUnique()
-                        .HasDatabaseName("UQ_MobileDeviceEntity_UniqueId");
-
-                    b.HasIndex("UpdatedAt")
-                        .IsDescending()
-                        .HasDatabaseName("IX_MobileDeviceEntity_UpdatedAt")
-                        .HasFilter("IsDeleted = 0");
-
-                    b.HasIndex("MobileNumberId", "DeviceId")
-                        .IsUnique()
-                        .HasDatabaseName("UQ_MobileDevices_PhoneDevice");
-
-                    b.ToTable("MobileDevices", (string)null);
                 });
 
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MobileNumberEntity", b =>
@@ -632,10 +933,19 @@ namespace Ecliptix.Domain.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
@@ -651,15 +961,24 @@ namespace Ecliptix.Domain.Migrations
                         .HasMaxLength(2)
                         .HasColumnType("nvarchar(2)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<Guid>("UniqueId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
@@ -710,13 +1029,22 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("smallint")
                         .HasDefaultValue((short)0);
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
 
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("datetime2");
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
@@ -733,6 +1061,12 @@ namespace Ecliptix.Domain.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -745,16 +1079,19 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<long>("VerificationFlowId")
                         .HasColumnType("bigint");
 
-                    b.Property<DateTime?>("VerifiedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset?>("VerifiedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
 
@@ -803,21 +1140,30 @@ namespace Ecliptix.Domain.Migrations
                     b.Property<long?>("ConnectionId")
                         .HasColumnType("bigint");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
 
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("datetime2");
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
-                    b.Property<long>("MobileNumberId")
-                        .HasColumnType("bigint");
+                    b.Property<Guid>("MobileNumberId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<short>("OtpCount")
                         .ValueGeneratedOnAdd()
@@ -831,6 +1177,12 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("nvarchar(30)")
                         .HasDefaultValue("unspecified");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -843,10 +1195,13 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWID()");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
@@ -892,6 +1247,55 @@ namespace Ecliptix.Domain.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.AccountEntity", b =>
+                {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.MembershipEntity", "Membership")
+                        .WithMany("Accounts")
+                        .HasForeignKey("MembershipId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_Accounts_Memberships");
+
+                    b.Navigation("Membership");
+                });
+
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.DeviceContextEntity", b =>
+                {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.AccountEntity", "ActiveAccount")
+                        .WithMany()
+                        .HasForeignKey("ActiveAccountId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_DeviceContexts_Accounts");
+
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.DeviceEntity", null)
+                        .WithMany("DeviceContexts")
+                        .HasForeignKey("DeviceEntityId");
+
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.DeviceEntity", "Device")
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_DeviceContexts_Devices");
+
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.MembershipEntity", "Membership")
+                        .WithMany("DeviceContexts")
+                        .HasForeignKey("MembershipId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_DeviceContexts_Memberships");
+
+                    b.Navigation("ActiveAccount");
+
+                    b.Navigation("Device");
+
+                    b.Navigation("Membership");
+                });
+
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.FailedOtpAttemptEntity", b =>
                 {
                     b.HasOne("Ecliptix.Domain.Schema.Entities.OtpCodeEntity", "OtpRecord")
@@ -906,6 +1310,20 @@ namespace Ecliptix.Domain.Migrations
 
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.LoginAttemptEntity", b =>
                 {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.AccountEntity", "Account")
+                        .WithMany("LoginAttempts")
+                        .HasForeignKey("AccountId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_LoginAttempts_Accounts");
+
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.DeviceEntity", "Device")
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_LoginAttempts_Devices");
+
                     b.HasOne("Ecliptix.Domain.Schema.Entities.MembershipEntity", "Membership")
                         .WithMany("LoginAttempts")
                         .HasForeignKey("MembershipUniqueId")
@@ -913,11 +1331,29 @@ namespace Ecliptix.Domain.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .HasConstraintName("FK_LoginAttempts_Memberships");
 
+                    b.Navigation("Account");
+
+                    b.Navigation("Device");
+
                     b.Navigation("Membership");
                 });
 
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.LogoutAuditEntity", b =>
                 {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.AccountEntity", "Account")
+                        .WithMany("LogoutAudits")
+                        .HasForeignKey("AccountId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_LogoutAudits_Accounts");
+
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.DeviceEntity", "Device")
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .HasPrincipalKey("UniqueId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_LogoutAudits_Devices");
+
                     b.HasOne("Ecliptix.Domain.Schema.Entities.MembershipEntity", "Membership")
                         .WithMany()
                         .HasForeignKey("MembershipUniqueId")
@@ -925,6 +1361,10 @@ namespace Ecliptix.Domain.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("FK_LogoutAudits_Memberships");
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Device");
 
                     b.Navigation("Membership");
                 });
@@ -965,7 +1405,6 @@ namespace Ecliptix.Domain.Migrations
                         .HasForeignKey("VerificationFlowId")
                         .HasPrincipalKey("UniqueId")
                         .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
                         .HasConstraintName("FK_Memberships_VerificationFlows");
 
                     b.Navigation("AppDevice");
@@ -973,27 +1412,6 @@ namespace Ecliptix.Domain.Migrations
                     b.Navigation("MobileNumber");
 
                     b.Navigation("VerificationFlow");
-                });
-
-            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MobileDeviceEntity", b =>
-                {
-                    b.HasOne("Ecliptix.Domain.Schema.Entities.DeviceEntity", "Device")
-                        .WithMany("MobileDevices")
-                        .HasForeignKey("DeviceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("FK_MobileDevices_Devices");
-
-                    b.HasOne("Ecliptix.Domain.Schema.Entities.MobileNumberEntity", "MobileNumber")
-                        .WithMany("MobileDevices")
-                        .HasForeignKey("MobileNumberId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("FK_MobileDevices_MobileNumbers");
-
-                    b.Navigation("Device");
-
-                    b.Navigation("MobileNumber");
                 });
 
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.OtpCodeEntity", b =>
@@ -1021,6 +1439,7 @@ namespace Ecliptix.Domain.Migrations
                     b.HasOne("Ecliptix.Domain.Schema.Entities.MobileNumberEntity", "MobileNumber")
                         .WithMany("VerificationFlows")
                         .HasForeignKey("MobileNumberId")
+                        .HasPrincipalKey("UniqueId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("FK_VerificationFlows_MobileNumbers");
@@ -1030,17 +1449,28 @@ namespace Ecliptix.Domain.Migrations
                     b.Navigation("MobileNumber");
                 });
 
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.AccountEntity", b =>
+                {
+                    b.Navigation("LoginAttempts");
+
+                    b.Navigation("LogoutAudits");
+                });
+
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.DeviceEntity", b =>
                 {
-                    b.Navigation("Memberships");
+                    b.Navigation("DeviceContexts");
 
-                    b.Navigation("MobileDevices");
+                    b.Navigation("Memberships");
 
                     b.Navigation("VerificationFlows");
                 });
 
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MembershipEntity", b =>
                 {
+                    b.Navigation("Accounts");
+
+                    b.Navigation("DeviceContexts");
+
                     b.Navigation("LoginAttempts");
 
                     b.Navigation("MasterKeyShares");
@@ -1049,8 +1479,6 @@ namespace Ecliptix.Domain.Migrations
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MobileNumberEntity", b =>
                 {
                     b.Navigation("Memberships");
-
-                    b.Navigation("MobileDevices");
 
                     b.Navigation("VerificationFlows");
                 });

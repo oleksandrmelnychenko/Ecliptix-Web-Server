@@ -26,7 +26,7 @@ public static class DeviceQueries
         GetByDeviceId = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid deviceId) =>
                 ctx.Devices
-                    .Where(d => d.DeviceId == deviceId && !d.IsDeleted)
+                    .Where(d => d.UniqueId == deviceId && !d.IsDeleted)
                     .AsNoTracking()
                     .FirstOrDefault());
 }
