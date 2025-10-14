@@ -152,7 +152,7 @@ internal sealed class AccountServices(
                 request, context,
                 async (message, _, ct) =>
                 {
-                    GenerateMembershipOprfRegistrationRequestEvent @event = new(
+                    GenerateAccountOprfRegistrationRequestEvent @event = new(
                         Helpers.FromByteStringToGuid(message.AccountIdentifier),
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory));
 

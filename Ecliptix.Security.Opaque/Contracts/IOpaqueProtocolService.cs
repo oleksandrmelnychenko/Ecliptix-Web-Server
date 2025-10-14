@@ -11,7 +11,7 @@ public interface IOpaqueProtocolService
     (byte[] Response, byte[] MaskingKey, byte[] SessionKey) ProcessOprfRequestWithSessionKey(byte[] oprfRequest);
 
     Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure> InitiateSignIn(
-        OpaqueSignInInitRequest request, MembershipOpaqueQueryRecord queryRecord);
+        OpaqueSignInInitRequest request, AccountOpaqueQueryRecord queryRecord);
 
     Result<(SodiumSecureMemoryHandle SessionKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure> CompleteSignIn(
         OpaqueSignInFinalizeRequest request,

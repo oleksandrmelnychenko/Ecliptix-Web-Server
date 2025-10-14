@@ -1,6 +1,6 @@
 namespace Ecliptix.Security.Opaque.Models;
 
-public record MembershipOpaqueQueryRecord(string MobileNumber, byte[] RegistrationRecord, byte[] MaskingKey);
+public record AccountOpaqueQueryRecord(string MobileNumber, byte[] RegistrationRecord, byte[] MaskingKey);
 public record AuthContextTokenResponse
 {
     public byte[] ContextToken { get; init; } = [];
