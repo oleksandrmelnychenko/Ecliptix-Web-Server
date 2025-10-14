@@ -8,22 +8,26 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class AccountQueries
 {
-    public static readonly Func<EcliptixSchemaContext, Guid, Task<List<AccountInfo>>>
-        GetAccountsByMembershipId = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, Guid membershipId) =>
-                ctx.Accounts
-                    .Where(a => a.MembershipId == membershipId && !a.IsDeleted)
-                    .OrderByDescending(a => a.IsDefaultAccount)
-                    .ThenBy(a => (int)a.AccountType)
-                    .AsNoTracking()
-                    .Select(a => new AccountInfo(
-                        a.UniqueId,
-                        a.MembershipId,
-                        a.AccountType,
-                        a.AccountName,
-                        a.IsDefaultAccount,
-                        a.Status))
-                    .ToList());
+    public static async Task<List<AccountInfo>> GetAccountsByMembershipId(
+        EcliptixSchemaContext ctx,
+        Guid membershipId)
+    {
+        List<AccountEntity> accounts = await ctx.Accounts
+            .Where(a => a.MembershipId == membershipId && !a.IsDeleted)
+            .OrderByDescending(a => a.IsDefaultAccount)
+            .ThenBy(a => a.AccountType)
+            .AsNoTracking()
+            .ToListAsync();
+
+        return accounts.Select(a => new AccountInfo(
+            a.UniqueId,
+            a.MembershipId,
+            a.AccountType,
+            a.AccountName,
+            a.IsDefaultAccount,
+            a.Status))
+        .ToList();
+    }
 
     public static readonly Func<EcliptixSchemaContext, Guid, Task<AccountEntity?>>
         GetDefaultAccountByMembershipId = EF.CompileAsyncQuery(

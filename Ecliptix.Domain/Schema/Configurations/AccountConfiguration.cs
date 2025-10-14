@@ -16,8 +16,7 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
             .IsRequired();
 
         builder.Property(e => e.AccountType)
-            .IsRequired()
-            .HasConversion<int>();
+            .IsRequired();
 
         builder.Property(e => e.AccountName)
             .IsRequired()
@@ -33,8 +32,7 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
             .HasDefaultValue(1);
 
         builder.Property(e => e.Status)
-            .IsRequired()
-            .HasConversion<int>();
+            .IsRequired();
 
         builder.Property(e => e.IsDefaultAccount)
             .HasDefaultValue(false);
