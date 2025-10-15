@@ -263,6 +263,12 @@ ClientBin/
 *.publishsettings
 orleans.codegen.cs
 
+# Server private keys (SECURITY: Never commit private keys!)
+server-keys/
+**/server-keys/
+*.pem
+*.key
+
 # Including strong name files can present a security risk
 # (https://github.com/github/gitignore/pull/2483#issue-259490424)
 #*.snk
