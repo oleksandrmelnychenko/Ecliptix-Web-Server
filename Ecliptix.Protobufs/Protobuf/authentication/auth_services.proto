@@ -9,5 +9,5 @@ service AuthVerificationServices {
   rpc VerifyOtp(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
   rpc ValidateMobileNumber(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
   rpc RecoverySecretKeyMobileVerification(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
-  rpc CheckMembershipStatus(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc CheckMobileNumberAvailability(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
 }

@@ -75,13 +75,9 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             UpdateOtpStatusAsync,
             "UpdateOtpStatus");
 
-        ReceivePersistorCommand<CheckExistingMembershipActorEvent, ExistingMembershipResult>(
-            CheckExistingMembershipAsync,
-            "CheckExistingMembership");
-
-        ReceivePersistorCommand<CheckMembershipStatusActorEvent, string>(
-            CheckMembershipStatusAsync,
-            "CheckMembershipStatus");
+        ReceivePersistorCommand<CheckMobileNumberAvailabilityActorEvent, string>(
+            CheckMobileNumberAvailabilityAsync,
+            "CheckMobileNumberAvailability");
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
@@ -442,41 +438,9 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         }
     }
 
-    private static async Task<Result<ExistingMembershipResult, VerificationFlowFailure>> CheckExistingMembershipAsync(
+    private static async Task<Result<string, VerificationFlowFailure>> CheckMobileNumberAvailabilityAsync(
         EcliptixSchemaContext ctx,
-        CheckExistingMembershipActorEvent cmd,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            Membership? membership = await MembershipQueries.GetByMobileUniqueId(
-                ctx, cmd.MobileNumberId, cancellationToken);
-
-            if (membership == null)
-            {
-                return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(new ExistingMembershipResult
-                {
-                    MembershipExists = false,
-                    Membership = null
-                });
-            }
-
-            return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(new ExistingMembershipResult
-            {
-                MembershipExists = true,
-                Membership = MapToProtoMembership(membership)
-            });
-        }
-        catch (Exception ex)
-        {
-            return Result<ExistingMembershipResult, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess($"Check existing membership failed: {ex.Message}", ex));
-        }
-    }
-
-    private static async Task<Result<string, VerificationFlowFailure>> CheckMembershipStatusAsync(
-        EcliptixSchemaContext ctx,
-        CheckMembershipStatusActorEvent cmd,
+        CheckMobileNumberAvailabilityActorEvent cmd,
         CancellationToken cancellationToken)
     {
         try
@@ -485,12 +449,12 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 ctx, cmd.MobileNumberId, cancellationToken);
 
             return Result<string, VerificationFlowFailure>.Ok(
-                exists ? "mobile_already_exist" : "mobile_is_free");
+                exists ? "taken" : "available");
         }
         catch (Exception ex)
         {
             return Result<string, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.PersistorAccess($"Check membership status failed: {ex.Message}", ex));
+                VerificationFlowFailure.PersistorAccess($"Check mobile number availability failed: {ex.Message}", ex));
         }
     }
 

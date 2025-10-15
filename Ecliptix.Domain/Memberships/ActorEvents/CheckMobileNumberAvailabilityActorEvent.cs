@@ -2,7 +2,7 @@ using System.Threading;
 
 namespace Ecliptix.Domain.Memberships.ActorEvents;
 
-public record CheckMembershipStatusActorEvent(
+public record CheckMobileNumberAvailabilityActorEvent(
     Guid MobileNumberId,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;

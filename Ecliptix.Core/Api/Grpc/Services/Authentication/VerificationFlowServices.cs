@@ -220,12 +220,12 @@ internal sealed class VerificationFlowServices(
                 }
             });
 
-    public override async Task<SecureEnvelope> CheckMembershipStatus(SecureEnvelope request, ServerCallContext context) =>
-        await _baseService.ExecuteEncryptedOperationAsync<CheckMembershipStatusRequest, CheckMembershipStatusResponse>(
+    public override async Task<SecureEnvelope> CheckMobileNumberAvailability(SecureEnvelope request, ServerCallContext context) =>
+        await _baseService.ExecuteEncryptedOperationAsync<CheckMobileNumberAvailabilityRequest, CheckMobileNumberAvailabilityResponse>(
             request, context,
             async (message, _, ct) =>
             {
-                CheckMembershipStatusActorEvent actorEvent = new(
+                CheckMobileNumberAvailabilityActorEvent actorEvent = new(
                     Helpers.FromByteStringToGuid(message.MobileNumberIdentifier),
                     ct);
 
@@ -233,11 +233,11 @@ internal sealed class VerificationFlowServices(
                     .Ask<Result<string, VerificationFlowFailure>>(actorEvent, ct);
 
                 return checkResult.Match(
-                    status => Result<CheckMembershipStatusResponse, FailureBase>.Ok(new CheckMembershipStatusResponse
+                    status => Result<CheckMobileNumberAvailabilityResponse, FailureBase>.Ok(new CheckMobileNumberAvailabilityResponse
                     {
                         Status = status
                     }),
-                    Result<CheckMembershipStatusResponse, FailureBase>.Err
+                    Result<CheckMobileNumberAvailabilityResponse, FailureBase>.Err
                 );
             });
 

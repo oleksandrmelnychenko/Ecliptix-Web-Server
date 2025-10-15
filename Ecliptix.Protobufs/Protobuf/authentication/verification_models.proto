@@ -78,10 +78,10 @@ message ValidateMobileNumberResponse {
   optional string message = 3;
 }
 
-message CheckMembershipStatusRequest {
+message CheckMobileNumberAvailabilityRequest {
   bytes mobile_number_identifier = 1;
 }
 
-message CheckMembershipStatusResponse {
+message CheckMobileNumberAvailabilityResponse {
   string status = 1;
 }

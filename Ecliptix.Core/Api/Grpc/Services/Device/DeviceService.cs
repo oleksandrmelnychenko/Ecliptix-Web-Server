@@ -137,8 +137,8 @@ internal sealed class DeviceService(
             if (deriveKeysResult.IsErr)
             {
                 FailureBase failure = deriveKeysResult.UnwrapErr();
-                throw new RpcException(new global::Grpc.Core.Status(StatusCode.Internal,
-                    $"Failed to derive identity keys: {failure.Message}"));
+                throw new RpcException(new global::Grpc.Core.Status(StatusCode.Unauthenticated,
+                    $"IDENTITY_KEY_DERIVATION_FAILED: {failure.Message}"));
             }
 
             (dynamic identityKeysObj, byte[] rootKeyBytes) = deriveKeysResult.Unwrap();
