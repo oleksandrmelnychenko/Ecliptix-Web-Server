@@ -475,7 +475,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         CreateOtpActorEvent cmd,
         CancellationToken cancellationToken)
     {
-        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
+        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
 
         try
         {

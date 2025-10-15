@@ -287,7 +287,6 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
 
         if (_activeOtp.Verify(actorEvent.OneTimePassword))
         {
-            Become(Running);
             await HandleSuccessfulVerification();
         }
         else
