@@ -14,5 +14,4 @@ public class LogoutAuditEntity : EntityBase
 
     public virtual MembershipEntity Membership { get; set; } = null!;
     public virtual AccountEntity? Account { get; set; }
-    public virtual DeviceEntity? Device { get; set; }
 }

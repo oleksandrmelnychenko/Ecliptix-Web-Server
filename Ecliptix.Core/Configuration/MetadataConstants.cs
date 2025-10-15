@@ -10,6 +10,7 @@ public static class MetadataConstants
         public const string DateTime = "request-date";
         public const string LocalIpAddress = "local-ip-address";
         public const string PublicIpAddress = "public-ip-address";
+        public const string Platform = "platform";
         public const string Locale = "lang";
         public const string LinkId = "fetch-link";
         public const string ApplicationInstanceId = "application-identifier";

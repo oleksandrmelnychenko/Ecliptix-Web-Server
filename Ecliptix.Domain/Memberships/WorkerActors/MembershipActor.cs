@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Threading;
 using Akka.Actor;
 using Ecliptix.Utilities;
 using Ecliptix.Domain.Services.Security;
@@ -144,10 +145,14 @@ public sealed class MembershipActor : ReceiveActor
             return;
         }
 
-        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRegistrationRecord, maskingKey);
+        UpdateMembershipSecureKeyEvent updateEvent = new(
+            @event.MembershipIdentifier,
+            @event.PeerRegistrationRecord,
+            maskingKey,
+            @event.CancellationToken);
 
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
+            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent, @event.CancellationToken);
 
         if (persistorResult.IsErr)
         {
@@ -160,7 +165,8 @@ public sealed class MembershipActor : ReceiveActor
 
         Result<AccountCreationResult, VerificationFlowFailure> accountResult =
             await _persistor.Ask<Result<AccountCreationResult, VerificationFlowFailure>>(
-                new CreateDefaultAccountEvent(@event.MembershipIdentifier));
+                new CreateDefaultAccountEvent(@event.MembershipIdentifier, @event.CancellationToken),
+                @event.CancellationToken);
 
         if (accountResult.IsErr)
         {
@@ -270,13 +276,17 @@ public sealed class MembershipActor : ReceiveActor
             _pendingSessionKeys.Remove(@event.MembershipIdentifier);
         }
 
-        UpdateMembershipSecureKeyEvent updateEvent = new(@event.MembershipIdentifier, @event.PeerRecoveryRecord, maskingKey);
+        UpdateMembershipSecureKeyEvent updateEvent = new(
+            @event.MembershipIdentifier,
+            @event.PeerRecoveryRecord,
+            maskingKey,
+            @event.CancellationToken);
 
         Log.Information("[PASSWORD-RECOVERY-COMPLETE] Updating OPAQUE credentials in database for membership {MembershipId}",
             @event.MembershipIdentifier);
 
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent);
+            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent, @event.CancellationToken);
 
         if (persistorResult.IsErr)
         {
@@ -295,7 +305,8 @@ public sealed class MembershipActor : ReceiveActor
 
         Result<Unit, VerificationFlowFailure> expireResult =
             await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
-                new ExpirePasswordRecoveryFlowsEvent(@event.MembershipIdentifier));
+                new ExpirePasswordRecoveryFlowsEvent(@event.MembershipIdentifier, @event.CancellationToken),
+                @event.CancellationToken);
 
         if (expireResult.IsErr)
         {
@@ -317,7 +328,8 @@ public sealed class MembershipActor : ReceiveActor
 
         Result<PasswordRecoveryFlowValidation, VerificationFlowFailure> flowValidation =
             await _persistor.Ask<Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>>(
-                new ValidatePasswordRecoveryFlowEvent(@event.MembershipIdentifier));
+                new ValidatePasswordRecoveryFlowEvent(@event.MembershipIdentifier, @event.CancellationToken),
+                @event.CancellationToken);
 
         if (flowValidation.IsErr)
         {
@@ -455,21 +467,21 @@ public sealed class MembershipActor : ReceiveActor
     private async Task HandleCreateMembership(CreateMembershipActorEvent @event)
     {
         Result<MembershipQueryRecord, VerificationFlowFailure> operationResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
+            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event, @event.CancellationToken);
         Sender.Tell(operationResult);
     }
 
     private async Task HandleGetMembershipByVerificationFlow(GetMembershipByVerificationFlowEvent @event)
     {
         Result<MembershipQueryRecord, VerificationFlowFailure> operationResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
+            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event, @event.CancellationToken);
         Sender.Tell(operationResult);
     }
 
     private async Task HandleSignInMembership(SignInMembershipActorEvent @event)
     {
         Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event);
+            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event, @event.CancellationToken);
 
         Result<OpaqueSignInInitResponse, VerificationFlowFailure> finalResult = persistorResult.Match(
             record =>
@@ -582,7 +594,7 @@ public sealed class MembershipActor : ReceiveActor
     {
         if (_pendingSignIns.TryGetValue(connectId, out PendingSignInState? state))
         {
-            state.Dispose(); // Securely zeros ServerMac
+            state.Dispose(); 
             _pendingSignIns.Remove(connectId);
         }
     }
@@ -741,15 +753,34 @@ public sealed class MembershipActor : ReceiveActor
     }
 }
 
-public record UpdateMembershipSecureKeyEvent(Guid MembershipIdentifier, byte[] SecureKey, byte[] MaskingKey);
+public record UpdateMembershipSecureKeyEvent(
+    Guid MembershipIdentifier,
+    byte[] SecureKey,
+    byte[] MaskingKey,
+    CancellationToken CancellationToken = default) : ICancellableActorEvent;
 
-public record GenerateMembershipOprfRegistrationRequestEvent(Guid MembershipIdentifier, byte[] OprfRequest);
+public record GenerateMembershipOprfRegistrationRequestEvent(
+    Guid MembershipIdentifier,
+    byte[] OprfRequest,
+    CancellationToken CancellationToken = default) : ICancellableActorEvent;
 
-public record CompleteRegistrationRecordActorEvent(Guid MembershipIdentifier, byte[] PeerRegistrationRecord, uint ConnectId, Guid DeviceId);
+public record CompleteRegistrationRecordActorEvent(
+    Guid MembershipIdentifier,
+    byte[] PeerRegistrationRecord,
+    uint ConnectId,
+    Guid DeviceId,
+    CancellationToken CancellationToken = default) : ICancellableActorEvent;
 
-public record OprfInitRecoverySecureKeyEvent(Guid MembershipIdentifier, byte[] OprfRequest, string CultureName);
+public record OprfInitRecoverySecureKeyEvent(
+    Guid MembershipIdentifier,
+    byte[] OprfRequest,
+    string CultureName,
+    CancellationToken CancellationToken = default) : ICancellableActorEvent;
 
-public record OprfCompleteRecoverySecureKeyEvent(Guid MembershipIdentifier, byte[] PeerRecoveryRecord);
+public record OprfCompleteRecoverySecureKeyEvent(
+    Guid MembershipIdentifier,
+    byte[] PeerRecoveryRecord,
+    CancellationToken CancellationToken = default) : ICancellableActorEvent;
 
 public record SignInCompleteEvent(uint ConnectId, OpaqueSignInFinalizeRequest Request);
 

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Threading;
 using System.Threading.Channels;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Utilities;
@@ -12,5 +14,7 @@ public record InitiateVerificationFlowActorEvent(
     VerificationPurpose Purpose,
     InitiateVerificationRequest.Types.Type RequestType,
     ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> ChannelWriter,
-    string CultureName
-);
+    string CultureName,
+    ActivityContext ActivityContext = default,
+    CancellationToken CancellationToken = default
+) : ICancellableActorEvent;

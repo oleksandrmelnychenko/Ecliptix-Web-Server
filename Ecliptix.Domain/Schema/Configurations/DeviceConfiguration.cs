@@ -19,6 +19,8 @@ public class DeviceConfiguration : EntityBaseMap<DeviceEntity>
             .HasDefaultValue(1);
 
         builder.HasIndex(e => e.AppInstanceId)
+            .IsUnique()
+            .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_Devices_AppInstanceId");
 
         builder.HasIndex(e => e.DeviceType)

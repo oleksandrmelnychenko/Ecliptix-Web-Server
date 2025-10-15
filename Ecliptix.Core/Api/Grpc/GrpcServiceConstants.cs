@@ -36,7 +36,7 @@ public static class GrpcServiceConstants
 
     public static class ChannelOptions
     {
-        public const int BoundedChannelCapacity = 100;
+        public const int BoundedChannelCapacity = 32;
     }
 
     public static class ActorPaths

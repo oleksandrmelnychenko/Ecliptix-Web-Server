@@ -10,14 +10,15 @@ public static class AccountQueries
 {
     public static async Task<List<AccountInfo>> GetAccountsByMembershipId(
         EcliptixSchemaContext ctx,
-        Guid membershipId)
+        Guid membershipId,
+        CancellationToken cancellationToken = default)
     {
         List<AccountEntity> accounts = await ctx.Accounts
             .Where(a => a.MembershipId == membershipId && !a.IsDeleted)
             .OrderByDescending(a => a.IsDefaultAccount)
             .ThenBy(a => a.AccountType)
             .AsNoTracking()
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return accounts.Select(a => new AccountInfo(
             a.UniqueId,

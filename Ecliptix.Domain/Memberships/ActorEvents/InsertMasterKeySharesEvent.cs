@@ -1,4 +1,5 @@
-namespace Ecliptix.Domain.Memberships.ActorEvents;
+using System.Threading;
+using Ecliptix.Domain.Memberships.ActorEvents;
 
 public record ShareData(
     int ShareIndex,
@@ -9,5 +10,6 @@ public record ShareData(
 
 public record InsertMasterKeySharesEvent(
     Guid MembershipUniqueId,
-    IReadOnlyList<ShareData> Shares
-);
+    IReadOnlyList<ShareData> Shares,
+    CancellationToken CancellationToken = default
+) : ICancellableActorEvent;

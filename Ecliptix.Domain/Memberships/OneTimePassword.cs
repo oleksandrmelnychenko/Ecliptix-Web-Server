@@ -1,19 +1,55 @@
+using System;
+using System.Globalization;
+using System.Security.Cryptography;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Utilities;
-using OtpNet;
 
 namespace Ecliptix.Domain.Memberships;
 
 public sealed class OneTimePassword
 {
-    private readonly byte[] _otpSecretKey = KeyGeneration.GenerateRandomKey(OtpHashMode.Sha256);
+    private static readonly TimeSpan DefaultTimeToLive = TimeSpan.FromSeconds(30);
 
+    private readonly TimeSpan _timeToLive;
+    private readonly Func<DateTimeOffset> _utcNow;
+
+    private Guid _uniqueIdentifier;
     private Option<OtpQueryRecord> _otpQueryRecord = Option<OtpQueryRecord>.None;
 
+    public OneTimePassword()
+        : this(DefaultTimeToLive, static () => DateTimeOffset.UtcNow)
+    {
+    }
+
+    public OneTimePassword(TimeSpan otpExpiration)
+        : this(otpExpiration, static () => DateTimeOffset.UtcNow)
+    {
+    }
+
+    private OneTimePassword(TimeSpan timeToLive, Func<DateTimeOffset> utcNow)
+    {
+        _timeToLive = timeToLive;
+        _utcNow = utcNow;
+    }
+
     public bool IsActive { get; private set; }
-    public DateTimeOffset ExpiresAt { get; private init; } = DateTimeOffset.UtcNow.AddSeconds(30);
-    public Guid UniqueIdentifier { get; set; }
+    public DateTimeOffset ExpiresAt { get; private set; }
+
+    public Guid UniqueIdentifier
+    {
+        get => _uniqueIdentifier;
+        set
+        {
+            _uniqueIdentifier = value;
+
+            if (_otpQueryRecord.HasValue)
+            {
+                OtpQueryRecord record = _otpQueryRecord.Value!;
+                _otpQueryRecord = Option<OtpQueryRecord>.Some(record with { UniqueIdentifier = value });
+            }
+        }
+    }
 
     public Result<(OtpQueryRecord Record, string PlainOtp), VerificationFlowFailure> Generate(
         MobileNumberQueryRecord phoneNumberQueryRecord, Guid flowUniqueIdentifier)
@@ -21,21 +57,23 @@ public sealed class OneTimePassword
         return Result<(OtpQueryRecord, string), VerificationFlowFailure>.Try(
             () =>
             {
-                Totp totp = new(_otpSecretKey, mode: OtpHashMode.Sha256);
-                string otp = totp.ComputeTotp();
+                string otp = GenerateOtpCode();
+                DateTimeOffset expiresAt = _utcNow().Add(_timeToLive);
 
                 (string hash, string salt) = OneTimePasswordHashing.HashOtp(otp);
                 OtpQueryRecord otpQueryRecord = new()
                 {
+                    UniqueIdentifier = _uniqueIdentifier,
                     FlowUniqueId = flowUniqueIdentifier,
                     MobileNumberIdentifier = phoneNumberQueryRecord.UniqueId,
                     OtpHash = hash,
                     OtpSalt = salt,
-                    ExpiresAt = ExpiresAt,
+                    ExpiresAt = expiresAt,
                     IsActive = true,
                     Status = VerificationFlowStatus.Pending
                 };
 
+                ExpiresAt = expiresAt;
                 IsActive = true;
                 _otpQueryRecord = Option<OtpQueryRecord>.Some(otpQueryRecord);
 
@@ -43,11 +81,6 @@ public sealed class OneTimePassword
             },
             ex => VerificationFlowFailure.OtpGenerationFailed(
                 VerificationFlowMessageKeys.OtpGenerationFailed, ex));
-    }
-
-    private void ConsumeOtp()
-    {
-        IsActive = false;
     }
 
     public bool Verify(string code)
@@ -60,6 +93,17 @@ public sealed class OneTimePassword
         return false;
     }
 
+    private void ConsumeOtp()
+    {
+        IsActive = false;
+
+        if (_otpQueryRecord.HasValue)
+        {
+            OtpQueryRecord record = _otpQueryRecord.Value!;
+            _otpQueryRecord = Option<OtpQueryRecord>.Some(record with { IsActive = false });
+        }
+    }
+
     private bool IsValidForVerification()
     {
         return _otpQueryRecord.HasValue && IsActive;
@@ -70,7 +114,7 @@ public sealed class OneTimePassword
         if (!_otpQueryRecord.HasValue) return true;
 
         OtpQueryRecord record = _otpQueryRecord.Value!;
-        return DateTimeOffset.UtcNow > record.ExpiresAt;
+        return _utcNow() > record.ExpiresAt;
     }
 
     private bool PerformVerification(string code)
@@ -79,29 +123,25 @@ public sealed class OneTimePassword
 
         if (!OneTimePasswordHashing.VerifyOtp(code, record.OtpHash, record.OtpSalt)) return false;
 
-        Result<bool, VerificationFlowFailure> totpVerificationResult = Result<bool, VerificationFlowFailure>.Try(
-            () =>
-            {
-                Totp totp = new(_otpSecretKey, mode: OtpHashMode.Sha256);
-                return totp.VerifyTotp(code, out _, new VerificationWindow(10));
-            },
-            _ => VerificationFlowFailure.InvalidOtp());
-
-        bool isValid = totpVerificationResult.UnwrapOr(false);
-        if (isValid) ConsumeOtp();
-
-        return isValid;
+        ConsumeOtp();
+        return true;
     }
 
     public static OneTimePassword FromExisting(OtpQueryRecord record)
     {
         OneTimePassword otp = new()
         {
-            UniqueIdentifier = record.UniqueIdentifier,
+            _uniqueIdentifier = record.UniqueIdentifier,
             ExpiresAt = record.ExpiresAt,
             IsActive = record.IsActive,
             _otpQueryRecord = Option<OtpQueryRecord>.Some(record)
         };
         return otp;
+    }
+
+    private static string GenerateOtpCode()
+    {
+        int value = RandomNumberGenerator.GetInt32(0, 1_000_000);
+        return value.ToString("D6", CultureInfo.InvariantCulture);
     }
 }

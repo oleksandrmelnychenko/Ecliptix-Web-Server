@@ -8,12 +8,38 @@ public record AuditContext(
 
 public static class AuditContextExtractor
 {
-    private const string PlatformKey = "platform";
-
     public static AuditContext ExtractFromContext(ServerCallContext context)
     {
-        string? ipAddress = context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
-        string platform = context.RequestHeaders.GetValue(PlatformKey) ?? "Unknown";
+        string? ipAddress = ExtractIpAddress(context);
+        string platform = ExtractPlatform(context);
         return new AuditContext(ipAddress, platform);
+    }
+
+    private static string? ExtractIpAddress(ServerCallContext context)
+    {
+        string? metadataIp = GrpcMetadataHandler.GetLocalIpAddress(context.RequestHeaders);
+        if (!string.IsNullOrEmpty(metadataIp))
+        {
+            return metadataIp;
+        }
+
+        string? httpContextIp = context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
+        if (!string.IsNullOrEmpty(httpContextIp))
+        {
+            return httpContextIp;
+        }
+
+        return PlatformDetector.GetLocalIpAddress();
+    }
+
+    private static string ExtractPlatform(ServerCallContext context)
+    {
+        string? metadataPlatform = GrpcMetadataHandler.GetPlatform(context.RequestHeaders);
+        if (!string.IsNullOrEmpty(metadataPlatform))
+        {
+            return metadataPlatform;
+        }
+
+        return PlatformDetector.GetPlatformInfo();
     }
 }

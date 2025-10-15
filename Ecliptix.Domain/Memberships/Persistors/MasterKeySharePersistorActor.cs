@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Threading;
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
@@ -29,22 +30,34 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
     private void Ready()
     {
         Receive<InsertMasterKeySharesEvent>(cmd =>
-            ExecuteWithContext(ctx => InsertMasterKeySharesAsync(ctx, cmd), "InsertMasterKeyShares")
+            ExecuteWithContext(
+                    (ctx, ct) => InsertMasterKeySharesAsync(ctx, cmd, ct),
+                    "InsertMasterKeyShares",
+                    cmd.CancellationToken)
                 .PipeTo(Sender));
 
         Receive<GetMasterKeySharesEvent>(cmd =>
-            ExecuteWithContext(ctx => GetMasterKeySharesByMembershipIdAsync(ctx, cmd), "GetMasterKeyShares")
+            ExecuteWithContext(
+                    (ctx, ct) => GetMasterKeySharesByMembershipIdAsync(ctx, cmd, ct),
+                    "GetMasterKeyShares",
+                    cmd.CancellationToken)
                 .PipeTo(Sender));
 
         Receive<DeleteMasterKeySharesEvent>(cmd =>
-            ExecuteWithContext(ctx => DeleteMasterKeySharesAsync(ctx, cmd), "DeleteMasterKeyShares")
+            ExecuteWithContext(
+                    (ctx, ct) => DeleteMasterKeySharesAsync(ctx, cmd, ct),
+                    "DeleteMasterKeyShares",
+                    cmd.CancellationToken)
                 .PipeTo(Sender));
     }
 
     private static async Task<Result<InsertMasterKeySharesResult, KeySplittingFailure>> InsertMasterKeySharesAsync(
-        EcliptixSchemaContext ctx, InsertMasterKeySharesEvent cmd)
+        EcliptixSchemaContext ctx,
+        InsertMasterKeySharesEvent cmd,
+        CancellationToken cancellationToken)
     {
-        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
+            await ctx.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             if (cmd.Shares.Count == 0)
@@ -53,18 +66,19 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                     KeySplittingFailure.KeySplittingFailed("No shares provided"));
             }
 
-            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId);
+            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId, cancellationToken);
             if (membership == null)
             {
-                await transaction.RollbackAsync();
+                await transaction.RollbackAsync(CancellationToken.None);
                 return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
                     KeySplittingFailure.InvalidIdentifier("Membership not found or inactive"));
             }
 
-            List<MasterKeyShareEntity> existingShares = await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId);
+            List<MasterKeyShareEntity> existingShares =
+                await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId, cancellationToken);
             if (existingShares.Any())
             {
-                await transaction.RollbackAsync();
+                await transaction.RollbackAsync(CancellationToken.None);
                 return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
                     KeySplittingFailure.KeySplittingFailed("Master key shares already exist for this membership"));
             }
@@ -81,7 +95,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
             int minIndex = cmd.Shares.Min(s => s.ShareIndex);
             if (minIndex != 1 || maxIndex != cmd.Shares.Count)
             {
-                await transaction.RollbackAsync();
+                await transaction.RollbackAsync(CancellationToken.None);
                 return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
                     KeySplittingFailure.KeySplittingFailed($"Share indexes must be sequential starting from 1 (expected 1-{cmd.Shares.Count}, got {minIndex}-{maxIndex})"));
             }
@@ -97,9 +111,9 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
             }).ToList();
 
             ctx.MasterKeyShares.AddRange(sharesToInsert);
-            await ctx.SaveChangesAsync();
+            await ctx.SaveChangesAsync(cancellationToken);
 
-            await transaction.CommitAsync();
+            await transaction.CommitAsync(cancellationToken);
 
             return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Ok(
                 new InsertMasterKeySharesResult
@@ -110,18 +124,20 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
+            await transaction.RollbackAsync(CancellationToken.None);
             return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
                 KeySplittingFailure.KeySplittingFailed($"Insert failed: {ex.Message}"));
         }
     }
 
     private static async Task<Result<MasterKeyShareQueryRecord[], KeySplittingFailure>> GetMasterKeySharesByMembershipIdAsync(
-        EcliptixSchemaContext ctx, GetMasterKeySharesEvent cmd)
+        EcliptixSchemaContext ctx,
+        GetMasterKeySharesEvent cmd,
+        CancellationToken cancellationToken)
     {
         try
         {
-            List<MasterKeyShareEntity> shares = await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId);
+            List<MasterKeyShareEntity> shares = await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId, cancellationToken);
 
             if (shares.Count == 0)
             {
@@ -155,21 +171,23 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
     }
 
     private static async Task<Result<Unit, KeySplittingFailure>> DeleteMasterKeySharesAsync(
-        EcliptixSchemaContext ctx, DeleteMasterKeySharesEvent cmd)
+        EcliptixSchemaContext ctx,
+        DeleteMasterKeySharesEvent cmd,
+        CancellationToken cancellationToken)
     {
-        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             await ctx.MasterKeyShares
                 .Where(mks => mks.MembershipUniqueId == cmd.MembershipId && !mks.IsDeleted)
-                .ExecuteDeleteAsync();
+                .ExecuteDeleteAsync(cancellationToken);
 
-            await transaction.CommitAsync();
+            await transaction.CommitAsync(cancellationToken);
             return Result<Unit, KeySplittingFailure>.Ok(Unit.Value);
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
+            await transaction.RollbackAsync(CancellationToken.None);
             return Result<Unit, KeySplittingFailure>.Err(
                 KeySplittingFailure.KeySplittingFailed($"Delete shares failed: {ex.Message}"));
         }

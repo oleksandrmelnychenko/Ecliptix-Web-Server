@@ -41,7 +41,7 @@ internal sealed class DeviceService(
         return await _baseService.ExecuteEncryptedOperationAsync<AppDevice, AppDeviceRegisteredStateReply>(
             request, context, async (appDevice, _, cancellationToken) =>
             {
-                RegisterAppDeviceIfNotExistActorEvent registerEvent = new(appDevice);
+                RegisterAppDeviceIfNotExistActorEvent registerEvent = new(appDevice, cancellationToken);
                 Result<AppDeviceRegisteredStateReply, AppDeviceFailure> registerResult =
                     await _appDevicePersistorActor.Ask<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>>(
                         registerEvent, cancellationToken);

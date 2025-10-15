@@ -66,12 +66,5 @@ public class LogoutAuditConfiguration : EntityBaseMap<LogoutAuditEntity>
             .IsRequired(false)
             .HasConstraintName("FK_LogoutAudits_Accounts");
 
-        builder.HasOne(e => e.Device)
-            .WithMany()
-            .HasForeignKey(e => e.DeviceId)
-            .HasPrincipalKey(d => d.UniqueId)
-            .OnDelete(DeleteBehavior.NoAction)
-            .IsRequired(false)
-            .HasConstraintName("FK_LogoutAudits_Devices");
     }
 }

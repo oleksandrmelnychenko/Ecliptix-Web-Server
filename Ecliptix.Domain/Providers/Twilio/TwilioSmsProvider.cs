@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using Twilio;
 using Twilio.Rest.Api.V2010.Account;
 using Twilio.Types;
@@ -14,10 +16,12 @@ public sealed class TwilioSmsProvider : ISmsProvider
         TwilioClient.Init(settings.AccountSid, settings.AuthToken);
     }
 
-    public async Task<SmsDeliveryResult> SendSmsAsync(string phoneNumber, string message, string? callbackUrl = null)
+    public async Task<SmsDeliveryResult> SendSmsAsync(string phoneNumber, string message, string? callbackUrl = null, CancellationToken cancellationToken = default)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Yield();
             return new SmsDeliveryResult
             {
                 IsSuccess = true,
@@ -36,10 +40,11 @@ public sealed class TwilioSmsProvider : ISmsProvider
         }
     }
 
-    public async Task<SmsDeliveryResult> SendOtpAsync(string phoneNumber, string code, string? callbackUrl = null)
+    public async Task<SmsDeliveryResult> SendOtpAsync(string phoneNumber, string code, CancellationToken cancellationToken = default, string? callbackUrl = null)
     {
+        await Task.Yield();
         string message = $"Your verification code is: {code}. This code will expire in 5 minutes.";
-        return await SendSmsAsync(phoneNumber, message, callbackUrl);
+        return await SendSmsAsync(phoneNumber, message, callbackUrl, cancellationToken);
     }
 
     private static SmsDeliveryStatus MapTwilioStatus(MessageResource.StatusEnum status)

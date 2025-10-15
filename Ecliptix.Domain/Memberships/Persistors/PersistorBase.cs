@@ -30,16 +30,47 @@ public abstract class PersistorBase<TFailure> : ReceiveActor
         string operationName,
         CancellationToken cancellationToken = default)
     {
+        TimeSpan operationTimeout = GetOperationTimeout(operationName);
+
         return await PersistorRetryPolicy.ExecuteWithRetryAsync(
-            async () =>
+            async (ct) =>
             {
-                await using EcliptixSchemaContext ctx = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-                return await operation(ctx, cancellationToken);
+                await using EcliptixSchemaContext ctx = await _dbContextFactory.CreateDbContextAsync(ct);
+                return await operation(ctx, ct);
             },
             operationName,
+            operationTimeout,
             (dbEx, opName) => MapDbException(dbEx),
             (timeoutEx, opName) => CreateTimeoutFailure(timeoutEx),
-            (ex, opName) => CreateGenericFailure(ex));
+            (ex, opName) => CreateGenericFailure(ex),
+            cancellationToken);
+    }
+
+    private static TimeSpan GetOperationTimeout(string operationName)
+    {
+        return operationName switch
+        {
+            "CreateMembership" => TimeoutConfiguration.Database.CreateTimeout,
+            "UpdateMembershipSecureKey" => TimeoutConfiguration.Database.UpdateTimeout,
+            "LoginMembership" => TimeoutConfiguration.Database.QueryTimeout,
+            "SignInMembership" => TimeoutConfiguration.Database.QueryTimeout,
+            "GetMembershipByVerificationFlow" => TimeoutConfiguration.Database.GetTimeout,
+            "GetMembershipByUniqueId" => TimeoutConfiguration.Database.GetTimeout,
+            "CreateDefaultAccount" => TimeoutConfiguration.Database.CreateTimeout,
+            "ValidatePasswordRecoveryFlow" => TimeoutConfiguration.Database.QueryTimeout,
+            "ExpirePasswordRecoveryFlows" => TimeoutConfiguration.Database.UpdateTimeout,
+            "UpdateMembershipVerificationFlow" => TimeoutConfiguration.Database.UpdateTimeout,
+            "CreateOtp" => TimeoutConfiguration.Database.CreateTimeout,
+            "UpdateOtpStatus" => TimeoutConfiguration.Database.UpdateTimeout,
+            "GetOtp" => TimeoutConfiguration.Database.GetTimeout,
+            "CreateVerificationFlow" => TimeoutConfiguration.Database.CreateTimeout,
+            "UpdateVerificationFlowStatus" => TimeoutConfiguration.Database.UpdateTimeout,
+            "GetVerificationFlow" => TimeoutConfiguration.Database.GetTimeout,
+            "EnsureMobileNumber" => TimeoutConfiguration.Database.CreateTimeout,
+            "GetMobileNumber" => TimeoutConfiguration.Database.GetTimeout,
+            "RecordLogout" => TimeoutConfiguration.Database.CreateTimeout,
+            _ => TimeoutConfiguration.Database.CommandTimeout
+        };
     }
 
     protected abstract TFailure MapDbException(DbException ex);

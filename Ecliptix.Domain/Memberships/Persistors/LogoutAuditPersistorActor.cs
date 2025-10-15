@@ -26,14 +26,20 @@ public class LogoutAuditPersistorActor : PersistorBase<VerificationFlowFailure>
     private void Ready()
     {
         Receive<RecordLogoutEvent>(cmd =>
-            ExecuteWithContext(ctx => RecordLogoutAsync(ctx, cmd), "RecordLogout")
-                .PipeTo(Sender));
+        {
+            CancellationToken cancellationToken = cmd.CancellationToken;
+            ExecuteWithContext((ctx, ct) => RecordLogoutAsync(ctx, cmd, ct), "RecordLogout", cancellationToken)
+                .PipeTo(Sender);
+        });
     }
 
     private async Task<Result<Unit, VerificationFlowFailure>> RecordLogoutAsync(
-        EcliptixSchemaContext ctx, RecordLogoutEvent cmd)
+        EcliptixSchemaContext ctx,
+        RecordLogoutEvent cmd,
+        CancellationToken cancellationToken)
     {
-        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync();
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
+            await ctx.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             LogoutAuditEntity audit = new()
@@ -48,9 +54,9 @@ public class LogoutAuditPersistorActor : PersistorBase<VerificationFlowFailure>
             };
 
             ctx.LogoutAudits.Add(audit);
-            await ctx.SaveChangesAsync();
+            await ctx.SaveChangesAsync(cancellationToken);
 
-            await transaction.CommitAsync();
+            await transaction.CommitAsync(cancellationToken);
 
             Log.Information(
                 "Logout audit recorded - MembershipId: {MembershipId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}",
@@ -60,7 +66,7 @@ public class LogoutAuditPersistorActor : PersistorBase<VerificationFlowFailure>
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
+            await transaction.RollbackAsync(CancellationToken.None);
             Log.Error(ex, "Failed to record logout audit for MembershipId: {MembershipId}", cmd.MembershipUniqueId);
             return Result<Unit, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess("Failed to record logout audit", ex));

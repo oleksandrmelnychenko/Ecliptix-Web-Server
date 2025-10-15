@@ -73,7 +73,12 @@ internal sealed class MembershipServices(
                 Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
 
                 SignInMembershipActorEvent signInEvent = new(
-                    connectId, phoneNumberResult.ParsedMobileNumberE164!, deviceId, message, _cultureName);
+                    connectId,
+                    phoneNumberResult.ParsedMobileNumberE164!,
+                    deviceId,
+                    message,
+                    _cultureName,
+                    ct);
 
                 Result<OpaqueSignInInitResponse, VerificationFlowFailure> initSignInResult =
                     await _membershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent, ct);
@@ -115,7 +120,8 @@ internal sealed class MembershipServices(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory),
                         connectId,
-                        deviceId);
+                        deviceId,
+                        ct);
 
                     Result<OprfRegistrationCompleteResponse, VerificationFlowFailure> completeRegistrationRecordResult =
                         await _membershipActor.Ask<Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>>(
@@ -134,10 +140,11 @@ internal sealed class MembershipServices(
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRecoverySecretKeyCompleteRequest, OprfRecoverySecretKeyCompleteResponse>(
             request, context,
             async (message, _, ct) =>
-            {
-                OprfCompleteRecoverySecureKeyEvent @event = new(
-                    Helpers.FromByteStringToGuid(message.MembershipIdentifier),
-                    Helpers.ReadMemoryToRetrieveBytes(message.PeerRecoveryRecord.Memory));
+                {
+                    OprfCompleteRecoverySecureKeyEvent @event = new(
+                        Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                        Helpers.ReadMemoryToRetrieveBytes(message.PeerRecoveryRecord.Memory),
+                        ct);
 
                 Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure> completeRecoverySecretKeyResult =
                     await _membershipActor
@@ -159,7 +166,8 @@ internal sealed class MembershipServices(
                 {
                     GenerateMembershipOprfRegistrationRequestEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
-                        Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory));
+                        Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory),
+                        ct);
 
                     Result<OprfRegistrationInitResponse, VerificationFlowFailure> updateOperationResult =
                         await _membershipActor.Ask<Result<OprfRegistrationInitResponse, VerificationFlowFailure>>(@event,
@@ -180,7 +188,8 @@ internal sealed class MembershipServices(
                     OprfInitRecoverySecureKeyEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory),
-                        _cultureName);
+                        _cultureName,
+                        ct);
 
                     Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure> result = await _membershipActor
                         .Ask<Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>>(
@@ -237,7 +246,7 @@ internal sealed class MembershipServices(
                     Log.Information("Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
                         membershipId, connectId, deviceId, accountId, reason, message.Scope);
 
-                    RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason, auditContext.IpAddress, auditContext.Platform);
+                    RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason, auditContext.IpAddress, auditContext.Platform, ct);
                     Result<Unit, VerificationFlowFailure> auditResult =
                         await _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(logoutEvent, ct);
 

@@ -1,4 +1,6 @@
+using System.Threading;
 using System.Threading.Channels;
+using System.Threading.Tasks;
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
@@ -8,10 +10,19 @@ using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Ecliptix.Protobuf.Membership;
 using Microsoft.Extensions.Options;
+using Serilog;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors;
 
 public record FlowCompletedGracefullyActorEvent(IActorRef ActorRef);
+
+public sealed class FlowTerminationAcknowledged
+{
+    public static readonly FlowTerminationAcknowledged Instance = new();
+    private FlowTerminationAcknowledged()
+    {
+    }
+}
 
 public sealed class VerificationFlowManagerActor : ReceiveActor
 {
@@ -20,6 +31,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     private readonly IActorRef _persistor;
     private readonly ISmsProvider _smsProvider;
     private readonly IOptions<SecurityConfiguration> _securityConfig;
+    private static readonly ILogger Logger = Log.ForContext<VerificationFlowManagerActor>();
 
     private readonly Dictionary<IActorRef, ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>>
         _flowWriters = new();
@@ -42,7 +54,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
 
     private void Ready()
     {
-        Receive<InitiateVerificationFlowActorEvent>(HandleInitiateFlow);
+        ReceiveAsync<InitiateVerificationFlowActorEvent>(HandleInitiateFlowAsync);
         Receive<VerifyFlowActorEvent>(HandleVerifyFlow);
         Receive<Terminated>(HandleTerminated);
         Receive<EnsureMobileNumberActorEvent>(actorEvent => _persistor.Forward(actorEvent));
@@ -50,22 +62,55 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         Receive<FlowCompletedGracefullyActorEvent>(HandleFlowCompletedGracefully);
     }
 
-    private void HandleInitiateFlow(InitiateVerificationFlowActorEvent actorEvent)
+    private async Task HandleInitiateFlowAsync(InitiateVerificationFlowActorEvent actorEvent)
     {
         string baseActorName = GetActorName(actorEvent.ConnectId);
-        IActorRef? childActor = Context.Child(baseActorName);
+        IActorRef? existingActor = Context.Child(baseActorName);
 
         if (actorEvent.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
         {
-            if (!childActor.IsNobody())
+            if (!existingActor.IsNobody())
             {
+                _flowWriters.Remove(existingActor, out _);
+                Context.Unwatch(existingActor);
 
-                _flowWriters.Remove(childActor);
-                Context.Unwatch(childActor);
-                Context.Stop(childActor);
+                TimeSpan terminationTimeout = TimeSpan.FromSeconds(
+                    Math.Max(5,
+                        _securityConfig.Value.VerificationFlow.ChannelWriteTimeoutSeconds +
+                        _securityConfig.Value.VerificationFlow.OtpExpirationSeconds));
+
+                try
+                {
+                    Task<bool> gracefulStop = existingActor.GracefulStop(
+                        terminationTimeout,
+                        new PrepareForTerminationMessage());
+
+                    if (actorEvent.CancellationToken.CanBeCanceled)
+                    {
+                        await gracefulStop.WaitAsync(actorEvent.CancellationToken);
+                    }
+                    else
+                    {
+                        await gracefulStop;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    Logger.Warning(
+                        "[verification.flow.manager.force-stop] Cancellation while waiting for termination of ConnectId {ConnectId}",
+                        actorEvent.ConnectId);
+                    Context.Stop(existingActor);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex,
+                        "[verification.flow.manager.force-stop] Failed to gracefully stop flow actor for ConnectId {ConnectId}",
+                        actorEvent.ConnectId);
+                    Context.Stop(existingActor);
+                }
             }
 
-            IActorRef? newFlowActor = Context.ActorOf(VerificationFlowActor.Build(
+            Props props = VerificationFlowActor.Build(
                 actorEvent.ConnectId,
                 actorEvent.MobileNumberIdentifier,
                 actorEvent.AppDeviceIdentifier,
@@ -76,29 +121,34 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                 _smsProvider,
                 _localizationProvider,
                 actorEvent.CultureName,
-                _securityConfig
-            ), baseActorName);
+                _securityConfig,
+                actorEvent.ActivityContext,
+                actorEvent.CancellationToken);
+
+            IActorRef newFlowActor = Context.ActorOf(props, baseActorName);
 
             Context.Watch(newFlowActor);
-            _flowWriters.TryAdd(newFlowActor, actorEvent.ChannelWriter);
+            _flowWriters[newFlowActor] = actorEvent.ChannelWriter;
+
+            Logger.Information("[verification.flow.manager.spawned] ConnectId {ConnectId} Purpose {Purpose}",
+                actorEvent.ConnectId, actorEvent.Purpose);
 
             Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
+            return;
+        }
+
+        if (!existingActor.IsNobody())
+        {
+            _flowWriters[existingActor] = actorEvent.ChannelWriter;
+            existingActor.Forward(actorEvent);
         }
         else
         {
-            if (!childActor.IsNobody())
-            {
-                _flowWriters[childActor] = actorEvent.ChannelWriter;
-                childActor.Forward(actorEvent);
-            }
-            else
-            {
-                string message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowNotFound,
-                    actorEvent.CultureName);
-                Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(VerificationFlowFailure.NotFound(message)));
+            string message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowNotFound,
+                actorEvent.CultureName);
+            Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(VerificationFlowFailure.NotFound(message)));
 
-                actorEvent.ChannelWriter.TryComplete();
-            }
+            actorEvent.ChannelWriter.TryComplete();
         }
     }
 

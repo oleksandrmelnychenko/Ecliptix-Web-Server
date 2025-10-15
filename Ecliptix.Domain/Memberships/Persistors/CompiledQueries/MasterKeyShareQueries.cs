@@ -1,3 +1,4 @@
+using System.Threading;
 using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
@@ -8,12 +9,13 @@ public static class MasterKeyShareQueries
 {
     public static async Task<List<MasterKeyShareEntity>> GetByMembershipUniqueId(
         EcliptixSchemaContext ctx,
-        Guid membershipUniqueId)
+        Guid membershipUniqueId,
+        CancellationToken cancellationToken = default)
     {
         return await ctx.MasterKeyShares
             .Where(s => s.MembershipUniqueId == membershipUniqueId && !s.IsDeleted)
             .OrderBy(s => s.ShareIndex)
             .AsNoTracking()
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
     }
 }

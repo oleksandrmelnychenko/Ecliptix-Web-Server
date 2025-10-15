@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Threading;
 using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
@@ -6,6 +8,7 @@ using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
+using Ecliptix.Domain.Memberships.Instrumentation;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
@@ -14,6 +17,7 @@ using Grpc.Core;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
+using Serilog;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Authentication;
 
@@ -46,12 +50,24 @@ internal sealed class VerificationFlowServices(
                                 SingleWriter = false
                             };
 
+                        using CancellationTokenSource linkedCts =
+                            CancellationTokenSource.CreateLinkedTokenSource(ct, context.CancellationToken);
+
                         Channel<Result<VerificationCountdownUpdate, VerificationFlowFailure>> channel =
                             Channel.CreateBounded<Result<VerificationCountdownUpdate, VerificationFlowFailure>>(
                                 channelOptions);
-                        Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context);
+                        using IDisposable registration = context.CancellationToken.Register(() =>
+                            StopVerificationFlowActor(context, connectId));
 
-                        context.CancellationToken.Register(() => StopVerificationFlowActor(context, connectId));
+                        Activity? flowActivity = VerificationFlowTelemetry.ActivitySource.StartActivity(
+                            "verification.flow.stream",
+                            ActivityKind.Server);
+                        flowActivity?.SetTag("verification.connect_id", connectId);
+                        flowActivity?.SetTag("verification.purpose", initiateRequest.Purpose.ToString());
+                        Log.Information("[verification.flow.grpc.start] ConnectId {ConnectId} Purpose {Purpose}",
+                            connectId, initiateRequest.Purpose);
+
+                        Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context, linkedCts.Token);
 
                         Result<Unit, VerificationFlowFailure> initiationResult = await _verificationFlowManagerActor
                             .Ask<Result<Unit, VerificationFlowFailure>>(
@@ -62,13 +78,34 @@ internal sealed class VerificationFlowServices(
                                     initiateRequest.Purpose,
                                     initiateRequest.Type,
                                     channel.Writer,
-                                    _cultureName
-                                ), ct);
+                                    _cultureName,
+                                    flowActivity?.Context ?? Activity.Current?.Context ?? default,
+                                    linkedCts.Token
+                                ), linkedCts.Token);
 
                         if (initiationResult.IsErr)
+                        {
+                            flowActivity?.Dispose();
                             return Result<Unit, VerificationFlowFailure>.Err(initiationResult.UnwrapErr());
+                        }
 
-                        await streamingTask;
+                        try
+                        {
+                            await streamingTask.ConfigureAwait(false);
+                            Log.Information("[verification.flow.grpc.completed] ConnectId {ConnectId}", connectId);
+                            flowActivity?.SetTag("verification.stream.completed", true);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            Log.Information("[verification.flow.grpc.cancelled] ConnectId {ConnectId}", connectId);
+                            flowActivity?.SetTag("verification.stream.completed", false);
+                            throw;
+                        }
+                        finally
+                        {
+                            flowActivity?.Dispose();
+                        }
+
                         return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
                     });
 
@@ -100,7 +137,8 @@ internal sealed class VerificationFlowServices(
                     EnsureMobileNumberActorEvent ensureMobileNumberEvent = new(
                         phoneValidationResult.ParsedMobileNumberE164!,
                         phoneValidationResult.DetectedRegion,
-                        Helpers.FromByteStringToGuid(message.AppDeviceIdentifier));
+                        Helpers.FromByteStringToGuid(message.AppDeviceIdentifier),
+                        ct);
 
                     Result<Guid, VerificationFlowFailure> ensureMobileNumberResult = await _verificationFlowManagerActor
                         .Ask<Result<Guid, VerificationFlowFailure>>(ensureMobileNumberEvent, ct);
@@ -149,7 +187,8 @@ internal sealed class VerificationFlowServices(
                 {
                     VerifyMobileForSecretKeyRecoveryActorEvent verifyMobileEvent = new(
                         phoneValidationResult.ParsedMobileNumberE164!,
-                        phoneValidationResult.DetectedRegion);
+                        phoneValidationResult.DetectedRegion,
+                        ct);
 
                     Result<Guid, VerificationFlowFailure> verifyMobileResult = await _verificationFlowManagerActor
                         .Ask<Result<Guid, VerificationFlowFailure>>(verifyMobileEvent, ct);
@@ -185,7 +224,8 @@ internal sealed class VerificationFlowServices(
         await _baseService.ExecuteEncryptedOperationAsync<VerifyCodeRequest, VerifyCodeResponse>(request, context,
             async (message, _, ct) =>
             {
-                VerifyFlowActorEvent actorEvent = new(message.StreamConnectId, message.Code, _cultureName);
+                VerifyFlowActorEvent actorEvent = new(message.StreamConnectId, message.Code, _cultureName, ct);
+                actorEvent = actorEvent with { CancellationToken = ct };
 
                 Result<VerifyCodeResponse, VerificationFlowFailure> verificationResult =
                     await _verificationFlowManagerActor
@@ -200,19 +240,24 @@ internal sealed class VerificationFlowServices(
     private async Task StreamCountdownUpdatesAsync(
         IServerStreamWriter<SecureEnvelope> responseStream,
         ChannelReader<Result<VerificationCountdownUpdate, VerificationFlowFailure>> reader,
-        ServerCallContext context)
+        ServerCallContext context,
+        CancellationToken cancellationToken)
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
         try
         {
             await foreach (Result<VerificationCountdownUpdate, VerificationFlowFailure> updateResult in reader.ReadAllAsync(
-                               context.CancellationToken))
+                               cancellationToken))
             {
                 SecureEnvelope payload;
 
                 if (updateResult.IsErr)
                 {
+                    VerificationFlowFailure failure = updateResult.UnwrapErr();
+                    Log.Warning("[verification.flow.grpc.update-error] ConnectId {ConnectId} ErrorType {ErrorType}",
+                        connectId, failure.GetType().Name);
+
                     payload = await grpcCipherService.CreateFailureResponse(updateResult.UnwrapErr(), connectId, context);
                 }
                 else
@@ -245,6 +290,7 @@ internal sealed class VerificationFlowServices(
         }
         catch (OperationCanceledException)
         {
+            Log.Debug("[verification.flow.grpc.stream-cancelled] ConnectId {ConnectId}", connectId);
         }
     }
 
