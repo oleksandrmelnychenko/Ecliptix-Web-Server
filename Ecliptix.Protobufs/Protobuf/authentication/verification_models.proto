@@ -77,3 +77,11 @@ message ValidateMobileNumberResponse {
   VerificationResult result = 2;
   optional string message = 3;
 }
+
+message CheckMembershipStatusRequest {
+  bytes mobile_number_identifier = 1;
+}
+
+message CheckMembershipStatusResponse {
+  string status = 1;
+}

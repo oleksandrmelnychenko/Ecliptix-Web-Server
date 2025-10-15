@@ -63,4 +63,13 @@ public static class MembershipQueries
             .OrderByDescending(m => m.UpdatedAt)
             .FirstOrDefaultAsync(cancellationToken);
     }
+
+    public static async Task<bool> ExistsByMobileNumberId(
+        EcliptixSchemaContext ctx,
+        Guid mobileNumberId,
+        CancellationToken cancellationToken = default)
+    {
+        return await ctx.Memberships
+            .AnyAsync(m => m.MobileNumberId == mobileNumberId && !m.IsDeleted, cancellationToken);
+    }
 }

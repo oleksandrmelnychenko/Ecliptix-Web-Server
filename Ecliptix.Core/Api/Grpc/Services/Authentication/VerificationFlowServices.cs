@@ -220,6 +220,27 @@ internal sealed class VerificationFlowServices(
                 }
             });
 
+    public override async Task<SecureEnvelope> CheckMembershipStatus(SecureEnvelope request, ServerCallContext context) =>
+        await _baseService.ExecuteEncryptedOperationAsync<CheckMembershipStatusRequest, CheckMembershipStatusResponse>(
+            request, context,
+            async (message, _, ct) =>
+            {
+                CheckMembershipStatusActorEvent actorEvent = new(
+                    Helpers.FromByteStringToGuid(message.MobileNumberIdentifier),
+                    ct);
+
+                Result<string, VerificationFlowFailure> checkResult = await _verificationFlowManagerActor
+                    .Ask<Result<string, VerificationFlowFailure>>(actorEvent, ct);
+
+                return checkResult.Match(
+                    status => Result<CheckMembershipStatusResponse, FailureBase>.Ok(new CheckMembershipStatusResponse
+                    {
+                        Status = status
+                    }),
+                    Result<CheckMembershipStatusResponse, FailureBase>.Err
+                );
+            });
+
     public override async Task<SecureEnvelope> VerifyOtp(SecureEnvelope request, ServerCallContext context) =>
         await _baseService.ExecuteEncryptedOperationAsync<VerifyCodeRequest, VerifyCodeResponse>(request, context,
             async (message, _, ct) =>

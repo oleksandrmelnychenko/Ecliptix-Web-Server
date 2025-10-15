@@ -59,6 +59,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         Receive<Terminated>(HandleTerminated);
         Receive<EnsureMobileNumberActorEvent>(actorEvent => _persistor.Forward(actorEvent));
         Receive<VerifyMobileForSecretKeyRecoveryActorEvent>(actorEvent => _persistor.Forward(actorEvent));
+        Receive<CheckMembershipStatusActorEvent>(actorEvent => _persistor.Forward(actorEvent));
         Receive<FlowCompletedGracefullyActorEvent>(HandleFlowCompletedGracefully);
     }
 
