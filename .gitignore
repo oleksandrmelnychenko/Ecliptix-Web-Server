@@ -499,3 +499,15 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Claude Code configuration and analysis reports
+CLAUDE.md
+AGENTS.md
+*_AUDIT_REPORT.md
+*_REVIEW_REPORT.md
+*_RECOMMENDATIONS.md
+*_FINDINGS.md
+*_REFACTOR_PLAN.md
+*_Implementation_Session.md
+*DEPLOYMENT*.md
+AOT-README.md
