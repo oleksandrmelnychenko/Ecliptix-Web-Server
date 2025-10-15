@@ -12,6 +12,7 @@ using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Serilog;
 using Membership = Ecliptix.Domain.Schema.Entities.MembershipEntity;
 
@@ -315,7 +316,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         UpdateOtpStatusActorEvent cmd,
         CancellationToken cancellationToken)
     {
-        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
+        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             string newStatus = ConvertVerificationFlowStatusToOtpStatus(cmd.Status);

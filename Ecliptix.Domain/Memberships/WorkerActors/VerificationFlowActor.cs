@@ -310,7 +310,7 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
 
             if (_verificationFlow.HasValue)
             {
-                await _persistor.Ask<Result<int, VerificationFlowFailure>>(
+                await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
                     new UpdateVerificationFlowStatusActorEvent(_verificationFlow.Value!.UniqueIdentifier,
                         VerificationFlowStatus.Verified, _currentRequestCancellationToken),
                     _timeouts.UpdateOtpStatusTimeout);
@@ -940,7 +940,7 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
 
         if (updateFlowToExpired && _verificationFlow.HasValue)
         {
-            await _persistor.Ask<Result<int, VerificationFlowFailure>>(
+            await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
                 new UpdateVerificationFlowStatusActorEvent(_verificationFlow.Value!.UniqueIdentifier,
                     VerificationFlowStatus.Expired, _currentRequestCancellationToken));
         }
