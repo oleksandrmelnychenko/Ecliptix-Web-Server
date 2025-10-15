@@ -87,10 +87,13 @@ public sealed class OneTimePassword
     {
         if (!IsValidForVerification()) return false;
 
-        if (!HasExpired()) return PerformVerification(code);
+        if (HasExpired())
+        {
+            ConsumeOtp();
+            return false;
+        }
 
-        ConsumeOtp();
-        return false;
+        return PerformVerification(code);
     }
 
     private void ConsumeOtp()

@@ -20,11 +20,6 @@ public abstract class PersistorBase<TFailure> : ReceiveActor
         GetOperationTimeouts();
     }
 
-    protected Task<Result<TResult, TFailure>> ExecuteWithContext<TResult>(
-        Func<EcliptixSchemaContext, Task<Result<TResult, TFailure>>> operation,
-        string operationName) =>
-        ExecuteWithContext((ctx, _) => operation(ctx), operationName, CancellationToken.None);
-
     protected async Task<Result<TResult, TFailure>> ExecuteWithContext<TResult>(
         Func<EcliptixSchemaContext, CancellationToken, Task<Result<TResult, TFailure>>> operation,
         string operationName,

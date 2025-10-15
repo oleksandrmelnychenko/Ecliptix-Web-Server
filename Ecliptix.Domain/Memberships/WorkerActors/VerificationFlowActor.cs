@@ -169,7 +169,7 @@ public sealed class VerificationFlowActor : ReceiveActor, IWithStash
 
             if (currentFlow.OtpActive is null)
             {
-                await ContinueWithOtp();
+                await ContinueWithOtp(_currentRequestCancellationToken);
             }
             else
             {

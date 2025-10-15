@@ -106,19 +106,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         });
     }
 
-    private void ReceivePersistorCommand<TMessage, TResult>(
-        Func<EcliptixSchemaContext, TMessage, Task<Result<TResult, VerificationFlowFailure>>> handler,
-        string operationName)
-        where TMessage : class, ICancellableActorEvent
-    {
-        Receive<TMessage>(message =>
-        {
-            IActorRef replyTo = Sender;
-            ExecuteWithContext((ctx, _) => handler(ctx, message), operationName, message.CancellationToken)
-                .PipeTo(replyTo);
-        });
-    }
-
     private static CancellationToken CombineCancellationTokens(
         CancellationToken first,
         CancellationToken second,
@@ -422,10 +409,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     VerificationFlowFailure.NotFound("Flow not found"));
             }
 
-            // Commit the flow status update FIRST, then update membership separately
             await transaction.CommitAsync(cancellationToken);
 
-            // After committing, trigger membership update asynchronously for password recovery
             if (purpose == "password_recovery" && newStatus == "verified" && _membershipPersistorActor != null)
             {
                 Log.Information("[UPDATE-FLOW-STATUS] Password recovery flow {FlowId} marked as verified. Sending async request to update membership VerificationFlowId",
@@ -437,8 +422,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     newStatus,
                     cancellationToken);
 
-                // Send the update request asynchronously using Tell (fire-and-forget)
-                // This prevents timeout issues and allows the flow status to remain "verified"
                 _membershipPersistorActor.Tell(updateMembershipEvent);
 
                 Log.Information("[UPDATE-FLOW-STATUS] Membership update request sent for flow {FlowId}", cmd.FlowIdentifier);
