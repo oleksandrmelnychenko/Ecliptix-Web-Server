@@ -47,11 +47,8 @@ pipeline {
                     docker buildx build \
                       --platform=linux/amd64 \
                       --build-arg DOTNET_CLI_NUM_THREADS=4 \
-                      --cpus=2 \
                       -t ecliptix-membership:lts \
                       -f Ecliptix.Core/Dockerfile .
-
-
                 """
             }
         }
