@@ -23,11 +23,13 @@ pipeline {
     
         stage('Build Docker Image') {
             steps {
-                sh "docker buildx create --name mybuilder --use                                          
+                sh """
+                    docker buildx create --name mybuilder --use                                          
                     docker buildx build \
                         --platform linux/amd64 \
                         -t ecliptix-membership:lts \
-                        -f Ecliptix.Core/Dockerfile ."
+                        -f Ecliptix.Core/Dockerfile .
+                """
             }
         }
 
