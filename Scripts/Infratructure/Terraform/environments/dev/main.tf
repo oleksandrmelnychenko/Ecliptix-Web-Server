@@ -1,7 +1,7 @@
 data "terraform_remote_state" "global" {
   backend = "s3"
   config = {
-    bucket = "ecliptix-terraform-state"
+    bucket = "ecliptix-terraform-state-020498483284"
     key    = "ecliptix-global/terraform.tfstate"
     region = "eu-central-1"
   }
@@ -59,7 +59,7 @@ module "subnet_group" {
   source = "../../modules/network/subnet_group"
 
   memberships_subnet_group_name = "dev-memberships-subnet-group"
-  private_subnet_ids            = module.network.private_subnets
+  public_subnet_ids            = module.network.public_subnets
 
   tags = {
     project = "ecliptix"
@@ -215,10 +215,10 @@ module "ecs_task_memberships" {
   ]
 
   environment = [
-    { name = "DOTNET_ENVIRONMENT", value = "Development" },
+    { "name" = "DOTNET_ENVIRONMENT", "value" = "Development" },
     {
-      name  = "ConnectionStrings__EcliptixMemberships"
-      value = "Server=${module.rds.memberships_mssql_address};Database=memberships;User Id=${module.secrets.memberships_username};Password=${module.secrets.memberships_password};Encrypt=True;TrustServerCertificate=True;"
+      "name"  = "ConnectionStrings__EcliptixMemberships"
+      "value" = "Server=${module.rds.memberships_mssql_address};Database=memberships;User Id=${module.secrets.memberships_username};Password=${module.secrets.memberships_password};Encrypt=True;TrustServerCertificate=True;"
     }
   ]
 

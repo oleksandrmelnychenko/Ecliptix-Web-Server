@@ -7,7 +7,7 @@ variable "ecliptix_control_ami" {
 variable "ecliptix_control_instance_type" {
   type        = string
   description = "Instance type for ecliptix-control"
-  default     = "t3.medium"
+  default     = "t3.micro"
 }
 
 variable "ecliptix_control_subnet_id" {
