@@ -8,8 +8,8 @@ public static class LogoutAuditQueries
 {
     public static readonly Func<EcliptixSchemaContext, Guid, Task<LogoutAuditEntity?>>
         GetMostRecentByMembership = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, Guid membershipUniqueId) =>
-                ctx.LogoutAudits
+            (EcliptixSchemaContext ecliptixSchemaContext, Guid membershipUniqueId) =>
+                ecliptixSchemaContext.LogoutAudits
                     .Where(l => l.MembershipUniqueId == membershipUniqueId &&
                                 !l.IsDeleted)
                     .OrderByDescending(l => l.LoggedOutAt)
@@ -17,11 +17,11 @@ public static class LogoutAuditQueries
                     .FirstOrDefault());
 
     public static async Task<List<LogoutAuditEntity>> GetLogoutHistory(
-        EcliptixSchemaContext ctx,
+        EcliptixSchemaContext ecliptixSchemaContext,
         Guid membershipUniqueId,
         int limit)
     {
-        return await ctx.LogoutAudits
+        return await ecliptixSchemaContext.LogoutAudits
             .Where(l => l.MembershipUniqueId == membershipUniqueId &&
                         !l.IsDeleted)
             .OrderByDescending(l => l.LoggedOutAt)
@@ -32,8 +32,8 @@ public static class LogoutAuditQueries
 
     public static readonly Func<EcliptixSchemaContext, Guid, Task<LogoutAuditEntity?>>
         GetByDeviceId = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, Guid deviceId) =>
-                ctx.LogoutAudits
+            (EcliptixSchemaContext ecliptixSchemaContext, Guid deviceId) =>
+                ecliptixSchemaContext.LogoutAudits
                     .Where(l => l.DeviceId == deviceId &&
                                 !l.IsDeleted)
                     .OrderByDescending(l => l.LoggedOutAt)

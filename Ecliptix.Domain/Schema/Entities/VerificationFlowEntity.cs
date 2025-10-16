@@ -1,4 +1,5 @@
 using Ecliptix.Domain.Schema.Interfaces;
+using Ecliptix.Domain.Status;
 
 namespace Ecliptix.Domain.Schema.Entities;
 
@@ -7,8 +8,8 @@ public class VerificationFlowEntity : EntityBase, IExpirable
     public Guid MobileNumberId { get; set; }
     public Guid AppDeviceId { get; set; }
 
-    public string Status { get; set; } = "pending";
-    public string Purpose { get; set; } = "unspecified";
+    public string Status { get; set; } = StatusCatalog.VerificationFlow.Pending;
+    public string Purpose { get; set; } = StatusCatalog.VerificationPurpose.Unspecified;
     public short OtpCount { get; set; } = 0;
     public long? ConnectionId { get; set; }
 

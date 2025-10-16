@@ -28,18 +28,18 @@ public class LogoutAuditPersistorActor : PersistorBase<VerificationFlowFailure>
         Receive<RecordLogoutEvent>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, ct) => RecordLogoutAsync(ctx, cmd, ct), "RecordLogout", cancellationToken)
+            ExecuteWithContext((ecliptixSchemaContext, ct) => RecordLogoutAsync(ecliptixSchemaContext, cmd, ct), "RecordLogout", cancellationToken)
                 .PipeTo(Sender);
         });
     }
 
     private async Task<Result<Unit, VerificationFlowFailure>> RecordLogoutAsync(
-        EcliptixSchemaContext ctx,
+        EcliptixSchemaContext ecliptixSchemaContext,
         RecordLogoutEvent cmd,
         CancellationToken cancellationToken)
     {
         await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
-            await ctx.Database.BeginTransactionAsync(cancellationToken);
+            await ecliptixSchemaContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             LogoutAuditEntity audit = new()
@@ -53,8 +53,8 @@ public class LogoutAuditPersistorActor : PersistorBase<VerificationFlowFailure>
                 Platform = cmd.Platform
             };
 
-            ctx.LogoutAudits.Add(audit);
-            await ctx.SaveChangesAsync(cancellationToken);
+            ecliptixSchemaContext.LogoutAudits.Add(audit);
+            await ecliptixSchemaContext.SaveChangesAsync(cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
 

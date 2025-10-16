@@ -25,16 +25,16 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
     {
         Receive<RegisterAppDeviceIfNotExistActorEvent>(args =>
             ExecuteWithContext(
-                    (ctx, ct) => RegisterAppDeviceAsync(ctx, args.AppDevice, ct),
+                    (ecliptixSchemaContext, ct) => RegisterAppDeviceAsync(ecliptixSchemaContext, args.AppDevice, ct),
                     "RegisterAppDevice",
                     args.CancellationToken)
                 .PipeTo(Sender));
     }
 
     private static async Task<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>> RegisterAppDeviceAsync(
-        EcliptixSchemaContext ctx, AppDevice appDevice, CancellationToken cancellationToken)
+        EcliptixSchemaContext ecliptixSchemaContext, AppDevice appDevice, CancellationToken cancellationToken)
     {
-        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ecliptixSchemaContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             Guid appInstanceId = Helpers.FromByteStringToGuid(appDevice.AppInstanceId);
@@ -52,7 +52,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 });
             }
 
-            DeviceEntity? existingDevice = await DeviceQueries.GetByAppInstanceId(ctx, appInstanceId, cancellationToken);
+            DeviceEntity? existingDevice = await DeviceQueries.GetByAppInstanceId(ecliptixSchemaContext, appInstanceId, cancellationToken);
 
             if (existingDevice != null)
             {
@@ -71,8 +71,8 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 DeviceType = deviceType
             };
 
-            ctx.Devices.Add(newDevice);
-            await ctx.SaveChangesAsync(cancellationToken);
+            ecliptixSchemaContext.Devices.Add(newDevice);
+            await ecliptixSchemaContext.SaveChangesAsync(cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
             return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply

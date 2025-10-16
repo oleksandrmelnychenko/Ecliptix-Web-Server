@@ -7,11 +7,11 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 public static class LoginAttemptQueries
 {
     public static async Task<LoginAttemptEntity?> GetMostRecentLockout(
-        EcliptixSchemaContext ctx,
+        EcliptixSchemaContext ecliptixSchemaContext,
         string mobileNumber,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.LoginAttempts
+        return await ecliptixSchemaContext.LoginAttempts
             .Where(l => l.MobileNumber == mobileNumber &&
                         l.LockedUntil != null &&
                         !l.IsDeleted)
@@ -21,12 +21,12 @@ public static class LoginAttemptQueries
     }
 
     public static async Task<int> CountFailedSince(
-        EcliptixSchemaContext ctx,
+        EcliptixSchemaContext ecliptixSchemaContext,
         string mobileNumber,
         DateTimeOffset since,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.LoginAttempts
+        return await ecliptixSchemaContext.LoginAttempts
             .Where(l => l.MobileNumber == mobileNumber &&
                         l.AttemptedAt > since &&
                         !l.IsSuccess &&
@@ -37,13 +37,13 @@ public static class LoginAttemptQueries
     }
 
     public static async Task<int> CountFailedMembershipCreationSince(
-        EcliptixSchemaContext ctx,
+        EcliptixSchemaContext ecliptixSchemaContext,
         Guid mobileUniqueId,
         DateTimeOffset since,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.LoginAttempts
-            .Join(ctx.Memberships,
+        return await ecliptixSchemaContext.LoginAttempts
+            .Join(ecliptixSchemaContext.Memberships,
                 la => la.MembershipUniqueId,
                 m => m.UniqueId,
                 (la, m) => new { la, m })
@@ -58,14 +58,14 @@ public static class LoginAttemptQueries
     }
 
     public static async Task<DateTimeOffset?> GetEarliestFailedMembershipCreationSince(
-        EcliptixSchemaContext ctx,
+        EcliptixSchemaContext ecliptixSchemaContext,
         Guid mobileUniqueId,
         DateTimeOffset since,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.LoginAttempts
+        return await ecliptixSchemaContext.LoginAttempts
             .AsNoTracking()
-            .Join(ctx.Memberships,
+            .Join(ecliptixSchemaContext.Memberships,
                 la => la.MembershipUniqueId,
                 m => m.UniqueId,
                 (la, m) => new { la, m })

@@ -144,7 +144,7 @@ public sealed record VerificationFlowFailure(
             innerException);
     }
 
-    public override Status ToGrpcStatus()
+    public override Grpc.Core.Status ToGrpcStatus()
     {
         StatusCode code = FailureType switch
         {
@@ -169,7 +169,7 @@ public sealed record VerificationFlowFailure(
             _ => StatusCode.Unknown
         };
 
-        return new Status(code, Message);
+        return new Grpc.Core.Status(code, Message);
     }
 
     public override object ToStructuredLog()

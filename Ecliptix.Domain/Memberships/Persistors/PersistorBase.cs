@@ -30,8 +30,8 @@ public abstract class PersistorBase<TFailure> : ReceiveActor
         return await PersistorRetryPolicy.ExecuteWithRetryAsync(
             async (ct) =>
             {
-                await using EcliptixSchemaContext ctx = await _dbContextFactory.CreateDbContextAsync(ct);
-                return await operation(ctx, ct);
+                await using EcliptixSchemaContext ecliptixSchemaContext = await _dbContextFactory.CreateDbContextAsync(ct);
+                return await operation(ecliptixSchemaContext, ct);
             },
             operationName,
             operationTimeout,
@@ -39,6 +39,29 @@ public abstract class PersistorBase<TFailure> : ReceiveActor
             (timeoutEx, opName) => CreateTimeoutFailure(timeoutEx),
             (ex, opName) => CreateGenericFailure(ex),
             cancellationToken);
+    }
+
+    protected static CancellationToken CombineCancellationTokens(
+        CancellationToken first,
+        CancellationToken second,
+        out CancellationTokenSource? linkedSource)
+    {
+        linkedSource = null;
+
+        bool firstActive = first.CanBeCanceled;
+        bool secondActive = second.CanBeCanceled;
+
+        if (!firstActive && !secondActive)
+            return CancellationToken.None;
+
+        if (!firstActive)
+            return second;
+
+        if (!secondActive)
+            return first;
+
+        linkedSource = CancellationTokenSource.CreateLinkedTokenSource(first, second);
+        return linkedSource.Token;
     }
 
     private static TimeSpan GetOperationTimeout(string operationName)

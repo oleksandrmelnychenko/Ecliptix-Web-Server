@@ -1,3 +1,5 @@
+using Ecliptix.Domain.Status;
+
 namespace Ecliptix.Domain.Schema.Entities;
 
 public class MembershipEntity : EntityBase
@@ -9,7 +11,7 @@ public class MembershipEntity : EntityBase
     public byte[]? SecureKey { get; set; }
     public byte[]? MaskingKey { get; set; }
     public int CredentialsVersion { get; set; } = 1;
-    public string Status { get; set; } = "inactive";
+    public string Status { get; set; } = StatusCatalog.Membership.Inactive;
     public string? CreationStatus { get; set; }
 
     public virtual MobileNumberEntity MobileNumber { get; set; } = null!;

@@ -548,18 +548,21 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         (SodiumSecureMemoryHandle sessionKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) = opaqueResult.Unwrap();
 
-        Result<byte[], SodiumFailure> sessionKeyBytesResult = sessionKeyHandle.ReadBytes(sessionKeyHandle.Length);
-        if (sessionKeyBytesResult.IsOk)
+        if (sessionKeyHandle != null && !sessionKeyHandle.IsInvalid)
         {
-            byte[] sessionKeyBytes = sessionKeyBytesResult.Unwrap();
-            string sessionKeyFingerprint = Convert.ToHexString(SHA256.HashData(sessionKeyBytes))[..16];
-            Serilog.Log.Information("[SERVER-OPAQUE-EXPORTKEY] OPAQUE export_key (session key) derived. MembershipId: {MembershipId}, SessionKeyFingerprint: {SessionKeyFingerprint}",
-                state.MembershipId, sessionKeyFingerprint);
-            CryptographicOperations.ZeroMemory(sessionKeyBytes);
+            Result<byte[], SodiumFailure> sessionKeyBytesResult = sessionKeyHandle.ReadBytes(sessionKeyHandle.Length);
+            if (sessionKeyBytesResult.IsOk)
+            {
+                byte[] sessionKeyBytes = sessionKeyBytesResult.Unwrap();
+                string sessionKeyFingerprint = Convert.ToHexString(SHA256.HashData(sessionKeyBytes))[..16];
+                Serilog.Log.Information("[SERVER-OPAQUE-EXPORTKEY] OPAQUE export_key (session key) derived. MembershipId: {MembershipId}, SessionKeyFingerprint: {SessionKeyFingerprint}",
+                    state.MembershipId, sessionKeyFingerprint);
+                CryptographicOperations.ZeroMemory(sessionKeyBytes);
+            }
         }
 
         if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
-            !sessionKeyHandle.IsInvalid)
+            sessionKeyHandle != null && !sessionKeyHandle.IsInvalid)
         {
             await EnsureMasterKeySharesExist(sessionKeyHandle, state.MembershipId);
         }

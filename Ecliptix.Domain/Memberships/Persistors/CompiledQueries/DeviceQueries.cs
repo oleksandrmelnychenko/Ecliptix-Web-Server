@@ -8,44 +8,44 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 public static class DeviceQueries
 {
     public static async Task<bool> ExistsByUniqueId(
-        EcliptixSchemaContext ctx,
+        EcliptixSchemaContext ecliptixSchemaContext,
         Guid uniqueId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.Devices
+        return await ecliptixSchemaContext.Devices
             .Where(d => d.UniqueId == uniqueId && !d.IsDeleted)
             .AsNoTracking()
             .AnyAsync(cancellationToken);
     }
 
     public static async Task<DeviceEntity?> GetByUniqueId(
-        EcliptixSchemaContext ctx,
+        EcliptixSchemaContext ecliptixSchemaContext,
         Guid uniqueId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.Devices
+        return await ecliptixSchemaContext.Devices
             .Where(d => d.UniqueId == uniqueId && !d.IsDeleted)
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
     }
 
     public static async Task<DeviceEntity?> GetByDeviceId(
-        EcliptixSchemaContext ctx,
+        EcliptixSchemaContext ecliptixSchemaContext,
         Guid deviceId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.Devices
+        return await ecliptixSchemaContext.Devices
             .Where(d => d.UniqueId == deviceId && !d.IsDeleted)
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
     }
 
     public static async Task<DeviceEntity?> GetByAppInstanceId(
-        EcliptixSchemaContext ctx,
+        EcliptixSchemaContext ecliptixSchemaContext,
         Guid appInstanceId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.Devices
+        return await ecliptixSchemaContext.Devices
             .Where(d => d.AppInstanceId == appInstanceId && !d.IsDeleted)
             .AsNoTracking()
             .OrderByDescending(d => d.CreatedAt)

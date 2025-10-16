@@ -8,8 +8,8 @@ public static class DeviceContextQueries
 {
     public static readonly Func<EcliptixSchemaContext, Guid, Guid, Task<DeviceContextEntity?>>
         GetActiveContext = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, Guid membershipId, Guid deviceId) =>
-                ctx.DeviceContexts
+            (EcliptixSchemaContext ecliptixSchemaContext, Guid membershipId, Guid deviceId) =>
+                ecliptixSchemaContext.DeviceContexts
                     .Where(dc => dc.MembershipId == membershipId &&
                                  dc.DeviceId == deviceId &&
                                  dc.IsActive &&
@@ -19,8 +19,8 @@ public static class DeviceContextQueries
 
     public static readonly Func<EcliptixSchemaContext, Guid, Guid, Task<DeviceContextEntity?>>
         GetActiveContextWithAccount = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, Guid membershipId, Guid deviceId) =>
-                ctx.DeviceContexts
+            (EcliptixSchemaContext ecliptixSchemaContext, Guid membershipId, Guid deviceId) =>
+                ecliptixSchemaContext.DeviceContexts
                     .Include(dc => dc.ActiveAccount)
                     .Where(dc => dc.MembershipId == membershipId &&
                                  dc.DeviceId == deviceId &&
@@ -30,10 +30,10 @@ public static class DeviceContextQueries
                     .FirstOrDefault());
 
     public static async Task<List<DeviceContextEntity>> GetActiveContextsByMembership(
-        EcliptixSchemaContext ctx,
+        EcliptixSchemaContext ecliptixSchemaContext,
         Guid membershipId)
     {
-        return await ctx.DeviceContexts
+        return await ecliptixSchemaContext.DeviceContexts
             .Where(dc => dc.MembershipId == membershipId &&
                          dc.IsActive &&
                          !dc.IsDeleted)
@@ -43,10 +43,10 @@ public static class DeviceContextQueries
     }
 
     public static async Task<List<DeviceContextEntity>> GetExpiredContexts(
-        EcliptixSchemaContext ctx,
+        EcliptixSchemaContext ecliptixSchemaContext,
         DateTime now)
     {
-        return await ctx.DeviceContexts
+        return await ecliptixSchemaContext.DeviceContexts
             .Where(dc => dc.IsActive &&
                          dc.ContextExpiresAt < now &&
                          !dc.IsDeleted)
@@ -56,8 +56,8 @@ public static class DeviceContextQueries
 
     public static readonly Func<EcliptixSchemaContext, Guid, Task<int>>
         CountActiveContextsByDevice = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, Guid deviceId) =>
-                ctx.DeviceContexts
+            (EcliptixSchemaContext ecliptixSchemaContext, Guid deviceId) =>
+                ecliptixSchemaContext.DeviceContexts
                     .Where(dc => dc.DeviceId == deviceId &&
                                  dc.IsActive &&
                                  !dc.IsDeleted)

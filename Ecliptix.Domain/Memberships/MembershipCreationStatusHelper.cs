@@ -1,3 +1,4 @@
+using Ecliptix.Domain.Status;
 using Ecliptix.Protobuf.Membership;
 
 namespace Ecliptix.Domain.Memberships;
@@ -6,11 +7,11 @@ public static class MembershipCreationStatusHelper
 {
     private static readonly Dictionary<Membership.Types.CreationStatus, string> ReverseCreationStatusMap;
 
-    private static readonly Dictionary<string, Membership.Types.CreationStatus> CreationStatusMap = new()
+    private static readonly Dictionary<string, Membership.Types.CreationStatus> CreationStatusMap = new(StringComparer.Ordinal)
     {
-        ["otp_verified"] = Membership.Types.CreationStatus.OtpVerified,
-        ["secure_key_set"] = Membership.Types.CreationStatus.SecureKeySet,
-        ["passphrase_set"] = Membership.Types.CreationStatus.PassphraseSet
+        [StatusCatalog.MembershipCreation.OtpVerified] = Membership.Types.CreationStatus.OtpVerified,
+        [StatusCatalog.MembershipCreation.SecureKeySet] = Membership.Types.CreationStatus.SecureKeySet,
+        [StatusCatalog.MembershipCreation.PassphraseSet] = Membership.Types.CreationStatus.PassphraseSet
     };
 
     static MembershipCreationStatusHelper()

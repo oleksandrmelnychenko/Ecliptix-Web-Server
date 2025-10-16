@@ -23,7 +23,7 @@ public sealed record AppDeviceFailure(
         return new AppDeviceFailure(AppDeviceFailureType.InternalError, msgKey, ex);
     }
 
-    public override Status ToGrpcStatus()
+    public override Grpc.Core.Status ToGrpcStatus()
     {
         StatusCode code = FailureType switch
         {
@@ -32,7 +32,7 @@ public sealed record AppDeviceFailure(
             _ => StatusCode.Unknown
         };
 
-        return new Status(code, Message);
+        return new Grpc.Core.Status(code, Message);
     }
 
     public override object ToStructuredLog()
