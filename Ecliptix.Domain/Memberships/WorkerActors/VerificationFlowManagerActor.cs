@@ -31,7 +31,6 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     private readonly IActorRef _persistor;
     private readonly ISmsProvider _smsProvider;
     private readonly IOptions<SecurityConfiguration> _securityConfig;
-    private static readonly ILogger Logger = Log.ForContext<VerificationFlowManagerActor>();
 
     private readonly Dictionary<IActorRef, ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>>
         _flowWriters = new();
@@ -97,14 +96,14 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                 }
                 catch (OperationCanceledException)
                 {
-                    Logger.Warning(
+                    Log.Warning(
                         "[verification.flow.manager.force-stop] Cancellation while waiting for termination of ConnectId {ConnectId}",
                         actorEvent.ConnectId);
                     Context.Stop(existingActor);
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warning(ex,
+                    Log.Warning(ex,
                         "[verification.flow.manager.force-stop] Failed to gracefully stop flow actor for ConnectId {ConnectId}",
                         actorEvent.ConnectId);
                     Context.Stop(existingActor);
@@ -131,7 +130,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
             Context.Watch(newFlowActor);
             _flowWriters[newFlowActor] = actorEvent.ChannelWriter;
 
-            Logger.Information("[verification.flow.manager.spawned] ConnectId {ConnectId} Purpose {Purpose}",
+            Log.Information("[verification.flow.manager.spawned] ConnectId {ConnectId} Purpose {Purpose}",
                 actorEvent.ConnectId, actorEvent.Purpose);
 
             Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
@@ -203,15 +202,22 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                     writer.TryWrite(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Err(failure));
                 if (!writeSuccess)
                 {
-
+                    Log.Warning("[verification.flow.manager.channel-write-failed] Unable to notify client for terminated actor {ActorPath}",
+                        deadActor.Path);
                 }
 
                 bool completeSuccess = writer.TryComplete();
                 if (!completeSuccess)
                 {
-
+                    Log.Warning("[verification.flow.manager.channel-complete-failed] Channel completion failed for terminated actor {ActorPath}",
+                        deadActor.Path);
                 }
             }
+        }
+        else
+        {
+            Log.Debug("[verification.flow.manager.terminated-untracked] Received termination for untracked actor {ActorPath}",
+                deadActor.Path);
         }
     }
 
@@ -225,24 +231,13 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
 
     private static Directive ChildFailureDecider(Exception ex)
     {
-        switch (ex)
+        return ex switch
         {
-            case ArgumentException argEx:
-
-                return Directive.Stop;
-
-            case ActorInitializationException initEx:
-
-                return Directive.Stop;
-
-            case IOException ioEx:
-
-                return Directive.Restart;
-
-            default:
-
-                return Directive.Stop;
-        }
+            ArgumentException => Directive.Stop,
+            ActorInitializationException => Directive.Stop,
+            IOException => Directive.Restart,
+            _ => Directive.Stop
+        };
     }
 
     private static string GetActorName(uint connectId) =>

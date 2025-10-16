@@ -5,67 +5,48 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Ecliptix.Domain.Migrations
 {
-    /// <inheritdoc />
     public partial class OptimizeSchemaWorldClass : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // CRITICAL: Archive data BEFORE schema changes for audit trail preservation
-
-            // Step 0: Archive existing audit data for compliance and forensic analysis
-            // These tables will be truncated but data is preserved for investigation
             migrationBuilder.Sql(@"
-                -- Create archive table for LoginAttempts
                 IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[LoginAttempts_Archive_20251013]') AND type in (N'U'))
                 BEGIN
                     SELECT * INTO [LoginAttempts_Archive_20251013]
                     FROM [LoginAttempts]
-                    WHERE 1=1; -- Archive ALL records for compliance
+                    WHERE 1=1;
                 END
             ");
 
             migrationBuilder.Sql(@"
-                -- Create archive table for LogoutAudits
                 IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[LogoutAudits_Archive_20251013]') AND type in (N'U'))
                 BEGIN
                     SELECT * INTO [LogoutAudits_Archive_20251013]
                     FROM [LogoutAudits]
-                    WHERE 1=1; -- Archive ALL records for compliance
+                    WHERE 1=1;
                 END
             ");
 
-            // Step 0.5: Now safe to clear tables after archival
-            // Note: Archive tables remain queryable for audit/forensic purposes
             migrationBuilder.Sql("DELETE FROM [LoginAttempts];");
             migrationBuilder.Sql("DELETE FROM [LogoutAudits];");
 
-            // Step 1: Make VerificationFlowId nullable
             migrationBuilder.Sql("ALTER TABLE [Memberships] ALTER COLUMN [VerificationFlowId] uniqueidentifier NULL;");
 
-            // Step 2: Clear FK references
             migrationBuilder.Sql("UPDATE [Memberships] SET [VerificationFlowId] = NULL WHERE [VerificationFlowId] IS NOT NULL;");
 
-            // Step 3: Delete child records first
             migrationBuilder.Sql("DELETE FROM [OtpCodes];");
 
-            // Step 4: Delete parent records
             migrationBuilder.Sql("DELETE FROM [VerificationFlows];");
 
             migrationBuilder.DropForeignKey(
                 name: "FK_VerificationFlows_MobileNumbers",
                 table: "VerificationFlows");
 
-            // Step 5: Drop indexes that depend on MobileNumberId
             migrationBuilder.Sql("DROP INDEX [IX_VerificationFlows_ActiveFlowRecovery] ON [VerificationFlows];");
             migrationBuilder.Sql("DROP INDEX [IX_VerificationFlows_MobileNumberId] ON [VerificationFlows];");
 
-            // Step 6: Drop and recreate VerificationFlows.MobileNumberId with new type
-            // (SQL Server cannot ALTER COLUMN from bigint to uniqueidentifier)
             migrationBuilder.Sql("ALTER TABLE [VerificationFlows] DROP COLUMN [MobileNumberId];");
             migrationBuilder.Sql("ALTER TABLE [VerificationFlows] ADD [MobileNumberId] uniqueidentifier NOT NULL;");
-
-            // Step 7: Recreate indexes
             migrationBuilder.Sql(@"
                 CREATE INDEX [IX_VerificationFlows_ActiveFlowRecovery]
                 ON [VerificationFlows] ([MobileNumberId], [AppDeviceId], [Purpose], [Status], [ExpiresAt])
@@ -124,15 +105,6 @@ namespace Ecliptix.Domain.Migrations
             migrationBuilder.DropColumn(
                 name: "DeviceId",
                 table: "Devices");
-
-            // REMOVED: EF-generated AlterColumn - handled manually above with DROP/ADD
-            // migrationBuilder.AlterColumn<Guid>(
-            //     name: "MobileNumberId",
-            //     table: "VerificationFlows",
-            //     type: "uniqueidentifier",
-            //     nullable: false,
-            //     oldClrType: typeof(long),
-            //     oldType: "bigint");
 
             migrationBuilder.AlterColumn<Guid>(
                 name: "VerificationFlowId",
@@ -472,7 +444,7 @@ namespace Ecliptix.Domain.Migrations
                 column: "AccountId",
                 principalTable: "Accounts",
                 principalColumn: "UniqueId",
-                onDelete: ReferentialAction.NoAction); // Changed from SetNull to avoid cascade path conflict
+                onDelete: ReferentialAction.NoAction);
 
             migrationBuilder.AddForeignKey(
                 name: "FK_LogoutAudits_Devices",
@@ -490,7 +462,6 @@ namespace Ecliptix.Domain.Migrations
                 onDelete: ReferentialAction.Cascade);
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(

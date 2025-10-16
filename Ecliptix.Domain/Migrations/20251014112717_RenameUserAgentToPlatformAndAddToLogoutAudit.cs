@@ -4,10 +4,8 @@
 
 namespace Ecliptix.Domain.Migrations
 {
-    /// <inheritdoc />
     public partial class RenameUserAgentToPlatformAndAddToLogoutAudit : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
@@ -29,7 +27,6 @@ namespace Ecliptix.Domain.Migrations
                 nullable: true);
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(

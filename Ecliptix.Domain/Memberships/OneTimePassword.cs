@@ -132,13 +132,11 @@ public sealed class OneTimePassword
 
     public static OneTimePassword FromExisting(OtpQueryRecord record)
     {
-        OneTimePassword otp = new()
-        {
-            _uniqueIdentifier = record.UniqueIdentifier,
-            ExpiresAt = record.ExpiresAt,
-            IsActive = record.IsActive,
-            _otpQueryRecord = Option<OtpQueryRecord>.Some(record)
-        };
+        OneTimePassword otp = new();
+        otp._uniqueIdentifier = record.UniqueIdentifier;
+        otp.ExpiresAt = record.ExpiresAt;
+        otp.IsActive = record.IsActive;
+        otp._otpQueryRecord = Option<OtpQueryRecord>.Some(record);
         return otp;
     }
 

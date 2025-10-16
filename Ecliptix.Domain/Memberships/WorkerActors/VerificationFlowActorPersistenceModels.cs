@@ -9,7 +9,8 @@ internal sealed record VerificationFlowPersistentState(
     bool SessionTimerPaused,
     long OtpSendAttempts,
     bool CleanupCompleted,
-    bool IsCompleting);
+    bool IsCompleting,
+    bool TimersStarted);
 
 internal sealed record VerificationFlowStatePersistedEvent(VerificationFlowPersistentState State);
 

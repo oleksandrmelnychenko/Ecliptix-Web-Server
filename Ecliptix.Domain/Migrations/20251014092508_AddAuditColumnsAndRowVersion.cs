@@ -5,10 +5,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Ecliptix.Domain.Migrations
 {
-    /// <inheritdoc />
     public partial class AddAuditColumnsAndRowVersion : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AlterColumn<DateTimeOffset>(
@@ -705,7 +703,6 @@ namespace Ecliptix.Domain.Migrations
                 nullable: true);
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(

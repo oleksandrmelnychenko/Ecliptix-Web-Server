@@ -4,10 +4,8 @@
 
 namespace Ecliptix.Domain.Migrations
 {
-    /// <inheritdoc />
     public partial class RemoveLogoutAuditDeviceFKAndCleanupDuplicates : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(
@@ -44,7 +42,6 @@ namespace Ecliptix.Domain.Migrations
                 filter: "IsDeleted = 0");
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropIndex(

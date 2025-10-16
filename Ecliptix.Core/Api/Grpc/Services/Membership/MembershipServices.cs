@@ -81,7 +81,7 @@ internal sealed class MembershipServices(
                     ct);
 
                 Result<OpaqueSignInInitResponse, VerificationFlowFailure> initSignInResult =
-                    await _membershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent, ct);
+                    await _membershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent, Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
 
                 return initSignInResult.Match(
                     ok: Result<OpaqueSignInInitResponse, FailureBase>.Ok,
@@ -99,7 +99,7 @@ internal sealed class MembershipServices(
                 {
                     Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure> finalizeSignInResult =
                         await _membershipActor.Ask<Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>>(
-                            new SignInCompleteEvent(connectId, message), ct);
+                            new SignInCompleteEvent(connectId, message), Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
 
                     return finalizeSignInResult.Match(
                         ok: Result<OpaqueSignInFinalizeResponse, FailureBase>.Ok,
@@ -125,7 +125,7 @@ internal sealed class MembershipServices(
 
                     Result<OprfRegistrationCompleteResponse, VerificationFlowFailure> completeRegistrationRecordResult =
                         await _membershipActor.Ask<Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>>(
-                            @event, ct);
+                            @event, Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
 
                     return completeRegistrationRecordResult.Match(
                         ok: Result<OprfRegistrationCompleteResponse, FailureBase>.Ok,
@@ -148,7 +148,7 @@ internal sealed class MembershipServices(
 
                 Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure> completeRecoverySecretKeyResult =
                     await _membershipActor
-                        .Ask<Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>>(@event, ct);
+                        .Ask<Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>>(@event, Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
 
                 return completeRecoverySecretKeyResult.Match(
                     ok: Result<OprfRecoverySecretKeyCompleteResponse, FailureBase>.Ok,
@@ -171,7 +171,7 @@ internal sealed class MembershipServices(
 
                     Result<OprfRegistrationInitResponse, VerificationFlowFailure> updateOperationResult =
                         await _membershipActor.Ask<Result<OprfRegistrationInitResponse, VerificationFlowFailure>>(@event,
-                            ct);
+                            Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
 
                     return updateOperationResult.Match(
                         ok: Result<OprfRegistrationInitResponse, FailureBase>.Ok,
@@ -193,7 +193,7 @@ internal sealed class MembershipServices(
 
                     Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure> result = await _membershipActor
                         .Ask<Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>>(
-                            @event, ct);
+                            @event, Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
 
                     return result.Match(
                         ok: Result<OprfRecoverySecureKeyInitResponse, FailureBase>.Ok,
@@ -248,7 +248,7 @@ internal sealed class MembershipServices(
 
                     RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason, auditContext.IpAddress, auditContext.Platform, ct);
                     Result<Unit, VerificationFlowFailure> auditResult =
-                        await _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(logoutEvent, ct);
+                        await _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(logoutEvent, Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
 
                     if (auditResult.IsErr)
                     {

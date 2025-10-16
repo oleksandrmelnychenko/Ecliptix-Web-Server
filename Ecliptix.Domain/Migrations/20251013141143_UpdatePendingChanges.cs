@@ -4,10 +4,8 @@
 
 namespace Ecliptix.Domain.Migrations
 {
-    /// <inheritdoc />
     public partial class UpdatePendingChanges : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.RenameIndex(
@@ -151,7 +149,6 @@ namespace Ecliptix.Domain.Migrations
                 newName: "IX_DeviceEntity_CreatedAt");
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.RenameIndex(

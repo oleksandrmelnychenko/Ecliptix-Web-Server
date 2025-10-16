@@ -29,7 +29,7 @@ public sealed class VerificationFlowTimeouts
 
     public int UpdateOtpStatusTimeoutSeconds { get; set; } = 10;
 
-    public int ChannelWriteTimeoutSeconds { get; set; } = 5;
+    public int ChannelWriteTimeoutSeconds { get; set; } = 30;
 
     public int FallbackCleanupDelaySeconds { get; set; } = 10;
 

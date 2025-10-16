@@ -1,3 +1,4 @@
+using System;
 using System.Data.Common;
 using System.Threading;
 using Akka.Actor;
@@ -6,6 +7,7 @@ using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
+using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
@@ -14,7 +16,8 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Serilog;
-using Membership = Ecliptix.Domain.Schema.Entities.MembershipEntity;
+using MembershipEntity = Ecliptix.Domain.Schema.Entities.MembershipEntity;
+using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
@@ -39,6 +42,18 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     private void Ready()
     {
         RegisterHandlers();
+        Receive<Result<Unit, VerificationFlowFailure>>(result =>
+        {
+            if (result.IsOk)
+            {
+                Log.Debug("[UPDATE-FLOW-STATUS] Membership update acknowledgement received: success");
+            }
+            else
+            {
+                Log.Warning("[UPDATE-FLOW-STATUS] Membership update acknowledgement received with error: {Error}",
+                    result.UnwrapErr().Message);
+            }
+        });
     }
 
     private void RegisterHandlers()
@@ -78,6 +93,10 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         ReceivePersistorCommand<CheckMobileNumberAvailabilityActorEvent, string>(
             CheckMobileNumberAvailabilityAsync,
             "CheckMobileNumberAvailability");
+
+        ReceivePersistorCommand<CheckExistingMembershipActorEvent, ExistingMembershipResult>(
+            CheckExistingMembershipAsync,
+            "CheckExistingMembership");
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
@@ -165,11 +184,15 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             if (existingActiveFlow != null)
             {
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+
                 await ctx.VerificationFlows
                     .Where(vf => vf.Id == existingActiveFlow.Id)
                     .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(vf => vf.ConnectionId, (long?)cmd.ConnectId)
-                        .SetProperty(vf => vf.UpdatedAt, DateTimeOffset.UtcNow),
+                        .SetProperty(vf => vf.Status, "expired")
+                        .SetProperty(vf => vf.ConnectionId, (long?)null)
+                        .SetProperty(vf => vf.ExpiresAt, now)
+                        .SetProperty(vf => vf.UpdatedAt, now),
                         cancellationToken);
 
                 await ctx.OtpCodes
@@ -178,17 +201,11 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                                 !o.IsDeleted)
                     .ExecuteUpdateAsync(setters => setters
                         .SetProperty(o => o.Status, "expired")
-                        .SetProperty(o => o.UpdatedAt, DateTimeOffset.UtcNow),
+                        .SetProperty(o => o.UpdatedAt, now),
                         cancellationToken);
 
-                await transaction.CommitAsync(cancellationToken);
-
-                existingActiveFlow.ConnectionId = cmd.ConnectId;
-                existingActiveFlow.UpdatedAt = DateTimeOffset.UtcNow;
-                existingActiveFlow.MobileNumber = mobile;
-                existingActiveFlow.OtpCodes = new List<OtpCodeEntity>();
-
-                return MapToVerificationFlowRecord(existingActiveFlow);
+                Log.Information("[verification.flow.recovered] Expired lingering flow {FlowId} before creating a new one",
+                    existingActiveFlow.UniqueId);
             }
 
             if (cmd.Purpose == VerificationPurpose.PasswordRecovery)
@@ -438,6 +455,64 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         }
     }
 
+    private static async Task<Result<ExistingMembershipResult, VerificationFlowFailure>> CheckExistingMembershipAsync(
+        EcliptixSchemaContext ctx,
+        CheckExistingMembershipActorEvent cmd,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            MembershipEntity? membership =
+                await MembershipQueries.GetByMobileUniqueId(ctx, cmd.MobileNumberId, cancellationToken);
+
+            if (membership == null)
+            {
+                return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(
+                    new ExistingMembershipResult { MembershipExists = false });
+            }
+
+            ProtoMembership.Types.CreationStatus creationStatus = ProtoMembership.Types.CreationStatus.OtpVerified;
+            string? creationStatusString = membership.CreationStatus;
+            if (!string.IsNullOrWhiteSpace(creationStatusString))
+            {
+                try
+                {
+                    creationStatus = MembershipCreationStatusHelper.GetCreationStatusEnum(creationStatusString);
+                }
+                catch (ArgumentException)
+                {
+                    creationStatus = ProtoMembership.Types.CreationStatus.OtpVerified;
+                }
+            }
+
+            ProtoMembership.Types.ActivityStatus activityStatus = membership.Status switch
+            {
+                "inactive" => ProtoMembership.Types.ActivityStatus.Inactive,
+                "active" => ProtoMembership.Types.ActivityStatus.Active,
+                _ => ProtoMembership.Types.ActivityStatus.Active
+            };
+
+            ProtoMembership existingMembership = new()
+            {
+                UniqueIdentifier = Helpers.GuidToByteString(membership.UniqueId),
+                Status = activityStatus,
+                CreationStatus = creationStatus
+            };
+
+            return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(
+                new ExistingMembershipResult
+                {
+                    MembershipExists = true,
+                    Membership = existingMembership
+                });
+        }
+        catch (Exception ex)
+        {
+            return Result<ExistingMembershipResult, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Check existing membership failed: {ex.Message}", ex));
+        }
+    }
+
     private static async Task<Result<string, VerificationFlowFailure>> CheckMobileNumberAvailabilityAsync(
         EcliptixSchemaContext ctx,
         CheckMobileNumberAvailabilityActorEvent cmd,
@@ -621,25 +696,25 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         }
     }
 
-    private static Ecliptix.Protobuf.Membership.Membership? MapToProtoMembership(Membership? domainMembership)
+    private static ProtoMembership? MapToProtoMembership(MembershipEntity? domainMembership)
     {
         if (domainMembership == null)
             return null;
 
-        return new Ecliptix.Protobuf.Membership.Membership
+        return new ProtoMembership
         {
             UniqueIdentifier = Helpers.GuidToByteString(domainMembership.UniqueId),
             Status = domainMembership.Status switch
             {
-                "active" => Ecliptix.Protobuf.Membership.Membership.Types.ActivityStatus.Active,
-                _ => Ecliptix.Protobuf.Membership.Membership.Types.ActivityStatus.Inactive
+                "active" => ProtoMembership.Types.ActivityStatus.Active,
+                _ => ProtoMembership.Types.ActivityStatus.Inactive
             },
             CreationStatus = domainMembership.CreationStatus switch
             {
-                "otp_verified" => Ecliptix.Protobuf.Membership.Membership.Types.CreationStatus.OtpVerified,
-                "secure_key_set" => Ecliptix.Protobuf.Membership.Membership.Types.CreationStatus.SecureKeySet,
-                "passphrase_set" => Ecliptix.Protobuf.Membership.Membership.Types.CreationStatus.PassphraseSet,
-                _ => Ecliptix.Protobuf.Membership.Membership.Types.CreationStatus.OtpVerified
+                "otp_verified" => ProtoMembership.Types.CreationStatus.OtpVerified,
+                "secure_key_set" => ProtoMembership.Types.CreationStatus.SecureKeySet,
+                "passphrase_set" => ProtoMembership.Types.CreationStatus.PassphraseSet,
+                _ => ProtoMembership.Types.CreationStatus.OtpVerified
             }
         };
     }
