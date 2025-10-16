@@ -45,6 +45,7 @@ pipeline {
                     docker buildx inspect --bootstrap     
                                             
                     docker buildx build \
+                        --cpus=2 \
                         --platform linux/amd64 \
                         -t ecliptix-membership:lts \
                         -f Ecliptix.Core/Dockerfile .
