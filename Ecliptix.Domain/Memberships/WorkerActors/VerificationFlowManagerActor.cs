@@ -145,11 +145,26 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         }
         else
         {
-            string message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowNotFound,
-                actorEvent.CultureName);
-            Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(VerificationFlowFailure.NotFound(message)));
+            Props props = VerificationFlowActor.Build(
+                actorEvent.ConnectId,
+                actorEvent.MobileNumberIdentifier,
+                actorEvent.AppDeviceIdentifier,
+                actorEvent.Purpose,
+                actorEvent.ChannelWriter,
+                _persistor,
+                _membershipActor,
+                _smsProvider,
+                _localizationProvider,
+                actorEvent.CultureName,
+                _securityConfig,
+                actorEvent.ActivityContext,
+                actorEvent.CancellationToken);
 
-            actorEvent.ChannelWriter.TryComplete();
+            IActorRef newFlowActor = Context.ActorOf(props, baseActorName);
+            Context.Watch(newFlowActor);
+            _flowWriters[newFlowActor] = actorEvent.ChannelWriter;
+
+            newFlowActor.Forward(actorEvent);
         }
     }
 
