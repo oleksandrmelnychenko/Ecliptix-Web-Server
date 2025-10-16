@@ -45,10 +45,13 @@ pipeline {
                     docker buildx inspect --bootstrap     
                                             
                     docker buildx build \
-                        --cpus=2 \
-                        --platform linux/amd64 \
-                        -t ecliptix-membership:lts \
-                        -f Ecliptix.Core/Dockerfile .
+                      --platform=linux/amd64 \
+                      --build-arg DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+                      --build-arg DOTNET_CLI_NUM_THREADS=$(nproc) \
+                      --cpus=$(nproc) \
+                      -t ecliptix-membership:lts \
+                      -f Ecliptix.Core/Dockerfile .
+
                 """
             }
         }
