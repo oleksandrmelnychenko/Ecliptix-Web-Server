@@ -3,7 +3,7 @@ pipeline {
     
     environment {
         AWS_DEFAULT_REGION = "eu-central-1"
-        AWS_ACCOUNT_ID = "605009360854"
+        AWS_ACCOUNT_ID = "020498483284"
         ECR_REPO = "ecliptix/memberships"
         IMAGE_TAG = "lts"
         CLUSTER_NAME = "ecliptix-production"
@@ -23,7 +23,11 @@ pipeline {
     
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${ECR_REPO}:${IMAGE_TAG} -f Ecliptix.Core/Dockerfile ."
+                sh "docker buildx create --name mybuilder --use                                          
+                    docker buildx build \
+                        --platform linux/amd64 \
+                        -t ecliptix-membership:lts \
+                        -f Ecliptix.Core/Dockerfile ."
             }
         }
 
