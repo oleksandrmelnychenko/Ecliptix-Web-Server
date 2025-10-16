@@ -24,7 +24,26 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh """
-                    docker buildx create --name mybuilder --use                                          
+                    set -e
+                    
+                    if ! sudo systemctl is-active --quiet docker; then
+                      sudo systemctl start docker || true
+                    fi
+                    for i in {1..10}; do
+                      docker info >/dev/null 2>&1 && break
+                      echo "[INFO] Waiting for Docker daemon..."
+                      sleep 2
+                    done
+                    if docker buildx ls | grep -q 'mybuilder'; then
+                      echo "[INFO] Using existing builder 'mybuilder'"
+                      docker buildx use mybuilder
+                    else
+                      echo "[INFO] Creating builder 'mybuilder'"
+                      docker buildx create --name mybuilder --use
+                    fi
+                    
+                    docker buildx inspect --bootstrap     
+                                            
                     docker buildx build \
                         --platform linux/amd64 \
                         -t ecliptix-membership:lts \
