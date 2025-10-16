@@ -1,0 +1,134 @@
+syntax = "proto3";
+import "membership/membership_core.proto";
+import "account/account_models.proto";
+import "google/protobuf/timestamp.proto";
+
+package ecliptix.proto.membership;
+option csharp_namespace = "Ecliptix.Protobuf.Membership";
+
+// OPAQUE Registration Messages
+message OpaqueRegistrationInitRequest {
+  bytes peer_oprf = 1;
+  bytes membership_identifier = 2;
+}
+
+message OpaqueRegistrationInitResponse {
+  bytes peer_oprf = 1;
+
+  enum UpdateResult {
+    SUCCEEDED = 0;
+    INVALID_CREDENTIALS = 1;
+  }
+
+  UpdateResult result = 2;
+  optional string message = 3;
+  optional Membership membership = 4;
+}
+
+message OpaqueRegistrationCompleteRequest {
+  bytes peer_registration_record = 1;
+  bytes membership_identifier = 2;
+}
+
+message OpaqueRegistrationCompleteResponse {
+  enum RegistrationResult {
+    SUCCEEDED = 0;
+  }
+
+  RegistrationResult result = 1;
+  optional string message = 2;
+  optional bytes session_key = 3;
+  repeated ecliptix.proto.account.Account available_accounts = 4;
+  optional ecliptix.proto.account.Account active_account = 5;
+}
+
+// OPAQUE Sign In Messages
+message OpaqueSignInInitRequest {
+  string mobile_number = 1;
+  bytes peer_oprf = 2;
+}
+
+message OpaqueSignInInitResponse {
+  bytes server_oprf_response = 1;
+  bytes server_ephemeral_public_key = 2;
+  bytes registration_record = 3;
+  bytes server_state_token = 4;
+  
+  optional string message = 5;
+  optional int32 minutes_until_retry = 6;
+  SignInResult result = 7;
+  bytes server_mac = 8;
+  enum SignInResult {
+    SUCCEEDED = 0;
+    INVALID_CREDENTIALS = 1;
+    LOGIN_ATTEMPT_EXCEEDED = 2;
+  }
+}
+
+message OpaqueSignInFinalizeRequest {
+  string mobile_number = 1;
+  bytes client_ephemeral_public_key = 2;
+  bytes client_mac = 3;
+  bytes server_state_token = 4;
+}
+
+message OpaqueSignInFinalizeResponse {
+  bytes server_mac = 1;
+  optional Membership membership = 2;
+  SignInResult result = 3;
+  optional string message = 4;
+  optional int32 minutes_until_retry = 5;
+  repeated ecliptix.proto.account.Account available_accounts = 6;
+  optional ecliptix.proto.account.Account active_account = 7;
+
+  enum SignInResult {
+    SUCCEEDED = 0;
+    INVALID_CREDENTIALS = 1;
+    LOGIN_ATTEMPT_EXCEEDED = 2;
+  }
+}
+
+// OPAQUE Recovery Messages  
+message OpaqueRecoverySecureKeyInitRequest {
+  bytes peer_oprf = 1;
+  bytes membership_identifier = 2;
+}
+
+message OpaqueRecoverySecureKeyInitResponse {
+  bytes peer_oprf = 1;
+
+  enum RecoveryResult {
+    SUCCEEDED = 0;
+    INVALID_CREDENTIALS = 1;
+  }
+
+  RecoveryResult result = 2;
+  optional string message = 3;
+  optional Membership membership = 4;
+}
+
+message OpaqueRecoverySecretKeyCompleteRequest {
+  bytes peer_recovery_record = 1;
+  bytes membership_identifier = 2;
+}
+
+message OpaqueRecoverySecretKeyCompleteResponse {
+  optional string message = 1;
+}
+
+// AKE State Messages
+message AkeServerState {
+  bytes server_ephemeral_private_key_bytes = 1;
+  bytes server_ephemeral_public_key = 2;
+  bytes client_static_public_key = 3;
+  bytes oprf_response = 4;
+  string username = 5;
+  bytes registration_record = 6;
+  google.protobuf.Timestamp expiration = 7;
+}
+
+message AkePasswordResetState {
+  string username = 1;
+  string reset_token = 2;
+  google.protobuf.Timestamp expiration = 3;
+}

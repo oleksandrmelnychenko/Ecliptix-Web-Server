@@ -12,7 +12,7 @@ public enum VerificationFlowFailureType : short
     OtpGenerationFailed,
 
     SmsSendFailed,
-    PhoneNumberInvalid,
+    MobileNumberInvalid,
 
     PersistorAccess,
     ConcurrencyConflict,
@@ -23,6 +23,8 @@ public enum VerificationFlowFailureType : short
     Validation,
 
     InvalidOpaque,
+
+    Unauthorized,
 
     Generic
 }

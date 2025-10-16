@@ -1,11 +1,11 @@
 using Akka.Actor;
 using Ecliptix.Core.Domain.Events;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Serilog;
 
 namespace Ecliptix.Core.Domain.Actors;
 
-public class EcliptixProtocolSystemActor : ReceiveActor
+public sealed class EcliptixProtocolSystemActor : ReceiveActor
 {
     public EcliptixProtocolSystemActor()
     {
@@ -18,10 +18,8 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         ReceiveAsync<ForwardToConnectActorEvent>(ProcessForwarding);
         Receive<Terminated>(t =>
         {
-            Log.Warning(ActorConstants.LogMessages.SupervisedActorTerminated, t.ActorRef.Path);
+
         });
-
-
     }
 
     private async Task ProcessNewSessionRequest(BeginAppDeviceEphemeralConnectActorEvent actorEvent)
@@ -107,47 +105,47 @@ public class EcliptixProtocolSystemActor : ReceiveActor
         switch (ex)
         {
             case ActorInitializationException initEx:
-                Log.Error(initEx, ActorConstants.LogMessages.InitializationFailed);
+
                 return Directive.Stop;
 
             case TimeoutException timeoutEx:
-                Log.Warning(timeoutEx, ActorConstants.LogMessages.TimeoutEncountered);
+
                 return Directive.Restart;
 
             case UnauthorizedAccessException unauthorizedEx:
-                Log.Error(unauthorizedEx, ActorConstants.LogMessages.AuthorizationFailure);
+
                 return Directive.Stop;
 
             case ArgumentException argEx:
-                Log.Error(argEx, ActorConstants.LogMessages.InvalidArguments);
+
                 return Directive.Stop;
 
             case InvalidOperationException invalidOpEx when invalidOpEx.Message.Contains(ActorConstants.ErrorMessages.Cryptographic):
-                Log.Error(invalidOpEx, ActorConstants.LogMessages.CryptographicError);
+
                 return Directive.Restart;
 
             case InvalidOperationException invalidOpEx:
-                Log.Warning(invalidOpEx, ActorConstants.LogMessages.InvalidOperation);
+
                 return Directive.Restart;
 
             case IOException ioEx:
-                Log.Warning(ioEx, ActorConstants.LogMessages.IoError);
+
                 return Directive.Restart;
 
             case System.Net.NetworkInformation.NetworkInformationException netEx:
-                Log.Warning(netEx, ActorConstants.LogMessages.NetworkError);
+
                 return Directive.Restart;
 
             case OutOfMemoryException memEx:
-                Log.Error(memEx, ActorConstants.LogMessages.OutOfMemory);
+
                 return Directive.Escalate;
 
             case StackOverflowException stackEx:
-                Log.Error(stackEx, ActorConstants.LogMessages.StackOverflow);
+
                 return Directive.Escalate;
 
             default:
-                Log.Error(ex, ActorConstants.LogMessages.UnhandledException, ex.GetType().Name);
+
                 return Directive.Stop;
         }
     }

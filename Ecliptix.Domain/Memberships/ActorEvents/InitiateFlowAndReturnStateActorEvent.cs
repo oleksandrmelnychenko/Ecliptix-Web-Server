@@ -1,10 +1,12 @@
+using System.Threading;
 using Ecliptix.Protobuf.Membership;
 
 namespace Ecliptix.Domain.Memberships.ActorEvents;
 
 public record InitiateFlowAndReturnStateActorEvent(
     Guid AppDeviceId,
-    Guid PhoneNumberId,
+    Guid MobileNumberUniqueId,
     VerificationPurpose Purpose,
-    uint? ConnectId
-);
+    uint? ConnectId,
+    CancellationToken CancellationToken = default
+) : ICancellableActorEvent;

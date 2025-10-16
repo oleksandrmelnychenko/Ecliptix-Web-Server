@@ -1,13 +1,14 @@
 using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Domain.Memberships.PhoneNumberValidation;
+using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Domain.Memberships.WorkerActors;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
+using Serilog;
 using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
 using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteResponse;
 using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitResponse;
@@ -18,27 +19,32 @@ using OprfRegistrationInitRequest = Ecliptix.Protobuf.Membership.OpaqueRegistrat
 using OprfRecoverySecureKeyInitRequest = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitRequest;
 using Grpc.Core;
 using System.Globalization;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Membership;
 
-public class MembershipServices(
+internal sealed class MembershipServices(
     IEcliptixActorRegistry actorRegistry,
-    IPhoneNumberValidator phoneNumberValidator,
-    IGrpcCipherService grpcCipherService
+    IMobileNumberValidator phoneNumberValidator,
+    IGrpcCipherService grpcCipherService,
+    ActorSystem actorSystem
 ) : Protobuf.Membership.MembershipServices.MembershipServicesBase
 
 {
-    private readonly EcliptixGrpcServiceBase _baseService = new(grpcCipherService);
+    private readonly RpcServiceBase _baseService = new(grpcCipherService);
     private readonly IActorRef _membershipActor = actorRegistry.Get(ActorIds.MembershipActor);
+    private readonly IActorRef _logoutAuditPersistor = actorRegistry.Get(ActorIds.LogoutAuditPersistorActor);
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
 
-    public override async Task<CipherPayload> OpaqueSignInInitRequest(CipherPayload request, ServerCallContext context)
+    public override async Task<SecureEnvelope> OpaqueSignInInitRequest(SecureEnvelope request, ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OpaqueSignInInitRequest, OpaqueSignInInitResponse>(request, context,
             async (message, connectId, ct) =>
             {
-                Result<PhoneNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
-                    phoneNumberValidator.ValidatePhoneNumber(message.MobileNumber, _cultureName);
+                Result<MobileNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
+                    phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
 
                 if (phoneNumberValidationResult.IsErr)
                 {
@@ -54,7 +60,7 @@ public class MembershipServices(
                     return Result<OpaqueSignInInitResponse, FailureBase>.Err(verificationFlowFailure);
                 }
 
-                PhoneNumberValidationResult phoneNumberResult = phoneNumberValidationResult.Unwrap();
+                MobileNumberValidationResult phoneNumberResult = phoneNumberValidationResult.Unwrap();
                 if (!phoneNumberResult.IsValid)
                 {
                     return Result<OpaqueSignInInitResponse, FailureBase>.Ok(new OpaqueSignInInitResponse
@@ -64,8 +70,15 @@ public class MembershipServices(
                     });
                 }
 
+                Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+
                 SignInMembershipActorEvent signInEvent = new(
-                    connectId, phoneNumberResult.ParsedPhoneNumberE164!, message, _cultureName);
+                    connectId,
+                    phoneNumberResult.ParsedMobileNumberE164!,
+                    deviceId,
+                    message,
+                    _cultureName,
+                    ct);
 
                 Result<OpaqueSignInInitResponse, VerificationFlowFailure> initSignInResult =
                     await _membershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent, ct);
@@ -77,7 +90,7 @@ public class MembershipServices(
             });
     }
 
-    public override async Task<CipherPayload> OpaqueSignInCompleteRequest(CipherPayload request,
+    public override async Task<SecureEnvelope> OpaqueSignInCompleteRequest(SecureEnvelope request,
         ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OpaqueSignInFinalizeRequest, OpaqueSignInFinalizeResponse>(
@@ -86,7 +99,7 @@ public class MembershipServices(
                 {
                     Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure> finalizeSignInResult =
                         await _membershipActor.Ask<Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>>(
-                            new SignInComplete(connectId, message), ct);
+                            new SignInCompleteEvent(connectId, message), ct);
 
                     return finalizeSignInResult.Match(
                         ok: Result<OpaqueSignInFinalizeResponse, FailureBase>.Ok,
@@ -95,15 +108,20 @@ public class MembershipServices(
                 });
     }
 
-    public override async Task<CipherPayload> OpaqueRegistrationCompleteRequest(CipherPayload request,
+    public override async Task<SecureEnvelope> OpaqueRegistrationCompleteRequest(SecureEnvelope request,
         ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRegistrationCompleteRequest, OprfRegistrationCompleteResponse>(request, context,
-                async (message, _, ct) =>
+                async (message, connectId, ct) =>
                 {
+                    Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+
                     CompleteRegistrationRecordActorEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
-                        Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory));
+                        Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory),
+                        connectId,
+                        deviceId,
+                        ct);
 
                     Result<OprfRegistrationCompleteResponse, VerificationFlowFailure> completeRegistrationRecordResult =
                         await _membershipActor.Ask<Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>>(
@@ -116,16 +134,17 @@ public class MembershipServices(
                 });
     }
 
-    public override async Task<CipherPayload> OpaqueRecoverySecretKeyCompleteRequest(CipherPayload request,
+    public override async Task<SecureEnvelope> OpaqueRecoverySecretKeyCompleteRequest(SecureEnvelope request,
         ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRecoverySecretKeyCompleteRequest, OprfRecoverySecretKeyCompleteResponse>(
             request, context,
             async (message, _, ct) =>
-            {
-                OprfCompleteRecoverySecureKeyEvent @event = new(
-                    Helpers.FromByteStringToGuid(message.MembershipIdentifier),
-                    Helpers.ReadMemoryToRetrieveBytes(message.PeerRecoveryRecord.Memory));
+                {
+                    OprfCompleteRecoverySecureKeyEvent @event = new(
+                        Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                        Helpers.ReadMemoryToRetrieveBytes(message.PeerRecoveryRecord.Memory),
+                        ct);
 
                 Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure> completeRecoverySecretKeyResult =
                     await _membershipActor
@@ -138,7 +157,7 @@ public class MembershipServices(
             });
     }
 
-    public override async Task<CipherPayload> OpaqueRegistrationInitRequest(CipherPayload request,
+    public override async Task<SecureEnvelope> OpaqueRegistrationInitRequest(SecureEnvelope request,
         ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRegistrationInitRequest, OprfRegistrationInitResponse>(
@@ -147,7 +166,8 @@ public class MembershipServices(
                 {
                     GenerateMembershipOprfRegistrationRequestEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
-                        Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory));
+                        Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory),
+                        ct);
 
                     Result<OprfRegistrationInitResponse, VerificationFlowFailure> updateOperationResult =
                         await _membershipActor.Ask<Result<OprfRegistrationInitResponse, VerificationFlowFailure>>(@event,
@@ -160,14 +180,16 @@ public class MembershipServices(
                 });
     }
 
-    public override async Task<CipherPayload> OpaqueRecoverySecretKeyInitRequest(CipherPayload request, ServerCallContext context)
+    public override async Task<SecureEnvelope> OpaqueRecoverySecretKeyInitRequest(SecureEnvelope request, ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<OprfRecoverySecureKeyInitRequest, OprfRecoverySecureKeyInitResponse>(request, context,
                 async (message, _, ct) =>
                 {
                     OprfInitRecoverySecureKeyEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
-                        Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory));
+                        Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory),
+                        _cultureName,
+                        ct);
 
                     Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure> result = await _membershipActor
                         .Ask<Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>>(
@@ -179,5 +201,99 @@ public class MembershipServices(
                     );
                 }
             );
+    }
+
+    public override async Task<SecureEnvelope> Logout(SecureEnvelope request, ServerCallContext context)
+    {
+        SecureEnvelope response = await _baseService.ExecuteEncryptedOperationAsync<LogoutRequest, LogoutResponse>(
+            request, context,
+            async (message, connectId, ct) =>
+            {
+                try
+                {
+                    Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
+
+                    long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    long timestampDiff = Math.Abs(serverTimestamp - message.Timestamp);
+                    const long maxTimestampDrift = 300;
+
+                    if (timestampDiff > maxTimestampDrift)
+                    {
+                        Log.Warning("Logout request timestamp validation failed for MembershipId: {MembershipId}, Drift: {Drift}s",
+                            membershipId, timestampDiff);
+                        return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
+                        {
+                            Result = LogoutResponse.Types.Result.InvalidTimestamp,
+                            ServerTimestamp = serverTimestamp
+                        });
+                    }
+
+                    LogoutReason reason = LogoutReason.UserInitiated;
+                    if (!string.IsNullOrEmpty(message.LogoutReason))
+                    {
+                        if (!Enum.TryParse(message.LogoutReason, true, out reason))
+                        {
+                            reason = LogoutReason.UserInitiated;
+                        }
+                    }
+
+                    Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+                    Guid? accountId = message.AccountIdentifier != null && message.AccountIdentifier.Length > 0
+                        ? Helpers.FromByteStringToGuid(message.AccountIdentifier)
+                        : null;
+                    AuditContext auditContext = AuditContextExtractor.ExtractFromContext(context);
+
+                    Log.Information("Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
+                        membershipId, connectId, deviceId, accountId, reason, message.Scope);
+
+                    RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason, auditContext.IpAddress, auditContext.Platform, ct);
+                    Result<Unit, VerificationFlowFailure> auditResult =
+                        await _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(logoutEvent, ct);
+
+                    if (auditResult.IsErr)
+                    {
+                        Log.Warning("Failed to record logout audit, but continuing with logout: {Error}",
+                            auditResult.UnwrapErr().Message);
+                    }
+
+                    byte[] revocationProof = System.Security.Cryptography.SHA256.HashData(
+                        System.Text.Encoding.UTF8.GetBytes($"{membershipId}:{connectId}:{serverTimestamp}"));
+
+                    Log.Information("Logout completed for ConnectId: {ConnectId}", connectId);
+
+                    return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
+                    {
+                        Result = LogoutResponse.Types.Result.Succeeded,
+                        ServerTimestamp = serverTimestamp,
+                        RevocationProof = Google.Protobuf.ByteString.CopyFrom(revocationProof)
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Error during logout for ConnectId: {ConnectId}", connectId);
+
+                    return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
+                    {
+                        Result = LogoutResponse.Types.Result.Failed,
+                        ServerTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    });
+                }
+            });
+
+        uint connectId = ServiceUtilities.ExtractConnectId(context);
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
+                Log.Information("[PROTOCOL-CLEANUP-TRIGGER] Protocol cleanup triggered for ConnectId: {ConnectId}", connectId);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "[PROTOCOL-CLEANUP-FAILED] Failed to trigger protocol cleanup for ConnectId: {ConnectId}. Cryptographic state may persist.", connectId);
+            }
+        });
+
+        return response;
     }
 }

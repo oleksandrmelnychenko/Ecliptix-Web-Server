@@ -1,4 +1,4 @@
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Grpc.Core;
 
 namespace Ecliptix.Domain.Memberships.Failures;
@@ -24,6 +24,7 @@ public sealed record VerificationFlowFailure(
         VerificationFlowFailureType.RateLimitExceeded => true,
         VerificationFlowFailureType.OtpMaxAttemptsReached => true,
         VerificationFlowFailureType.InvalidOpaque => true,
+        VerificationFlowFailureType.Unauthorized => true,
         _ => false
     };
 
@@ -39,7 +40,7 @@ public sealed record VerificationFlowFailure(
         VerificationFlowFailureType.OtpGenerationFailed => false,
 
         VerificationFlowFailureType.SmsSendFailed => true,
-        VerificationFlowFailureType.PhoneNumberInvalid => true,
+        VerificationFlowFailureType.MobileNumberInvalid => true,
 
         VerificationFlowFailureType.PersistorAccess => false,
         VerificationFlowFailureType.ConcurrencyConflict => false,
@@ -85,10 +86,10 @@ public sealed record VerificationFlowFailure(
     }
 
     public static VerificationFlowFailure
-        PhoneNumberInvalid(string? details = null, Exception? innerException = null)
+        MobileNumberInvalid(string? details = null, Exception? innerException = null)
     {
-        return new VerificationFlowFailure(VerificationFlowFailureType.PhoneNumberInvalid,
-            details ?? VerificationFlowMessageKeys.PhoneNumberInvalid, innerException);
+        return new VerificationFlowFailure(VerificationFlowFailureType.MobileNumberInvalid,
+            details ?? VerificationFlowMessageKeys.MobileNumberInvalid, innerException);
     }
 
     public static VerificationFlowFailure
@@ -130,6 +131,12 @@ public sealed record VerificationFlowFailure(
             details ?? VerificationFlowMessageKeys.Validation);
     }
 
+    public static VerificationFlowFailure Unauthorized(string? details = null)
+    {
+        return new VerificationFlowFailure(VerificationFlowFailureType.Unauthorized,
+            details ?? "Unauthorized");
+    }
+
     public static VerificationFlowFailure Generic(string? details = null, Exception? innerException = null)
     {
         return new VerificationFlowFailure(VerificationFlowFailureType.Generic,
@@ -145,12 +152,13 @@ public sealed record VerificationFlowFailure(
             VerificationFlowFailureType.Expired => StatusCode.Unauthenticated,
             VerificationFlowFailureType.InvalidOtp => StatusCode.Unauthenticated,
             VerificationFlowFailureType.OtpExpired => StatusCode.Unauthenticated,
-            VerificationFlowFailureType.PhoneNumberInvalid => StatusCode.InvalidArgument,
+            VerificationFlowFailureType.MobileNumberInvalid => StatusCode.InvalidArgument,
             VerificationFlowFailureType.Validation => StatusCode.InvalidArgument,
 
             VerificationFlowFailureType.OtpMaxAttemptsReached => StatusCode.ResourceExhausted,
             VerificationFlowFailureType.RateLimitExceeded => StatusCode.ResourceExhausted,
             VerificationFlowFailureType.SuspiciousActivity => StatusCode.PermissionDenied,
+            VerificationFlowFailureType.Unauthorized => StatusCode.Unauthenticated,
 
             VerificationFlowFailureType.ConcurrencyConflict => StatusCode.Aborted,
             VerificationFlowFailureType.PersistorAccess => StatusCode.Unavailable,

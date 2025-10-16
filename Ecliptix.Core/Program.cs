@@ -5,6 +5,7 @@ using System.Threading.RateLimiting;
 using Akka;
 using Akka.Actor;
 using Akka.Configuration;
+using Ecliptix.Utilities.Configuration;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -12,28 +13,33 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.ObjectPool;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Serilog;
-using Serilog.Context;
 using Ecliptix.Core;
 using Ecliptix.Core.Api.Grpc.Services.Authentication;
 using Ecliptix.Core.Api.Grpc.Services.Device;
 using Ecliptix.Core.Api.Grpc.Services.Membership;
 using Ecliptix.Core.Configuration;
-using Ecliptix.Core.Domain.Actors;
-using Ecliptix.Core.Domain.Protocol.Monitoring;
+using Ecliptix.Core.Infrastructure.Crypto;
 using Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Core.Infrastructure.SecureChannel;
 using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Resources;
+using Ecliptix.Core.Services;
 using Ecliptix.Domain;
-using Ecliptix.Domain.AppDevices.Persistors;
-using Ecliptix.Domain.DbConnectionFactory;
-using Ecliptix.Domain.Memberships.OPAQUE;
-using Ecliptix.Domain.Memberships.Persistors;
-using Ecliptix.Domain.Memberships.PhoneNumberValidation;
-using Ecliptix.Domain.Memberships.WorkerActors;
+using Ecliptix.Domain.Schema;
+using Microsoft.EntityFrameworkCore;
+using Ecliptix.Security.Opaque.Contracts;
+using Ecliptix.Security.Opaque;
+using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Domain.Providers.Twilio;
+using Ecliptix.Security.Certificate.Pinning.Services;
+using Ecliptix.Security.Opaque.Failures;
+using Ecliptix.Security.Opaque.Services;
+using Ecliptix.Utilities;
 using static Ecliptix.Core.Configuration.NetworkConstants;
 using AppConstants = Ecliptix.Core.Configuration.ApplicationConstants;
 using HealthStatus = Ecliptix.Core.Json.HealthStatus;
@@ -44,24 +50,20 @@ try
 {
     ConfigureLogging(builder);
     ConfigureServices(builder);
+    ConfigureOpenTelemetry(builder);
     ConfigureActorSystem(builder);
 
     WebApplication app = builder.Build();
 
+    InitializeOpaqueService(app);
+
     ConfigureMiddleware(app);
     ConfigureEndpoints(app);
 
-    Log.Information("Starting Ecliptix application host");
     app.Run();
-}
-catch (Exception ex)
-{
-    Log.Fatal(ex, "Ecliptix application host terminated unexpectedly");
-    throw;
 }
 finally
 {
-    Log.Information("Shutting down Ecliptix application host");
     Log.CloseAndFlush();
 }
 
@@ -69,7 +71,9 @@ static void ConfigureLogging(WebApplicationBuilder builder)
 {
     builder.Host.UseSerilog((context, services, loggerConfig) =>
     {
-        string? appInsightsConnectionString = Environment.GetEnvironmentVariable(SecurityConstants.EnvironmentVariables.ApplicationInsightsConnectionString);
+        string? appInsightsConnectionString =
+            Environment.GetEnvironmentVariable(SecurityConstants.EnvironmentVariables
+                .ApplicationInsightsConnectionString);
 
         loggerConfig
             .ReadFrom.Configuration(context.Configuration)
@@ -88,11 +92,15 @@ static void ConfigureLogging(WebApplicationBuilder builder)
 
 static void ConfigureServices(WebApplicationBuilder builder)
 {
-    builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
-    builder.Services.AddSingleton<SessionKeepAliveInterceptor>();
-    builder.Services.AddSingleton<SecurityInterceptor>();
+    builder.Services.AddDbContextFactory<EcliptixSchemaContext>(options =>
+    {
+        string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
+        options.UseSqlServer(connectionString)
+               .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+    });
+
+    builder.Services.AddSingleton<SecrecyHandshakeKeepAliveInterceptor>();
     builder.Services.AddSingleton<TelemetryInterceptor>();
-    builder.Services.AddSingleton<ConnectionMonitoringInterceptor>();
     builder.Services.AddSingleton<FailureHandlingInterceptor>();
     builder.Services.AddSingleton<RequestMetaDataInterceptor>();
     builder.Services.AddSingleton<ThreadCultureInterceptor>();
@@ -102,12 +110,22 @@ static void ConfigureServices(WebApplicationBuilder builder)
     RegisterValidators(builder.Services);
     RegisterGrpc(builder.Services);
 
-    builder.Services.Configure<TwilioSettings>(builder.Configuration.GetSection(AppConstants.Configuration.TwilioSettings));
-    builder.Services.Configure<SecurityKeysSettings>(builder.Configuration.GetSection(AppConstants.Configuration.SecurityKeys));
+    builder.Services.Configure<TwilioSettings>(
+        builder.Configuration.GetSection(AppConstants.Configuration.TwilioSettings));
+    builder.Services.Configure<SecurityKeysSettings>(
+        builder.Configuration.GetSection(AppConstants.Configuration.SecurityKeys));
+    builder.Services.Configure<SecurityConfiguration>(
+        builder.Configuration.GetSection(SecurityConfiguration.SectionName));
 
-    IConfigurationSection securityKeysSection = builder.Configuration.GetSection(AppConstants.Configuration.SecurityKeys);
-    MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey = securityKeysSection["KeyExchangeContextTypeKey"] ?? MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey;
-    MetadataConstants.SecurityKeys.KeyExchangeContextTypeValue = securityKeysSection["KeyExchangeContextTypeValue"] ?? MetadataConstants.SecurityKeys.KeyExchangeContextTypeValue;
+    IConfigurationSection securityKeysSection =
+        builder.Configuration.GetSection(AppConstants.Configuration.SecurityKeys);
+    MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey =
+        securityKeysSection[AppConstants.ConfigurationKeys.KeyExchangeContextTypeKey] ??
+        MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey;
+    MetadataConstants.SecurityKeys.KeyExchangeContextTypeValue =
+        securityKeysSection[AppConstants.ConfigurationKeys.KeyExchangeContextTypeValue] ??
+        MetadataConstants.SecurityKeys
+            .KeyExchangeContextTypeValue;
 
     builder.Services.AddSingleton<ISmsProvider>(serviceProvider =>
     {
@@ -117,8 +135,12 @@ static void ConfigureServices(WebApplicationBuilder builder)
 
     builder.Services.AddSingleton<IEcliptixActorRegistry, ActorRegistry>();
     builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
-    builder.Services.AddSingleton<IPhoneNumberValidator, PhoneNumberValidator>();
+    builder.Services.AddSingleton<IMobileNumberValidator, MobileNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService>();
+
+    builder.Services.AddDistributedMemoryCache();
+
+    builder.Services.AddDataProtection();
 
     builder.Services.AddSingleton<ObjectPool<StringBuilder>>(_ =>
     {
@@ -126,43 +148,56 @@ static void ConfigureServices(WebApplicationBuilder builder)
         return provider.CreateStringBuilderPool();
     });
 
-    builder.Services.AddSingleton<IOpaqueProtocolService>(sp =>
+    builder.Services.AddOpaqueProtocol();
+
+    builder.Services.AddSingleton<IOpaqueProtocolService>(serviceProvider =>
     {
-        IConfiguration config = sp.GetRequiredService<IConfiguration>();
-        string? secretKeySeedBase64 = config[AppConstants.Configuration.OpaqueProtocolSecretKeySeed];
-
-        if (string.IsNullOrEmpty(secretKeySeedBase64))
-            throw new InvalidOperationException("OpaqueProtocol:SecretKeySeed configuration is missing.");
-
-        byte[] secretKeySeed;
-        try
-        {
-            secretKeySeed = Convert.FromBase64String(secretKeySeedBase64);
-        }
-        catch (FormatException ex)
-        {
-            throw new InvalidOperationException(
-                "Invalid OpaqueProtocol:SecretKeySeed format. Must be a valid base64 string.", ex);
-        }
-
-        if (secretKeySeed.Length < SecurityConstants.Limits.MinSecretKeySeedLengthBytes)
-            throw new InvalidOperationException($"OpaqueProtocol:SecretKeySeed must be at least {SecurityConstants.Limits.MinSecretKeySeedLengthBytes} bytes.");
-
-        return new OpaqueProtocolService(secretKeySeed);
+        INativeOpaqueProtocolService nativeService = serviceProvider.GetRequiredService<INativeOpaqueProtocolService>();
+        return new OpaqueProtocolAdapter(nativeService);
     });
 
-    builder.Services.AddHealthChecks()
-        .AddCheck<ProtocolHealthCheck>(AppConstants.HealthChecks.ProtocolHealth)
-        .AddCheck<VerificationFlowHealthCheck>(AppConstants.HealthChecks.VerificationFlowHealth)
-        .AddCheck<DatabaseHealthCheck>(AppConstants.HealthChecks.DatabaseHealth);
+    builder.Services.AddSingleton<CertificatePinningService>();
+
+    builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IHardenedKeyDerivation, Ecliptix.Core.Services.KeyDerivation.HardenedKeyDerivation>();
+    builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.ISecretSharingService, Ecliptix.Core.Services.KeyDerivation.ShamirSecretSharing>();
+    builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IIdentityKeyDerivationService, Ecliptix.Core.Services.KeyDerivation.IdentityKeyDerivationService>();
+    builder.Services.AddSingleton<Ecliptix.Domain.Services.Security.IMasterKeyService, Ecliptix.Core.Services.Security.MasterKeyService>();
+
+    builder.Services.AddSingleton<IRsaConfiguration, RsaConfiguration>();
+    builder.Services.AddSingleton<IRsaChunkProcessor, RsaChunkProcessor>();
+    builder.Services.AddSingleton<ISecureChannelEstablisher>(serviceProvider =>
+    {
+        IRsaChunkProcessor rsaChunkProcessor = serviceProvider.GetRequiredService<IRsaChunkProcessor>();
+        CertificatePinningService certificatePinningService = serviceProvider.GetRequiredService<CertificatePinningService>();
+        IEcliptixActorRegistry actorRegistry = serviceProvider.GetRequiredService<IEcliptixActorRegistry>();
+        IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
+
+        return new RsaSecureChannelEstablisher(rsaChunkProcessor, certificatePinningService, protocolActor);
+    });
+
+    builder.Services.AddHealthChecks();
+
+    builder.Services.AddHostedService<CertificatePinningServiceHost>();
+    builder.Services.AddHostedService<ActorSystemInitializationHost>();
 }
 
 static void ConfigureActorSystem(WebApplicationBuilder builder)
 {
     const string systemActorName = AppConstants.ActorSystem.SystemName;
-    Config akkaConfig = ConfigurationFactory.Empty
-        .WithFallback(ConfigurationFactory.ParseString(File.ReadAllText(AppConstants.ActorSystem.ConfigFileName)));
-    ActorSystem actorSystem = ActorSystem.Create(systemActorName, akkaConfig);
+
+    Config fileConfig = ConfigurationFactory.ParseString(
+        File.ReadAllText(AppConstants.ActorSystem.ConfigFileName));
+
+    string runtimeConfig = $@"
+        akka.actor.ask-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Actor.AskTimeout)}
+        akka.persistence.sql-store.journal.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
+        akka.persistence.sql-store.snapshot.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
+    ";
+
+    Config finalConfig = ConfigurationFactory.ParseString(runtimeConfig)
+        .WithFallback(fileConfig);
+
+    ActorSystem actorSystem = ActorSystem.Create(systemActorName, finalConfig);
 
     builder.Services.AddSingleton(actorSystem);
     builder.Services.AddHostedService<ActorSystemHostedService>();
@@ -175,25 +210,26 @@ static void ConfigureMiddleware(WebApplication app)
         options.MessageTemplate = AppConstants.Logging.HttpRequestTemplate;
         options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
         {
-            diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value!);
-            diagnosticContext.Set("UserAgent", httpContext.Request.Headers["User-Agent"].ToString());
-            diagnosticContext.Set("Protocol", httpContext.Request.Protocol);
+            diagnosticContext.Set(AppConstants.DiagnosticContext.RequestHost, httpContext.Request.Host.Value!);
+            diagnosticContext.Set(AppConstants.DiagnosticContext.UserAgent,
+                httpContext.Request.Headers[SecurityConstants.HttpHeaders.UserAgent].ToString());
+            diagnosticContext.Set(AppConstants.DiagnosticContext.Protocol, httpContext.Request.Protocol);
 
-            if (httpContext.Request.Headers.TryGetValue("X-Connect-Id", out StringValues connectId))
+            if (httpContext.Request.Headers.TryGetValue(SecurityConstants.HttpHeaders.XConnectId, out StringValues connectId))
             {
-                diagnosticContext.Set("ConnectId", connectId.ToString());
+                diagnosticContext.Set(AppConstants.DiagnosticContext.ConnectId, connectId.ToString());
             }
 
             if (httpContext.Request.ContentLength.HasValue)
             {
-                diagnosticContext.Set("RequestSize", httpContext.Request.ContentLength.Value);
+                diagnosticContext.Set(AppConstants.DiagnosticContext.RequestSize,
+                    httpContext.Request.ContentLength.Value);
             }
         };
     });
 
     app.UseRateLimiter();
     app.UseMiddleware<SecurityMiddleware>();
-    app.UseMiddleware<IpThrottlingMiddleware>();
     app.UseRequestLocalization();
     app.UseRouting();
     app.UseResponseCompression();
@@ -203,47 +239,29 @@ static void ConfigureMiddleware(WebApplication app)
 
 static void ConfigureEndpoints(WebApplication app)
 {
-    app.MapGrpcService<DeviceGrpcService>();
+    app.MapGrpcService<DeviceService>();
     app.MapGrpcService<VerificationFlowServices>();
     app.MapGrpcService<MembershipServices>();
 
-    RegisterActors(app.Services.GetRequiredService<ActorSystem>(),
-        app.Services.GetRequiredService<IEcliptixActorRegistry>(), app.Services);
-
     app.MapHealthChecks(AppConstants.Endpoints.Health);
 
-    app.MapGet(AppConstants.Endpoints.Metrics, async (IServiceProvider services) =>
+    app.MapGet(AppConstants.Endpoints.Metrics, () =>
     {
-        try
-        {
-            ActorSystem actorSystem = services.GetRequiredService<ActorSystem>();
-            ProtocolHealthCheck healthCheck = new(actorSystem);
+        HealthMetricsResponse response = new(
+            new HealthStatus(
+                "Healthy",
+                "Metrics endpoint available",
+                null
+            ),
+            DateTime.UtcNow
+        );
 
-            HealthCheckResult healthResult = await healthCheck.CheckHealthAsync(new HealthCheckContext());
-            HealthMetricsResponse response = new(
-                new HealthStatus(
-                    healthResult.Status.ToString(),
-                    healthResult.Description,
-                    healthResult.Data?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
-                ),
-                new ProtocolMetrics(
-                    "Available",
-                    "Protocol metrics collection active",
-                    "Full metrics available via actor messages"
-                ),
-                DateTime.UtcNow
-            );
-
-            return Results.Json(response, AppJsonSerializerContext.Default.HealthMetricsResponse);
-        }
-        catch (Exception ex)
-        {
-            ErrorResponse errorResponse = new(ex.Message);
-            return Results.Json(errorResponse, AppJsonSerializerContext.Default.ErrorResponse);
-        }
+        return Results.Json(response, AppJsonSerializerContext.Default.HealthMetricsResponse);
     });
 
-    app.MapGet(AppConstants.Endpoints.Root, () => Results.Ok(new { Status = "Success", Message = "Server is up and running" }));
+    app.MapGet(AppConstants.Endpoints.Root,
+        () => Results.Ok(new
+        { Status = AppConstants.StatusMessages.Success, Message = AppConstants.StatusMessages.ServerRunning }));
 }
 
 static void RegisterLocalization(IServiceCollection services)
@@ -251,7 +269,8 @@ static void RegisterLocalization(IServiceCollection services)
     services.AddLocalization(options => options.ResourcesPath = AppConstants.Localization.ResourcesPath);
     services.Configure<RequestLocalizationOptions>(options =>
     {
-        CultureInfo[] supported = [new(AppConstants.Localization.DefaultCulture), new(AppConstants.Localization.UkrainianCulture)];
+        CultureInfo[] supported =
+            [new(AppConstants.Localization.DefaultCulture), new(AppConstants.Localization.UkrainianCulture)];
         options.DefaultRequestCulture = new RequestCulture(AppConstants.Localization.DefaultCulture);
         options.SupportedUICultures = supported;
         options.SupportedCultures = supported;
@@ -267,7 +286,8 @@ static void RegisterSecurity(IServiceCollection services)
     {
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
             RateLimitPartition.GetSlidingWindowLimiter(
-                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ??
+                              AppConstants.FallbackValues.UnknownIpAddress,
                 factory: _ => new SlidingWindowRateLimiterOptions
                 {
                     PermitLimit = RateLimit.PermitLimit,
@@ -280,22 +300,24 @@ static void RegisterSecurity(IServiceCollection services)
         options.OnRejected = (context, _) =>
         {
             context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            Log.Warning("Rate limit exceeded for {IpAddress}",
-                context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+
             return ValueTask.CompletedTask;
         };
     });
 
+    services.AddSingleton<CertificatePinningService>();
+
     services.Configure<KestrelServerOptions>(options =>
     {
         options.Limits.MaxRequestBodySize = Limits.MaxRequestBodySizeBytes;
-        options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(Timeouts.RequestHeadersTimeoutSeconds);
-        options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(Timeouts.KeepAliveTimeoutMinutes);
+        options.Limits.RequestHeadersTimeout = TimeoutConfiguration.Network.RequestHeadersTimeout;
+        options.Limits.KeepAliveTimeout = TimeoutConfiguration.Network.KeepAliveTimeout;
         options.Limits.MaxConcurrentConnections = Limits.MaxConcurrentConnections;
         options.Limits.MaxConcurrentUpgradedConnections = Limits.MaxConcurrentUpgradedConnections;
     });
 
     services.AddDistributedMemoryCache();
+    services.AddMemoryCache();
     services.AddHealthChecks();
 }
 
@@ -311,9 +333,8 @@ static void RegisterGrpc(IServiceCollection services)
         options.ResponseCompressionLevel = CompressionLevel.Fastest;
         options.ResponseCompressionAlgorithm = Compression.Algorithm;
         options.EnableDetailedErrors = true;
-        options.Interceptors.Add<SecurityInterceptor>();
         options.Interceptors.Add<RequestMetaDataInterceptor>();
-        options.Interceptors.Add<SessionKeepAliveInterceptor>();
+        options.Interceptors.Add<SecrecyHandshakeKeepAliveInterceptor>();
         options.Interceptors.Add<TelemetryInterceptor>();
         options.Interceptors.Add<ThreadCultureInterceptor>();
         options.Interceptors.Add<FailureHandlingInterceptor>();
@@ -321,85 +342,67 @@ static void RegisterGrpc(IServiceCollection services)
 
     services.Configure<KestrelServerOptions>(options =>
     {
-        options.ListenAnyIP(Ports.Grpc, listenOptions =>
-        {
-            listenOptions.Protocols = HttpProtocols.Http2;
-        });
-
-        options.ListenAnyIP(Ports.Http, listenOptions =>
-        {
-            listenOptions.Protocols = HttpProtocols.Http1;
-        });
+        options.ListenAnyIP(Ports.Grpc, listenOptions => { listenOptions.Protocols = HttpProtocols.Http2; });
+        options.ListenAnyIP(Ports.Http, listenOptions => { listenOptions.Protocols = HttpProtocols.Http1; });
     });
 }
 
-static void RegisterActors(ActorSystem system, IEcliptixActorRegistry registry, IServiceProvider serviceProvider)
+static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
 {
-    ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
-    ISmsProvider snsProvider = serviceProvider.GetRequiredService<ISmsProvider>();
+    string serviceName = "Ecliptix.Core";
+    string serviceVersion = "1.0.0";
 
-    ILocalizationProvider localizationProvider =
-        serviceProvider.GetRequiredService<ILocalizationProvider>();
+    builder.Services.AddOpenTelemetry()
+        .ConfigureResource(resource => resource
+            .AddService(
+                serviceName: serviceName,
+                serviceVersion: serviceVersion,
+                serviceInstanceId: Environment.MachineName))
+        .WithTracing(tracing =>
+        {
+            tracing
+                .AddSource("Ecliptix.GrpcInterceptors")
+                .AddSource("Ecliptix.GrpcServices")
+                .AddAspNetCoreInstrumentation(options =>
+                {
+                    options.RecordException = true;
+                    options.Filter = httpContext =>
+                    {
+                        return !httpContext.Request.Path.Value?.Contains("/health") ?? true;
+                    };
+                });
 
-    IOpaqueProtocolService opaqueProtocolService =
-        serviceProvider.GetRequiredService<IOpaqueProtocolService>();
+            string? otlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
 
-    using (LogContext.PushProperty("ActorSystemName", system.Name))
-    {
-        logger.LogInformation("Actor system {ActorSystemName} is starting up", system.Name);
-    }
+            if (!string.IsNullOrEmpty(otlpEndpoint))
+            {
+                tracing.AddOtlpExporter(otlpOptions =>
+                {
+                    otlpOptions.Endpoint = new Uri(otlpEndpoint);
+                });
+            }
+            else
+            {
+                tracing.AddConsoleExporter();
+            }
+        });
+}
 
-    IDbConnectionFactory dbDataSource = serviceProvider.GetRequiredService<IDbConnectionFactory>();
+static void InitializeOpaqueService(WebApplication app)
+{
+    INativeOpaqueProtocolService opaqueService = app.Services.GetRequiredService<INativeOpaqueProtocolService>();
+    SecurityKeysSettings securityKeysSettings = app.Services.GetRequiredService<IOptions<SecurityKeysSettings>>().Value;
+    Result<Unit, OpaqueServerFailure> initializationResult =
+        opaqueService.Initialize(securityKeysSettings.OpaqueSecretKeySeed);
+    if (!initializationResult.IsErr) return;
+    string errorMessage = initializationResult.UnwrapErr().Message;
 
-    IActorRef protocolSystemActor = system.ActorOf(
-        EcliptixProtocolSystemActor.Build(),
-        AppConstants.ActorNames.ProtocolSystem);
-
-    IActorRef appDevicePersistor = system.ActorOf(
-        AppDevicePersistorActor.Build(dbDataSource, opaqueProtocolService),
-        AppConstants.ActorNames.AppDevicePersistor);
-
-    IActorRef verificationFlowPersistorActor = system.ActorOf(
-        VerificationFlowPersistorActor.Build(dbDataSource),
-        AppConstants.ActorNames.VerificationFlowPersistorActor);
-
-    IActorRef membershipPersistorActor = system.ActorOf(
-        MembershipPersistorActor.Build(dbDataSource),
-        AppConstants.ActorNames.MembershipPersistorActor);
-
-    IActorRef authContextPersistorActor = system.ActorOf(
-        AuthContextPersistorActor.Build(dbDataSource),
-        AppConstants.ActorNames.AuthContextPersistorActor);
-
-    IActorRef authenticationStateManager = system.ActorOf(
-        AuthenticationStateManager.Build(),
-        AppConstants.ActorNames.AuthenticationStateManager);
-
-    IActorRef membershipActor = system.ActorOf(
-        MembershipActor.Build(membershipPersistorActor, authContextPersistorActor, opaqueProtocolService, localizationProvider, authenticationStateManager),
-        AppConstants.ActorNames.MembershipActor);
-
-    IActorRef verificationFlowManagerActor = system.ActorOf(
-        VerificationFlowManagerActor.Build(verificationFlowPersistorActor, membershipActor,
-            snsProvider, localizationProvider),
-        AppConstants.ActorNames.VerificationFlowManagerActor);
-
-    registry.Register(ActorIds.EcliptixProtocolSystemActor, protocolSystemActor);
-    registry.Register(ActorIds.AppDevicePersistorActor, appDevicePersistor);
-    registry.Register(ActorIds.VerificationFlowPersistorActor, verificationFlowPersistorActor);
-    registry.Register(ActorIds.VerificationFlowManagerActor, verificationFlowManagerActor);
-    registry.Register(ActorIds.MembershipPersistorActor, membershipPersistorActor);
-    registry.Register(ActorIds.MembershipActor, membershipActor);
-
-    logger.LogInformation("Registered top-level actors: {ProtocolActorPath}, {PersistorActorPath}",
-        protocolSystemActor.Path, appDevicePersistor.Path);
 }
 
 internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        Log.Information("Actor system hosted service started - {ActorSystemName}", actorSystem.Name);
 
         RegisterShutdownHooks();
 
@@ -408,21 +411,18 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        Log.Information("Actor system hosted service initiating graceful shutdown...");
-
         try
         {
-            using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromMinutes(Timeouts.ShutdownGracefulTimeoutMinutes));
+            using CancellationTokenSource timeoutCts =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeoutConfiguration.Network.ShutdownGracefulTimeout);
 
             CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(actorSystem);
             await coordinatedShutdown.Run(CoordinatedShutdown.ClrExitReason.Instance);
-
-            Log.Information("Actor system coordinated shutdown completed successfully");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            Log.Warning("Shutdown was cancelled by host, forcing actor system termination");
+            Log.Information("Actor system shutdown cancelled, forcing termination");
             await actorSystem.Terminate();
         }
         catch (Exception ex)
@@ -430,35 +430,34 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
             Log.Error(ex, "Error during actor system shutdown, forcing termination");
             await actorSystem.Terminate();
         }
-
-        Log.Information("Actor system hosted service shutdown complete");
     }
 
     private void RegisterShutdownHooks()
     {
         CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(actorSystem);
 
-        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeServiceUnbind, "stop-accepting-new-connections", () =>
-        {
-            Log.Information("Phase: Stop accepting new connections");
-            return Task.FromResult(Done.Instance);
-        });
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeServiceUnbind,
+            AppConstants.ActorSystemTasks.StopAcceptingNewConnections,
+            () =>
+            {
 
-        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone, "drain-active-requests", async () =>
-        {
-            Log.Information("Phase: Draining active requests");
+                return Task.FromResult(Done.Instance);
+            });
 
-            await Task.Delay(TimeSpan.FromSeconds(Timeouts.DrainActiveRequestsSeconds));
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone,
+            AppConstants.ActorSystemTasks.DrainActiveRequests, async () =>
+            {
 
-            Log.Information("Active request draining completed");
-            return Done.Instance;
-        });
+                await Task.Delay(TimeoutConfiguration.Network.DrainActiveRequests);
 
-        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate, "cleanup-resources", () =>
-        {
-            Log.Information("Phase: Cleaning up application resources");
+                return Done.Instance;
+            });
 
-            return Task.FromResult(Done.Instance);
-        });
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate,
+            AppConstants.ActorSystemTasks.CleanupResources, () =>
+            {
+
+                return Task.FromResult(Done.Instance);
+            });
     }
 }

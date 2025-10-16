@@ -16,8 +16,8 @@ public static class ApplicationConstants
         public const string VerificationFlowManagerActor = "VerificationFlowManagerActor";
         public const string MembershipPersistorActor = "MembershipPersistorActor";
         public const string MembershipActor = "MembershipActor";
-        public const string AuthContextPersistorActor = "AuthContextPersistorActor";
-        public const string AuthenticationStateManager = "AuthenticationStateManager";
+        public const string MasterKeySharePersistorActor = "MasterKeySharePersistorActor";
+        public const string LogoutAuditPersistorActor = "LogoutAuditPersistorActor";
     }
 
     public static class Endpoints
@@ -34,17 +34,9 @@ public static class ApplicationConstants
         public const string UkrainianCulture = "uk-ua";
     }
 
-    public static class HealthChecks
-    {
-        public const string ProtocolHealth = "protocol_health";
-        public const string VerificationFlowHealth = "verification_flow_health";
-        public const string DatabaseHealth = "database_health";
-    }
-
     public static class Configuration
     {
         public const string TwilioSettings = "TwilioSettings";
-        public const string OpaqueProtocolSecretKeySeed = "OpaqueProtocol:SecretKeySeed";
         public const string SecurityKeys = "SecurityKeys";
     }
 
@@ -61,19 +53,29 @@ public static class ApplicationConstants
         public const string CleanupResources = "cleanup-resources";
     }
 
-    public static class Protocol
+    public static class DiagnosticContext
     {
-        public const int SupervisionMaxRetries = 3;
-        public const int SupervisionTimeoutMinutes = 5;
-        public const int StreamingTimeoutMinutes = 6;
+        public const string RequestHost = "RequestHost";
+        public const string UserAgent = "UserAgent";
+        public const string Protocol = "Protocol";
+        public const string ConnectId = "ConnectId";
+        public const string RequestSize = "RequestSize";
     }
 
-    public static class Arrays
+    public static class StatusMessages
     {
-        public const int FirstIndex = 0;
-        public const int InitialValue = 0;
-        public const int WindowResetValue = 0;
-        public const int SingleMinute = 1;
-        public const string DefaultCultureFallback = "en-US";
+        public const string Success = "Success";
+        public const string ServerRunning = "Server is up and running";
+    }
+
+    public static class FallbackValues
+    {
+        public const string UnknownIpAddress = "unknown";
+    }
+
+    public static class ConfigurationKeys
+    {
+        public const string KeyExchangeContextTypeKey = "KeyExchangeContextTypeKey";
+        public const string KeyExchangeContextTypeValue = "KeyExchangeContextTypeValue";
     }
 }

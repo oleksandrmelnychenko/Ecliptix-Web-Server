@@ -1,57 +1,71 @@
-using System.Data;
 using System.Data.Common;
-using System.Diagnostics;
+using System.Threading;
 using Akka.Actor;
-using Ecliptix.Domain.DbConnectionFactory;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Domain.Schema;
+using Ecliptix.Utilities;
+using Ecliptix.Utilities.Configuration;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
-public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
+public abstract class PersistorBase<TFailure> : ReceiveActor
     where TFailure : IFailureBase
 {
-    private readonly IDbConnectionFactory _connectionFactory;
-    private readonly ActivitySource _activitySource;
-    private readonly Dictionary<string, TimeSpan> _operationTimeouts;
-    private bool _disposed;
+    private readonly IDbContextFactory<EcliptixSchemaContext> _dbContextFactory;
 
-    protected PersistorBase(IDbConnectionFactory connectionFactory)
+    protected PersistorBase(IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
     {
-        _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
-        _activitySource = new ActivitySource($"Ecliptix.Persistor.{GetType().Name}");
-        _operationTimeouts = GetOperationTimeouts();
+        _dbContextFactory = dbContextFactory;
+        GetOperationTimeouts();
     }
 
-    protected async Task<Result<TResult, TFailure>> ExecuteWithConnection<TResult>(
-        Func<IDbConnection, Task<Result<TResult, TFailure>>> operation,
+    protected async Task<Result<TResult, TFailure>> ExecuteWithContext<TResult>(
+        Func<EcliptixSchemaContext, CancellationToken, Task<Result<TResult, TFailure>>> operation,
         string operationName,
-        string? commandText = null)
+        CancellationToken cancellationToken = default)
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(PersistorBase<TFailure>));
-
-        using Activity? activity = StartActivity(operationName, commandText);
+        TimeSpan operationTimeout = GetOperationTimeout(operationName);
 
         return await PersistorRetryPolicy.ExecuteWithRetryAsync(
-            async () =>
+            async (ct) =>
             {
-                using IDbConnection connection = await CreateConnectionWithTimeout(operationName);
-                activity?.SetTag("db.name", connection.Database);
-                activity?.SetTag("db.connection_state", connection.State.ToString());
-
-                ValidateConnection(connection, operationName);
-                ConfigureConnectionTimeout(connection, operationName);
-
-                Result<TResult, TFailure> result = await operation(connection);
-
-                HandleOperationResult(activity, result, operationName);
-                return result;
+                await using EcliptixSchemaContext ctx = await _dbContextFactory.CreateDbContextAsync(ct);
+                return await operation(ctx, ct);
             },
             operationName,
+            operationTimeout,
             (dbEx, opName) => MapDbException(dbEx),
             (timeoutEx, opName) => CreateTimeoutFailure(timeoutEx),
-            (ex, opName) => CreateGenericFailure(ex));
+            (ex, opName) => CreateGenericFailure(ex),
+            cancellationToken);
+    }
+
+    private static TimeSpan GetOperationTimeout(string operationName)
+    {
+        return operationName switch
+        {
+            "CreateMembership" => TimeoutConfiguration.Database.CreateTimeout,
+            "UpdateMembershipSecureKey" => TimeoutConfiguration.Database.UpdateTimeout,
+            "LoginMembership" => TimeoutConfiguration.Database.QueryTimeout,
+            "SignInMembership" => TimeoutConfiguration.Database.QueryTimeout,
+            "GetMembershipByVerificationFlow" => TimeoutConfiguration.Database.GetTimeout,
+            "GetMembershipByUniqueId" => TimeoutConfiguration.Database.GetTimeout,
+            "CreateDefaultAccount" => TimeoutConfiguration.Database.CreateTimeout,
+            "ValidatePasswordRecoveryFlow" => TimeoutConfiguration.Database.QueryTimeout,
+            "ExpirePasswordRecoveryFlows" => TimeoutConfiguration.Database.UpdateTimeout,
+            "UpdateMembershipVerificationFlow" => TimeoutConfiguration.Database.UpdateTimeout,
+            "CreateOtp" => TimeoutConfiguration.Database.CreateTimeout,
+            "UpdateOtpStatus" => TimeoutConfiguration.Database.UpdateTimeout,
+            "GetOtp" => TimeoutConfiguration.Database.GetTimeout,
+            "CreateVerificationFlow" => TimeoutConfiguration.Database.CreateTimeout,
+            "UpdateVerificationFlowStatus" => TimeoutConfiguration.Database.UpdateTimeout,
+            "GetVerificationFlow" => TimeoutConfiguration.Database.GetTimeout,
+            "EnsureMobileNumber" => TimeoutConfiguration.Database.CreateTimeout,
+            "GetMobileNumber" => TimeoutConfiguration.Database.GetTimeout,
+            "RecordLogout" => TimeoutConfiguration.Database.CreateTimeout,
+            _ => TimeoutConfiguration.Database.CommandTimeout
+        };
     }
 
     protected abstract TFailure MapDbException(DbException ex);
@@ -62,122 +76,17 @@ public abstract class PersistorBase<TFailure> : ReceiveActor, IDisposable
     {
         return new Dictionary<string, TimeSpan>
         {
-            ["Create"] = TimeSpan.FromSeconds(30),
-            ["Update"] = TimeSpan.FromSeconds(30),
-            ["Delete"] = TimeSpan.FromSeconds(20),
-            ["Get"] = TimeSpan.FromSeconds(10),
-            ["Query"] = TimeSpan.FromSeconds(15),
-            ["List"] = TimeSpan.FromSeconds(20)
+            ["Create"] = TimeoutConfiguration.Database.CreateTimeout,
+            ["Update"] = TimeoutConfiguration.Database.UpdateTimeout,
+            ["Delete"] = TimeoutConfiguration.Database.DeleteTimeout,
+            ["Get"] = TimeoutConfiguration.Database.GetTimeout,
+            ["Query"] = TimeoutConfiguration.Database.QueryTimeout,
+            ["List"] = TimeoutConfiguration.Database.ListTimeout
         };
     }
 
     protected override SupervisorStrategy SupervisorStrategy()
     {
         return PersistorSupervisorStrategy.CreateStrategy();
-    }
-
-    private void HandleOperationResult<TResult>(Activity? activity, Result<TResult, TFailure> result,
-        string operationName)
-    {
-        if (result.IsOk)
-        {
-            Log.Debug("Persistor operation {OperationName} completed successfully for actor {ActorType}",
-                operationName, GetType().Name);
-            activity?.SetStatus(ActivityStatusCode.Ok);
-            activity?.SetTag("operation.success", true);
-        }
-        else
-        {
-            TFailure failure = result.UnwrapErr();
-            Log.Warning("Persistor operation {OperationName} failed for actor {ActorType}: {@FailureDetails}",
-                operationName, GetType().Name, failure.ToStructuredLog());
-
-            activity?.SetStatus(ActivityStatusCode.Error, failure.ToString());
-            activity?.AddEvent(new ActivityEvent("DomainFailure", tags: new ActivityTagsCollection
-            {
-                ["failure.type"] = failure.GetType().Name,
-                ["failure.details"] = failure.ToString(),
-                ["operation.success"] = false
-            }));
-        }
-    }
-
-    private Activity? StartActivity(string operationName, string? commandText)
-    {
-        Activity? activity = _activitySource.StartActivity($"{GetType().Name}.{operationName}", ActivityKind.Client);
-        if (activity is null) return null;
-
-        activity.SetTag("db.system", "mssql");
-        activity.SetTag("db.operation", operationName);
-        activity.SetTag("persistor.type", GetType().Name);
-        activity.SetTag("operation.start_time", DateTime.UtcNow.ToString("O"));
-
-        if (!string.IsNullOrWhiteSpace(commandText))
-        {
-            activity.SetTag("db.statement", commandText.Length > 1000 ? commandText[..1000] + "..." : commandText);
-        }
-
-        return activity;
-    }
-
-    private async Task<IDbConnection> CreateConnectionWithTimeout(string operationName)
-    {
-        using CancellationTokenSource timeoutCts = new(TimeSpan.FromSeconds(30));
-
-        try
-        {
-            return await _connectionFactory.CreateOpenConnectionAsync(timeoutCts.Token);
-        }
-        catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested)
-        {
-            throw new TimeoutException($"Connection creation timed out for operation {operationName}");
-        }
-    }
-
-    private void ValidateConnection(IDbConnection connection, string operationName)
-    {
-        if (connection.State != ConnectionState.Open)
-        {
-            throw new InvalidOperationException(
-                $"Connection not open for operation {operationName}. State: {connection.State}");
-        }
-    }
-
-    private void ConfigureConnectionTimeout(IDbConnection connection, string operationName)
-    {
-        if (connection is not DbConnection dbConnection) return;
-
-        TimeSpan timeout = GetTimeoutForOperation(operationName);
-        if (dbConnection.ConnectionTimeout != (int)timeout.TotalSeconds)
-        {
-            Log.Debug("Using timeout {Timeout}s for operation {OperationName}", timeout.TotalSeconds, operationName);
-        }
-    }
-
-    private TimeSpan GetTimeoutForOperation(string operationName)
-    {
-        foreach (KeyValuePair<string, TimeSpan> kvp in _operationTimeouts.Where(kvp =>
-                     operationName.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase)))
-        {
-            return kvp.Value;
-        }
-
-        return TimeSpan.FromSeconds(15);
-    }
-
-    protected override void PostStop()
-    {
-        Dispose();
-        base.PostStop();
-    }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-
-        _activitySource.Dispose();
-        _disposed = true;
-
-        Log.Debug("Disposed persistor actor {ActorType}", GetType().Name);
     }
 }

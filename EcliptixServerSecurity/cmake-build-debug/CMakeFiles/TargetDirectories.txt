@@ -1,0 +1,7 @@
+/Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/cmake-build-debug/CMakeFiles/ecliptix_server_security.dir
+/Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/cmake-build-debug/CMakeFiles/edit_cache.dir
+/Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/cmake-build-debug/CMakeFiles/list_install_components.dir
+/Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/cmake-build-debug/CMakeFiles/install.dir
+/Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/cmake-build-debug/CMakeFiles/install/local.dir
+/Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/cmake-build-debug/CMakeFiles/install/strip.dir

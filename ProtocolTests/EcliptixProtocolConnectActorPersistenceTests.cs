@@ -3,11 +3,11 @@ using Akka.Actor;
 using Akka.Persistence;
 using Akka.Persistence.TestKit;
 using Akka.TestKit;
-using Ecliptix.Core.Protocol;
 using Ecliptix.Core.Domain.Protocol;
+using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Core.Domain.Events;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.ProtocolState;
 using Ecliptix.Protobuf.Protocol;
@@ -89,7 +89,7 @@ public class EcliptixProtocolConnectActorPersistenceTests(ITestOutputHelper outp
         client.CompleteDataCenterPubKeyExchange(serverReply.PubKeyExchange).IsOk.Should().BeTrue();
 
         string firstMessage = "hello from before the crash";
-        CipherPayload firstCipher = client.ProduceOutboundMessage(Encoding.UTF8.GetBytes(firstMessage)).Unwrap();
+        SecureEnvelope firstCipher = client.ProduceOutboundMessage(Encoding.UTF8.GetBytes(firstMessage)).Unwrap();
 
         Watch(actorRef);
         Sys.Stop(actorRef);
@@ -98,7 +98,7 @@ public class EcliptixProtocolConnectActorPersistenceTests(ITestOutputHelper outp
         IActorRef? recoveredActorRef = Sys.ActorOf(EcliptixProtocolConnectActor.Build(sessionId), persistenceId);
 
         recoveredActorRef.Tell(
-            new DecryptCipherPayloadActorEvent(PubKeyExchangeType.DataCenterEphemeralConnect, firstCipher), TestActor);
+            new DecryptSecureEnvelopeActorEvent(PubKeyExchangeType.DataCenterEphemeralConnect, firstCipher), TestActor);
 
         Result<byte[], EcliptixProtocolFailure> decryptResult = ExpectMsg<Result<byte[], EcliptixProtocolFailure>>();
         decryptResult.IsOk.Should().BeTrue("recovered actor should decrypt message successfully");

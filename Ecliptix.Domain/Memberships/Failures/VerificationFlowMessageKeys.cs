@@ -16,7 +16,7 @@ public static class VerificationFlowMessageKeys
 
     public const string AuthenticationCodeIs = "authentication_code_is";
 
-    public const string PhoneNumberInvalid = "phone_invalid";
+    public const string MobileNumberInvalid = "mobile_invalid";
     public const string SmsSendFailed = "sms_send_failed";
 
     public const string InvalidOpaque = "invalid_opaque";
@@ -29,11 +29,12 @@ public static class VerificationFlowMessageKeys
     public const string TooManySigninAttempts = "signin_too_many_attempts";
 
     public const string ActivityStatusInvalid = "activity_status_invalid";
-    public const string PhoneNumberCannotBeEmpty = "phone_cannot_be_empty";
-    public const string PhoneNotFound = "phone_number_not_found";
+    public const string MobileNumberCannotBeEmpty = "mobile_cannot_be_empty";
+    public const string MobileNotFound = "mobile_number_not_found";
     public const string Validation = "validation_failed";
 
     public const string InvalidCredentials = "invalid_credentials";
+    public const string PasswordRecoveryOtpRequired = "password_recovery_otp_required";
     public const string InactiveMembership = "inactive_membership";
     public const string InvalidSecureKey = "invalid_secure_key";
     public const string MembershipAlreadyExists = "membership_already_exists";
@@ -44,13 +45,13 @@ public static class VerificationFlowMessageKeys
     public const string Created = "created";
     public const string Generic = "generic_error";
 
-    public const string PhoneNumberEmpty = "phone_number_empty";
+    public const string MobileNumberEmpty = "mobile_number_empty";
     public const string InvalidDefaultRegion = "invalid_default_region";
-    public const string PhoneParsingInvalidCountryCode = "phone_parsing_invalid_country_code";
-    public const string PhoneParsingInvalidNumber = "phone_parsing_invalid_number";
-    public const string PhoneParsingTooShort = "phone_parsing_too_short";
-    public const string PhoneParsingTooLong = "phone_parsing_too_long";
-    public const string PhoneParsingGenericError = "phone_parsing_generic_error";
-    public const string PhoneParsingPossibleButLocalOnly = "phone_parsing_possible_but_local_only";
-    public const string PhoneValidationUnexpectedError = "phone_validation_unexpected_error";
+    public const string MobileParsingInvalidCountryCode = "mobile_parsing_invalid_country_code";
+    public const string MobileParsingInvalidNumber = "mobile_parsing_invalid_number";
+    public const string MobileParsingTooShort = "mobile_parsing_too_short";
+    public const string MobileParsingTooLong = "mobile_parsing_too_long";
+    public const string MobileParsingGenericError = "mobile_parsing_generic_error";
+    public const string MobileParsingPossibleButLocalOnly = "mobile_parsing_possible_but_local_only";
+    public const string MobileValidationUnexpectedError = "mobile_validation_unexpected_error";
 }

@@ -8,7 +8,7 @@ namespace Ecliptix.Domain.Memberships.Persistors;
 public static class PersistorSupervisorStrategy
 {
     private static readonly Dictionary<Type, int> RestartCounts = new();
-    private static readonly Dictionary<Type, DateTime> LastRestartTimes = new();
+    private static readonly Dictionary<Type, DateTimeOffset> LastRestartTimes = new();
     private static readonly TimeSpan RestartCooldown = TimeSpan.FromMinutes(5);
     private const int MaxRestartsPerCooldown = 3;
 
@@ -20,10 +20,6 @@ public static class PersistorSupervisorStrategy
             localOnlyDecider: exception =>
             {
                 Type actorType = exception.GetType();
-                string actorTypeName = actorType.Name;
-
-                Log.Debug("Supervisor evaluating exception {ExceptionType} for persistor actor: {Message}", 
-                    actorTypeName, exception.Message);
 
                 return exception switch
                 {
@@ -42,7 +38,7 @@ public static class PersistorSupervisorStrategy
                     SqlException { Number: -2 } => HandleTransientFailure(actorType, "Command timeout", Directive.Restart),
                     TimeoutException => HandleTransientFailure(actorType, "Operation timeout", Directive.Restart),
 
-                    SqlException { Number: 40501 or 40613 or 49918 or 49919 or 49920 } => 
+                    SqlException { Number: 40501 or 40613 or 49918 or 49919 or 49920 } =>
                         HandleTransientFailure(actorType, "Transient Azure SQL error", Directive.Restart),
 
                     SqlException { Number: 1205 } => HandleTransientFailure(actorType, "Deadlock detected", Directive.Restart),
@@ -59,9 +55,9 @@ public static class PersistorSupervisorStrategy
                     ArgumentException => HandleApplicationError("Invalid argument", Directive.Stop),
                     NullReferenceException => HandleApplicationError("Null reference", Directive.Stop),
 
-                    InvalidOperationException when exception.Message.Contains("configuration") => 
+                    InvalidOperationException when exception.Message.Contains("configuration") =>
                         HandlePermanentFailure("Configuration error", Directive.Stop),
-                    InvalidOperationException when exception.Message.Contains("service") => 
+                    InvalidOperationException when exception.Message.Contains("service") =>
                         HandlePermanentFailure("Service dependency error", Directive.Stop),
 
                     OutOfMemoryException => HandleSystemError("Out of memory", Directive.Escalate),
@@ -74,7 +70,6 @@ public static class PersistorSupervisorStrategy
 
     private static Directive HandlePermanentFailure(string reason, Directive directive)
     {
-        Log.Error("Permanent failure in persistor actor: {Reason}. Directive: {Directive}", reason, directive);
         return directive;
     }
 
@@ -82,13 +77,8 @@ public static class PersistorSupervisorStrategy
     {
         if (ShouldThrottleRestart(actorType))
         {
-            Log.Warning("Throttling restart for persistor actor {ActorType} due to frequent failures. Stopping instead. Reason: {Reason}", 
-                actorType.Name, reason);
             return Directive.Stop;
         }
-
-        Log.Warning("Transient failure in persistor actor {ActorType}: {Reason}. Directive: {Directive}", 
-            actorType.Name, reason, directive);
 
         RecordRestart(actorType);
         return directive;
@@ -96,19 +86,18 @@ public static class PersistorSupervisorStrategy
 
     private static Directive HandleApplicationError(string reason, Directive directive)
     {
-        Log.Error("Application error in persistor actor: {Reason}. Directive: {Directive}", reason, directive);
         return directive;
     }
 
     private static Directive HandleSystemError(string reason, Directive directive)
     {
-        Log.Fatal("System error in persistor actor: {Reason}. Directive: {Directive}", reason, directive);
+
         return directive;
     }
 
     private static Directive HandleNormalCancellation()
     {
-        Log.Debug("Operation cancelled in persistor actor - resuming");
+
         return Directive.Resume;
     }
 
@@ -116,23 +105,22 @@ public static class PersistorSupervisorStrategy
     {
         if (ShouldThrottleRestart(actorType))
         {
-            Log.Error(exception, "Stopping persistor actor {ActorType} due to frequent failures", actorType.Name);
+
             return Directive.Stop;
         }
 
-        Log.Error(exception, "Generic exception in persistor actor {ActorType} - attempting restart", actorType.Name);
         RecordRestart(actorType);
         return Directive.Restart;
     }
 
     private static bool ShouldThrottleRestart(Type actorType)
     {
-        DateTime now = DateTime.UtcNow;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
 
         CleanupOldRestartRecords(now);
 
-        if (!RestartCounts.TryGetValue(actorType, out int count) || 
-            !LastRestartTimes.TryGetValue(actorType, out DateTime lastRestart))
+        if (!RestartCounts.TryGetValue(actorType, out int count) ||
+            !LastRestartTimes.TryGetValue(actorType, out DateTimeOffset lastRestart))
         {
             return false;
         }
@@ -152,14 +140,14 @@ public static class PersistorSupervisorStrategy
 
     private static void RecordRestart(Type actorType)
     {
-        DateTime now = DateTime.UtcNow;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
 
         RestartCounts.TryGetValue(actorType, out int currentCount);
         RestartCounts[actorType] = currentCount + 1;
         LastRestartTimes[actorType] = now;
     }
 
-    private static void CleanupOldRestartRecords(DateTime now)
+    private static void CleanupOldRestartRecords(DateTimeOffset now)
     {
         List<Type> keysToRemove = [];
         keysToRemove.AddRange(from kvp in LastRestartTimes.ToList() where now - kvp.Value > RestartCooldown select kvp.Key);

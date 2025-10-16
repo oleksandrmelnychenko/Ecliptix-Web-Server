@@ -8,14 +8,6 @@ public static class NetworkConstants
         public const int Http = 8080;
     }
 
-    public static class Timeouts
-    {
-        public const int RequestHeadersTimeoutSeconds = 30;
-        public const int KeepAliveTimeoutMinutes = 2;
-        public const int ShutdownGracefulTimeoutMinutes = 2;
-        public const int DrainActiveRequestsSeconds = 5;
-    }
-
     public static class Limits
     {
         public const int MaxConcurrentConnections = 1000;

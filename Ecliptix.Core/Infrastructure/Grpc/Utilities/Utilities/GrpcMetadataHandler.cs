@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Protocol;
 using Grpc.Core;
 using Ecliptix.Core.Infrastructure.Grpc.Constants;
@@ -63,7 +63,7 @@ public static class GrpcMetadataHandler
     {
         Result<string, MetaDataSystemFailure> appInstanceIdResult = requestHeaders.GetValueAsResult(ApplicationInstanceIdKey);
         if (appInstanceIdResult.IsErr) return Result<uint, MetaDataSystemFailure>.Err(appInstanceIdResult.UnwrapErr());
-        
+
         if (!Guid.TryParse(appInstanceIdResult.Unwrap(), out Guid appInstanceId))
         {
             return Result<uint, MetaDataSystemFailure>.Err(
@@ -137,37 +137,27 @@ public static class GrpcMetadataHandler
         return requestHeaders.GetValueAsResult(LocaleKey).Unwrap();
     }
 
-    public static string GetAppDeviceId(Metadata requestHeaders)
-    {
-        return requestHeaders.GetValueAsResult(AppDeviceId).Unwrap();
-    }
-
     public static string GetConnectionContextId(Metadata requestHeaders)
     {
         return requestHeaders.GetValueAsResult(ConnectionContextId).Unwrap();
     }
 
-    public static Result<string, MetaDataSystemFailure> GetOperationContextId(Metadata requestHeaders)
+    public static string? GetLocalIpAddress(Metadata requestHeaders)
     {
-        return requestHeaders.GetValueAsResult(OperationContextId);
+        Result<string, MetaDataSystemFailure> result = requestHeaders.GetValueAsResult(LocalIpAddressKey);
+        return result.IsOk ? result.Unwrap() : null;
     }
 
-    public static Result<ExtractedMetadata, MetaDataSystemFailure> ExtractRequiredMetaData(ServerCallContext context)
+    public static string? GetPublicIpAddress(Metadata requestHeaders)
     {
-        Result<string, MetaDataSystemFailure> requestIdResult = context.RequestHeaders.GetValueAsResult(RequestIdKey);
-        Result<string, MetaDataSystemFailure> requestDateResult = context.RequestHeaders.GetValueAsResult(DateTimeKey);
-        Result<string, MetaDataSystemFailure> localIpAddressResult =
-            context.RequestHeaders.GetValueAsResult(LocalIpAddressKey);
-        Result<string, MetaDataSystemFailure> publicIpAddressResult =
-            context.RequestHeaders.GetValueAsResult(PublicIpAddressKey);
+        Result<string, MetaDataSystemFailure> result = requestHeaders.GetValueAsResult(PublicIpAddressKey);
+        return result.IsOk ? result.Unwrap() : null;
+    }
 
-        ExtractedMetadata metadata = new(
-            requestIdResult.IsOk ? requestIdResult.Unwrap() : null,
-            requestDateResult.IsOk ? requestDateResult.Unwrap() : null,
-            localIpAddressResult.IsOk ? localIpAddressResult.Unwrap() : null,
-            publicIpAddressResult.IsOk ? publicIpAddressResult.Unwrap() : null);
-
-        return Result<ExtractedMetadata, MetaDataSystemFailure>.Ok(metadata);
+    public static string? GetPlatform(Metadata requestHeaders)
+    {
+        Result<string, MetaDataSystemFailure> result = requestHeaders.GetValueAsResult(MetadataConstants.Keys.Platform);
+        return result.IsOk ? result.Unwrap() : null;
     }
 
     public record ExtractedMetadata(

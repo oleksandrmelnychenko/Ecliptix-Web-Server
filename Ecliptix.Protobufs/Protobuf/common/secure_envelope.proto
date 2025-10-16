@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package ecliptix.proto.common;
+option csharp_namespace = "Ecliptix.Protobuf.Common";
+
+import "google/protobuf/timestamp.proto";
+
+message SecureEnvelope {
+  bytes meta_data = 1;                      // Encrypted EnvelopeMetadata (was plaintext)
+  bytes encrypted_payload = 2;
+  bytes result_code = 3;
+  optional bytes authentication_tag = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  optional bytes error_details = 6;
+  bytes header_nonce = 7;                   // Nonce for header decryption (12 bytes)
+  optional bytes dh_public_key = 8;         // DH public key for ratchet (not encrypted, receiver needs this before decrypting metadata)
+}
+
+message EnvelopeMetadata{
+  string envelope_id = 1;
+  bytes channel_key_id = 2;
+  bytes nonce = 3;
+  uint32 ratchet_index = 4;
+  EnvelopeType envelope_type = 5;
+  optional string correlation_id = 6;       // Note: dh_public_key moved to SecureEnvelope
+}
+
+message EnvelopeError {
+  string error_code = 1;                    // Machine-readable error code
+  string error_message = 2;                 // Human-readable message
+  optional uint32 retry_after_seconds = 3; 
+  google.protobuf.Timestamp occurred_at = 4; 
+}
+
+enum EnvelopeResultCode {
+  SUCCESS = 0;
+
+  BAD_REQUEST = 1;
+  UNAUTHORIZED = 2;
+  FORBIDDEN = 3;
+  NOT_FOUND = 4;
+  METHOD_NOT_ALLOWED = 5;
+  CONFLICT = 6;
+  RATE_LIMITED = 7;
+  PAYLOAD_TOO_LARGE = 8;
+
+  INTERNAL_ERROR = 10;
+  SERVICE_UNAVAILABLE = 11;
+  GATEWAY_TIMEOUT = 12;
+  INSUFFICIENT_STORAGE = 13;
+
+  CRYPTO_ERROR = 20;
+  INVALID_SIGNATURE = 21;
+  EXPIRED_KEY = 22;
+  RATCHET_ERROR = 23;
+  DECRYPTION_FAILED = 24;
+
+  NETWORK_ERROR = 30;
+  CONNECTION_LOST = 31;
+  TIMEOUT = 32;
+}
+
+enum EnvelopeType {
+  REQUEST = 0;
+  RESPONSE = 1;
+  NOTIFICATION = 2;
+  HEARTBEAT = 3;
+  ERROR_RESPONSE = 4;
+}

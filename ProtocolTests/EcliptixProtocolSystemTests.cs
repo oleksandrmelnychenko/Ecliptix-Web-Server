@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using Ecliptix.Core.Domain.Protocol;
-using Ecliptix.Core.Protocol;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Protocol;
 using Google.Protobuf;
 using PublicKeyBundle = Ecliptix.Core.Domain.Protocol.PublicKeyBundle;
@@ -32,13 +31,13 @@ public class EcliptixProtocolSystemTests : IDisposable
     public EcliptixProtocolSystemTests(TestContext testContext)
     {
         TestContext = testContext;
-        _aliceKeys =  EcliptixSystemIdentityKeys.Create(5).Unwrap();
-        _bobKeys =EcliptixSystemIdentityKeys.Create(5).Unwrap();
+        _aliceKeys = EcliptixSystemIdentityKeys.Create(5).Unwrap();
+        _bobKeys = EcliptixSystemIdentityKeys.Create(5).Unwrap();
         _aliceEcliptixProtocolSystem = new EcliptixProtocolSystem(_aliceKeys);
         _bobEcliptixProtocolSystem = new EcliptixProtocolSystem(_bobKeys);
     }
 
-    public TestContext TestContext { get; set; } 
+    public TestContext TestContext { get; set; }
 
     private static byte[] CorruptBytes(ReadOnlySpan<byte> input)
     {
@@ -163,7 +162,6 @@ public class EcliptixProtocolSystemTests : IDisposable
             Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> bobDeriveResult = _bobKeys.CalculateSharedSecretAsRecipient(
                 receivedAliceBundleProto.IdentityX25519PublicKey.ToByteArray(),
                 receivedAliceBundleProto.EphemeralX25519PublicKey.ToByteArray(),
-                opkIdUsedByAlice,
                 Constants.X3dhInfo
             );
             Assert.IsTrue(bobDeriveResult.IsOk,

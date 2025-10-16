@@ -1,0 +1,34 @@
+syntax = "proto3";
+import "common/secure_envelope.proto";
+import "protocol/key_exchange.proto";
+
+package ecliptix.proto.device;
+option csharp_namespace = "Ecliptix.Protobuf.Device";
+
+service DeviceService {
+  rpc RegisterDevice(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc EstablishSecureChannel(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc RestoreSecureChannel(RestoreChannelRequest) returns (RestoreChannelResponse);
+  rpc AuthenticatedEstablishSecureChannel(AuthenticatedEstablishRequest) returns (ecliptix.proto.common.SecureEnvelope);
+}
+
+message RestoreChannelRequest {
+}
+
+message RestoreChannelResponse {
+  enum Status {
+    SESSION_RESTORED = 0;
+    SESSION_NOT_FOUND = 1;
+    SESSION_EXPIRED = 2;
+  }
+
+  Status status = 1;
+  uint32 receiving_chain_length = 2;
+  uint32 sending_chain_length = 3;
+}
+
+message AuthenticatedEstablishRequest {
+  bytes membership_unique_id = 1;
+  ecliptix.proto.protocol.PubKeyExchange client_pub_key_exchange = 2;
+}
+  

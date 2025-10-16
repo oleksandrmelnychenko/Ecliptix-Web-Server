@@ -1,108 +1,107 @@
-using System.Data;
 using System.Data.Common;
 using Akka.Actor;
-using Dapper;
 using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Failures;
-using Ecliptix.Domain.DbConnectionFactory;
-using Ecliptix.Domain.Memberships.OPAQUE;
 using Ecliptix.Domain.Memberships.Persistors;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Device;
 using Google.Protobuf;
-using Serilog;
+using Microsoft.EntityFrameworkCore;
+using Ecliptix.Domain.Schema;
+using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.AppDevices.Persistors;
 
-public class AppDeviceRegisterResult
-{
-    public Guid UniqueId { get; set; }
-    public int Status { get; set; }
-}
-
 public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
 {
-    private readonly IOpaqueProtocolService _opaqueProtocolService;
-
-    private const string RegisterAppDeviceSp = "dbo.RegisterAppDeviceIfNotExists";
-
-    public AppDevicePersistorActor(IDbConnectionFactory connectionFactory, IOpaqueProtocolService opaqueProtocolService)
-        : base(connectionFactory)
+    public AppDevicePersistorActor(IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
+        : base(dbContextFactory)
     {
-        _opaqueProtocolService = opaqueProtocolService;
         Become(Ready);
     }
 
     private void Ready()
     {
         Receive<RegisterAppDeviceIfNotExistActorEvent>(args =>
-            ExecuteWithConnection(
-                    conn => RegisterAppDeviceAsync(conn, args.AppDevice, _opaqueProtocolService.GetPublicKey()),
+            ExecuteWithContext(
+                    (ctx, ct) => RegisterAppDeviceAsync(ctx, args.AppDevice, ct),
                     "RegisterAppDevice",
-                    RegisterAppDeviceSp)
+                    args.CancellationToken)
                 .PipeTo(Sender));
     }
 
     private static async Task<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>> RegisterAppDeviceAsync(
-        IDbConnection connection, AppDevice appDevice, byte[] opaqueProtocolPublicKey)
+        EcliptixSchemaContext ctx, AppDevice appDevice, CancellationToken cancellationToken)
     {
-        DynamicParameters parameters = new DynamicParameters();
-        parameters.Add("@AppInstanceId", Helpers.FromByteStringToGuid(appDevice.AppInstanceId));
-        parameters.Add("@DeviceId", Helpers.FromByteStringToGuid(appDevice.DeviceId));
-        parameters.Add("@DeviceType", (int)appDevice.DeviceType);
-
-        AppDeviceRegisterResult? result = await connection.QuerySingleOrDefaultAsync<AppDeviceRegisterResult>(
-            RegisterAppDeviceSp,
-            parameters,
-            commandType: CommandType.StoredProcedure);
-
-        if (result == null)
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
+        try
         {
-            Log.Error("Stored procedure {StoredProcedure} returned null result for AppInstanceId {AppInstanceId}, DeviceId {DeviceId}",
-                RegisterAppDeviceSp, parameters.Get<Guid>("@AppInstanceId"), parameters.Get<Guid>("@DeviceId"));
+            Guid appInstanceId = Helpers.FromByteStringToGuid(appDevice.AppInstanceId);
+            Guid deviceId = Helpers.FromByteStringToGuid(appDevice.DeviceId);
+            int deviceType = (int)appDevice.DeviceType;
+
+            if (appInstanceId == Guid.Empty || deviceId == Guid.Empty)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
+                {
+                    Status = AppDeviceRegisteredStateReply.Types.Status.FailureInvalidRequest,
+                    UniqueId = ByteString.Empty,
+                    ServerPublicKey = ByteString.Empty
+                });
+            }
+
+            DeviceEntity? existingDevice = await DeviceQueries.GetByAppInstanceId(ctx, appInstanceId, cancellationToken);
+
+            if (existingDevice != null)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
+                {
+                    Status = AppDeviceRegisteredStateReply.Types.Status.SuccessAlreadyExists,
+                    UniqueId = Helpers.GuidToByteString(existingDevice.UniqueId),
+                    ServerPublicKey = ByteString.Empty
+                });
+            }
+
+            DeviceEntity newDevice = new()
+            {
+                AppInstanceId = appInstanceId,
+                DeviceType = deviceType
+            };
+
+            ctx.Devices.Add(newDevice);
+            await ctx.SaveChangesAsync(cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+            return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
+            {
+                Status = AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration,
+                UniqueId = Helpers.GuidToByteString(newDevice.UniqueId),
+                ServerPublicKey = ByteString.Empty
+            });
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
             return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Err(
-                AppDeviceFailure.InfrastructureFailure("Database operation returned no result"));
+                AppDeviceFailure.InfrastructureFailure($"Device registration failed: {ex.Message}"));
         }
-
-        AppDeviceRegisteredStateReply.Types.Status currentStatus = result.Status switch
-        {
-            1 => AppDeviceRegisteredStateReply.Types.Status.SuccessAlreadyExists,
-            2 => AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration,
-            0 => AppDeviceRegisteredStateReply.Types.Status.FailureInvalidRequest,
-            _ => LogAndReturnInternalError(result.Status)
-        };
-
-        static AppDeviceRegisteredStateReply.Types.Status LogAndReturnInternalError(int status)
-        {
-            Log.Warning("Unexpected status code {StatusCode} returned from {StoredProcedure}", status, RegisterAppDeviceSp);
-            return AppDeviceRegisteredStateReply.Types.Status.FailureInternalError;
-        }
-
-        return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
-        {
-            Status = currentStatus,
-            UniqueId = Helpers.GuidToByteString(result.UniqueId),
-            ServerPublicKey = ByteString.CopyFrom(opaqueProtocolPublicKey)
-        });
     }
 
     protected override AppDeviceFailure MapDbException(DbException ex)
     {
-        Log.Error(ex, "Database exception in {ActorType}: {ExceptionType} - {Message}", 
-            GetType().Name, ex.GetType().Name, ex.Message);
         return AppDeviceFailure.InfrastructureFailure("Database operation failed", ex);
     }
 
     protected override AppDeviceFailure CreateTimeoutFailure(TimeoutException ex)
     {
-        Log.Error(ex, "Timeout exception in {ActorType}: Operation timed out", GetType().Name);
         return AppDeviceFailure.InfrastructureFailure(AppDeviceMessageKeys.DataAccess, ex);
     }
 
     protected override AppDeviceFailure CreateGenericFailure(Exception ex)
     {
-        Log.Error(ex, "Generic exception in {ActorType}: {ExceptionType} - {Message}", 
-            GetType().Name, ex.GetType().Name, ex.Message);
         return AppDeviceFailure.InternalError("Unexpected error occurred", ex);
     }
 
@@ -111,8 +110,8 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
         return PersistorSupervisorStrategy.CreateStrategy();
     }
 
-    public static Props Build(IDbConnectionFactory connectionFactory, IOpaqueProtocolService opaqueProtocolService)
+    public static Props Build(IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
     {
-        return Props.Create(() => new AppDevicePersistorActor(connectionFactory, opaqueProtocolService));
+        return Props.Create(() => new AppDevicePersistorActor(dbContextFactory));
     }
 }

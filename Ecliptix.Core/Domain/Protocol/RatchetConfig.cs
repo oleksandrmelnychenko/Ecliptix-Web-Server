@@ -1,4 +1,4 @@
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Domain.Protocol;
 
@@ -6,52 +6,31 @@ public sealed class RatchetConfig
 {
     public static readonly RatchetConfig Default = new();
 
-    public static readonly RatchetConfig Conservative = new()
+    private static uint DhRatchetEveryNMessages => 10;
+
+    private static bool EnablePerMessageRatchet => false;
+
+    private static bool RatchetOnNewDhKey => true;
+    
+    private static uint MaxMessagesWithoutRatchet => Constants.MaxMessagesWithoutRatchetDefault;
+
+    private readonly TimeSpan _maxChainAge  = TimeSpan.FromHours(1);
+
+    private bool ShouldRatchet(uint messageIndex, DateTime lastRatchetTime, bool receivedNewDhKey, DateTime currentTime)
     {
-        DhRatchetEveryNMessages = 50,
-        EnablePerMessageRatchet = false
-    };
-
-    public static readonly RatchetConfig Aggressive = new()
-    {
-        DhRatchetEveryNMessages = 5,
-        EnablePerMessageRatchet = false  
-    };
-
-    public static readonly RatchetConfig PerMessage = new()
-    {
-        DhRatchetEveryNMessages = 1,
-        EnablePerMessageRatchet = true
-    };
-
-    public uint DhRatchetEveryNMessages { get; init; } = 10;
-
-    public bool EnablePerMessageRatchet { get; init; } = false;
-
-    public bool RatchetOnNewDhKey { get; init; } = true;
-
-    public TimeSpan MaxChainAge { get; init; } = TimeSpan.FromHours(1);
-
-    public uint MaxMessagesWithoutRatchet { get; init; } = Constants.MaxMessagesWithoutRatchetDefault;
-
-    public bool ShouldRatchet(uint messageIndex, DateTime lastRatchetTime, bool receivedNewDhKey, DateTime currentTime)
-    {
-        if (EnablePerMessageRatchet) 
+        if (EnablePerMessageRatchet)
             return true;
 
-        if (RatchetOnNewDhKey && receivedNewDhKey) 
+        if (RatchetOnNewDhKey && receivedNewDhKey)
             return true;
 
-        if (messageIndex > 0 && messageIndex % DhRatchetEveryNMessages == 0) 
+        if (messageIndex > 0 && messageIndex % DhRatchetEveryNMessages == 0)
             return true;
 
-        if (currentTime - lastRatchetTime > MaxChainAge) 
+        if (currentTime - lastRatchetTime > _maxChainAge)
             return true;
 
-        if (messageIndex >= MaxMessagesWithoutRatchet) 
-            return true;
-
-        return false;
+        return messageIndex >= MaxMessagesWithoutRatchet;
     }
 
     public bool ShouldRatchet(uint messageIndex, DateTime lastRatchetTime, bool receivedNewDhKey)

@@ -1,7 +1,10 @@
+using System.Threading;
+
 namespace Ecliptix.Domain.Memberships.ActorEvents;
 
 public record VerifyFlowActorEvent(
     uint ConnectId,
     string OneTimePassword,
-    string CultureName
-);
+    string CultureName,
+    CancellationToken CancellationToken = default
+) : ICancellableActorEvent;

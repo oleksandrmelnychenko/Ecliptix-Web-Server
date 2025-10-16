@@ -32,18 +32,20 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["data_access_failed"] = "Data access issue; try again later.",
                 ["security_rate_limit_exceeded"] = "Too many verification attempts. Please try again in 30-60 minutes.",
                 ["global_rate_limit_exceeded"] = "Too many verification attempts. Please try again later.",
+                ["device_rate_limit_exceeded"] = "Too many verification attempts from this device. Please try again later.",
+                ["password_recovery_rate_limit_exceeded"] = "Too many password recovery attempts. Please try again later.",
                 ["security_suspicious_activity"] = "Unusual activity detected; access restricted.",
                 ["membership_too_many_attempts"] = "Too many membership attempts; wait {0} min or contact support.",
                 ["signin_too_many_attempts"] = "Too many sign-in attempts; wait {0} min or contact support.",
                 ["activity_status_invalid"] = "Invalid activity status.",
                 ["app_device_created_but_invalid_id"] = "Device registered but ID issue; contact support.",
                 ["app_device_invalid_id"] = "Invalid app device ID.",
-                ["associated"] = "Phone number associated successfully.",
-                ["phone_cannot_be_empty"] = "Phone number cannot be empty.",
-                ["created_and_associated"] = "Phone number created and associated.",
-                ["exists"] = "Phone number already exists.",
-                ["phone_number_not_found"] = "Phone number not found for login.",
-                ["phone_not_found"] = "Phone number not found.",
+                ["associated"] = "Mobile number associated successfully.",
+                ["phone_cannot_be_empty"] = "Mobile number cannot be empty.",
+                ["created_and_associated"] = "Mobile number created and associated.",
+                ["exists"] = "Mobile number already exists.",
+                ["phone_number_not_found"] = "Mobile number not found for login.",
+                ["phone_not_found"] = "Mobile number not found.",
                 ["validation_failed"] = "Form errors; check highlighted fields.",
                 ["invalid_credentials"] = "Invalid username or password.",
                 ["password_complexity_requirements"] =
@@ -82,9 +84,9 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["generic_success"] = "Operation successful.",
                 ["generic_unexpected_outcome"] = "Unexpected outcome occurred; try again.",
                 ["phone_parsing_invalid_country_code"] = "Invalid country code in phone number.",
-                ["phone_parsing_too_short"] = "Phone number is too short.",
-                ["phone_parsing_too_long"] = "Phone number is too long.",
-                ["phone_parsing_invalid_number"] = "Phone number format is invalid.",
+                ["phone_parsing_too_short"] = "Mobile number is too short.",
+                ["phone_parsing_too_long"] = "Mobile number is too long.",
+                ["phone_parsing_invalid_number"] = "Mobile number format is invalid.",
                 ["phone_parsing_possible_but_local_only"] =
                     "Number might be valid locally; add country code or region.",
                 ["phone_parsing_generic_error"] = "Error parsing phone number.",
@@ -92,7 +94,11 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["authentication_code_is"] = "Your verification code is",
                 ["resend_cooldown_active"] = "Please wait a moment before requesting a new code",
                 ["max_otp_attempts_reached"] =
-                    "You've reached the maximum number of OTP requests. Please try again later"
+                    "You've reached the maximum number of OTP requests. Please try again later",
+                ["mobile_number_not_found"] = "Mobile number not found.",
+                ["device_not_found"] = "Device not found.",
+                ["flow_not_found_or_invalid"] = "Verification session not found or expired.",
+                ["invalid_mobile_number"] = "Invalid mobile number format.",
             }.ToFrozenDictionary(),
 
             ["uk-UA"] = new Dictionary<string, string>
@@ -117,6 +123,8 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["data_access_failed"] = "Проблема з доступом до даних; спробуйте пізніше.",
                 ["security_rate_limit_exceeded"] = "Забагато спроб верифікації. Спробуйте знову через 30-60 хвилин.",
                 ["global_rate_limit_exceeded"] = "Забагато спроб верифікації. Будь ласка, спробуйте пізніше.",
+                ["device_rate_limit_exceeded"] = "Забагато спроб верифікації з цього пристрою. Будь ласка, спробуйте пізніше.",
+                ["password_recovery_rate_limit_exceeded"] = "Забагато спроб відновлення пароля. Будь ласка, спробуйте пізніше.",
                 ["security_suspicious_activity"] = "Виявлено незвичайну активність; доступ обмежено.",
                 ["membership_too_many_attempts"] =
                     "Забагато спроб членства; зачекайте {0} хв або зв'яжіться з підтримкою.",
@@ -180,7 +188,11 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["authentication_code_is"] = "Ваш код перевірки",
                 ["resend_cooldown_active"] = "Будь ласка, зачекайте хвилинку перед запитом нового коду",
                 ["max_otp_attempts_reached"] =
-                    "Ви досягли максимальної кількості запитів OTP. Будь ласка, спробуйте пізніше"
+                    "Ви досягли максимальної кількості запитів OTP. Будь ласка, спробуйте пізніше",
+                ["mobile_number_not_found"] = "Номер телефону не знайдено.",
+                ["device_not_found"] = "Пристрій не знайдено.",
+                ["flow_not_found_or_invalid"] = "Сесію верифікації не знайдено або вона закінчилася.",
+                ["invalid_mobile_number"] = "Неправильний формат номера телефону.",
             }.ToFrozenDictionary()
         }.ToFrozenDictionary();
 

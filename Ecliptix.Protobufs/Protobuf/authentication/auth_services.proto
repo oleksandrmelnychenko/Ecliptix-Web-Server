@@ -1,0 +1,13 @@
+syntax = "proto3";
+import "common/secure_envelope.proto";
+
+package ecliptix.proto.membership;
+option csharp_namespace = "Ecliptix.Protobuf.Membership";
+
+service AuthVerificationServices {
+  rpc InitiateVerification(ecliptix.proto.common.SecureEnvelope) returns (stream ecliptix.proto.common.SecureEnvelope);
+  rpc VerifyOtp(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc ValidateMobileNumber(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc RecoverySecretKeyMobileVerification(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc CheckMobileNumberAvailability(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+}

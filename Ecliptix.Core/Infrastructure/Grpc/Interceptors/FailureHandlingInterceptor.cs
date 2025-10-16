@@ -1,4 +1,4 @@
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Ecliptix.Core.Infrastructure.Grpc.Constants;
@@ -45,19 +45,9 @@ public class FailureHandlingInterceptor : Interceptor
         switch (exception)
         {
             case GrpcFailureException ex:
-                Log.Warning(
-                    ex,
-                    InterceptorConstants.LogMessages.GrpcDomainFailure,
-                    context.Method,
-                    ex.GrpcStatus.StatusCode,
-                    ex.StructuredLogPayload
-                );
                 return new RpcException(ex.GrpcStatus);
 
             case RpcException ex:
-                Log.Warning(ex,
-                    InterceptorConstants.LogMessages.GrpcPreExistingException,
-                    context.Method, ex.Status.StatusCode);
                 return ex;
 
             default:

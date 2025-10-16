@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package ecliptix.proto.membership;
+option csharp_namespace = "Ecliptix.Protobuf.Membership";
+
+message Membership {
+  bytes unique_identifier = 1;
+
+  enum ActivityStatus {
+    ACTIVE = 0;
+    INACTIVE = 1;
+  }
+
+  enum CreationStatus {
+    OTP_VERIFIED = 0;
+    SECURE_KEY_SET = 1;
+    PASSPHRASE_SET = 2;
+  }
+
+  ActivityStatus status = 3;
+  optional CreationStatus creation_status = 4;
+}
+
+enum LogoutScope {
+  THIS_DEVICE = 0;
+  ALL_DEVICES = 1;
+}
+
+message LogoutRequest {
+  bytes membership_identifier = 1;
+  string logout_reason = 2;
+  int64 timestamp = 3;
+  bytes hmac_proof = 4;
+  LogoutScope scope = 5;
+  optional bytes account_identifier = 6;
+  optional bytes device_identifier = 7;
+}
+
+message LogoutResponse {
+  enum Result {
+    SUCCEEDED = 0;
+    ALREADY_LOGGED_OUT = 1;
+    SESSION_NOT_FOUND = 2;
+    FAILED = 3;
+    INVALID_TIMESTAMP = 4;
+    INVALID_HMAC = 5;
+  }
+  Result result = 1;
+  int64 server_timestamp = 2;
+  bytes revocation_proof = 3;
+}

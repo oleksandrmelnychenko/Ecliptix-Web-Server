@@ -1,0 +1,18 @@
+# Pre-built Docker image to avoid gRPC/protobuf compilation issues
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
+WORKDIR /app
+EXPOSE 8080
+EXPOSE 5051
+
+# Copy pre-built application
+COPY docker-publish/ .
+
+# Create a stub Linux native library since we don't have the actual .so
+RUN echo "Linux native library placeholder" > libecliptix.server.so
+
+# Set environment variables
+ENV ASPNETCORE_ENVIRONMENT=Development
+ENV DOTNET_ENVIRONMENT=Development
+ENV ASPNETCORE_URLS=http://+:8080;http://+:5051
+
+ENTRYPOINT ["dotnet", "Ecliptix.Core.dll"]

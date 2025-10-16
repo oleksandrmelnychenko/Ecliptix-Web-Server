@@ -1,8 +1,7 @@
 using System.Buffers;
-using Ecliptix.Core.Domain.Protocol.Failures;
-using Ecliptix.Core.Protocol;
-using Ecliptix.Domain.Utilities;
+using Ecliptix.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Utilities.Failures.Sodium;
 using Google.Protobuf;
 using Serilog;
 using Serilog.Events;
@@ -12,22 +11,24 @@ namespace Ecliptix.Core.Domain.Protocol;
 public sealed class EcliptixProtocolChainStep : IDisposable
 {
     private const uint DefaultCacheWindowSize = Constants.DefaultCacheWindowSize;
+    internal static readonly byte[] MsgInfo = { 0x01 };
+    internal static readonly byte[] ChainInfo = { 0x02 };
 
     private static readonly Result<Unit, EcliptixProtocolFailure> OkResult =
         Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
 
     private readonly uint _cacheWindow;
-    private readonly ChainStepType _stepType;
+    private readonly RatchetChainStepType _stepType;
     private readonly SodiumSecureMemoryHandle _chainKeyHandle;
     private uint _currentIndex;
     private SodiumSecureMemoryHandle? _dhPrivateKeyHandle;
     private byte[]? _dhPublicKey;
     private bool _disposed;
 
-    private readonly SortedDictionary<uint, EcliptixMessageKey> _messageKeys;
+    private readonly SortedDictionary<uint, RatchetChainKey> _messageKeys;
 
     private EcliptixProtocolChainStep(
-        ChainStepType stepType,
+        RatchetChainStepType stepType,
         SodiumSecureMemoryHandle chainKeyHandle,
         SodiumSecureMemoryHandle? dhPrivateKeyHandle,
         byte[]? dhPublicKey,
@@ -38,7 +39,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         _dhPrivateKeyHandle = dhPrivateKeyHandle;
         _dhPublicKey = dhPublicKey;
         _cacheWindow = cacheWindowSize > 0 ? cacheWindowSize : DefaultCacheWindowSize;
-        _messageKeys = new SortedDictionary<uint, EcliptixMessageKey>();
+        _messageKeys = new SortedDictionary<uint, RatchetChainKey>();
         _currentIndex = 0;
         _disposed = false;
     }
@@ -53,7 +54,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
     internal SodiumSecureMemoryHandle? GetDhPrivateKeyHandle() => _dhPrivateKeyHandle;
 
-    public static Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> FromProtoState(ChainStepType stepType,
+    public static Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> FromProtoState(RatchetChainStepType stepType,
         ChainStepState proto)
     {
         SecureByteStringInterop.SecureCopyWithCleanup(proto.ChainKey, out byte[] chainKeyBytes);
@@ -68,21 +69,10 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             SecureByteStringInterop.SecureCopyWithCleanup(proto.DhPublicKey, out dhPubKeyBytes);
         }
 
-        if (Log.IsEnabled(LogEventLevel.Debug))
-        {
-            Log.Debug("[EcliptixProtocolChainStep] Restoring from Proto State (StepType: {StepType}):", stepType);
-            Log.Debug("  Current Index: {CurrentIndex}", proto.CurrentIndex);
-            Log.Debug("  DH Public Key: {DhPubKey}",
-                dhPubKeyBytes != null ? Convert.ToHexString(dhPubKeyBytes) : "<null>");
-        }
-
         Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> createResult =
             Create(stepType, chainKeyBytes, dhPrivKeyBytes, dhPubKeyBytes);
         if (createResult.IsErr)
         {
-            if (Log.IsEnabled(LogEventLevel.Debug))
-                Log.Debug("[EcliptixProtocolChainStep] Error creating chain step from proto: {Message}",
-                    createResult.UnwrapErr().Message);
             return createResult;
         }
 
@@ -92,22 +82,17 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
         foreach (CachedMessageKey cachedKey in proto.CachedMessageKeys)
         {
-            Result<EcliptixMessageKey, EcliptixProtocolFailure> messageKeyResult =
-                EcliptixMessageKey.New(cachedKey.Index, cachedKey.KeyMaterial.Span);
+            Result<RatchetChainKey, EcliptixProtocolFailure> messageKeyResult =
+                RatchetChainKey.New(cachedKey.Index, cachedKey.KeyMaterial.Span);
 
             if (messageKeyResult.IsOk)
             {
-                EcliptixMessageKey messageKey = messageKeyResult.Unwrap();
+                RatchetChainKey messageKey = messageKeyResult.Unwrap();
                 if (!chainStep._messageKeys.TryAdd(cachedKey.Index, messageKey))
                 {
                     messageKey.Dispose();
                 }
             }
-        }
-
-        if (Log.IsEnabled(LogEventLevel.Debug) && proto.CachedMessageKeys.Count > 0)
-        {
-            Log.Debug("  Restored {CachedKeyCount} cached message keys", proto.CachedMessageKeys.Count);
         }
 
         return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(chainStep);
@@ -122,28 +107,25 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         return OkResult;
     }
 
-    internal Result<EcliptixMessageKey, EcliptixProtocolFailure> GetOrDeriveKeyFor(uint targetIndex)
+    internal Result<RatchetChainKey, EcliptixProtocolFailure> GetOrDeriveKeyFor(uint targetIndex)
     {
         if (_disposed)
-            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
+            return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixProtocolChainStep)));
 
-        if (_messageKeys.TryGetValue(targetIndex, out EcliptixMessageKey? cachedKey))
+        if (_messageKeys.TryGetValue(targetIndex, out RatchetChainKey? cachedKey))
         {
-            if (Log.IsEnabled(LogEventLevel.Debug))
-                Log.Debug("[EcliptixProtocolChainStep] Retrieved cached message key for index {TargetIndex}",
-                    targetIndex);
-            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(cachedKey);
+            return Result<RatchetChainKey, EcliptixProtocolFailure>.Ok(cachedKey);
         }
 
         Result<uint, EcliptixProtocolFailure> currentIndexResult = GetCurrentIndex();
         if (currentIndexResult.IsErr)
-            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(currentIndexResult.UnwrapErr());
+            return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(currentIndexResult.UnwrapErr());
 
         uint currentIndex = currentIndexResult.Unwrap();
 
         if (targetIndex <= currentIndex)
-            return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
+            return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput(
                     $"[{_stepType}] Requested index {targetIndex} is not future (current: {currentIndex}) and not cached."));
 
@@ -162,41 +144,38 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             {
                 try
                 {
-                    Console.WriteLine($"[SERVER] [{_stepType}] Deriving message key for index {idx} from chain key: {Convert.ToHexString(currentChainKey[0..8])}...");
-                    Console.WriteLine($"[SERVER] [{_stepType}] Using MsgInfo: {Convert.ToHexString(Constants.MsgInfo)}");
                     System.Security.Cryptography.HKDF.DeriveKey(
                         System.Security.Cryptography.HashAlgorithmName.SHA256,
                         ikm: currentChainKey,
                         output: msgKey,
                         salt: null,
-                        info: Constants.MsgInfo
+                        info: MsgInfo
                     );
-                    Console.WriteLine($"[SERVER] [{_stepType}] Derived message key for index {idx}: {Convert.ToHexString(msgKey[0..8])}...");
 
                     System.Security.Cryptography.HKDF.DeriveKey(
                         System.Security.Cryptography.HashAlgorithmName.SHA256,
                         ikm: currentChainKey,
                         output: nextChainKey,
                         salt: null,
-                        info: Constants.ChainInfo
+                        info: ChainInfo
                     );
                 }
                 catch (Exception ex)
                 {
-                    return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
+                    return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(
                         EcliptixProtocolFailure.DeriveKey($"HKDF failed during derivation at index {idx}.", ex));
                 }
 
-                Result<EcliptixMessageKey, EcliptixProtocolFailure> keyResult = EcliptixMessageKey.New(idx, msgKey);
+                Result<RatchetChainKey, EcliptixProtocolFailure> keyResult = RatchetChainKey.New(idx, msgKey);
                 if (keyResult.IsErr)
-                    return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(keyResult.UnwrapErr());
+                    return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(keyResult.UnwrapErr());
 
-                EcliptixMessageKey messageKey = keyResult.Unwrap();
+                RatchetChainKey messageKey = keyResult.Unwrap();
 
                 if (!_messageKeys.TryAdd(idx, messageKey))
                 {
                     messageKey.Dispose();
-                    return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
+                    return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(
                         EcliptixProtocolFailure.Generic(
                             $"Key for index {idx} unexpectedly appeared during derivation."));
                 }
@@ -205,9 +184,9 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                     _chainKeyHandle.Write(nextChainKey).MapSodiumFailure();
                 if (writeResult.IsErr)
                 {
-                    _messageKeys.Remove(idx, out EcliptixMessageKey? removedKey);
+                    _messageKeys.Remove(idx, out RatchetChainKey? removedKey);
                     removedKey?.Dispose();
-                    return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr());
+                    return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr());
                 }
 
                 nextChainKey.CopyTo(currentChainKey);
@@ -215,17 +194,17 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
             Result<Unit, EcliptixProtocolFailure> setIndexResult = SetCurrentIndex(targetIndex);
             if (setIndexResult.IsErr)
-                return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(setIndexResult.UnwrapErr());
+                return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(setIndexResult.UnwrapErr());
 
             PruneOldKeys();
 
-            if (_messageKeys.TryGetValue(targetIndex, out EcliptixMessageKey? finalKey))
+            if (_messageKeys.TryGetValue(targetIndex, out RatchetChainKey? finalKey))
             {
-                return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Ok(finalKey);
+                return Result<RatchetChainKey, EcliptixProtocolFailure>.Ok(finalKey);
             }
             else
             {
-                return Result<EcliptixMessageKey, EcliptixProtocolFailure>.Err(
+                return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic(
                         $"Derived key for index {targetIndex} missing after derivation loop."));
             }
@@ -234,25 +213,6 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         {
             if (chainKeyBytes != null) SodiumInterop.SecureWipe(chainKeyBytes).IgnoreResult();
         }
-    }
-
-    public Result<Unit, EcliptixProtocolFailure> SkipKeysUntil(uint targetIndex)
-    {
-        if (_currentIndex >= targetIndex)
-        {
-            return OkResult;
-        }
-
-        for (uint i = _currentIndex + 1; i <= targetIndex; i++)
-        {
-            Result<EcliptixMessageKey, EcliptixProtocolFailure> keyResult = GetOrDeriveKeyFor(i);
-            if (keyResult.IsErr)
-            {
-                return Result<Unit, EcliptixProtocolFailure>.Err(keyResult.UnwrapErr());
-            }
-        }
-
-        return SetCurrentIndex(targetIndex);
     }
 
     internal Result<Unit, EcliptixProtocolFailure> UpdateKeysAfterDhRatchet(byte[] newChainKey,
@@ -286,7 +246,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
         foreach (uint keyIndex in keysToRemove)
         {
-            if (_messageKeys.Remove(keyIndex, out EcliptixMessageKey? messageKeyToDispose))
+            if (_messageKeys.Remove(keyIndex, out RatchetChainKey? messageKeyToDispose))
             {
                 messageKeyToDispose?.Dispose();
             }
@@ -315,7 +275,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             if (dhPrivKey != null) proto.DhPrivateKey = ByteString.CopyFrom(dhPrivKey.AsSpan());
             if (_dhPublicKey != null) proto.DhPublicKey = ByteString.CopyFrom(_dhPublicKey.AsSpan());
 
-            foreach (KeyValuePair<uint, EcliptixMessageKey> kvp in _messageKeys)
+            foreach (KeyValuePair<uint, RatchetChainKey> kvp in _messageKeys)
             {
                 byte[]? keyMaterial = null;
                 try
@@ -352,7 +312,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
     }
 
     public static Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> Create(
-        ChainStepType stepType,
+        RatchetChainStepType stepType,
         byte[] initialChainKey,
         byte[]? initialDhPrivateKey,
         byte[]? initialDhPublicKey,
@@ -456,7 +416,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         _chainKeyHandle.Dispose();
         _dhPrivateKeyHandle?.Dispose();
         SodiumInterop.SecureWipe(_dhPublicKey).IgnoreResult();
-        foreach (KeyValuePair<uint, EcliptixMessageKey> kvp in _messageKeys)
+        foreach (KeyValuePair<uint, RatchetChainKey> kvp in _messageKeys)
         {
             kvp.Value.Dispose();
         }

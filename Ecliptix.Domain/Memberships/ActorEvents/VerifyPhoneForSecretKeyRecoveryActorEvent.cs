@@ -1,5 +1,9 @@
+using System.Threading;
+
 namespace Ecliptix.Domain.Memberships.ActorEvents;
 
-public record VerifyPhoneForSecretKeyRecoveryActorEvent(
-    string PhoneNumber, 
-    string? RegionCode);
+public record VerifyMobileForSecretKeyRecoveryActorEvent(
+    string MobileNumber,
+    string? RegionCode,
+    CancellationToken CancellationToken = default
+) : ICancellableActorEvent;
