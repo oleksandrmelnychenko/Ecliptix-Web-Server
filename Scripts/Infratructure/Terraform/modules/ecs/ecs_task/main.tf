@@ -18,7 +18,7 @@ resource "aws_ecs_task_definition" "this" {
 
       portMappings = var.port_mappings
 
-      enviroment = var.environment
+      environment = var.environment
     }
   ])
 }

@@ -1,90 +1,108 @@
-- name: Install credentials into Jenkins from .env 
-  hosts: jenkins
-  gather_facts: false
-  vars:
-    jenkins_ssh_dir: /var/lib/jenkins/.ssh
-  tasks:
-    - name: Read SSH key from file
-      set_fact:
-        GITHUB_SSH_KEY: "{{ lookup('file', env_vars.GITHUB_SSH_KEY_PATH) }}"
-          
-    - name: Ensure Jenkins .ssh directory exists
-      file:
-        path: /var/lib/jenkins/.ssh
-        state: directory
-        owner: jenkins
-        group: jenkins
-        mode: '0700'
-      become: yes
-
-    - name: Copy private SSH key for Jenkins (raw, no modifications)
-      copy:
-        src: "{{ env_vars.GITHUB_SSH_KEY_PATH }}"
-        dest: /var/lib/jenkins/.ssh/github-ssh-key
-        owner: jenkins
-        group: jenkins
-        mode: '0600'
-      become: yes
-
-    - name: Add GitHub to known_hosts
-      shell: ssh-keyscan github.com | sudo tee -a {{ jenkins_ssh_dir }}/known_hosts
-      args:
-        creates: "{{ jenkins_ssh_dir }}/known_hosts"
-          
-    - name: Create GitHub SSH key credential
-      community.general.jenkins_script:
-        url: "{{ env_vars.JENKINS_URL }}"
-        user: "{{ env_vars.JENKINS_USER }}"
-        password: "{{ env_vars.JENKINS_PASS }}"
-        script: |
-          import jenkins.model.*
-          import com.cloudbees.plugins.credentials.*
-          import com.cloudbees.plugins.credentials.domains.*
-          import com.cloudbees.plugins.credentials.impl.*
-          import com.cloudbees.plugins.credentials.CredentialsScope
-          import com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey
-          
-          def instance = Jenkins.get()
-          def store = instance.getExtensionList('com.cloudbees.plugins.credentials.SystemCredentialsProvider')[0].getStore()
-          def domain = Domain.global()
-
-          def existing = store.getCredentials(domain).find { it.id == 'github-ssh-key' }
-          if (existing) { store.removeCredentials(domain, existing) }
-
-          def privateKeySource = new BasicSSHUserPrivateKey.DirectEntryPrivateKeySource(
-              """{{ GITHUB_SSH_KEY }}"""
-          )
-
-          def sshKey = new BasicSSHUserPrivateKey(
-              CredentialsScope.GLOBAL,
-              "github-ssh-key",
-              "{{ env_vars.GITHUB_USER }}",
-              privateKeySource,
-              null,
-              "GitHub SSH key (ed25519)"
-          )
-          
-          store.addCredentials(domain, sshKey)
-          
-    - name: Create AWS credential
-      community.general.jenkins_script:
-        url: "{{ env_vars.JENKINS_URL }}"
-        user: "{{ env_vars.JENKINS_USER }}"
-        password: "{{ env_vars.JENKINS_PASS }}"
-        script: |
-          import com.cloudbees.plugins.credentials.*
-          import com.cloudbees.plugins.credentials.domains.*
-          import com.cloudbees.plugins.credentials.SystemCredentialsProvider
-          import com.cloudbees.jenkins.plugins.awscredentials.AWSCredentialsImpl
-          import com.cloudbees.plugins.credentials.CredentialsScope
-          
-          def awsCredentials = new AWSCredentialsImpl(
-            CredentialsScope.GLOBAL,
-            "aws-creds",
-            "{{ env_vars.AWS_ACCESS_KEY_ID }}",
-            "{{ env_vars.AWS_SECRET_ACCESS_KEY }}",
-            "AWS credentials for Jenkins"
-          )
-          
-          def credentialsStore = SystemCredentialsProvider.getInstance().getStore()
-          credentialsStore.addCredentials(Domain.global(), awsCredentials)
+#- hosts: jenkins
+#  gather_facts: false
+#  vars:
+#    jenkins_port: 10001
+#    jenkins_ssh_dir: /var/lib/jenkins/.ssh
+#  tasks:
+#    - name: Read initial admin password
+#      slurp:
+#        src: /var/lib/jenkins/secrets/initialAdminPassword
+#      register: admin_pass_file
+#
+#    - set_fact:
+#        JENKINS_PASS_REAL: "{{ admin_pass_file.content | b64decode | trim }}"
+#
+#    - name: Install Jenkins plugins
+#      community.general.jenkins_script:
+#        url: "http://localhost:{{ jenkins_port }}"
+#        user: "{{ env_vars.JENKINS_USER }}"
+#        password: "{{ JENKINS_PASS_REAL }}"
+#        script: |
+#          import jenkins.model.*
+#          def instance = Jenkins.getInstance()
+#          ["plain-credentials","aws-credentials", "pipeline-aws", "git", "github", "workflow-aggregator"].each { plugin ->
+#              def pm = instance.getPluginManager()
+#              def uc = instance.getUpdateCenter()
+#              if (!pm.getPlugin(plugin)) {
+#                  uc.getPlugin(plugin).deploy().get()
+#              }
+#          }
+#
+#    - name: Ensure Jenkins .ssh directory exists
+#      file:
+#        path: "{{ jenkins_ssh_dir }}"
+#        state: directory
+#        owner: jenkins
+#        group: jenkins
+#        mode: '0700'
+#
+#    - name: Copy GitHub private key
+#      copy:
+#        src: "{{ env_vars.GITHUB_SSH_KEY_PATH }}"
+#        dest: "{{ jenkins_ssh_dir }}/github-ssh-key"
+#        owner: jenkins
+#        group: jenkins
+#        mode: '0600'
+#
+#    - name: Add GitHub to known_hosts
+#      shell: ssh-keyscan github.com | tee -a {{ jenkins_ssh_dir }}/known_hosts
+#      args:
+#        creates: "{{ jenkins_ssh_dir }}/known_hosts"
+#
+#    - name: Create GitHub SSH key credential
+#      community.general.jenkins_script:
+#        url: "http://localhost:{{ jenkins_port }}"
+#        user: "{{ env_vars.JENKINS_USER }}"
+#        password: "{{ JENKINS_PASS_REAL }}"
+#        script: |
+#          import jenkins.model.*
+#          import com.cloudbees.plugins.credentials.*
+#          import com.cloudbees.plugins.credentials.domains.*
+#          import com.cloudbees.plugins.credentials.impl.*
+#          import com.cloudbees.plugins.credentials.CredentialsScope
+#          import com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey
+#          
+#          def instance = Jenkins.get()
+#          def store = instance.getExtensionList('com.cloudbees.plugins.credentials.SystemCredentialsProvider')[0].getStore()
+#          def domain = Domain.global()
+#
+#          def existing = store.getCredentials(domain).find { it.id == 'github-ssh-key' }
+#          if (existing) { store.removeCredentials(domain, existing) }
+#
+#          def privateKeySource = new BasicSSHUserPrivateKey.DirectEntryPrivateKeySource(
+#              """{{ lookup('file', env_vars.GITHUB_SSH_KEY_PATH) }}"""
+#          )
+#
+#          def sshKey = new BasicSSHUserPrivateKey(
+#              CredentialsScope.GLOBAL,
+#              "github-ssh-key",
+#              "{{ env_vars.GITHUB_USER }}",
+#              privateKeySource,
+#              null,
+#              "GitHub SSH key"
+#          )
+#          
+#          store.addCredentials(domain, sshKey)
+#
+#    - name: Create AWS credential
+#      community.general.jenkins_script:
+#        url: "http://localhost:{{ jenkins_port }}"
+#        user: "{{ env_vars.JENKINS_USER }}"
+#        password: "{{ JENKINS_PASS_REAL }}"
+#        script: |
+#          import com.cloudbees.plugins.credentials.*
+#          import com.cloudbees.plugins.credentials.domains.*
+#          import com.cloudbees.plugins.credentials.SystemCredentialsProvider
+#          import com.cloudbees.jenkins.plugins.awscredentials.AWSCredentialsImpl
+#          import com.cloudbees.plugins.credentials.CredentialsScope
+#          
+#          def awsCredentials = new AWSCredentialsImpl(
+#            CredentialsScope.GLOBAL,
+#            "aws-creds",
+#            "{{ env_vars.AWS_ACCESS_KEY_ID }}",
+#            "{{ env_vars.AWS_SECRET_ACCESS_KEY }}",
+#            "AWS credentials for Jenkins"
+#          )
+#          
+#          def credentialsStore = SystemCredentialsProvider.getInstance().getStore()
+#          credentialsStore.addCredentials(Domain.global(), awsCredentials)
