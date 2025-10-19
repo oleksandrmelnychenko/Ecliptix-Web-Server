@@ -7,67 +7,43 @@ namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 
 public sealed class RequestMetaDataInterceptor : Interceptor
 {
-    public override Task ServerStreamingServerHandler<TRequest, TResponse>(TRequest request,
+    public override Task ServerStreamingServerHandler<TRequest, TResponse>(
+        TRequest request,
         IServerStreamWriter<TResponse> responseStream,
-        ServerCallContext context, ServerStreamingServerMethod<TRequest, TResponse> continuation)
+        ServerCallContext context,
+        ServerStreamingServerMethod<TRequest, TResponse> continuation)
     {
-        Result<Unit, MetaDataSystemFailure> validationResult =
-            GrpcMetadataHandler.ValidateRequiredMetaDataParams(context.RequestHeaders);
-
-        if (validationResult.IsErr)
-        {
-            MetaDataSystemFailure metaDataSystemFailure = validationResult.UnwrapErr();
-            string errorMessage = metaDataSystemFailure.Message;
-            context.Status = new Status(StatusCode.Internal, errorMessage);
-
-            throw new RpcException(context.Status);
-        }
-
-        GrpcMetadataHandler.ComputeUniqueConnectId(context.RequestHeaders)
-            .Match(
-                uniqueConnectId =>
-                {
-                    context.UserState[GrpcMetadataHandler.UniqueConnectId] = uniqueConnectId;
-                    return Unit.Value;
-                },
-                error =>
-                {
-                    context.Status = new Status(StatusCode.Internal, error.Message!);
-                    throw new RpcException(context.Status);
-                }
-            );
-
+        ValidateAndPopulateMetadata(context);
         return base.ServerStreamingServerHandler(request, responseStream, context, continuation);
     }
 
-    public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(TRequest request,
-        ServerCallContext context, UnaryServerMethod<TRequest, TResponse> continuation)
+    public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
+        TRequest request,
+        ServerCallContext context,
+        UnaryServerMethod<TRequest, TResponse> continuation)
+    {
+        ValidateAndPopulateMetadata(context);
+        return await continuation(request, context);
+    }
+
+    private static void ValidateAndPopulateMetadata(ServerCallContext context)
     {
         Result<Unit, MetaDataSystemFailure> validationResult =
             GrpcMetadataHandler.ValidateRequiredMetaDataParams(context.RequestHeaders);
+
         if (validationResult.IsErr)
         {
-            MetaDataSystemFailure metaDataSystemFailure = validationResult.UnwrapErr();
-            string errorMessage = metaDataSystemFailure.Message;
-            context.Status = new Status(StatusCode.Internal, errorMessage);
-
-            throw new RpcException(context.Status);
+            throw GrpcFailureException.FromDomainFailure(validationResult.UnwrapErr());
         }
 
-        GrpcMetadataHandler.ComputeUniqueConnectId(context.RequestHeaders)
-            .Match(
-                uniqueConnectId =>
-                {
-                    context.UserState[GrpcMetadataHandler.UniqueConnectId] = uniqueConnectId;
-                    return Unit.Value;
-                },
-                error =>
-                {
-                    context.Status = new Status(StatusCode.Internal, error.Message!);
-                    throw new RpcException(context.Status);
-                }
-            );
+        Result<uint, MetaDataSystemFailure> connectIdResult =
+            GrpcMetadataHandler.ComputeUniqueConnectId(context.RequestHeaders);
 
-        return await continuation(request, context);
+        if (connectIdResult.IsErr)
+        {
+            throw GrpcFailureException.FromDomainFailure(connectIdResult.UnwrapErr());
+        }
+
+        context.UserState[GrpcMetadataHandler.UniqueConnectId] = connectIdResult.Unwrap();
     }
 }

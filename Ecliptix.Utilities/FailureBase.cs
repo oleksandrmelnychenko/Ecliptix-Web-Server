@@ -6,6 +6,7 @@ public interface IFailureBase
 {
     object ToStructuredLog();
     Status ToGrpcStatus();
+    GrpcErrorDescriptor ToGrpcDescriptor();
 }
 
 public abstract record FailureBase(string Message, Exception? InnerException = null) : IFailureBase
@@ -14,5 +15,11 @@ public abstract record FailureBase(string Message, Exception? InnerException = n
 
     public abstract object ToStructuredLog();
 
-    public abstract Status ToGrpcStatus();
+    public virtual Status ToGrpcStatus()
+    {
+        GrpcErrorDescriptor descriptor = ToGrpcDescriptor();
+        return descriptor.CreateStatus(Message);
+    }
+
+    public abstract GrpcErrorDescriptor ToGrpcDescriptor();
 }

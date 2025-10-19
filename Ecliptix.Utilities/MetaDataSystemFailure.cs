@@ -19,15 +19,19 @@ public sealed record MetaDataSystemFailure(
         };
     }
 
-    public override Status ToGrpcStatus()
+    public override GrpcErrorDescriptor ToGrpcDescriptor()
     {
-        StatusCode statusCode = FailureType switch
+        return FailureType switch
         {
-            MetaDataSystemFailureType.RequiredComponentNotFound => StatusCode.NotFound,
-            _ => StatusCode.Internal
+            MetaDataSystemFailureType.RequiredComponentNotFound => new GrpcErrorDescriptor(
+                ErrorCode.PreconditionFailed,
+                StatusCode.FailedPrecondition,
+                ErrorI18nKeys.PreconditionFailed),
+            _ => new GrpcErrorDescriptor(
+                ErrorCode.InternalError,
+                StatusCode.Internal,
+                ErrorI18nKeys.Internal)
         };
-
-        return new Status(statusCode, Message);
     }
 
     public static MetaDataSystemFailure ComponentNotFound(string details)

@@ -8,25 +8,68 @@ public sealed record EcliptixProtocolFailure(
     Exception? InnerException = null)
     : FailureBase(Message, InnerException)
 {
-    public override Status ToGrpcStatus()
-    {
-        StatusCode code = FailureType switch
+    public override GrpcErrorDescriptor ToGrpcDescriptor() =>
+        FailureType switch
         {
-            EcliptixProtocolFailureType.InvalidInput => StatusCode.InvalidArgument,
-            EcliptixProtocolFailureType.PeerPubKeyFailed => StatusCode.InvalidArgument,
-            EcliptixProtocolFailureType.BufferTooSmall => StatusCode.InvalidArgument,
-            EcliptixProtocolFailureType.DataTooLarge => StatusCode.InvalidArgument,
+            EcliptixProtocolFailureType.InvalidInput or
+            EcliptixProtocolFailureType.PeerPubKeyFailed or
+            EcliptixProtocolFailureType.BufferTooSmall or
+            EcliptixProtocolFailureType.DataTooLarge => new GrpcErrorDescriptor(
+                ErrorCode.ValidationFailed,
+                StatusCode.InvalidArgument,
+                ErrorI18nKeys.Validation),
 
-            EcliptixProtocolFailureType.ObjectDisposed => StatusCode.FailedPrecondition,
-            EcliptixProtocolFailureType.EphemeralMissing => StatusCode.FailedPrecondition,
-            EcliptixProtocolFailureType.StateMissing => StatusCode.FailedPrecondition,
-            EcliptixProtocolFailureType.ActorRefNotFound => StatusCode.FailedPrecondition,
+            EcliptixProtocolFailureType.ObjectDisposed or
+            EcliptixProtocolFailureType.EphemeralMissing or
+            EcliptixProtocolFailureType.StateMissing or
+            EcliptixProtocolFailureType.ActorRefNotFound => new GrpcErrorDescriptor(
+                ErrorCode.PreconditionFailed,
+                StatusCode.FailedPrecondition,
+                ErrorI18nKeys.PreconditionFailed),
 
-            _ => StatusCode.Internal
+            EcliptixProtocolFailureType.ActorNotCreated => new GrpcErrorDescriptor(
+                ErrorCode.DependencyUnavailable,
+                StatusCode.Unavailable,
+                ErrorI18nKeys.DependencyUnavailable,
+                Retryable: true),
+
+            EcliptixProtocolFailureType.HandshakeFailed => new GrpcErrorDescriptor(
+                ErrorCode.ServiceUnavailable,
+                StatusCode.Unavailable,
+                ErrorI18nKeys.ServiceUnavailable,
+                Retryable: true),
+
+            EcliptixProtocolFailureType.PinningFailure => new GrpcErrorDescriptor(
+                ErrorCode.DependencyUnavailable,
+                StatusCode.Unavailable,
+                ErrorI18nKeys.DependencyUnavailable,
+                Retryable: true),
+
+            EcliptixProtocolFailureType.AllocationFailed => new GrpcErrorDescriptor(
+                ErrorCode.ResourceExhausted,
+                StatusCode.ResourceExhausted,
+                ErrorI18nKeys.ResourceExhausted,
+                Retryable: true),
+
+            EcliptixProtocolFailureType.DeriveKeyFailed or
+            EcliptixProtocolFailureType.DecodeFailed or
+            EcliptixProtocolFailureType.KeyGenerationFailed or
+            EcliptixProtocolFailureType.PrepareLocalFailed or
+            EcliptixProtocolFailureType.MemoryBufferError => new GrpcErrorDescriptor(
+                ErrorCode.InternalError,
+                StatusCode.Internal,
+                ErrorI18nKeys.Internal),
+
+            EcliptixProtocolFailureType.Generic => new GrpcErrorDescriptor(
+                ErrorCode.InternalError,
+                StatusCode.Internal,
+                ErrorI18nKeys.Internal),
+
+            _ => new GrpcErrorDescriptor(
+                ErrorCode.InternalError,
+                StatusCode.Internal,
+                ErrorI18nKeys.Internal)
         };
-
-        return new Status(code, Message);
-    }
 
     public static EcliptixProtocolFailure Generic(string details, Exception? inner = null)
     {

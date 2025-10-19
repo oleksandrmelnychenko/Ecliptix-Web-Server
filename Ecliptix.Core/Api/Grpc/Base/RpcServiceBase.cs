@@ -184,8 +184,14 @@ public class RpcServiceBase(IGrpcCipherService cipherService)
     {
         if (connectId is 0 or > InterceptorConstants.Limits.MaxConnectId)
         {
-            throw new RpcException(new GrpcStatus(StatusCode.InvalidArgument,
-                GrpcServiceConstants.ErrorMessages.ConnectionIdOutOfRange));
+            GrpcErrorDescriptor descriptor = new(
+                ErrorCode.ValidationFailed,
+                StatusCode.InvalidArgument,
+                ErrorI18nKeys.Validation);
+
+            throw new GrpcFailureException(
+                descriptor.CreateStatus(GrpcServiceConstants.ErrorMessages.ConnectionIdOutOfRange),
+                descriptor);
         }
     }
 }

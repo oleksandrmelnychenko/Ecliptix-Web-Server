@@ -72,7 +72,7 @@ internal sealed class DeviceService(
 
         return result.Match(
             success => success,
-            failure => throw failure.ToRpcException());
+            failure => throw GrpcFailureException.FromDomainFailure(failure));
     }
 
     public override async Task<RestoreChannelResponse> RestoreSecureChannel(RestoreChannelRequest request,
@@ -118,7 +118,7 @@ internal sealed class DeviceService(
             };
         }
 
-        throw new RpcException(failure.ToGrpcStatus());
+        throw GrpcFailureException.FromDomainFailure(failure);
     }
 
     public override async Task<SecureEnvelope> AuthenticatedEstablishSecureChannel(
@@ -137,8 +137,7 @@ internal sealed class DeviceService(
             if (deriveKeysResult.IsErr)
             {
                 FailureBase failure = deriveKeysResult.UnwrapErr();
-                throw new RpcException(new global::Grpc.Core.Status(StatusCode.Unauthenticated,
-                    $"IDENTITY_KEY_DERIVATION_FAILED: {failure.Message}"));
+                throw GrpcFailureException.FromDomainFailure(failure);
             }
 
             (dynamic identityKeysObj, byte[] rootKeyBytes) = deriveKeysResult.Unwrap();
@@ -162,8 +161,7 @@ internal sealed class DeviceService(
             {
                 EcliptixProtocolFailure failure = initResult.UnwrapErr();
                 identityKeys.Dispose();
-                throw new RpcException(new global::Grpc.Core.Status(StatusCode.Internal,
-                    $"Failed to initialize authenticated protocol: {failure.Message}"));
+                throw GrpcFailureException.FromDomainFailure(failure);
             }
 
             InitializeProtocolWithMasterKeyReply reply = initResult.Unwrap();
@@ -176,8 +174,8 @@ internal sealed class DeviceService(
             if (encryptResult.IsErr)
             {
                 CertificatePinningFailure encryptFailure = encryptResult.UnwrapErr();
-                throw new RpcException(new global::Grpc.Core.Status(StatusCode.Internal,
-                    $"Failed to RSA encrypt server exchange: {encryptFailure.Message}"));
+                throw GrpcFailureException.FromDomainFailure(
+                    SecureChannelFailure.FromCertificateFailure(encryptFailure));
             }
 
             byte[] encryptedPayload = encryptResult.Unwrap();
@@ -188,8 +186,8 @@ internal sealed class DeviceService(
             if (signResult.IsErr)
             {
                 CertificatePinningFailure signFailure = signResult.UnwrapErr();
-                throw new RpcException(new global::Grpc.Core.Status(StatusCode.Internal,
-                    $"Failed to sign encrypted payload: {signFailure.Message}"));
+                throw GrpcFailureException.FromDomainFailure(
+                    SecureChannelFailure.FromCertificateFailure(signFailure));
             }
 
             byte[] signature = signResult.Unwrap();

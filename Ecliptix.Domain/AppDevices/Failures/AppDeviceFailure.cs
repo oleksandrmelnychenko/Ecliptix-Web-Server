@@ -23,17 +23,23 @@ public sealed record AppDeviceFailure(
         return new AppDeviceFailure(AppDeviceFailureType.InternalError, msgKey, ex);
     }
 
-    public override Status ToGrpcStatus()
-    {
-        StatusCode code = FailureType switch
+    public override GrpcErrorDescriptor ToGrpcDescriptor() =>
+        FailureType switch
         {
-            AppDeviceFailureType.InfrastructureFailure => StatusCode.Unavailable,
-            AppDeviceFailureType.InternalError => StatusCode.Internal,
-            _ => StatusCode.Unknown
+            AppDeviceFailureType.InfrastructureFailure => new GrpcErrorDescriptor(
+                ErrorCode.ServiceUnavailable,
+                StatusCode.Unavailable,
+                ErrorI18nKeys.ServiceUnavailable,
+                Retryable: true),
+            AppDeviceFailureType.InternalError => new GrpcErrorDescriptor(
+                ErrorCode.InternalError,
+                StatusCode.Internal,
+                ErrorI18nKeys.Internal),
+            _ => new GrpcErrorDescriptor(
+                ErrorCode.InternalError,
+                StatusCode.Internal,
+                ErrorI18nKeys.Internal)
         };
-
-        return new Status(code, Message);
-    }
 
     public override object ToStructuredLog()
     {

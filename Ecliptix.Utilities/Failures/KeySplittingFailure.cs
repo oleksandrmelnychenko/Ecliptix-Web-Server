@@ -80,22 +80,53 @@ public sealed record KeySplittingFailure(KeySplittingFailureType Type, string Me
     public static KeySplittingFailure MemoryWriteFailed(string details) =>
         new(KeySplittingFailureType.MemoryWriteFailed, details);
 
-    public override Status ToGrpcStatus()
-    {
-        StatusCode code = Type switch
+    public override GrpcErrorDescriptor ToGrpcDescriptor() =>
+        Type switch
         {
-            KeySplittingFailureType.InvalidThreshold => StatusCode.InvalidArgument,
-            KeySplittingFailureType.InvalidShareCount => StatusCode.InvalidArgument,
-            KeySplittingFailureType.InvalidKeyLength => StatusCode.InvalidArgument,
-            KeySplittingFailureType.InvalidKeyData => StatusCode.InvalidArgument,
-            KeySplittingFailureType.InvalidShareData => StatusCode.InvalidArgument,
-            KeySplittingFailureType.InvalidIdentifier => StatusCode.InvalidArgument,
-            KeySplittingFailureType.InsufficientShares => StatusCode.FailedPrecondition,
-            _ => StatusCode.Internal
-        };
+            KeySplittingFailureType.InvalidThreshold or
+            KeySplittingFailureType.InvalidShareCount or
+            KeySplittingFailureType.InvalidKeyLength or
+            KeySplittingFailureType.InvalidKeyData or
+            KeySplittingFailureType.InvalidShareData or
+            KeySplittingFailureType.InvalidIdentifier or
+            KeySplittingFailureType.ShareValidationFailed => new GrpcErrorDescriptor(
+                ErrorCode.ValidationFailed,
+                StatusCode.InvalidArgument,
+                ErrorI18nKeys.Validation),
 
-        return new Status(code, Message);
-    }
+            KeySplittingFailureType.InsufficientShares => new GrpcErrorDescriptor(
+                ErrorCode.PreconditionFailed,
+                StatusCode.FailedPrecondition,
+                ErrorI18nKeys.PreconditionFailed),
+
+            KeySplittingFailureType.HmacKeyMissing => new GrpcErrorDescriptor(
+                ErrorCode.NotFound,
+                StatusCode.NotFound,
+                ErrorI18nKeys.NotFound),
+
+            KeySplittingFailureType.AllocationFailed => new GrpcErrorDescriptor(
+                ErrorCode.ResourceExhausted,
+                StatusCode.ResourceExhausted,
+                ErrorI18nKeys.ResourceExhausted,
+                Retryable: true),
+
+            KeySplittingFailureType.HmacKeyStorageFailed or
+            KeySplittingFailureType.HmacKeyRetrievalFailed or
+            KeySplittingFailureType.HmacKeyRemovalFailed or
+            KeySplittingFailureType.KeySplittingFailed or
+            KeySplittingFailureType.KeyReconstructionFailed or
+            KeySplittingFailureType.KeyDerivationFailed or
+            KeySplittingFailureType.MemoryReadFailed or
+            KeySplittingFailureType.MemoryWriteFailed => new GrpcErrorDescriptor(
+                ErrorCode.InternalError,
+                StatusCode.Internal,
+                ErrorI18nKeys.Internal),
+
+            _ => new GrpcErrorDescriptor(
+                ErrorCode.InternalError,
+                StatusCode.Internal,
+                ErrorI18nKeys.Internal)
+        };
 
     public override object ToStructuredLog()
     {

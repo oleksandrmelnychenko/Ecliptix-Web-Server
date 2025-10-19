@@ -144,33 +144,108 @@ public sealed record VerificationFlowFailure(
             innerException);
     }
 
-    public override Status ToGrpcStatus()
+    public override GrpcErrorDescriptor ToGrpcDescriptor()
     {
-        StatusCode code = FailureType switch
+        string i18nKey = string.IsNullOrWhiteSpace(Message) ? GetDefaultI18nKey(FailureType) : Message;
+
+        return FailureType switch
         {
-            VerificationFlowFailureType.NotFound => StatusCode.NotFound,
-            VerificationFlowFailureType.Expired => StatusCode.Unauthenticated,
-            VerificationFlowFailureType.InvalidOtp => StatusCode.Unauthenticated,
-            VerificationFlowFailureType.OtpExpired => StatusCode.Unauthenticated,
-            VerificationFlowFailureType.MobileNumberInvalid => StatusCode.InvalidArgument,
-            VerificationFlowFailureType.Validation => StatusCode.InvalidArgument,
-
-            VerificationFlowFailureType.OtpMaxAttemptsReached => StatusCode.ResourceExhausted,
-            VerificationFlowFailureType.RateLimitExceeded => StatusCode.ResourceExhausted,
-            VerificationFlowFailureType.SuspiciousActivity => StatusCode.PermissionDenied,
-            VerificationFlowFailureType.Unauthorized => StatusCode.Unauthenticated,
-
-            VerificationFlowFailureType.ConcurrencyConflict => StatusCode.Aborted,
-            VerificationFlowFailureType.PersistorAccess => StatusCode.Unavailable,
-            VerificationFlowFailureType.SmsSendFailed => StatusCode.Unavailable,
-            VerificationFlowFailureType.OtpGenerationFailed => StatusCode.Internal,
-            VerificationFlowFailureType.Generic => StatusCode.Internal,
-
-            _ => StatusCode.Unknown
+            VerificationFlowFailureType.NotFound => new GrpcErrorDescriptor(
+                ErrorCode.NotFound,
+                StatusCode.NotFound,
+                i18nKey),
+            VerificationFlowFailureType.Expired => new GrpcErrorDescriptor(
+                ErrorCode.OtpExpired,
+                StatusCode.Unauthenticated,
+                i18nKey),
+            VerificationFlowFailureType.InvalidOtp => new GrpcErrorDescriptor(
+                ErrorCode.Unauthenticated,
+                StatusCode.Unauthenticated,
+                i18nKey),
+            VerificationFlowFailureType.OtpExpired => new GrpcErrorDescriptor(
+                ErrorCode.OtpExpired,
+                StatusCode.Unauthenticated,
+                i18nKey),
+            VerificationFlowFailureType.MobileNumberInvalid => new GrpcErrorDescriptor(
+                ErrorCode.InvalidMobileNumber,
+                StatusCode.InvalidArgument,
+                i18nKey),
+            VerificationFlowFailureType.Validation => new GrpcErrorDescriptor(
+                ErrorCode.ValidationFailed,
+                StatusCode.InvalidArgument,
+                i18nKey),
+            VerificationFlowFailureType.OtpMaxAttemptsReached => new GrpcErrorDescriptor(
+                ErrorCode.MaxAttemptsReached,
+                StatusCode.ResourceExhausted,
+                i18nKey),
+            VerificationFlowFailureType.RateLimitExceeded => new GrpcErrorDescriptor(
+                ErrorCode.ResourceExhausted,
+                StatusCode.ResourceExhausted,
+                i18nKey),
+            VerificationFlowFailureType.SuspiciousActivity => new GrpcErrorDescriptor(
+                ErrorCode.PermissionDenied,
+                StatusCode.PermissionDenied,
+                i18nKey),
+            VerificationFlowFailureType.Unauthorized => new GrpcErrorDescriptor(
+                ErrorCode.Unauthenticated,
+                StatusCode.Unauthenticated,
+                i18nKey),
+            VerificationFlowFailureType.ConcurrencyConflict => new GrpcErrorDescriptor(
+                ErrorCode.Conflict,
+                StatusCode.Aborted,
+                i18nKey),
+            VerificationFlowFailureType.PersistorAccess => new GrpcErrorDescriptor(
+                ErrorCode.DatabaseUnavailable,
+                StatusCode.Unavailable,
+                i18nKey,
+                Retryable: true),
+            VerificationFlowFailureType.SmsSendFailed => new GrpcErrorDescriptor(
+                ErrorCode.ServiceUnavailable,
+                StatusCode.Unavailable,
+                i18nKey,
+                Retryable: true),
+            VerificationFlowFailureType.OtpGenerationFailed => new GrpcErrorDescriptor(
+                ErrorCode.ServiceUnavailable,
+                StatusCode.Unavailable,
+                i18nKey,
+                Retryable: true),
+            VerificationFlowFailureType.InvalidOpaque => new GrpcErrorDescriptor(
+                ErrorCode.Unauthenticated,
+                StatusCode.Unauthenticated,
+                i18nKey),
+            VerificationFlowFailureType.Generic => new GrpcErrorDescriptor(
+                ErrorCode.InternalError,
+                StatusCode.Internal,
+                i18nKey),
+            _ => new GrpcErrorDescriptor(
+                ErrorCode.InternalError,
+                StatusCode.Internal,
+                i18nKey)
         };
-
-        return new Status(code, Message);
     }
+
+    private static string GetDefaultI18nKey(VerificationFlowFailureType failureType) =>
+        failureType switch
+        {
+            VerificationFlowFailureType.NotFound => ErrorI18nKeys.NotFound,
+            VerificationFlowFailureType.Expired => ErrorI18nKeys.OtpExpired,
+            VerificationFlowFailureType.Conflict => ErrorI18nKeys.Conflict,
+            VerificationFlowFailureType.InvalidOtp => VerificationFlowMessageKeys.InvalidOtp,
+            VerificationFlowFailureType.OtpExpired => ErrorI18nKeys.OtpExpired,
+            VerificationFlowFailureType.OtpMaxAttemptsReached => ErrorI18nKeys.MaxAttempts,
+            VerificationFlowFailureType.OtpGenerationFailed => VerificationFlowMessageKeys.OtpGenerationFailed,
+            VerificationFlowFailureType.SmsSendFailed => VerificationFlowMessageKeys.SmsSendFailed,
+            VerificationFlowFailureType.MobileNumberInvalid => ErrorI18nKeys.InvalidMobile,
+            VerificationFlowFailureType.PersistorAccess => ErrorI18nKeys.DatabaseUnavailable,
+            VerificationFlowFailureType.ConcurrencyConflict => ErrorI18nKeys.Conflict,
+            VerificationFlowFailureType.RateLimitExceeded => ErrorI18nKeys.ResourceExhausted,
+            VerificationFlowFailureType.SuspiciousActivity => ErrorI18nKeys.PermissionDenied,
+            VerificationFlowFailureType.Validation => ErrorI18nKeys.Validation,
+            VerificationFlowFailureType.InvalidOpaque => VerificationFlowMessageKeys.InvalidOpaque,
+            VerificationFlowFailureType.Unauthorized => ErrorI18nKeys.Unauthenticated,
+            VerificationFlowFailureType.Generic => ErrorI18nKeys.Internal,
+            _ => ErrorI18nKeys.Internal
+        };
 
     public override object ToStructuredLog()
     {

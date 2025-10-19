@@ -333,11 +333,11 @@ static void RegisterGrpc(IServiceCollection services)
         options.ResponseCompressionLevel = CompressionLevel.Fastest;
         options.ResponseCompressionAlgorithm = Compression.Algorithm;
         options.EnableDetailedErrors = true;
+        options.Interceptors.Add<FailureHandlingInterceptor>();
         options.Interceptors.Add<RequestMetaDataInterceptor>();
         options.Interceptors.Add<SecrecyHandshakeKeepAliveInterceptor>();
         options.Interceptors.Add<TelemetryInterceptor>();
         options.Interceptors.Add<ThreadCultureInterceptor>();
-        options.Interceptors.Add<FailureHandlingInterceptor>();
     });
 
     services.Configure<KestrelServerOptions>(options =>

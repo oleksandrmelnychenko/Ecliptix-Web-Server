@@ -2,13 +2,31 @@ using Grpc.Core;
 
 namespace Ecliptix.Utilities;
 
-public sealed class GrpcFailureException(Status grpcStatus, object? structuredLogPayload = null) : Exception(grpcStatus.Detail)
+public sealed class GrpcFailureException : Exception
 {
-    public Status GrpcStatus { get; } = grpcStatus;
-    public object? StructuredLogPayload { get; } = structuredLogPayload;
+    public GrpcFailureException(
+        Status grpcStatus,
+        GrpcErrorDescriptor descriptor,
+        object? structuredLogPayload = null,
+        Exception? innerException = null)
+        : base(grpcStatus.Detail, innerException)
+    {
+        GrpcStatus = grpcStatus;
+        Descriptor = descriptor;
+        StructuredLogPayload = structuredLogPayload;
+    }
+
+    public Status GrpcStatus { get; }
+    public GrpcErrorDescriptor Descriptor { get; }
+    public object? StructuredLogPayload { get; }
 
     public static GrpcFailureException FromDomainFailure(FailureBase failure)
     {
-        return new GrpcFailureException(failure.ToGrpcStatus(), failure.ToStructuredLog());
+        GrpcErrorDescriptor descriptor = failure.ToGrpcDescriptor();
+        return new GrpcFailureException(
+            descriptor.CreateStatus(failure.Message),
+            descriptor,
+            failure.ToStructuredLog(),
+            failure.InnerException);
     }
 }

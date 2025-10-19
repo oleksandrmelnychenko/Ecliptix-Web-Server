@@ -1,3 +1,5 @@
+using Ecliptix.Core.Configuration;
+using Ecliptix.Utilities;
 using Grpc.Core;
 using Serilog;
 
@@ -5,7 +7,7 @@ namespace Ecliptix.Core.Infrastructure.Grpc.Utilities;
 
 public static class DeviceIdResolver
 {
-    private const string AppDeviceId = "d-identifier";
+    private const string AppDeviceId = MetadataConstants.Keys.AppDeviceId;
 
     public static Guid ResolveDeviceIdFromContext(ServerCallContext context)
     {
@@ -23,7 +25,14 @@ public static class DeviceIdResolver
                 userAgent ?? "unknown",
                 context.Method);
 
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Missing or invalid d-identifier header"));
+            GrpcErrorDescriptor descriptor = new(
+                ErrorCode.ValidationFailed,
+                StatusCode.InvalidArgument,
+                ErrorI18nKeys.Validation);
+
+            throw new GrpcFailureException(
+                descriptor.CreateStatus("Missing or invalid d-identifier header"),
+                descriptor);
         }
 
         return deviceId;

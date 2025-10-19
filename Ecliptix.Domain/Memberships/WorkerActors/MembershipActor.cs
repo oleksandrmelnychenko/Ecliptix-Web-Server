@@ -548,20 +548,30 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         (SodiumSecureMemoryHandle sessionKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) = opaqueResult.Unwrap();
 
-        Result<byte[], SodiumFailure> sessionKeyBytesResult = sessionKeyHandle.ReadBytes(sessionKeyHandle.Length);
-        if (sessionKeyBytesResult.IsOk)
+        // Check if sessionKeyHandle is null before accessing it
+        // Note: sessionKeyHandle is null when OPAQUE authentication fails (wrong password)
+        if (sessionKeyHandle != null)
         {
-            byte[] sessionKeyBytes = sessionKeyBytesResult.Unwrap();
-            string sessionKeyFingerprint = Convert.ToHexString(SHA256.HashData(sessionKeyBytes))[..16];
-            Serilog.Log.Information("[SERVER-OPAQUE-EXPORTKEY] OPAQUE export_key (session key) derived. MembershipId: {MembershipId}, SessionKeyFingerprint: {SessionKeyFingerprint}",
-                state.MembershipId, sessionKeyFingerprint);
-            CryptographicOperations.ZeroMemory(sessionKeyBytes);
-        }
+            Result<byte[], SodiumFailure> sessionKeyBytesResult = sessionKeyHandle.ReadBytes(sessionKeyHandle.Length);
+            if (sessionKeyBytesResult.IsOk)
+            {
+                byte[] sessionKeyBytes = sessionKeyBytesResult.Unwrap();
+                string sessionKeyFingerprint = Convert.ToHexString(SHA256.HashData(sessionKeyBytes))[..16];
+                Serilog.Log.Information("[SERVER-OPAQUE-EXPORTKEY] OPAQUE export_key (session key) derived. MembershipId: {MembershipId}, SessionKeyFingerprint: {SessionKeyFingerprint}",
+                    state.MembershipId, sessionKeyFingerprint);
+                CryptographicOperations.ZeroMemory(sessionKeyBytes);
+            }
 
-        if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
-            !sessionKeyHandle.IsInvalid)
+            if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
+                !sessionKeyHandle.IsInvalid)
+            {
+                await EnsureMasterKeySharesExist(sessionKeyHandle, state.MembershipId);
+            }
+        }
+        else
         {
-            await EnsureMasterKeySharesExist(sessionKeyHandle, state.MembershipId);
+            Serilog.Log.Information("[SERVER-OPAQUE-AUTH-FAILED] OPAQUE authentication failed (session key is null). ConnectId: {ConnectId}, MembershipId: {MembershipId}, Result: {Result}",
+                @event.ConnectId, state.MembershipId, finalizeResponse.Result);
         }
 
         RemovePendingSignIn(@event.ConnectId);

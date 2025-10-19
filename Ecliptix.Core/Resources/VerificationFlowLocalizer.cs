@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.Globalization;
 using Ecliptix.Domain;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Resources;
 
@@ -13,6 +14,23 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
         {
             ["en-US"] = new Dictionary<string, string>
             {
+                [ErrorI18nKeys.Validation] = "Validation failed; please review the fields and try again.",
+                [ErrorI18nKeys.MaxAttempts] = "Maximum attempts reached. Please wait or contact support.",
+                [ErrorI18nKeys.InvalidMobile] = "Invalid mobile number format.",
+                [ErrorI18nKeys.OtpExpired] = "Verification code expired. Request a new one.",
+                [ErrorI18nKeys.NotFound] = "Requested resource not found.",
+                [ErrorI18nKeys.AlreadyExists] = "Resource already exists.",
+                [ErrorI18nKeys.Unauthenticated] = "Authentication required. Please sign in again.",
+                [ErrorI18nKeys.PermissionDenied] = "You do not have permission to perform this action.",
+                [ErrorI18nKeys.PreconditionFailed] = "Action cannot be completed in the current state.",
+                [ErrorI18nKeys.Conflict] = "Operation conflicted with existing data. Refresh and retry.",
+                [ErrorI18nKeys.ResourceExhausted] = "Too many attempts. Please try again later.",
+                [ErrorI18nKeys.ServiceUnavailable] = "Service temporarily unavailable. Try again shortly.",
+                [ErrorI18nKeys.DependencyUnavailable] = "Upstream dependency is unavailable. Please retry.",
+                [ErrorI18nKeys.DeadlineExceeded] = "Request timed out. Please try again.",
+                [ErrorI18nKeys.Cancelled] = "Request was cancelled.",
+                [ErrorI18nKeys.Internal] = "Something went wrong. Please try again later.",
+                [ErrorI18nKeys.DatabaseUnavailable] = "Database is unavailable. Please retry later.",
                 ["verification_flow_conflict_resolved_to_existing"] = "Existing session found; please continue.",
                 ["verification_flow_conflict_unresolved"] = "Session conflict; please try again.",
                 ["verification_flow_reused_and_updated"] = "Existing session updated; please continue.",
@@ -103,6 +121,23 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
 
             ["uk-UA"] = new Dictionary<string, string>
             {
+                [ErrorI18nKeys.Validation] = "Перевірка не пройшла; перевірте дані та повторіть спробу.",
+                [ErrorI18nKeys.MaxAttempts] = "Досягнуто максимальну кількість спроб. Зачекайте або зверніться до підтримки.",
+                [ErrorI18nKeys.InvalidMobile] = "Неправильний формат номера телефону.",
+                [ErrorI18nKeys.OtpExpired] = "Термін дії коду підтвердження минув. Запитайте новий.",
+                [ErrorI18nKeys.NotFound] = "Запитаний ресурс не знайдено.",
+                [ErrorI18nKeys.AlreadyExists] = "Такий ресурс уже існує.",
+                [ErrorI18nKeys.Unauthenticated] = "Потрібна автентифікація. Увійдіть ще раз.",
+                [ErrorI18nKeys.PermissionDenied] = "У вас немає дозволу на цю дію.",
+                [ErrorI18nKeys.PreconditionFailed] = "Дію неможливо виконати в поточному стані.",
+                [ErrorI18nKeys.Conflict] = "Операція конфліктує з наявними даними. Оновіть та повторіть.",
+                [ErrorI18nKeys.ResourceExhausted] = "Забагато спроб. Спробуйте пізніше.",
+                [ErrorI18nKeys.ServiceUnavailable] = "Сервіс тимчасово недоступний. Спробуйте пізніше.",
+                [ErrorI18nKeys.DependencyUnavailable] = "Зовнішня залежність недоступна. Повторіть спробу.",
+                [ErrorI18nKeys.DeadlineExceeded] = "Час очікування запиту вичерпано. Спробуйте ще раз.",
+                [ErrorI18nKeys.Cancelled] = "Запит було скасовано.",
+                [ErrorI18nKeys.Internal] = "Сталася помилка. Спробуйте пізніше.",
+                [ErrorI18nKeys.DatabaseUnavailable] = "База даних недоступна. Повторіть спробу пізніше.",
                 ["verification_flow_conflict_resolved_to_existing"] =
                     "Знайдено активну сесію; будь ласка, продовжуйте.",
                 ["verification_flow_conflict_unresolved"] = "Конфлікт сесій; будь ласка, спробуйте ще раз.",
