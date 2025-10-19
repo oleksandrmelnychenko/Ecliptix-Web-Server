@@ -35,6 +35,8 @@ public sealed class VerificationFlowTimeouts
 
     public int MaxSmsRetries { get; set; } = 3;
 
+    public int MaxOtpVerificationAttempts { get; set; } = 3;
+
 
     public TimeSpan SessionTimeout => TimeSpan.FromSeconds(SessionTimeoutSeconds);
     public TimeSpan OtpUpdateInterval => TimeSpan.FromSeconds(OtpUpdateIntervalSeconds);

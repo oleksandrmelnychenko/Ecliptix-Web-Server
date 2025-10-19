@@ -97,6 +97,18 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         ReceivePersistorCommand<CheckExistingMembershipActorEvent, ExistingMembershipResult>(
             CheckExistingMembershipAsync,
             "CheckExistingMembership");
+
+        ReceivePersistorCommand<IncrementOtpAttemptCountActorEvent, Unit>(
+            IncrementOtpAttemptCountAsync,
+            "IncrementOtpAttemptCount");
+
+        ReceivePersistorCommand<LogFailedOtpAttemptActorEvent, Unit>(
+            LogFailedAttemptAsync,
+            "LogFailedAttempt");
+
+        ReceivePersistorCommand<GetOtpAttemptCountActorEvent, short>(
+            GetOtpAttemptCountAsync,
+            "GetOtpAttemptCount");
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
@@ -799,6 +811,113 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         };
     }
 
+
+    private static async Task<Result<Unit, VerificationFlowFailure>> IncrementOtpAttemptCountAsync(
+        EcliptixSchemaContext ctx,
+        IncrementOtpAttemptCountActorEvent cmd,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            int updated = await ctx.OtpCodes
+                .Where(o => o.UniqueId == cmd.OtpUniqueId && !o.IsDeleted)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(o => o.AttemptCount, o => (short)(o.AttemptCount + 1))
+                    .SetProperty(o => o.UpdatedAt, DateTimeOffset.UtcNow),
+                    cancellationToken);
+
+            if (updated == 0)
+            {
+                return Result<Unit, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.NotFound("OTP not found for attempt count increment"));
+            }
+
+            return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Failed to increment attempt count: {ex.Message}", ex));
+        }
+    }
+
+    private static async Task<Result<Unit, VerificationFlowFailure>> LogFailedAttemptAsync(
+        EcliptixSchemaContext ctx,
+        LogFailedOtpAttemptActorEvent cmd,
+        CancellationToken cancellationToken)
+    {
+        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            OtpCodeEntity? otp = await ctx.OtpCodes
+                .Where(o => o.UniqueId == cmd.OtpUniqueId && !o.IsDeleted)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (otp == null)
+            {
+                await transaction.RollbackAsync();
+                return Result<Unit, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.NotFound("OTP not found for logging failed attempt"));
+            }
+
+            // Create failed attempt record
+            // Note: We don't store the actual attempted value for security reasons
+            FailedOtpAttemptEntity failedAttempt = new()
+            {
+                OtpRecordId = otp.Id,
+                AttemptedValue = "***",  // Anonymized for security
+                FailureReason = cmd.FailureReason,
+                AttemptedAt = DateTimeOffset.UtcNow,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                IsDeleted = false
+            };
+
+            ctx.FailedOtpAttempts.Add(failedAttempt);
+            await ctx.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            Log.Information("[OTP-FAILED-ATTEMPT] Logged failed attempt for OTP {OtpId}, Reason: {Reason}",
+                cmd.OtpUniqueId, cmd.FailureReason);
+
+            return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            Log.Error(ex, "[OTP-FAILED-ATTEMPT] Error logging failed attempt for OTP {OtpId}", cmd.OtpUniqueId);
+            return Result<Unit, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Failed to log attempt: {ex.Message}", ex));
+        }
+    }
+
+    private static async Task<Result<short, VerificationFlowFailure>> GetOtpAttemptCountAsync(
+        EcliptixSchemaContext ctx,
+        GetOtpAttemptCountActorEvent cmd,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var otpData = await ctx.OtpCodes
+                .Where(o => o.UniqueId == cmd.OtpUniqueId && !o.IsDeleted)
+                .Select(o => new { o.AttemptCount })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (otpData == null)
+            {
+                return Result<short, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.NotFound("OTP not found for attempt count retrieval"));
+            }
+
+            return Result<short, VerificationFlowFailure>.Ok(otpData.AttemptCount);
+        }
+        catch (Exception ex)
+        {
+            return Result<short, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Failed to get attempt count: {ex.Message}", ex));
+        }
+    }
 
     protected override VerificationFlowFailure MapDbException(DbException ex)
     {
