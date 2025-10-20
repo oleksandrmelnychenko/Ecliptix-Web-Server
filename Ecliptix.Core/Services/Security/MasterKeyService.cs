@@ -106,8 +106,10 @@ internal sealed class MasterKeyService(
             {
                 byte[] masterKeyBytes = masterKeyBytesResult.Unwrap();
                 string masterKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(masterKeyBytes);
-                Log.Information($"{LogTagServerMasterKeyDerive} {LogMessageMasterKeyDerived}",
-                    membershipId, masterKeyFingerprint);
+                Log.Information("{LogTag} " + LogMessageMasterKeyDerived,
+                    LogTagServerMasterKeyDerive,
+                    membershipId,
+                    masterKeyFingerprint);
                 CryptographicOperations.ZeroMemory(masterKeyBytes);
             }
 
@@ -176,8 +178,10 @@ internal sealed class MasterKeyService(
             try
             {
                 string masterKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(masterKeyBytes);
-                Log.Information($"{LogTagServerMasterKeyRootKey} {LogMessageUsingMasterKeyForRootKey}",
-                    membershipId, masterKeyFingerprint);
+                Log.Information("{LogTag} " + LogMessageUsingMasterKeyForRootKey,
+                    LogTagServerMasterKeyRootKey,
+                    membershipId,
+                    masterKeyFingerprint);
 
                 rootKeyBytes = new byte[MasterKeySize];
                 HKDF.DeriveKey(
@@ -189,8 +193,10 @@ internal sealed class MasterKeyService(
                 );
 
                 string rootKeyHash = CryptoHelpers.ComputeSha256Fingerprint(rootKeyBytes);
-                Log.Information($"{LogTagServerRootKeyDerive} {LogMessageRootKeyDerived}",
-                    membershipId, rootKeyHash);
+                Log.Information("{LogTag} " + LogMessageRootKeyDerived,
+                    LogTagServerRootKeyDerive,
+                    membershipId,
+                    rootKeyHash);
             }
             finally
             {

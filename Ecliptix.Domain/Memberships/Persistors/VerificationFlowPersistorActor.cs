@@ -44,11 +44,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         RegisterHandlers();
         Receive<Result<Unit, VerificationFlowFailure>>(result =>
         {
-            if (result.IsOk)
-            {
-                Log.Debug("[UPDATE-FLOW-STATUS] Membership update acknowledgement received: success");
-            }
-            else
+            if (result.IsErr)
             {
                 Log.Warning("[UPDATE-FLOW-STATUS] Membership update acknowledgement received with error: {Error}",
                     result.UnwrapErr().Message);

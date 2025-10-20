@@ -58,7 +58,7 @@ public class TelemetryInterceptor : Interceptor, IDisposable
 
             throw;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             stopwatch.Stop();
             long duration = stopwatch.ElapsedMilliseconds;
@@ -66,9 +66,6 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             activity?.SetTag(InterceptorConstants.Tags.GrpcStatus, InterceptorConstants.StatusMessages.Internal);
             activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
             activity?.SetTag(InterceptorConstants.Tags.GrpcError, true);
-
-            Log.Error(ex, InterceptorConstants.LogMessages.GrpcCallUnexpectedError,
-                methodName, duration);
 
             throw;
         }
@@ -104,16 +101,13 @@ public class TelemetryInterceptor : Interceptor, IDisposable
             activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
             activity?.SetTag(InterceptorConstants.Tags.GrpcMessagesSent, wrappedStream.MessagesSent);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             stopwatch.Stop();
             long duration = stopwatch.ElapsedMilliseconds;
 
             activity?.SetTag(InterceptorConstants.Tags.GrpcError, true);
             activity?.SetTag(InterceptorConstants.Tags.GrpcDurationMs, duration);
-
-            Log.Error(ex, InterceptorConstants.LogMessages.GrpcStreamingError,
-                methodName, duration, clientHash);
 
             throw;
         }

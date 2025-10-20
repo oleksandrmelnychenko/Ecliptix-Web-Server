@@ -131,7 +131,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="Ecliptix.Core\Services\Network\Rpc\" />
+      <Folder Include="logs\" />
     </ItemGroup>
 
     <!-- Commented out: Using AOT-safe hardcoded FrozenDictionary instead of ResourceManager

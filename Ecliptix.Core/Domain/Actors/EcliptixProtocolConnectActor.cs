@@ -834,9 +834,16 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             return;
         }
 
-        Context.GetLogger()
-            .Debug(
-                $"[Recovery] Attempting system recreation (attempt {_recoveryRetryCount + 1}/{MaxRecoveryRetries}) for connectId {connectId}");
+        if (Serilog.Log.IsEnabled(Serilog.Events.LogEventLevel.Debug))
+        {
+            int attempt = _recoveryRetryCount + 1;
+            Context.GetLogger()
+                .Debug(
+                    "[Recovery] Attempting system recreation (attempt {0}/{1}) for connectId {2}",
+                    attempt,
+                    MaxRecoveryRetries,
+                    connectId);
+        }
 
         Result<EcliptixProtocolSystem, EcliptixProtocolFailure> systemResult =
             EcliptixProtocol.RecreateSystemFromState(_state);

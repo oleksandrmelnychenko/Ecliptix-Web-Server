@@ -38,9 +38,11 @@ internal sealed class MembershipServices(
     private readonly IActorRef _logoutAuditPersistor = actorRegistry.Get(ActorIds.LogoutAuditPersistorActor);
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
 
-    public override async Task<SecureEnvelope> OpaqueSignInInitRequest(SecureEnvelope request, ServerCallContext context)
+    public override async Task<SecureEnvelope> OpaqueSignInInitRequest(SecureEnvelope request,
+        ServerCallContext context)
     {
-        return await _baseService.ExecuteEncryptedOperationAsync<OpaqueSignInInitRequest, OpaqueSignInInitResponse>(request, context,
+        return await _baseService.ExecuteEncryptedOperationAsync<OpaqueSignInInitRequest, OpaqueSignInInitResponse>(
+            request, context,
             async (message, connectId, ct) =>
             {
                 Result<MobileNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
@@ -57,6 +59,7 @@ internal sealed class MembershipServices(
                             Message = verificationFlowFailure.Message
                         });
                     }
+
                     return Result<OpaqueSignInInitResponse, FailureBase>.Err(verificationFlowFailure);
                 }
 
@@ -81,7 +84,8 @@ internal sealed class MembershipServices(
                     ct);
 
                 Result<OpaqueSignInInitResponse, VerificationFlowFailure> initSignInResult =
-                    await _membershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent, Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
+                    await _membershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(signInEvent,
+                        Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
 
                 return initSignInResult.Match(
                     ok: Result<OpaqueSignInInitResponse, FailureBase>.Ok,
@@ -93,13 +97,15 @@ internal sealed class MembershipServices(
     public override async Task<SecureEnvelope> OpaqueSignInCompleteRequest(SecureEnvelope request,
         ServerCallContext context)
     {
-        return await _baseService.ExecuteEncryptedOperationAsync<OpaqueSignInFinalizeRequest, OpaqueSignInFinalizeResponse>(
+        return await _baseService
+            .ExecuteEncryptedOperationAsync<OpaqueSignInFinalizeRequest, OpaqueSignInFinalizeResponse>(
                 request, context,
                 async (message, connectId, ct) =>
                 {
                     Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure> finalizeSignInResult =
                         await _membershipActor.Ask<Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>>(
-                            new SignInCompleteEvent(connectId, message), Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
+                            new SignInCompleteEvent(connectId, message),
+                            Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
 
                     return finalizeSignInResult.Match(
                         ok: Result<OpaqueSignInFinalizeResponse, FailureBase>.Ok,
@@ -111,7 +117,9 @@ internal sealed class MembershipServices(
     public override async Task<SecureEnvelope> OpaqueRegistrationCompleteRequest(SecureEnvelope request,
         ServerCallContext context)
     {
-        return await _baseService.ExecuteEncryptedOperationAsync<OprfRegistrationCompleteRequest, OprfRegistrationCompleteResponse>(request, context,
+        return await _baseService
+            .ExecuteEncryptedOperationAsync<OprfRegistrationCompleteRequest, OprfRegistrationCompleteResponse>(request,
+                context,
                 async (message, connectId, ct) =>
                 {
                     Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
@@ -137,30 +145,35 @@ internal sealed class MembershipServices(
     public override async Task<SecureEnvelope> OpaqueRecoverySecretKeyCompleteRequest(SecureEnvelope request,
         ServerCallContext context)
     {
-        return await _baseService.ExecuteEncryptedOperationAsync<OprfRecoverySecretKeyCompleteRequest, OprfRecoverySecretKeyCompleteResponse>(
-            request, context,
-            async (message, _, ct) =>
+        return await _baseService
+            .ExecuteEncryptedOperationAsync<OprfRecoverySecretKeyCompleteRequest,
+                OprfRecoverySecretKeyCompleteResponse>(
+                request, context,
+                async (message, _, ct) =>
                 {
                     OprfCompleteRecoverySecureKeyEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerRecoveryRecord.Memory),
                         ct);
 
-                Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure> completeRecoverySecretKeyResult =
-                    await _membershipActor
-                        .Ask<Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>>(@event, Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
+                    Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>
+                        completeRecoverySecretKeyResult =
+                            await _membershipActor
+                                .Ask<Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>>(@event,
+                                    Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
 
-                return completeRecoverySecretKeyResult.Match(
-                    ok: Result<OprfRecoverySecretKeyCompleteResponse, FailureBase>.Ok,
-                    err: Result<OprfRecoverySecretKeyCompleteResponse, FailureBase>.Err
-                );
-            });
+                    return completeRecoverySecretKeyResult.Match(
+                        ok: Result<OprfRecoverySecretKeyCompleteResponse, FailureBase>.Ok,
+                        err: Result<OprfRecoverySecretKeyCompleteResponse, FailureBase>.Err
+                    );
+                });
     }
 
     public override async Task<SecureEnvelope> OpaqueRegistrationInitRequest(SecureEnvelope request,
         ServerCallContext context)
     {
-        return await _baseService.ExecuteEncryptedOperationAsync<OprfRegistrationInitRequest, OprfRegistrationInitResponse>(
+        return await _baseService
+            .ExecuteEncryptedOperationAsync<OprfRegistrationInitRequest, OprfRegistrationInitResponse>(
                 request, context,
                 async (message, _, ct) =>
                 {
@@ -170,7 +183,8 @@ internal sealed class MembershipServices(
                         ct);
 
                     Result<OprfRegistrationInitResponse, VerificationFlowFailure> updateOperationResult =
-                        await _membershipActor.Ask<Result<OprfRegistrationInitResponse, VerificationFlowFailure>>(@event,
+                        await _membershipActor.Ask<Result<OprfRegistrationInitResponse, VerificationFlowFailure>>(
+                            @event,
                             Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
 
                     return updateOperationResult.Match(
@@ -180,9 +194,12 @@ internal sealed class MembershipServices(
                 });
     }
 
-    public override async Task<SecureEnvelope> OpaqueRecoverySecretKeyInitRequest(SecureEnvelope request, ServerCallContext context)
+    public override async Task<SecureEnvelope> OpaqueRecoverySecretKeyInitRequest(SecureEnvelope request,
+        ServerCallContext context)
     {
-        return await _baseService.ExecuteEncryptedOperationAsync<OprfRecoverySecureKeyInitRequest, OprfRecoverySecureKeyInitResponse>(request, context,
+        return await _baseService
+            .ExecuteEncryptedOperationAsync<OprfRecoverySecureKeyInitRequest, OprfRecoverySecureKeyInitResponse>(
+                request, context,
                 async (message, _, ct) =>
                 {
                     OprfInitRecoverySecureKeyEvent @event = new(
@@ -219,7 +236,8 @@ internal sealed class MembershipServices(
 
                     if (timestampDiff > maxTimestampDrift)
                     {
-                        Log.Warning("Logout request timestamp validation failed for MembershipId: {MembershipId}, Drift: {Drift}s",
+                        Log.Warning(
+                            "Logout request timestamp validation failed for MembershipId: {MembershipId}, Drift: {Drift}s",
                             membershipId, timestampDiff);
                         return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
                         {
@@ -243,12 +261,15 @@ internal sealed class MembershipServices(
                         : null;
                     AuditContext auditContext = AuditContextExtractor.ExtractFromContext(context);
 
-                    Log.Information("Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
+                    Log.Information(
+                        "Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
                         membershipId, connectId, deviceId, accountId, reason, message.Scope);
 
-                    RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason, auditContext.IpAddress, auditContext.Platform, ct);
+                    RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason,
+                        auditContext.IpAddress, auditContext.Platform, ct);
                     Result<Unit, VerificationFlowFailure> auditResult =
-                        await _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(logoutEvent, Ecliptix.Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
+                        await _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(logoutEvent,
+                            Utilities.Configuration.TimeoutConfiguration.Actor.AskTimeout, ct);
 
                     if (auditResult.IsErr)
                     {
@@ -286,11 +307,14 @@ internal sealed class MembershipServices(
             try
             {
                 actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
-                Log.Information("[PROTOCOL-CLEANUP-TRIGGER] Protocol cleanup triggered for ConnectId: {ConnectId}", connectId);
+                Log.Information("[PROTOCOL-CLEANUP-TRIGGER] Protocol cleanup triggered for ConnectId: {ConnectId}",
+                    connectId);
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "[PROTOCOL-CLEANUP-FAILED] Failed to trigger protocol cleanup for ConnectId: {ConnectId}. Cryptographic state may persist.", connectId);
+                Log.Error(ex,
+                    "[PROTOCOL-CLEANUP-FAILED] Failed to trigger protocol cleanup for ConnectId: {ConnectId}. Cryptographic state may persist.",
+                    connectId);
             }
         });
 
