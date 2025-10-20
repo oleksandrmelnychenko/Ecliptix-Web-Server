@@ -10,11 +10,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Akka.Persistence" Version="1.5.53" />
+        <PackageReference Include="Akka.Persistence" Version="1.5.54" />
         <PackageReference Include="Akka.Persistence.Sql" Version="1.5.53" />
-        <PackageReference Include="Akka.Persistence.TestKit" Version="1.5.53" />
-        <PackageReference Include="Akka.Persistence.TestKit.Xunit2" Version="1.5.53" />
-        <PackageReference Include="Akka.TestKit" Version="1.5.53" />
+        <PackageReference Include="Akka.Persistence.TestKit" Version="1.5.54" />
+        <PackageReference Include="Akka.Persistence.TestKit.Xunit2" Version="1.5.54" />
+        <PackageReference Include="Akka.TestKit" Version="1.5.54" />
         <PackageReference Include="BenchmarkDotNet" Version="0.15.4" />
         <PackageReference Include="FluentAssertions" Version="8.7.1" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.0" />
