@@ -186,12 +186,12 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             .ExecuteEncryptedOperationAsync<OprfRecoverySecretKeyCompleteRequest,
                 OprfRecoverySecretKeyCompleteResponse>(
                 request, context,
-                async (message, _, ct) =>
+                async (message, _, cancellationToken) =>
                 {
                     OprfCompleteRecoverySecureKeyEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerRecoveryRecord.Memory),
-                        ct);
+                        cancellationToken);
 
                     Task<Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>> completeRecoverySecretKeyTask =
                         _membershipActor.Ask<Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>>(
@@ -199,7 +199,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                             TimeoutConfiguration.Actor.AskTimeout);
 
                     Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure> completeRecoverySecretKeyResult =
-                        await completeRecoverySecretKeyTask.WaitAsync(ct).ConfigureAwait(false);
+                        await completeRecoverySecretKeyTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     return completeRecoverySecretKeyResult.Match(
                         ok: Result<OprfRecoverySecretKeyCompleteResponse, FailureBase>.Ok,
@@ -214,12 +214,12 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         return await _service
             .ExecuteEncryptedOperationAsync<OprfRegistrationInitRequest, OprfRegistrationInitResponse>(
                 request, context,
-                async (message, _, ct) =>
+                async (message, _, cancellationToken) =>
                 {
                     GenerateMembershipOprfRegistrationRequestEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory),
-                        ct);
+                        cancellationToken);
 
                     Task<Result<OprfRegistrationInitResponse, VerificationFlowFailure>> updateOperationTask =
                         _membershipActor.Ask<Result<OprfRegistrationInitResponse, VerificationFlowFailure>>(
@@ -227,7 +227,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                             TimeoutConfiguration.Actor.AskTimeout);
 
                     Result<OprfRegistrationInitResponse, VerificationFlowFailure> updateOperationResult =
-                        await updateOperationTask.WaitAsync(ct).ConfigureAwait(false);
+                        await updateOperationTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     return updateOperationResult.Match(
                         ok: Result<OprfRegistrationInitResponse, FailureBase>.Ok,
@@ -242,13 +242,13 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         return await _service
             .ExecuteEncryptedOperationAsync<OprfRecoverySecureKeyInitRequest, OprfRecoverySecureKeyInitResponse>(
                 request, context,
-                async (message, _, ct) =>
+                async (message, _, cancellationToken) =>
                 {
                     OprfInitRecoverySecureKeyEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory),
                         _cultureName,
-                        ct);
+                        cancellationToken);
 
                     Task<Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>> recoveryInitTask =
                         _membershipActor.Ask<Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>>(
@@ -256,7 +256,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                             TimeoutConfiguration.Actor.AskTimeout);
 
                     Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure> result =
-                        await recoveryInitTask.WaitAsync(ct).ConfigureAwait(false);
+                        await recoveryInitTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     return result.Match(
                         ok: Result<OprfRecoverySecureKeyInitResponse, FailureBase>.Ok,
@@ -413,8 +413,8 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
             byte[] nonce = RandomNumberGenerator.GetBytes(nonceSize);
 
-            using MemoryStream canonicalStream = new MemoryStream();
-            using BinaryWriter canonicalWriter = new BinaryWriter(canonicalStream);
+            using MemoryStream canonicalStream = new();
+            await using BinaryWriter canonicalWriter = new(canonicalStream);
 
             canonicalWriter.Write(membershipId.ToByteArray());
             canonicalWriter.Write(connectId);
@@ -432,8 +432,8 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             Log.Information("[LOGOUT-PROOF] Generated HMAC revocation proof for MembershipId: {MembershipId}, ProofTagPrefix: {ProofTagPrefix}",
                 membershipId, Convert.ToHexString(hmacProof).ToLowerInvariant()[..16]);
 
-            using MemoryStream proofStream = new MemoryStream();
-            using BinaryWriter proofWriter = new BinaryWriter(proofStream);
+            using MemoryStream proofStream = new();
+            await using BinaryWriter proofWriter = new(proofStream);
 
             proofWriter.Write(proofVersionHmac);
             proofWriter.Write(nonce.Length);
@@ -479,6 +479,35 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                             ServerTimestamp = serverTimestamp
                         });
                     }
+
+                    Result<bool, FailureBase> sharesExistResult =
+                        await _masterKeyService.CheckSharesExistAsync(membershipId);
+
+                    if (sharesExistResult.IsErr)
+                    {
+                        Log.Error("[LOGOUT-SECURITY] Failed to check master key shares existence for MembershipId: {MembershipId}. Error: {Error}",
+                            membershipId, sharesExistResult.UnwrapErr().Message);
+                        return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
+                        {
+                            Result = LogoutResponse.Types.Result.SessionNotFound,
+                            ServerTimestamp = serverTimestamp
+                        });
+                    }
+
+                    bool sharesExist = sharesExistResult.Unwrap();
+                    if (!sharesExist)
+                    {
+                        Log.Warning("[LOGOUT-SECURITY] No master key shares found for MembershipId: {MembershipId}. " +
+                                   "Session was restored but shares don't exist in database. User must sign in again.",
+                            membershipId);
+                        return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
+                        {
+                            Result = LogoutResponse.Types.Result.SessionNotFound,
+                            ServerTimestamp = serverTimestamp
+                        });
+                    }
+
+                    Log.Debug("[LOGOUT-SECURITY] Master key shares verified for MembershipId: {MembershipId}", membershipId);
 
                     Result<Unit, FailureBase> hmacValidation = await ValidateLogoutHmacAsync(message, membershipId);
                     if (hmacValidation.IsErr)

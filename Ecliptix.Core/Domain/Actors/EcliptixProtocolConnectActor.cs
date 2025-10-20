@@ -65,7 +65,6 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
     protected override bool ReceiveCommand(object message)
     {
-
         switch (message)
         {
             case InitializeProtocolWithMasterKeyActorEvent cmd:
@@ -135,6 +134,27 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 TryCompleteShutdown();
 
                 return true;
+
+            case DeleteMessagesFailure failure:
+                Context.GetLogger().Warning("[PERSISTENCE-DELETE-MSG-FAILED] Failed to delete messages. " +
+                                            "PersistenceId: {0}, Error: {1}. This is non-critical - continuing operation.",
+                    PersistenceId, failure.Cause?.Message ?? "Unknown");
+                if (!_savingFinalSnapshot || !_pendingMessageDeletion) return true;
+                _pendingMessageDeletion = false;
+                TryCompleteShutdown();
+
+                return true;
+
+            case DeleteSnapshotsFailure failure:
+                Context.GetLogger().Warning("[PERSISTENCE-DELETE-SNAP-FAILED] Failed to delete snapshots. " +
+                                            "PersistenceId: {0}, Error: {1}. This is non-critical - continuing operation.",
+                    PersistenceId, failure.Cause?.Message ?? "Unknown");
+
+                if (!_savingFinalSnapshot || !_pendingSnapshotDeletion) return true;
+                _pendingSnapshotDeletion = false;
+                TryCompleteShutdown();
+                return true;
+
             default:
                 return false;
         }
@@ -143,7 +163,9 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     protected override void PreStart()
     {
         base.PreStart();
-        Context.GetLogger().Info("[PROTOCOL_ACTOR] Starting and subscribing to ProtocolCleanupRequiredEvent - ConnectId: {0}", connectId);
+        Context.GetLogger()
+            .Info("[PROTOCOL_ACTOR] Starting and subscribing to ProtocolCleanupRequiredEvent - ConnectId: {0}",
+                connectId);
         Context.System.EventStream.Subscribe(Self, typeof(ProtocolCleanupRequiredEvent));
     }
 
@@ -249,11 +271,13 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
     private void HandleGetProtocolState()
     {
-        Context.GetLogger().Debug("[GET-PROTOCOL-STATE] Retrieving session state for ConnectId: {ConnectId}", connectId);
+        Context.GetLogger().Debug("[GET-PROTOCOL-STATE] Retrieving session state for ConnectId: {ConnectId}",
+            connectId);
 
         if (_state == null)
         {
-            Context.GetLogger().Info("[GET-PROTOCOL-STATE] No session state found for ConnectId: {ConnectId}", connectId);
+            Context.GetLogger().Info("[GET-PROTOCOL-STATE] No session state found for ConnectId: {ConnectId}",
+                connectId);
             Sender.Tell(new GetProtocolStateReply(null));
             return;
         }
@@ -311,12 +335,16 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                     if (exchangeType == PubKeyExchangeType.ServerStreaming)
                     {
                         Context.SetReceiveTimeout(null);
-                        Context.GetLogger().Info("[PROTOCOL] ServerStreaming - no timeout, controlled by VerificationFlow for ConnectId {0}", cmd.ConnectId);
+                        Context.GetLogger()
+                            .Info(
+                                "[PROTOCOL] ServerStreaming - no timeout, controlled by VerificationFlow for ConnectId {0}",
+                                cmd.ConnectId);
                     }
                     else
                     {
                         Context.SetReceiveTimeout(IdleTimeout);
-                        Context.GetLogger().Info("[PROTOCOL] {0} - using idle timeout for ConnectId {1}", exchangeType, cmd.ConnectId);
+                        Context.GetLogger().Info("[PROTOCOL] {0} - using idle timeout for ConnectId {1}", exchangeType,
+                            cmd.ConnectId);
                     }
 
                     if (existingReplyResult.IsOk)
@@ -406,14 +434,17 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
             if (keysMatch)
             {
-                string reuseRootKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(cmd.RootKey))[..16];
+                string reuseRootKeyHash =
+                    Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(cmd.RootKey))[..16];
 
                 Context.GetLogger().Info(
                     "[SERVER-AUTH-REUSE] Reusing existing authenticated session. ConnectId: {0}, MembershipId: {1}, Sending: {2}, Receiving: {3}, ExchangeType: {4}, RootKeyHash: {5}",
-                    cmd.ConnectId, cmd.MembershipId, _state?.RatchetState?.SendingStep?.CurrentIndex, _state?.RatchetState?.ReceivingStep?.CurrentIndex, exchangeType, reuseRootKeyHash);
+                    cmd.ConnectId, cmd.MembershipId, _state?.RatchetState?.SendingStep?.CurrentIndex,
+                    _state?.RatchetState?.ReceivingStep?.CurrentIndex, exchangeType, reuseRootKeyHash);
 
                 Result<PubKeyExchange, EcliptixProtocolFailure> existingReplyResult =
-                    existingSystem.ProcessAuthenticatedPubKeyExchange(cmd.ConnectId, cmd.ClientPubKeyExchange, cmd.RootKey);
+                    existingSystem.ProcessAuthenticatedPubKeyExchange(cmd.ConnectId, cmd.ClientPubKeyExchange,
+                        cmd.RootKey);
 
                 if (existingReplyResult.IsOk)
                 {
@@ -444,7 +475,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 else
                 {
                     Sender.Tell(
-                        Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(existingReplyResult.UnwrapErr()));
+                        Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(existingReplyResult
+                            .UnwrapErr()));
                 }
 
                 cmd.IdentityKeys.Dispose();
@@ -466,22 +498,26 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             SaveSnapshot(new EcliptixSessionState());
         }
 
-        Context.GetLogger().Info("[SERVER-AUTH-NEW] Creating new authenticated session. ConnectId: {0}, MembershipId: {1}, ExchangeType: {2}",
+        Context.GetLogger().Info(
+            "[SERVER-AUTH-NEW] Creating new authenticated session. ConnectId: {0}, MembershipId: {1}, ExchangeType: {2}",
             cmd.ConnectId, cmd.MembershipId, exchangeType);
 
         string rootKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(cmd.RootKey))[..16];
-        Context.GetLogger().Info("[SERVER-AUTH-ROOTKEY] Received root key for authenticated session. ConnectId: {0}, MembershipId: {1}, RootKeyHash: {2}",
+        Context.GetLogger().Info(
+            "[SERVER-AUTH-ROOTKEY] Received root key for authenticated session. ConnectId: {0}, MembershipId: {1}, RootKeyHash: {2}",
             cmd.ConnectId, cmd.MembershipId, rootKeyHash);
 
         EcliptixProtocolSystem system = new(cmd.IdentityKeys);
 
-        Context.GetLogger().Info("[PROTOCOL] Processing authenticated pub key exchange for ConnectId {0}", cmd.ConnectId);
+        Context.GetLogger().Info("[PROTOCOL] Processing authenticated pub key exchange for ConnectId {0}",
+            cmd.ConnectId);
         Result<PubKeyExchange, EcliptixProtocolFailure> replyResult =
             system.ProcessAuthenticatedPubKeyExchange(cmd.ConnectId, cmd.ClientPubKeyExchange, cmd.RootKey);
 
         if (replyResult.IsErr)
         {
-            Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(replyResult.UnwrapErr()));
+            Sender.Tell(
+                Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(replyResult.UnwrapErr()));
             system.Dispose();
             return;
         }
@@ -490,7 +526,9 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             EcliptixProtocol.CreateInitialState(cmd.ConnectId, cmd.ClientPubKeyExchange, system);
         if (stateToPersistResult.IsErr)
         {
-            Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(stateToPersistResult.UnwrapErr()));
+            Sender.Tell(
+                Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(
+                    stateToPersistResult.UnwrapErr()));
             system.Dispose();
             return;
         }
@@ -510,17 +548,29 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             if (exchangeType == PubKeyExchangeType.ServerStreaming)
             {
                 Context.SetReceiveTimeout(null);
-                Context.GetLogger().Info("[PROTOCOL] AuthenticatedSession ServerStreaming - no timeout for ConnectId {0}", cmd.ConnectId);
+                Context.GetLogger()
+                    .Info("[PROTOCOL] AuthenticatedSession ServerStreaming - no timeout for ConnectId {0}",
+                        cmd.ConnectId);
             }
             else
             {
                 Context.SetReceiveTimeout(IdleTimeout);
-                Context.GetLogger().Info("[PROTOCOL] AuthenticatedSession {0} - using idle timeout for ConnectId {1}", exchangeType, cmd.ConnectId);
+                Context.GetLogger().Info("[PROTOCOL] AuthenticatedSession {0} - using idle timeout for ConnectId {1}",
+                    exchangeType, cmd.ConnectId);
             }
 
-            string persistedRootKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(state.RatchetState.RootKey.ToByteArray()))[..16];
-            string sendingChainKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(state.RatchetState.SendingStep.ChainKey.ToByteArray()))[..16];
-            string receivingChainKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(state.RatchetState.ReceivingStep.ChainKey.ToByteArray()))[..16];
+            string persistedRootKeyHash =
+                Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(state.RatchetState.RootKey.ToByteArray()))[..16];
+            string sendingChainKeyHash =
+                Convert.ToHexString(
+                        System.Security.Cryptography.SHA256.HashData(
+                            state.RatchetState.SendingStep.ChainKey.ToByteArray()))
+                    [..16];
+            string receivingChainKeyHash =
+                Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(
+                        state.RatchetState.ReceivingStep.ChainKey.ToByteArray()))[..16];
 
             Context.GetLogger().Info(
                 "[SERVER-AUTH-PROTOCOL-STATE] Authenticated protocol state created. ConnectId: {0}, RootKeyHash: {1}, SendingChainKeyHash: {2}, ReceivingChainKeyHash: {3}",
@@ -528,7 +578,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
             Context.GetLogger().Info(
                 "[SERVER-AUTH-PERSISTED] Authenticated session persisted. ConnectId: {0}, MembershipId: {1}, Sending: {2}, Receiving: {3}",
-                cmd.ConnectId, cmd.MembershipId, state.RatchetState.SendingStep.CurrentIndex, state.RatchetState.ReceivingStep.CurrentIndex);
+                cmd.ConnectId, cmd.MembershipId, state.RatchetState.SendingStep.CurrentIndex,
+                state.RatchetState.ReceivingStep.CurrentIndex);
 
             SaveSnapshot(_state);
             Context.GetLogger().Info(
@@ -580,11 +631,13 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         {
             Context.GetLogger().Info(
                 "[SERVER-ENCRYPT-BEFORE] Current _state before encryption. ConnectId: {0}, Sending: {1}, Receiving: {2}",
-                connectId, _state.RatchetState.SendingStep.CurrentIndex, _state.RatchetState.ReceivingStep.CurrentIndex);
+                connectId, _state.RatchetState.SendingStep.CurrentIndex,
+                _state.RatchetState.ReceivingStep.CurrentIndex);
         }
         else
         {
-            Context.GetLogger().Warning("[SERVER-ENCRYPT-BEFORE] _state is NULL before encryption. ConnectId: {0}", connectId);
+            Context.GetLogger().Warning("[SERVER-ENCRYPT-BEFORE] _state is NULL before encryption. ConnectId: {0}",
+                connectId);
         }
 
         Result<EncryptionResult, EcliptixProtocolFailure> result =
@@ -601,7 +654,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
         Context.GetLogger().Info(
             "[SERVER-ENCRYPT-CHECK] ExchangeType: {0}, NewState after encryption Sending: {1}, Receiving: {2}",
-            cmd.PubKeyExchangeType, encryptionResult.NewState.RatchetState.SendingStep.CurrentIndex, encryptionResult.NewState.RatchetState.ReceivingStep.CurrentIndex);
+            cmd.PubKeyExchangeType, encryptionResult.NewState.RatchetState.SendingStep.CurrentIndex,
+            encryptionResult.NewState.RatchetState.ReceivingStep.CurrentIndex);
 
         if (encryptionResult.ShouldPersist)
         {
@@ -610,7 +664,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 _state = state;
                 Context.GetLogger().Info(
                     "[SERVER-ENCRYPT] Message encrypted and state persisted. ConnectId: {0}, Sending: {1}, Receiving: {2}",
-                    connectId, state.RatchetState.SendingStep.CurrentIndex, state.RatchetState.ReceivingStep.CurrentIndex);
+                    connectId, state.RatchetState.SendingStep.CurrentIndex,
+                    state.RatchetState.ReceivingStep.CurrentIndex);
                 originalSender.Tell(Result<SecureEnvelope, EcliptixProtocolFailure>.Ok(encryptionResult.Envelope));
                 MaybeSaveSnapshot();
             });
@@ -643,17 +698,23 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         {
             Context.GetLogger().Info(
                 "[SERVER-DECRYPT-BEFORE] Current _state before decryption. ConnectId: {0}, Sending: {1}, Receiving: {2}",
-                connectId, _state.RatchetState.SendingStep.CurrentIndex, _state.RatchetState.ReceivingStep.CurrentIndex);
+                connectId, _state.RatchetState.SendingStep.CurrentIndex,
+                _state.RatchetState.ReceivingStep.CurrentIndex);
         }
 
         Context.GetLogger().Info(
             "[SERVER-DECRYPT-ENVELOPE] Incoming envelope. ConnectId: {0}, HeaderNonce: {1}, AuthTag: {2}",
             connectId,
-            Convert.ToHexString(actorEvent.SecureEnvelope.HeaderNonce.ToByteArray())[..Math.Min(16, actorEvent.SecureEnvelope.HeaderNonce.Length * 2)],
-            actorEvent.SecureEnvelope.AuthenticationTag != null ? Convert.ToHexString(actorEvent.SecureEnvelope.AuthenticationTag.ToByteArray())[..Math.Min(16, actorEvent.SecureEnvelope.AuthenticationTag.Length * 2)] : "NULL");
+            Convert.ToHexString(actorEvent.SecureEnvelope.HeaderNonce.ToByteArray())[
+                ..Math.Min(16, actorEvent.SecureEnvelope.HeaderNonce.Length * 2)],
+            actorEvent.SecureEnvelope.AuthenticationTag != null
+                ? Convert.ToHexString(actorEvent.SecureEnvelope.AuthenticationTag.ToByteArray())[
+                    ..Math.Min(16, actorEvent.SecureEnvelope.AuthenticationTag.Length * 2)]
+                : "NULL");
 
         Result<DecryptionResult, EcliptixProtocolFailure> result =
-            _decryptionHandler.DecryptEnvelope(system, _state, actorEvent.SecureEnvelope, actorEvent.PubKeyExchangeType);
+            _decryptionHandler.DecryptEnvelope(system, _state, actorEvent.SecureEnvelope,
+                actorEvent.PubKeyExchangeType);
 
         if (result.IsErr)
         {
@@ -701,7 +762,9 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
         Context.GetLogger().Info(
             "[SERVER-DECRYPT-CHECK] ExchangeType: {0}, ShouldPersist: {1}, NewState Sending: {2}, Receiving: {3}",
-            actorEvent.PubKeyExchangeType, decryptionResult.ShouldPersist, decryptionResult.NewState.RatchetState.SendingStep.CurrentIndex, decryptionResult.NewState.RatchetState.ReceivingStep.CurrentIndex);
+            actorEvent.PubKeyExchangeType, decryptionResult.ShouldPersist,
+            decryptionResult.NewState.RatchetState.SendingStep.CurrentIndex,
+            decryptionResult.NewState.RatchetState.ReceivingStep.CurrentIndex);
 
         if (decryptionResult.ShouldPersist)
         {
@@ -711,7 +774,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 _state = state;
                 Context.GetLogger().Info(
                     "[SERVER-DECRYPT] Message decrypted and state persisted. ConnectId: {0}, Sending: {1}, Receiving: {2}",
-                    connectId, state.RatchetState.SendingStep.CurrentIndex, state.RatchetState.ReceivingStep.CurrentIndex);
+                    connectId, state.RatchetState.SendingStep.CurrentIndex,
+                    state.RatchetState.ReceivingStep.CurrentIndex);
                 originalSender.Tell(Result<byte[], EcliptixProtocolFailure>.Ok(decryptionResult.Plaintext));
                 MaybeSaveSnapshot();
             });
@@ -720,7 +784,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         {
             Context.GetLogger().Info(
                 "[SERVER-DECRYPT-SYNC] Updating state synchronously. ConnectId: {0}, Sending: {1}, Receiving: {2}",
-                connectId, decryptionResult.NewState.RatchetState.SendingStep.CurrentIndex, decryptionResult.NewState.RatchetState.ReceivingStep.CurrentIndex);
+                connectId, decryptionResult.NewState.RatchetState.SendingStep.CurrentIndex,
+                decryptionResult.NewState.RatchetState.ReceivingStep.CurrentIndex);
             _state = decryptionResult.NewState;
             originalSender.Tell(Result<byte[], EcliptixProtocolFailure>.Ok(decryptionResult.Plaintext));
         }
@@ -943,7 +1008,9 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
         if (result.IsErr)
         {
-            Sender.Tell(Result<(EnvelopeMetadata Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(result.UnwrapErr()));
+            Sender.Tell(
+                Result<(EnvelopeMetadata Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(
+                    result.UnwrapErr()));
             return;
         }
 
@@ -955,8 +1022,9 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             Persist(encryptionResult.NewState, state =>
             {
                 _state = state;
-                originalSender.Tell(Result<(EnvelopeMetadata Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Ok(
-                    (encryptionResult.Header, encryptionResult.EncryptedPayload)));
+                originalSender.Tell(
+                    Result<(EnvelopeMetadata Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Ok(
+                        (encryptionResult.Header, encryptionResult.EncryptedPayload)));
                 MaybeSaveSnapshot();
             });
         }
