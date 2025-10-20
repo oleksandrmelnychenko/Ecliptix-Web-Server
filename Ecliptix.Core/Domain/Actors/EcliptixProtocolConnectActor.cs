@@ -95,6 +95,9 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             case RestoreAppDeviceSecrecyChannelState:
                 HandleRestoreSecrecyChannelState();
                 return true;
+            case GetProtocolStateActorEvent:
+                HandleGetProtocolState();
+                return true;
             case KeepAlive:
                 return true;
             case RetryRecoveryMessage:
@@ -242,6 +245,23 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             connectId, reply.SendingChainLength, reply.ReceivingChainLength, lastPersistTime);
 
         Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(reply));
+    }
+
+    private void HandleGetProtocolState()
+    {
+        Context.GetLogger().Debug("[GET-PROTOCOL-STATE] Retrieving session state for ConnectId: {ConnectId}", connectId);
+
+        if (_state == null)
+        {
+            Context.GetLogger().Info("[GET-PROTOCOL-STATE] No session state found for ConnectId: {ConnectId}", connectId);
+            Sender.Tell(new GetProtocolStateReply(null));
+            return;
+        }
+
+        GetProtocolStateReply reply = new(_state);
+        Sender.Tell(reply);
+
+        Context.GetLogger().Debug("[GET-PROTOCOL-STATE] Session state retrieved for ConnectId: {ConnectId}", connectId);
     }
 
     private DateTime GetLastPersistenceTime()

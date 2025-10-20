@@ -569,6 +569,34 @@ internal sealed class MasterKeyService(
                 KeySplittingFailure.KeyReconstructionFailed($"{ErrorMessageRetrieveSharesFailed}: {ex.Message}", ex));
         }
     }
+
+    public async Task<Result<dynamic, FailureBase>> GetMasterKeyHandleAsync(Guid membershipId)
+    {
+        Log.Information("[MASTER-KEY-SERVICE] Retrieving master key handle for MembershipId: {MembershipId}", membershipId);
+
+        try
+        {
+            Result<dynamic, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(membershipId);
+            if (reconstructResult.IsErr)
+            {
+                FailureBase error = reconstructResult.UnwrapErr();
+                Log.Warning("[MASTER-KEY-SERVICE] Failed to reconstruct master key: {Error}", error.Message);
+                return Result<dynamic, FailureBase>.Err(error);
+            }
+
+            SodiumSecureMemoryHandle masterKeyHandle = (SodiumSecureMemoryHandle)reconstructResult.Unwrap();
+
+            Log.Debug("[MASTER-KEY-SERVICE] Master key handle retrieved successfully for MembershipId: {MembershipId}", membershipId);
+
+            return Result<dynamic, FailureBase>.Ok(masterKeyHandle);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "[MASTER-KEY-SERVICE] Unexpected error retrieving master key handle for MembershipId: {MembershipId}", membershipId);
+            return Result<dynamic, FailureBase>.Err(
+                KeySplittingFailure.KeyReconstructionFailed($"Unexpected error retrieving master key handle: {ex.Message}", ex));
+        }
+    }
 }
 
 internal class ShareMetadata

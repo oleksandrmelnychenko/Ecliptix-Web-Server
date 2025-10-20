@@ -6,6 +6,7 @@ using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Utilities;
+using Ecliptix.Utilities.Configuration;
 using Google.Protobuf;
 
 namespace Ecliptix.Core.Infrastructure.SecureChannel;
@@ -49,8 +50,15 @@ public class RsaSecureChannelEstablisher(
 
             try
             {
-                protocolResult = await protocolActor.Ask<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>>(
-                    actorEvent, cancellationToken);
+                Task<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>> protocolTask =
+                    protocolActor.Ask<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>>(
+                        actorEvent,
+                        TimeoutConfiguration.Actor.AskTimeout);
+                protocolResult = await protocolTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -94,6 +102,10 @@ public class RsaSecureChannelEstablisher(
             responseEnvelope.AuthenticationTag = ByteString.CopyFrom(signResult.Unwrap());
 
             return Result<SecureEnvelope, SecureChannelFailure>.Ok(responseEnvelope);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

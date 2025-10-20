@@ -14,6 +14,7 @@ public static class GrpcServiceConstants
     {
         public const string GrpcService = "grpc.service";
         public const string GrpcMethod = "grpc.method";
+        public const string TimestampValid = "timestamp_valid";
         public const string DecryptSuccess = "decrypt_success";
         public const string HandlerSuccess = "handler_success";
         public const string DurationMs = "duration_ms";

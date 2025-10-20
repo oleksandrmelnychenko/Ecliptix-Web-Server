@@ -18,4 +18,6 @@ public interface IMasterKeyService
 
     Task<Result<string, FailureBase>> ValidateMasterKeySharesAsync(
         dynamic sessionKeyHandle, Guid membershipId);
+
+    Task<Result<dynamic, FailureBase>> GetMasterKeyHandleAsync(Guid membershipId);
 }

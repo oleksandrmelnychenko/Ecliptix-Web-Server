@@ -18,18 +18,30 @@ using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Serilog;
+using Ecliptix.Utilities.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Authentication;
 
-internal sealed class VerificationFlowServices(
-    IEcliptixActorRegistry actorRegistry,
-    IMobileNumberValidator phoneNumberValidator,
-    IGrpcCipherService grpcCipherService)
-    : AuthVerificationServices.AuthVerificationServicesBase
+internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVerificationServicesBase
 {
-    private readonly RpcServiceBase _baseService = new(grpcCipherService);
-    private readonly IActorRef _verificationFlowManagerActor = actorRegistry.Get(ActorIds.VerificationFlowManagerActor);
+    private readonly GrpcSecurityService _service;
+    private readonly IActorRef _verificationFlowManagerActor;
+    private readonly IMobileNumberValidator _phoneNumberValidator;
+    private readonly IGrpcCipherService _grpcCipherService;
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
+
+    public VerificationFlowServices(
+        IEcliptixActorRegistry actorRegistry,
+        IMobileNumberValidator phoneNumberValidator,
+        IGrpcCipherService grpcCipherService,
+        IOptions<SecurityConfiguration> securityConfig)
+    {
+        _service = new(grpcCipherService, securityConfig);
+        _verificationFlowManagerActor = actorRegistry.Get(ActorIds.VerificationFlowManagerActor);
+        _phoneNumberValidator = phoneNumberValidator;
+        _grpcCipherService = grpcCipherService;
+    }
 
     public override async Task InitiateVerification(
         SecureEnvelope request,
@@ -37,7 +49,7 @@ internal sealed class VerificationFlowServices(
         ServerCallContext context)
     {
         Result<Unit, FailureBase> result =
-            await _baseService
+            await _service
                 .ExecuteEncryptedStreamingOperationAsync<InitiateVerificationRequest, VerificationFlowFailure>(
                     request, context,
                     async (initiateRequest, connectId, ct) =>
@@ -69,8 +81,8 @@ internal sealed class VerificationFlowServices(
 
                         Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context, linkedCts.Token);
 
-                        Result<Unit, VerificationFlowFailure> initiationResult = await _verificationFlowManagerActor
-                            .Ask<Result<Unit, VerificationFlowFailure>>(
+                        Task<Result<Unit, VerificationFlowFailure>> initiationTask =
+                            _verificationFlowManagerActor.Ask<Result<Unit, VerificationFlowFailure>>(
                                 new InitiateVerificationFlowActorEvent(
                                     connectId,
                                     Helpers.FromByteStringToGuid(initiateRequest.MobileNumberIdentifier),
@@ -81,7 +93,11 @@ internal sealed class VerificationFlowServices(
                                     _cultureName,
                                     flowActivity?.Context ?? Activity.Current?.Context ?? default,
                                     linkedCts.Token
-                                ), linkedCts.Token);
+                                ),
+                                TimeoutConfiguration.Actor.StreamingTimeout);
+
+                        Result<Unit, VerificationFlowFailure> initiationResult =
+                            await initiationTask.WaitAsync(linkedCts.Token).ConfigureAwait(false);
 
                         if (initiationResult.IsErr)
                         {
@@ -111,19 +127,19 @@ internal sealed class VerificationFlowServices(
 
         if (result.IsErr)
         {
-            SecureEnvelope payload = await grpcCipherService.CreateFailureResponse(result.UnwrapErr(),
+            SecureEnvelope payload = await _grpcCipherService.CreateFailureResponse(result.UnwrapErr(),
                 ServiceUtilities.ExtractConnectId(context), context);
             await responseStream.WriteAsync(payload);
         }
     }
 
     public override async Task<SecureEnvelope> ValidateMobileNumber(SecureEnvelope request, ServerCallContext context) =>
-        await _baseService.ExecuteEncryptedOperationAsync<ValidateMobileNumberRequest, ValidateMobileNumberResponse>(
+        await _service.ExecuteEncryptedOperationAsync<ValidateMobileNumberRequest, ValidateMobileNumberResponse>(
             request, context,
             async (message, _, ct) =>
             {
                 Result<MobileNumberValidationResult, VerificationFlowFailure> validationResult =
-                    phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
+                    _phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
 
                 if (validationResult.IsErr)
                 {
@@ -140,8 +156,13 @@ internal sealed class VerificationFlowServices(
                         Helpers.FromByteStringToGuid(message.AppDeviceIdentifier),
                         ct);
 
-                    Result<Guid, VerificationFlowFailure> ensureMobileNumberResult = await _verificationFlowManagerActor
-                        .Ask<Result<Guid, VerificationFlowFailure>>(ensureMobileNumberEvent, ct);
+                    Task<Result<Guid, VerificationFlowFailure>> ensureMobileTask =
+                        _verificationFlowManagerActor.Ask<Result<Guid, VerificationFlowFailure>>(
+                            ensureMobileNumberEvent,
+                            TimeoutConfiguration.Actor.AskTimeout);
+
+                    Result<Guid, VerificationFlowFailure> ensureMobileNumberResult =
+                        await ensureMobileTask.WaitAsync(ct).ConfigureAwait(false);
 
                     ValidateMobileNumberResponse response = ensureMobileNumberResult.Match(
                         guid => new ValidateMobileNumberResponse
@@ -170,12 +191,12 @@ internal sealed class VerificationFlowServices(
 
     public override async Task<SecureEnvelope> RecoverySecretKeyMobileVerification(SecureEnvelope request,
         ServerCallContext context) =>
-        await _baseService.ExecuteEncryptedOperationAsync<ValidateMobileNumberRequest, ValidateMobileNumberResponse>(
+        await _service.ExecuteEncryptedOperationAsync<ValidateMobileNumberRequest, ValidateMobileNumberResponse>(
             request, context,
             async (message, _, ct) =>
             {
                 Result<MobileNumberValidationResult, VerificationFlowFailure> validationResult =
-                    phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
+                    _phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
                 if (validationResult.IsErr)
                 {
                     return Result<ValidateMobileNumberResponse, FailureBase>.Err(validationResult.UnwrapErr());
@@ -190,8 +211,12 @@ internal sealed class VerificationFlowServices(
                         phoneValidationResult.DetectedRegion,
                         ct);
 
-                    Result<Guid, VerificationFlowFailure> verifyMobileResult = await _verificationFlowManagerActor
-                        .Ask<Result<Guid, VerificationFlowFailure>>(verifyMobileEvent, ct);
+                    Task<Result<Guid, VerificationFlowFailure>> verifyMobileTask =
+                        _verificationFlowManagerActor.Ask<Result<Guid, VerificationFlowFailure>>(
+                            verifyMobileEvent,
+                            TimeoutConfiguration.Actor.AskTimeout);
+                    Result<Guid, VerificationFlowFailure> verifyMobileResult =
+                        await verifyMobileTask.WaitAsync(ct).ConfigureAwait(false);
 
                     ValidateMobileNumberResponse response = verifyMobileResult.Match(
                         guid => new ValidateMobileNumberResponse
@@ -221,7 +246,7 @@ internal sealed class VerificationFlowServices(
             });
 
     public override async Task<SecureEnvelope> CheckMobileNumberAvailability(SecureEnvelope request, ServerCallContext context) =>
-        await _baseService.ExecuteEncryptedOperationAsync<CheckMobileNumberAvailabilityRequest, CheckMobileNumberAvailabilityResponse>(
+        await _service.ExecuteEncryptedOperationAsync<CheckMobileNumberAvailabilityRequest, CheckMobileNumberAvailabilityResponse>(
             request, context,
             async (message, _, ct) =>
             {
@@ -229,8 +254,13 @@ internal sealed class VerificationFlowServices(
                     Helpers.FromByteStringToGuid(message.MobileNumberIdentifier),
                     ct);
 
-                Result<string, VerificationFlowFailure> checkResult = await _verificationFlowManagerActor
-                    .Ask<Result<string, VerificationFlowFailure>>(actorEvent, ct);
+                Task<Result<string, VerificationFlowFailure>> checkTask =
+                    _verificationFlowManagerActor.Ask<Result<string, VerificationFlowFailure>>(
+                        actorEvent,
+                        TimeoutConfiguration.Actor.AskTimeout);
+
+                Result<string, VerificationFlowFailure> checkResult =
+                    await checkTask.WaitAsync(ct).ConfigureAwait(false);
 
                 return checkResult.Match(
                     status => Result<CheckMobileNumberAvailabilityResponse, FailureBase>.Ok(new CheckMobileNumberAvailabilityResponse
@@ -242,15 +272,19 @@ internal sealed class VerificationFlowServices(
             });
 
     public override async Task<SecureEnvelope> VerifyOtp(SecureEnvelope request, ServerCallContext context) =>
-        await _baseService.ExecuteEncryptedOperationAsync<VerifyCodeRequest, VerifyCodeResponse>(request, context,
+        await _service.ExecuteEncryptedOperationAsync<VerifyCodeRequest, VerifyCodeResponse>(request, context,
             async (message, _, ct) =>
             {
                 VerifyFlowActorEvent actorEvent = new(message.StreamConnectId, message.Code, _cultureName, ct);
                 actorEvent = actorEvent with { CancellationToken = ct };
 
+                Task<Result<VerifyCodeResponse, VerificationFlowFailure>> verifyTask =
+                    _verificationFlowManagerActor.Ask<Result<VerifyCodeResponse, VerificationFlowFailure>>(
+                        actorEvent,
+                        TimeoutConfiguration.Actor.AskTimeout);
+
                 Result<VerifyCodeResponse, VerificationFlowFailure> verificationResult =
-                    await _verificationFlowManagerActor
-                        .Ask<Result<VerifyCodeResponse, VerificationFlowFailure>>(actorEvent, ct);
+                    await verifyTask.WaitAsync(ct).ConfigureAwait(false);
 
                 return verificationResult.Match(
                     Result<VerifyCodeResponse, FailureBase>.Ok,
@@ -279,18 +313,18 @@ internal sealed class VerificationFlowServices(
                     Log.Warning("[verification.flow.grpc.update-error] ConnectId {ConnectId} ErrorType {ErrorType}",
                         connectId, failure.GetType().Name);
 
-                    payload = await grpcCipherService.CreateFailureResponse(updateResult.UnwrapErr(), connectId, context);
+                    payload = await _grpcCipherService.CreateFailureResponse(updateResult.UnwrapErr(), connectId, context);
                 }
                 else
                 {
                     VerificationCountdownUpdate update = updateResult.Unwrap();
 
                     Result<SecureEnvelope, FailureBase> encryptResult =
-                        await grpcCipherService.EncryptEnvelop(update.ToByteArray(), connectId, context);
+                        await _grpcCipherService.EncryptEnvelop(update.ToByteArray(), connectId, context);
 
                     if (encryptResult.IsErr)
                     {
-                        payload = await grpcCipherService.CreateFailureResponse(encryptResult.UnwrapErr(), connectId,
+                        payload = await _grpcCipherService.CreateFailureResponse(encryptResult.UnwrapErr(), connectId,
                             context);
                     }
                     else

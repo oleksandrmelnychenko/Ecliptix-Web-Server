@@ -9,12 +9,28 @@ using GrpcStatus = Grpc.Core.Status;
 using Serilog;
 using Ecliptix.Core.Infrastructure.Grpc.Constants;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+using Ecliptix.Utilities.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace Ecliptix.Core.Api.Grpc.Base;
 
-public class RpcServiceBase(IGrpcCipherService cipherService)
+public class GrpcSecurityService
 {
     private static readonly ActivitySource ActivitySource = new(GrpcServiceConstants.Activities.ServiceSource);
+    private readonly IGrpcCipherService _cipherService;
+    private readonly SecurityConfiguration _securityConfig;
+
+    public GrpcSecurityService(IGrpcCipherService cipherService)
+    {
+        _cipherService = cipherService;
+        _securityConfig = new SecurityConfiguration();
+    }
+
+    public GrpcSecurityService(IGrpcCipherService cipherService, IOptions<SecurityConfiguration> securityConfig)
+    {
+        _cipherService = cipherService;
+        _securityConfig = securityConfig.Value;
+    }
 
     public async Task<SecureEnvelope> ExecuteEncryptedOperationAsync<TRequest, TResponse>(
         SecureEnvelope encryptedRequest,
@@ -32,6 +48,13 @@ public class RpcServiceBase(IGrpcCipherService cipherService)
 
         uint connectId = ExtractConnectionId(context);
         ValidateConnectionId(connectId);
+
+        Result<Unit, FailureBase> timestampValidation = ValidateTimestamp(encryptedRequest, connectId);
+        if (timestampValidation.IsErr)
+        {
+            activity?.SetTag(GrpcServiceConstants.ActivityTags.TimestampValid, false);
+            return await CreateFailureResponseAsync<TResponse>(timestampValidation.UnwrapErr(), connectId, context);
+        }
 
         Result<TRequest, FailureBase> decryptResult =
             await DecryptRequestAsync<TRequest>(encryptedRequest, connectId, context);
@@ -74,6 +97,13 @@ public class RpcServiceBase(IGrpcCipherService cipherService)
         uint connectId = ExtractConnectionId(context);
         ValidateConnectionId(connectId);
 
+        Result<Unit, FailureBase> timestampValidation = ValidateTimestamp(encryptedRequest, connectId);
+        if (timestampValidation.IsErr)
+        {
+            activity?.SetTag(GrpcServiceConstants.ActivityTags.TimestampValid, false);
+            return Result<Unit, FailureBase>.Err(timestampValidation.UnwrapErr());
+        }
+
         Result<TRequest, FailureBase> decryptResult =
             await DecryptRequestAsync<TRequest>(encryptedRequest, connectId, context);
         if (decryptResult.IsErr)
@@ -91,6 +121,36 @@ public class RpcServiceBase(IGrpcCipherService cipherService)
         );
     }
 
+    private Result<Unit, FailureBase> ValidateTimestamp(SecureEnvelope envelope, uint connectId)
+    {
+        if (envelope.Timestamp == null)
+        {
+            Log.Warning("[grpc.timestamp-validation] Missing timestamp for ConnectId {ConnectId}", connectId);
+            return Result<Unit, FailureBase>.Err(
+                EcliptixProtocolFailure.TimestampDrift("Request timestamp is missing"));
+        }
+
+        DateTimeOffset requestTimestamp = envelope.Timestamp.ToDateTimeOffset();
+        DateTimeOffset serverTime = DateTimeOffset.UtcNow;
+        TimeSpan drift = serverTime - requestTimestamp;
+        long driftSeconds = (long)Math.Abs(drift.TotalSeconds);
+
+        long maxDriftSeconds = (long)_securityConfig.GrpcSecurity.MaxTimestampDrift.TotalSeconds;
+
+        if (driftSeconds > maxDriftSeconds)
+        {
+            Log.Warning(
+                "[grpc.timestamp-validation] Timestamp drift exceeded for ConnectId {ConnectId}. Drift: {Drift}s, Max: {Max}s",
+                connectId, driftSeconds, maxDriftSeconds);
+
+            return Result<Unit, FailureBase>.Err(
+                EcliptixProtocolFailure.TimestampDrift(
+                    $"Request timestamp drift of {driftSeconds}s exceeds maximum allowed {maxDriftSeconds}s"));
+        }
+
+        return Result<Unit, FailureBase>.Ok(Unit.Value);
+    }
+
     private async Task<Result<TRequest, FailureBase>> DecryptRequestAsync<TRequest>(
         SecureEnvelope encryptedPayload,
         uint connectId,
@@ -102,7 +162,7 @@ public class RpcServiceBase(IGrpcCipherService cipherService)
         activity?.SetTag(GrpcServiceConstants.ActivityTags.PayloadSize, encryptedPayload.EncryptedPayload.Length);
 
         Result<byte[], FailureBase> decryptResult =
-            await cipherService.DecryptEnvelop(encryptedPayload, connectId, context);
+            await _cipherService.DecryptEnvelop(encryptedPayload, connectId, context);
 
         if (decryptResult.IsErr)
         {
@@ -143,7 +203,7 @@ public class RpcServiceBase(IGrpcCipherService cipherService)
         activity?.SetTag(GrpcServiceConstants.ActivityTags.ResponseSize, responseBytes.Length);
 
         Result<SecureEnvelope, FailureBase> encryptResult =
-            await cipherService.EncryptEnvelop(responseBytes, connectId, context);
+            await _cipherService.EncryptEnvelop(responseBytes, connectId, context);
 
         if (encryptResult.IsErr)
         {

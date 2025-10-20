@@ -40,6 +40,10 @@ public record InitializeProtocolWithMasterKeyActorEvent(
 
 public record InitializeProtocolWithMasterKeyReply(PubKeyExchange ServerPubKeyExchange);
 
+public record GetProtocolStateActorEvent(uint ConnectId);
+
+public record GetProtocolStateReply(Protobuf.ProtocolState.EcliptixSessionState? SessionState);
+
 public record CleanupProtocolForTypeActorEvent(PubKeyExchangeType ExchangeType);
 
 public sealed record KeepAlive

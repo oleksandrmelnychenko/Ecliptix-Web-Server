@@ -1,6 +1,7 @@
 using Akka.Actor;
 using Ecliptix.Core.Domain.Events;
 using Ecliptix.Utilities;
+using Ecliptix.Utilities.Configuration;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Grpc.Core;
@@ -35,13 +36,20 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
             EncryptPayloadActorEvent encryptCommand = new(exchangeType, envelop);
             ForwardToConnectActorEvent encryptForwarder = new(connectId, encryptCommand);
 
+            Task<Result<SecureEnvelope, EcliptixProtocolFailure>> encryptTask =
+                _protocolActor.Ask<Result<SecureEnvelope, EcliptixProtocolFailure>>(
+                    encryptForwarder,
+                    TimeoutConfiguration.Actor.AskTimeout);
             Result<SecureEnvelope, EcliptixProtocolFailure> result =
-                await _protocolActor.Ask<Result<SecureEnvelope, EcliptixProtocolFailure>>(
-                    encryptForwarder, context.CancellationToken);
+                await encryptTask.WaitAsync(context.CancellationToken).ConfigureAwait(false);
 
             return result.IsErr
                 ? Result<SecureEnvelope, FailureBase>.Err(result.UnwrapErr())
                 : Result<SecureEnvelope, FailureBase>.Ok(result.Unwrap());
+        }
+        catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -61,13 +69,20 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
             DecryptSecureEnvelopeActorEvent decryptCommand = new(exchangeType, request);
             ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptCommand);
 
+            Task<Result<byte[], EcliptixProtocolFailure>> decryptTask =
+                _protocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(
+                    decryptForwarder,
+                    TimeoutConfiguration.Actor.AskTimeout);
             Result<byte[], EcliptixProtocolFailure> decryptionResult =
-                await _protocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(
-                    decryptForwarder, context.CancellationToken);
+                await decryptTask.WaitAsync(context.CancellationToken).ConfigureAwait(false);
 
             return decryptionResult.IsErr
                 ? Result<byte[], FailureBase>.Err(decryptionResult.UnwrapErr())
                 : Result<byte[], FailureBase>.Ok(decryptionResult.Unwrap());
+        }
+        catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

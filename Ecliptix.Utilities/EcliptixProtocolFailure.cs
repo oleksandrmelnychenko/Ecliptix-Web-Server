@@ -51,6 +51,11 @@ public sealed record EcliptixProtocolFailure(
                 ErrorI18nKeys.ResourceExhausted,
                 Retryable: true),
 
+            EcliptixProtocolFailureType.TimestampDrift => new GrpcErrorDescriptor(
+                ErrorCode.ValidationFailed,
+                StatusCode.InvalidArgument,
+                ErrorI18nKeys.Validation),
+
             EcliptixProtocolFailureType.DeriveKeyFailed or
             EcliptixProtocolFailureType.DecodeFailed or
             EcliptixProtocolFailureType.KeyGenerationFailed or
@@ -157,9 +162,14 @@ public sealed record EcliptixProtocolFailure(
         return new EcliptixProtocolFailure(EcliptixProtocolFailureType.MemoryBufferError, details, inner);
     }
 
+    public static EcliptixProtocolFailure TimestampDrift(string details)
+    {
+        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.TimestampDrift, details);
+    }
+
     public static EcliptixProtocolFailure ReplayAttempt(string details, Exception? inner = null)
     {
-        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.Generic, $"Replay attack detected: {details}", inner);
+        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.TimestampDrift, $"Replay attack detected: {details}", inner);
     }
 
     public override object ToStructuredLog()

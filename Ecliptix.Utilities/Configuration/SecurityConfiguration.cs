@@ -11,6 +11,8 @@ public sealed class SecurityConfiguration
     public AuthenticationTimeouts Authentication { get; set; } = new();
 
     public OtpHashingConfiguration OtpHashing { get; set; } = new();
+
+    public GrpcSecurityParameters GrpcSecurity { get; set; } = new();
 }
 
 public sealed class VerificationFlowTimeouts
@@ -95,4 +97,11 @@ public sealed class OtpHashingConfiguration
     public int Pbkdf2Iterations { get; set; } = 100000;
 
     public int HashOutputLength { get; set; } = 32;
+}
+
+public sealed class GrpcSecurityParameters
+{
+    public int MaxTimestampDriftSeconds { get; set; } = 300;
+
+    public TimeSpan MaxTimestampDrift => TimeSpan.FromSeconds(MaxTimestampDriftSeconds);
 }
