@@ -1,13 +1,17 @@
 pipeline { 
     agent any
     
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['dev','prod'], description: 'Select environment to deploy')
+    }
+
     environment {
         AWS_DEFAULT_REGION = "eu-central-1"
         AWS_ACCOUNT_ID = "020498483284"
         ECR_REPO = "ecliptix/memberships"
-        IMAGE_TAG = "lts"
-        CLUSTER_NAME = "ecliptix-production"
-        SERVICE_NAME = "ecliptix-memberships"
+        IMAGE_TAG = "${params.ENVIRONMENT}-lts"
+        CLUSTER_NAME = "${params.ENVIRONMENT == 'prod' ? 'ecliptix-prod-ecs-cluster' : 'ecliptix-dev-ecs-cluster'}"
+        SERVICE_NAME = "${params.ENVIRONMENT == 'prod' ? 'ecliptix-prod-memberships' : 'ecliptix-dev-memberships'}"
         TASK_DEFINITION = "ecliptix-memberships"
         AWS_CREDENTIALS = "aws-creds"
     }
@@ -25,7 +29,6 @@ pipeline {
             steps {
                 sh """
                     set -e
-                    
                     if ! sudo systemctl is-active --quiet docker; then
                       sudo systemctl start docker || true
                     fi
@@ -35,15 +38,11 @@ pipeline {
                       sleep 2
                     done
                     if docker buildx ls | grep -q 'mybuilder'; then
-                      echo "[INFO] Using existing builder 'mybuilder'"
                       docker buildx use mybuilder
                     else
-                      echo "[INFO] Creating builder 'mybuilder'"
                       docker buildx create --name mybuilder --use
                     fi
-                    
                     docker buildx inspect --bootstrap     
-                                            
                     docker buildx build \
                       --platform=linux/amd64 \
                       -t ${ECR_REPO}:${IMAGE_TAG} \
