@@ -101,8 +101,11 @@ public sealed class EcliptixProtocolChainStep : IDisposable
     internal Result<Unit, EcliptixProtocolFailure> SetCurrentIndex(uint value)
     {
         if (_disposed)
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixProtocolChainStep)));
+        }
+
         _currentIndex = value;
         return OkResult;
     }
@@ -110,8 +113,10 @@ public sealed class EcliptixProtocolChainStep : IDisposable
     internal Result<RatchetChainKey, EcliptixProtocolFailure> GetOrDeriveKeyFor(uint targetIndex)
     {
         if (_disposed)
+        {
             return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixProtocolChainStep)));
+        }
 
         if (_messageKeys.TryGetValue(targetIndex, out RatchetChainKey? cachedKey))
         {
@@ -120,14 +125,18 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
         Result<uint, EcliptixProtocolFailure> currentIndexResult = GetCurrentIndex();
         if (currentIndexResult.IsErr)
+        {
             return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(currentIndexResult.UnwrapErr());
+        }
 
         uint currentIndex = currentIndexResult.Unwrap();
 
         if (targetIndex <= currentIndex)
+        {
             return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput(
                     $"[{_stepType}] Requested index {targetIndex} is not future (current: {currentIndex}) and not cached."));
+        }
 
         byte[]? chainKeyBytes = null;
         try
@@ -168,7 +177,9 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
                 Result<RatchetChainKey, EcliptixProtocolFailure> keyResult = RatchetChainKey.New(idx, msgKey);
                 if (keyResult.IsErr)
+                {
                     return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(keyResult.UnwrapErr());
+                }
 
                 RatchetChainKey messageKey = keyResult.Unwrap();
 
@@ -194,7 +205,9 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
             Result<Unit, EcliptixProtocolFailure> setIndexResult = SetCurrentIndex(targetIndex);
             if (setIndexResult.IsErr)
+            {
                 return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(setIndexResult.UnwrapErr());
+            }
 
             PruneOldKeys();
 
@@ -211,7 +224,10 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         }
         finally
         {
-            if (chainKeyBytes != null) SodiumInterop.SecureWipe(chainKeyBytes).IgnoreResult();
+            if (chainKeyBytes != null)
+            {
+                SodiumInterop.SecureWipe(chainKeyBytes).IgnoreResult();
+            }
         }
     }
 
@@ -219,11 +235,16 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         byte[]? newDhPrivateKey = null, byte[]? newDhPublicKey = null)
     {
         if (_disposed)
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixProtocolChainStep)));
+        }
+
         if (newChainKey.Length != Constants.X25519KeySize)
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("New chain key has incorrect size."));
+        }
 
         _chainKeyHandle.Write(newChainKey).Unwrap();
 
@@ -239,7 +260,10 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
     internal void PruneOldKeys()
     {
-        if (_disposed || _cacheWindow == 0 || _messageKeys.Count == 0) return;
+        if (_disposed || _cacheWindow == 0 || _messageKeys.Count == 0)
+        {
+            return;
+        }
 
         uint minIndexToKeep = _currentIndex >= _cacheWindow ? _currentIndex - _cacheWindow + 1 : 0;
         List<uint> keysToRemove = _messageKeys.Keys.Where(k => k < minIndexToKeep).ToList();
@@ -256,8 +280,10 @@ public sealed class EcliptixProtocolChainStep : IDisposable
     public Result<ChainStepState, EcliptixProtocolFailure> ToProtoState()
     {
         if (_disposed)
+        {
             return Result<ChainStepState, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixProtocolChainStep)));
+        }
 
         byte[]? chainKey = null;
         byte[]? dhPrivKey = null;
@@ -272,8 +298,15 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                 ChainKey = ByteString.CopyFrom(chainKey.AsSpan()),
             };
 
-            if (dhPrivKey != null) proto.DhPrivateKey = ByteString.CopyFrom(dhPrivKey.AsSpan());
-            if (_dhPublicKey != null) proto.DhPublicKey = ByteString.CopyFrom(_dhPublicKey.AsSpan());
+            if (dhPrivKey != null)
+            {
+                proto.DhPrivateKey = ByteString.CopyFrom(dhPrivKey.AsSpan());
+            }
+
+            if (_dhPublicKey != null)
+            {
+                proto.DhPublicKey = ByteString.CopyFrom(_dhPublicKey.AsSpan());
+            }
 
             foreach (KeyValuePair<uint, RatchetChainKey> kvp in _messageKeys)
             {
@@ -319,21 +352,29 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         uint cacheWindowSize = DefaultCacheWindowSize)
     {
         if (initialChainKey.Length != Constants.X25519KeySize)
+        {
             return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("Initial chain key has incorrect size."));
+        }
 
-        if ((initialDhPrivateKey == null) != (initialDhPublicKey == null))
+        if (initialDhPrivateKey == null != (initialDhPublicKey == null))
+        {
             return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput(
                     "DH private and public keys must both be provided, or neither."));
+        }
 
         if (initialDhPrivateKey != null && initialDhPrivateKey.Length != Constants.X25519PrivateKeySize)
+        {
             return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("Initial DH private key has incorrect size."));
+        }
 
         if (initialDhPublicKey != null && initialDhPublicKey.Length != Constants.X25519PublicKeySize)
+        {
             return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("Initial DH public key has incorrect size."));
+        }
 
         SodiumSecureMemoryHandle? chainKeyHandle = null;
         SodiumSecureMemoryHandle? dhPrivateKeyHandle = null;
@@ -343,11 +384,15 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             chainKeyHandle = SodiumSecureMemoryHandle.Allocate(initialChainKey.Length).Unwrap();
             chainKeyHandle.Write(initialChainKey).Unwrap();
 
-            if (initialDhPrivateKey != null)
+            if (initialDhPrivateKey == null)
             {
-                dhPrivateKeyHandle = SodiumSecureMemoryHandle.Allocate(initialDhPrivateKey.Length).Unwrap();
-                dhPrivateKeyHandle.Write(initialDhPrivateKey).Unwrap();
+                return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(
+                    new EcliptixProtocolChainStep(stepType, chainKeyHandle, dhPrivateKeyHandle,
+                        (byte[]?)initialDhPublicKey?.Clone(), cacheWindowSize));
             }
+
+            dhPrivateKeyHandle = SodiumSecureMemoryHandle.Allocate(initialDhPrivateKey.Length).Unwrap();
+            dhPrivateKeyHandle.Write(initialDhPrivateKey).Unwrap();
 
             return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(
                 new EcliptixProtocolChainStep(stepType, chainKeyHandle, dhPrivateKeyHandle,
@@ -378,16 +423,22 @@ public sealed class EcliptixProtocolChainStep : IDisposable
         }
 
         if (newDhPrivateKey == null != (newDhPublicKey == null))
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("Both new DH keys must be provided or neither."));
+        }
 
         if (newDhPrivateKey!.Length != Constants.X25519PrivateKeySize)
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("New DH private key has incorrect size."));
+        }
 
         if (newDhPublicKey!.Length != Constants.X25519KeySize)
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("New DH public key has incorrect size."));
+        }
 
         SodiumSecureMemoryHandle? newDhPrivateHandle = null;
         try
@@ -412,7 +463,11 @@ public sealed class EcliptixProtocolChainStep : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (_disposed)
+        {
+            return;
+        }
+
         _chainKeyHandle.Dispose();
         _dhPrivateKeyHandle?.Dispose();
         SodiumInterop.SecureWipe(_dhPublicKey).IgnoreResult();

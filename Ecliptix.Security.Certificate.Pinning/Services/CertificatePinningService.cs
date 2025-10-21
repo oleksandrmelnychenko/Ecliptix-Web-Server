@@ -17,10 +17,14 @@ public sealed class CertificatePinningService : IDisposable
         lock (_lock)
         {
             if (_disposed)
+            {
                 return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
+            }
 
             if (_isInitialized)
+            {
                 return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+            }
 
             try
             {
@@ -47,13 +51,19 @@ public sealed class CertificatePinningService : IDisposable
     public Result<byte[], CertificatePinningFailure> Encrypt(ReadOnlyMemory<byte> plaintext)
     {
         if (_disposed)
+        {
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
+        }
 
         if (!_isInitialized)
+        {
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
+        }
 
         if (plaintext.Length == 0)
+        {
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.PlaintextRequired());
+        }
 
         byte[] ciphertext = ArrayPool<byte>.Shared.Rent(CertificatePinningConfigurationConstants.MaxCiphertextSize);
         try
@@ -96,13 +106,19 @@ public sealed class CertificatePinningService : IDisposable
     public Result<byte[], CertificatePinningFailure> Decrypt(ReadOnlyMemory<byte> ciphertext)
     {
         if (_disposed)
+        {
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
+        }
 
         if (!_isInitialized)
+        {
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
+        }
 
         if (ciphertext.Length == 0)
+        {
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.CiphertextRequired());
+        }
 
         byte[] plaintext = ArrayPool<byte>.Shared.Rent(CertificatePinningConfigurationConstants.MaxPlaintextSize);
         nuint actualPlaintextLen = 0;
@@ -131,8 +147,10 @@ public sealed class CertificatePinningService : IDisposable
                 }
 
                 if (actualPlaintextLen > int.MaxValue)
+                {
                     return Result<byte[], CertificatePinningFailure>.Err(
                         CertificatePinningFailure.DecryptionFailed("Plaintext too large"));
+                }
 
                 byte[] resultArray = new byte[actualPlaintextLen];
                 plaintext.AsSpan(0, (int)actualPlaintextLen).CopyTo(resultArray);
@@ -145,8 +163,11 @@ public sealed class CertificatePinningService : IDisposable
         }
         finally
         {
-            if (actualPlaintextLen > 0 && actualPlaintextLen <= int.MaxValue)
+            if (actualPlaintextLen is > 0 and <= int.MaxValue)
+            {
                 CryptographicOperations.ZeroMemory(plaintext.AsSpan(0, (int)actualPlaintextLen));
+            }
+
             ArrayPool<byte>.Shared.Return(plaintext, clearArray: true);
         }
     }
@@ -171,13 +192,19 @@ public sealed class CertificatePinningService : IDisposable
     public Result<byte[], CertificatePinningFailure> Sign(ReadOnlyMemory<byte> data)
     {
         if (_disposed)
+        {
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
+        }
 
         if (!_isInitialized)
+        {
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
+        }
 
         if (data.Length == 0)
+        {
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.DataRequired());
+        }
 
         byte[] signature = ArrayPool<byte>.Shared.Rent(CertificatePinningConfigurationConstants.MaxSignatureSize);
         try
@@ -202,8 +229,10 @@ public sealed class CertificatePinningService : IDisposable
                     }
 
                     if (signatureLen > int.MaxValue)
+                    {
                         return Result<byte[], CertificatePinningFailure>.Err(
                             CertificatePinningFailure.SigningFailed("Signature too large"));
+                    }
 
                     byte[] resultArray = new byte[signatureLen];
                     signature.AsSpan(0, (int)signatureLen).CopyTo(resultArray);
@@ -224,10 +253,15 @@ public sealed class CertificatePinningService : IDisposable
     private Result<(byte[], byte[]), CertificatePinningFailure> GenerateEd25519KeypairSync()
     {
         if (_disposed)
+        {
             return Result<(byte[], byte[]), CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
+        }
 
         if (!_isInitialized)
-            return Result<(byte[], byte[]), CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
+        {
+            return Result<(byte[], byte[]), CertificatePinningFailure>.Err(CertificatePinningFailure
+                .ServiceNotInitialized());
+        }
 
         try
         {
@@ -271,16 +305,26 @@ public sealed class CertificatePinningService : IDisposable
         ReadOnlyMemory<byte> privateKey)
     {
         if (_disposed)
+        {
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
+        }
 
         if (!_isInitialized)
+        {
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
+        }
 
         Result<Unit, CertificatePinningFailure> messageValidation = Ed25519Validation.ValidateMessage(message);
-        if (messageValidation.IsErr) return messageValidation.MapErr(err => err).Map(_ => Array.Empty<byte>());
+        if (messageValidation.IsErr)
+        {
+            return messageValidation.MapErr(err => err).Map(_ => Array.Empty<byte>());
+        }
 
         Result<Unit, CertificatePinningFailure> privateKeyValidation = Ed25519Validation.ValidatePrivateKey(privateKey);
-        if (privateKeyValidation.IsErr) return privateKeyValidation.MapErr(err => err).Map(_ => Array.Empty<byte>());
+        if (privateKeyValidation.IsErr)
+        {
+            return privateKeyValidation.MapErr(err => err).Map(_ => Array.Empty<byte>());
+        }
 
         try
         {
@@ -321,19 +365,32 @@ public sealed class CertificatePinningService : IDisposable
         ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> publicKey)
     {
         if (_disposed)
+        {
             return Result<bool, CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceDisposed());
+        }
 
         if (!_isInitialized)
+        {
             return Result<bool, CertificatePinningFailure>.Err(CertificatePinningFailure.ServiceNotInitialized());
+        }
 
         Result<Unit, CertificatePinningFailure> messageValidation = Ed25519Validation.ValidateMessage(message);
-        if (messageValidation.IsErr) return messageValidation.MapErr(err => err).Map(_ => false);
+        if (messageValidation.IsErr)
+        {
+            return messageValidation.MapErr(err => err).Map(_ => false);
+        }
 
         Result<Unit, CertificatePinningFailure> signatureValidation = Ed25519Validation.ValidateSignature(signature);
-        if (signatureValidation.IsErr) return signatureValidation.MapErr(err => err).Map(_ => false);
+        if (signatureValidation.IsErr)
+        {
+            return signatureValidation.MapErr(err => err).Map(_ => false);
+        }
 
         Result<Unit, CertificatePinningFailure> publicKeyValidation = Ed25519Validation.ValidatePublicKey(publicKey);
-        if (publicKeyValidation.IsErr) return publicKeyValidation.MapErr(err => err).Map(_ => false);
+        if (publicKeyValidation.IsErr)
+        {
+            return publicKeyValidation.MapErr(err => err).Map(_ => false);
+        }
 
         try
         {
@@ -355,7 +412,8 @@ public sealed class CertificatePinningService : IDisposable
                     return result switch
                     {
                         CertificatePinningResult.Success => Result<bool, CertificatePinningFailure>.Ok(true),
-                        CertificatePinningResult.VerificationFailed => Result<bool, CertificatePinningFailure>.Ok(false),
+                        CertificatePinningResult.VerificationFailed =>
+                            Result<bool, CertificatePinningFailure>.Ok(false),
                         _ => Result<bool, CertificatePinningFailure>.Err(
                             CertificatePinningFailure.VerificationException(
                                 new InvalidOperationException($"Verification internal error: {result}")))
@@ -417,7 +475,9 @@ public sealed class CertificatePinningService : IDisposable
         lock (_lock)
         {
             if (_disposed)
+            {
                 return;
+            }
 
             _disposed = true;
 
@@ -447,32 +507,30 @@ public sealed class CertificatePinningService : IDisposable
 
         public static Result<Unit, CertificatePinningFailure> ValidatePublicKey(ReadOnlyMemory<byte> publicKey)
         {
-            if (publicKey.Length != PublicKeySize)
-                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidPublicKey());
-            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+            return publicKey.Length != PublicKeySize
+                ? Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidPublicKey())
+                : Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
         }
 
         public static Result<Unit, CertificatePinningFailure> ValidatePrivateKey(ReadOnlyMemory<byte> privateKey)
         {
-            if (privateKey.Length != PrivateKeySize)
-                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidPrivateKey());
-            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+            return privateKey.Length != PrivateKeySize
+                ? Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidPrivateKey())
+                : Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
         }
 
         public static Result<Unit, CertificatePinningFailure> ValidateSignature(ReadOnlyMemory<byte> signature)
         {
-            if (signature.Length != SignatureSize)
-                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidSignature());
-            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+            return signature.Length != SignatureSize
+                ? Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.InvalidSignature())
+                : Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
         }
 
         public static Result<Unit, CertificatePinningFailure> ValidateMessage(ReadOnlyMemory<byte> message)
         {
-            if (message.Length == 0)
-                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.MessageRequired());
-            if (message.Length > MaxMessageSize)
-                return Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.MessageRequired());
-            return Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
+            return message.Length is 0 or > MaxMessageSize
+                ? Result<Unit, CertificatePinningFailure>.Err(CertificatePinningFailure.MessageRequired())
+                : Result<Unit, CertificatePinningFailure>.Ok(Unit.Value);
         }
     }
 }

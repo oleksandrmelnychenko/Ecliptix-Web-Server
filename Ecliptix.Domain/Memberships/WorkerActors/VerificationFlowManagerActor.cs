@@ -172,10 +172,14 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         IActorRef? childActor = Context.Child(GetActorName(actorEvent.ConnectId));
 
         if (!childActor.IsNobody())
+        {
             childActor.Forward(actorEvent);
+        }
         else
+        {
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.NotFound()));
+        }
     }
 
     private void HandleFlowCompletedGracefully(FlowCompletedGracefullyActorEvent actorEvent)

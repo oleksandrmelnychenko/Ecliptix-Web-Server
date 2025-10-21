@@ -325,7 +325,9 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         {
             masterKeyHandle?.Dispose();
             if (logoutHmacKey != null)
+            {
                 CryptographicOperations.ZeroMemory(logoutHmacKey);
+            }
         }
     }
 
@@ -421,7 +423,10 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             canonicalWriter.Write(serverTimestamp);
             canonicalWriter.Write(ratchetFingerprint.Length);
             if (ratchetFingerprint.Length > 0)
+            {
                 canonicalWriter.Write(ratchetFingerprint);
+            }
+
             canonicalWriter.Write(nonce);
 
             canonicalWriter.Flush();
@@ -440,7 +445,10 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             proofWriter.Write(nonce);
             proofWriter.Write(ratchetFingerprint.Length);
             if (ratchetFingerprint.Length > 0)
+            {
                 proofWriter.Write(ratchetFingerprint);
+            }
+
             proofWriter.Write(hmacProof);
 
             proofWriter.Flush();
@@ -450,7 +458,9 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         {
             masterKeyHandle?.Dispose();
             if (proofKey != null)
+            {
                 CryptographicOperations.ZeroMemory(proofKey);
+            }
         }
     }
 
@@ -533,14 +543,13 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                     Guid? accountId = message.AccountIdentifier != null && message.AccountIdentifier.Length > 0
                         ? Helpers.FromByteStringToGuid(message.AccountIdentifier)
                         : null;
-                    AuditContext auditContext = AuditContextExtractor.ExtractFromContext(context);
 
                     Log.Information(
                         "Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
                         membershipId, connectId, deviceId, accountId, reason, message.Scope);
 
                     RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason,
-                        auditContext.IpAddress, auditContext.Platform, ct);
+                        "", "", ct);
                     Task<Result<Unit, VerificationFlowFailure>> auditTask =
                         _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(
                             logoutEvent,
@@ -663,7 +672,9 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         {
             masterKeyHandle?.Dispose();
             if (logoutHmacKey != null)
+            {
                 CryptographicOperations.ZeroMemory(logoutHmacKey);
+            }
         }
     }
 
@@ -755,14 +766,13 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                     Guid? accountId = message.AccountIdentifier != null && message.AccountIdentifier.Length > 0
                         ? Helpers.FromByteStringToGuid(message.AccountIdentifier)
                         : null;
-                    AuditContext auditContext = AuditContextExtractor.ExtractFromContext(context);
 
                     Log.Information(
                         "[LOGOUT-ANONYMOUS] Processing anonymous logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
                         membershipId, connectId, deviceId, accountId, reason, message.Scope);
 
                     RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason,
-                        auditContext.IpAddress, auditContext.Platform, ct);
+                        "","", ct);
                     Task<Result<Unit, VerificationFlowFailure>> auditTask =
                         _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(
                             logoutEvent,

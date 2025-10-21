@@ -15,7 +15,10 @@ internal static unsafe class CertificatePinningNativeLibrary
 
     private static IntPtr ImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
     {
-        if (libraryName != LibraryName) return IntPtr.Zero;
+        if (libraryName != LibraryName)
+        {
+            return IntPtr.Zero;
+        }
 
         (string fileName, string[] fallbackNames) = GetLibraryFileNames();
         string[] allNames = [fileName, .. fallbackNames];

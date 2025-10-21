@@ -144,14 +144,18 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         bool firstActive = first.CanBeCanceled;
         bool secondActive = second.CanBeCanceled;
 
-        if (!firstActive && !secondActive)
-            return CancellationToken.None;
-
-        if (!firstActive)
-            return second;
+        switch (firstActive)
+        {
+            case false when !secondActive:
+                return CancellationToken.None;
+            case false:
+                return second;
+        }
 
         if (!secondActive)
+        {
             return first;
+        }
 
         linkedSource = CancellationTokenSource.CreateLinkedTokenSource(first, second);
         return linkedSource.Token;
@@ -331,8 +335,10 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         {
             Option<VerificationFlowEntity> flowOpt = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId, cancellationToken);
             if (!flowOpt.HasValue)
+            {
                 return Result<string, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Flow not found"));
+            }
 
             return Result<string, VerificationFlowFailure>.Ok("resend_allowed");
         }
@@ -389,8 +395,10 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         {
             Option<MobileNumberEntity> mobileOpt = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberIdentifier, cancellationToken);
             if (!mobileOpt.HasValue)
+            {
                 return Result<MobileNumberQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.MobileNotFound));
+            }
 
             MobileNumberEntity mobile = mobileOpt.Value!;
             return Result<MobileNumberQueryRecord, VerificationFlowFailure>.Ok(new MobileNumberQueryRecord
@@ -652,10 +660,12 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(cmd.MobileNumber))
+        {
             return Result<Guid, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Validation("invalid_mobile_number"));
+        }
 
-        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
+        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
 
         try
         {
@@ -704,8 +714,10 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 ctx, cmd.MobileNumber, cmd.RegionCode, cancellationToken);
 
             if (!mobileOpt.HasValue)
+            {
                 return Result<Guid, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation("mobile_number_not_found"));
+            }
 
             return Result<Guid, VerificationFlowFailure>.Ok(mobileOpt.Value!.UniqueId);
         }
@@ -714,29 +726,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             return Result<Guid, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Verify mobile recovery failed: {ex.Message}", ex));
         }
-    }
-
-    private static ProtoMembership? MapToProtoMembership(MembershipEntity? domainMembership)
-    {
-        if (domainMembership == null)
-            return null;
-
-        return new ProtoMembership
-        {
-            UniqueIdentifier = Helpers.GuidToByteString(domainMembership.UniqueId),
-            Status = domainMembership.Status switch
-            {
-                "active" => ProtoMembership.Types.ActivityStatus.Active,
-                _ => ProtoMembership.Types.ActivityStatus.Inactive
-            },
-            CreationStatus = domainMembership.CreationStatus switch
-            {
-                "otp_verified" => ProtoMembership.Types.CreationStatus.OtpVerified,
-                "secure_key_set" => ProtoMembership.Types.CreationStatus.SecureKeySet,
-                "passphrase_set" => ProtoMembership.Types.CreationStatus.PassphraseSet,
-                _ => ProtoMembership.Types.CreationStatus.OtpVerified
-            }
-        };
     }
 
     private static Result<VerificationFlowQueryRecord, VerificationFlowFailure> MapToVerificationFlowRecord(
@@ -818,7 +807,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             _ => VerificationFlowStatus.Expired
         };
     }
-    
+
     private static async Task<Result<Unit, VerificationFlowFailure>> IncrementOtpAttemptCountAsync(
         EcliptixSchemaContext ctx,
         IncrementOtpAttemptCountActorEvent cmd,
@@ -867,7 +856,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 return Result<Unit, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("OTP not found for logging failed attempt"));
             }
-            
+
             FailedOtpAttemptEntity failedAttempt = new()
             {
                 OtpRecordId = otp.Id,

@@ -16,12 +16,10 @@ public sealed class RegistrationResponse
 
     public static Result<RegistrationResponse, OpaqueServerFailure> Create(byte[] data)
     {
-        if (data == null)
-            return Result<RegistrationResponse, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput("Registration response data is required"));
-
-        if (data.Length != OpaqueConstants.REGISTRATION_RESPONSE_LENGTH)
-            return Result<RegistrationResponse, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput($"Registration response must be {OpaqueConstants.REGISTRATION_RESPONSE_LENGTH} bytes"));
-
-        return Result<RegistrationResponse, OpaqueServerFailure>.Ok(new RegistrationResponse(data));
+        return data.Length != OpaqueConstants.REGISTRATION_RESPONSE_LENGTH
+            ? Result<RegistrationResponse, OpaqueServerFailure>.Err(
+                OpaqueServerFailure.InvalidInput(
+                    $"Registration response must be {OpaqueConstants.REGISTRATION_RESPONSE_LENGTH} bytes"))
+            : Result<RegistrationResponse, OpaqueServerFailure>.Ok(new RegistrationResponse(data));
     }
 }

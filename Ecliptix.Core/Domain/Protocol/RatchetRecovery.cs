@@ -1,9 +1,8 @@
-using System.Buffers;
 using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Domain.Protocol;
 
-public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultMaxSkippedMessages) : IDisposable
+public sealed class RatchetRecovery : IDisposable
 {
     private readonly Dictionary<uint, RatchetChainKey> _skippedMessageKeys = new();
     private readonly Lock _lock = new();
@@ -12,8 +11,10 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
     public Result<Option<RatchetChainKey>, EcliptixProtocolFailure> TryRecoverMessageKey(uint messageIndex)
     {
         if (_disposed)
+        {
             return Result<Option<RatchetChainKey>, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(RatchetRecovery)));
+        }
 
         lock (_lock)
         {
@@ -24,78 +25,13 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
         }
     }
 
-    public Result<Unit, EcliptixProtocolFailure> StoreSkippedMessageKeys(
-        byte[] currentChainKey,
-        uint fromIndex,
-        uint toIndex)
-    {
-        if (_disposed)
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.ObjectDisposed(nameof(RatchetRecovery)));
-
-        if (toIndex <= fromIndex)
-            return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
-
-        lock (_lock)
-        {
-            uint skippedCount = toIndex - fromIndex;
-            if (_skippedMessageKeys.Count + skippedCount > maxSkippedMessages)
-            {
-                return Result<Unit, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic(
-                        $"Too many skipped messages: {_skippedMessageKeys.Count + skippedCount} > {maxSkippedMessages}"));
-            }
-
-            using ScopedSecureMemoryCollection secureMemory = new();
-            byte[] workingChainKey = secureMemory.Allocate(currentChainKey.Length);
-            currentChainKey.CopyTo(workingChainKey, 0);
-
-            for (uint messageIndex = fromIndex; messageIndex < toIndex; messageIndex++)
-            {
-                Result<RatchetChainKey, EcliptixProtocolFailure> messageKeyResult =
-                    RatchetChainKey.DeriveFromChainKey(workingChainKey, messageIndex);
-
-                if (messageKeyResult.IsErr)
-                {
-                    CleanupSkippedKeys();
-                    return Result<Unit, EcliptixProtocolFailure>.Err(messageKeyResult.UnwrapErr());
-                }
-
-                _skippedMessageKeys[messageIndex] = messageKeyResult.Unwrap();
-
-                Result<Unit, EcliptixProtocolFailure> advanceResult = AdvanceChainKey(workingChainKey);
-                if (advanceResult.IsErr)
-                {
-                    CleanupSkippedKeys();
-                    return Result<Unit, EcliptixProtocolFailure>.Err(advanceResult.UnwrapErr());
-                }
-            }
-
-            return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
-        }
-    }
-
-    public void CleanupOldKeys(uint beforeIndex)
-    {
-        if (_disposed) return;
-
-        lock (_lock)
-        {
-            List<uint> keysToRemove = _skippedMessageKeys.Keys
-                .Where(index => index < beforeIndex)
-                .ToList();
-
-            foreach (uint index in keysToRemove)
-            {
-                if (_skippedMessageKeys.Remove(index, out RatchetChainKey? key))
-                    key.Dispose();
-            }
-        }
-    }
-
     public void Dispose()
     {
-        if (_disposed) return;
+        if (_disposed)
+        {
+            return;
+        }
+
         _disposed = true;
 
         lock (_lock)
@@ -104,63 +40,16 @@ public sealed class RatchetRecovery(uint maxSkippedMessages = Constants.DefaultM
         }
     }
 
-    private static Result<Unit, EcliptixProtocolFailure> AdvanceChainKey(byte[] chainKey)
-    {
-        return Result<Unit, EcliptixProtocolFailure>.Try(
-            () =>
-            {
-                byte[] newChainKey = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
-                try
-                {
-                    System.Security.Cryptography.HKDF.DeriveKey(
-                        System.Security.Cryptography.HashAlgorithmName.SHA256,
-                        ikm: chainKey,
-                        output: newChainKey.AsSpan(0, Constants.X25519KeySize),
-                        salt: null,
-                        info: EcliptixProtocolChainStep.ChainInfo
-                    );
-
-                    newChainKey.AsSpan(0, Constants.X25519KeySize).CopyTo(chainKey);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(newChainKey, clearArray: true);
-                }
-            },
-            ex => EcliptixProtocolFailure.DeriveKey("Failed to advance chain key using HKDF", ex)
-        );
-    }
-
     private void CleanupSkippedKeys()
     {
-        foreach (RatchetChainKey key in _skippedMessageKeys.Values)
-            key.Dispose();
-        _skippedMessageKeys.Clear();
-    }
-}
+        lock (_lock)
+        {
+            foreach (RatchetChainKey key in _skippedMessageKeys.Values)
+            {
+                key.Dispose();
+            }
 
-internal sealed class ScopedSecureMemoryCollection : IDisposable
-{
-    private readonly List<byte[]> _allocations = [];
-    private bool _disposed;
-
-    public byte[] Allocate(int size)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        byte[] buffer = new byte[size];
-        _allocations.Add(buffer);
-        return buffer;
-    }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-
-        foreach (byte[] allocation in _allocations)
-            SodiumInterop.SecureWipe(allocation);
-
-        _allocations.Clear();
+            _skippedMessageKeys.Clear();
+        }
     }
 }

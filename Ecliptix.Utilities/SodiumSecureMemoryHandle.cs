@@ -33,8 +33,10 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
         }
 
         if (!SodiumInterop.IsInitialized)
+        {
             return Result<SodiumSecureMemoryHandle, SodiumFailure>.Err(
                 SodiumFailure.InitializationFailed(SodiumFailureMessages.SodiumNotInitialized));
+        }
 
         Result<IntPtr, SodiumFailure> allocationResult = ExecuteWithErrorHandling(
             () => SodiumInterop.sodium_malloc((UIntPtr)length),
@@ -43,13 +45,17 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
         );
 
         if (allocationResult.IsErr)
+        {
             return Result<SodiumSecureMemoryHandle, SodiumFailure>.Err(allocationResult.UnwrapErr());
+        }
 
         IntPtr ptr = allocationResult.Unwrap();
         if (ptr == IntPtr.Zero)
+        {
             return Result<SodiumSecureMemoryHandle, SodiumFailure>.Err(
                 SodiumFailure.AllocationFailed(string.Format(SodiumFailureMessages.AllocationFailed,
                     length)));
+        }
 
         return Result<SodiumSecureMemoryHandle, SodiumFailure>.Ok(
             new SodiumSecureMemoryHandle(ptr, length, true));
@@ -58,22 +64,31 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
     public Result<Unit, SodiumFailure> Write(ReadOnlySpan<byte> data)
     {
         if (IsInvalid || IsClosed)
+        {
             return Result<Unit, SodiumFailure>.Err(
                 SodiumFailure.NullPointer("Handle disposed"));
+        }
 
         if (data.Length > Length)
+        {
             return Result<Unit, SodiumFailure>.Err(
                 SodiumFailure.BufferTooLarge($"Data ({data.Length}) > buffer ({Length})"));
+        }
 
-        if (data.IsEmpty) return Result<Unit, SodiumFailure>.Ok(Unit.Value);
+        if (data.IsEmpty)
+        {
+            return Result<Unit, SodiumFailure>.Ok(Unit.Value);
+        }
 
         bool success = false;
         try
         {
             DangerousAddRef(ref success);
             if (!success)
+            {
                 return Result<Unit, SodiumFailure>.Err(
                     SodiumFailure.MemoryPinningFailed("Ref count failed"));
+            }
 
             unsafe
             {
@@ -93,36 +108,50 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
         }
         finally
         {
-            if (success) DangerousRelease();
+            if (success)
+            {
+                DangerousRelease();
+            }
         }
     }
 
     public Result<Unit, SodiumFailure> Read(Span<byte> destination)
     {
         if (IsInvalid || IsClosed)
+        {
             return Result<Unit, SodiumFailure>.Err(
                 SodiumFailure.NullPointer(string.Format(SodiumFailureMessages.ObjectDisposed,
                     nameof(SodiumSecureMemoryHandle))));
+        }
 
         if (destination.Length < Length)
+        {
             return Result<Unit, SodiumFailure>.Err(
                 SodiumFailure.BufferTooSmall(
                     string.Format(SodiumFailureMessages.BufferTooSmall, destination.Length, Length)));
+        }
 
-        if (Length == 0) return Result<Unit, SodiumFailure>.Ok(Unit.Value);
+        if (Length == 0)
+        {
+            return Result<Unit, SodiumFailure>.Ok(Unit.Value);
+        }
 
         bool success = false;
         try
         {
             DangerousAddRef(ref success);
             if (!success)
+            {
                 return Result<Unit, SodiumFailure>.Err(
                     SodiumFailure.MemoryPinningFailed(SodiumFailureMessages.ReferenceCountFailed));
+            }
 
             if (IsInvalid || IsClosed)
+            {
                 return Result<Unit, SodiumFailure>.Err(
                     SodiumFailure.NullPointer(
                         string.Format(SodiumFailureMessages.DisposedAfterAddRef, nameof(SodiumSecureMemoryHandle))));
+            }
 
             unsafe
             {
@@ -142,7 +171,10 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
         }
         finally
         {
-            if (success) DangerousRelease();
+            if (success)
+            {
+                DangerousRelease();
+            }
         }
     }
 
@@ -150,9 +182,11 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
         Func<ReadOnlySpan<byte>, Result<TResult, SodiumFailure>> operation)
     {
         if (IsInvalid || IsClosed)
+        {
             return Result<TResult, SodiumFailure>.Err(
                 SodiumFailure.NullPointer(string.Format(SodiumFailureMessages.ObjectDisposed,
                     nameof(SodiumSecureMemoryHandle))));
+        }
 
         bool success = false;
 
@@ -160,17 +194,21 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
         {
             DangerousAddRef(ref success);
             if (!success)
+            {
                 return Result<TResult, SodiumFailure>.Err(
                     SodiumFailure.MemoryProtectionFailed(SodiumFailureMessages.ReferenceCountFailed));
+            }
 
             if (IsInvalid || IsClosed)
+            {
                 return Result<TResult, SodiumFailure>.Err(
                     SodiumFailure.NullPointer(string.Format(SodiumFailureMessages.DisposedAfterAddRef,
                         nameof(SodiumSecureMemoryHandle))));
+            }
 
             unsafe
             {
-                ReadOnlySpan<byte> span = new ReadOnlySpan<byte>((void*)handle, Length);
+                ReadOnlySpan<byte> span = new((void*)handle, Length);
                 return operation(span);
             }
         }
@@ -181,28 +219,40 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
         }
         finally
         {
-            if (success) DangerousRelease();
+            if (success)
+            {
+                DangerousRelease();
+            }
         }
     }
 
     public Result<byte[], SodiumFailure> ReadBytes(int length)
     {
         if (IsInvalid || IsClosed)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.NullPointer(string.Format(SodiumFailureMessages.ObjectDisposed,
                     nameof(SodiumSecureMemoryHandle))));
+        }
 
         if (length < 0)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InvalidBufferSize(string.Format(SodiumFailureMessages.NegativeReadLength, length)));
+        }
 
         if (length > Length)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.BufferTooSmall(string.Format(SodiumFailureMessages.ReadLengthExceedsSize,
                     length,
                     Length)));
+        }
 
-        if (length == 0) return Result<byte[], SodiumFailure>.Ok([]);
+        if (length == 0)
+        {
+            return Result<byte[], SodiumFailure>.Ok([]);
+        }
 
         byte[] buffer = new byte[length];
         bool success = false;
@@ -211,11 +261,16 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
             () =>
             {
                 DangerousAddRef(ref success);
-                if (!success) throw new InvalidOperationException(SodiumFailureMessages.ReferenceCountFailed);
+                if (!success)
+                {
+                    throw new InvalidOperationException(SodiumFailureMessages.ReferenceCountFailed);
+                }
 
                 if (IsInvalid || IsClosed)
+                {
                     throw new ObjectDisposedException(
                         string.Format(SodiumFailureMessages.DisposedAfterAddRef, nameof(SodiumSecureMemoryHandle)));
+                }
 
                 unsafe
                 {
@@ -227,6 +282,7 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
                 }
 
                 return buffer;
+
             },
             ex => ex switch
             {
@@ -239,14 +295,20 @@ public sealed class SodiumSecureMemoryHandle : SafeHandle
             }
         );
 
-        if (success) DangerousRelease();
+        if (success)
+        {
+            DangerousRelease();
+        }
 
         return copyResult;
     }
 
     protected override bool ReleaseHandle()
     {
-        if (IsInvalid) return true;
+        if (IsInvalid)
+        {
+            return true;
+        }
 
         SodiumInterop.sodium_free(handle);
         SetHandleAsInvalid();

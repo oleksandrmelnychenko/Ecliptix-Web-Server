@@ -34,7 +34,9 @@ public static class EcliptixProtocol
     {
         Result<RatchetState, EcliptixProtocolFailure> ratchetStateResult = system.GetConnection().ToProtoState();
         if (ratchetStateResult.IsErr)
+        {
             return Result<EcliptixSessionState, EcliptixProtocolFailure>.Err(ratchetStateResult.UnwrapErr());
+        }
 
         RatchetState newRatchetState = ratchetStateResult.Unwrap();
         EcliptixSessionState newState = oldState.Clone();
@@ -51,13 +53,17 @@ public static class EcliptixProtocol
 
         Result<IdentityKeysState, EcliptixProtocolFailure> identityKeysResult = idKeys.ToProtoState();
         if (identityKeysResult.IsErr)
+        {
             return Result<EcliptixSessionState, EcliptixProtocolFailure>.Err(identityKeysResult.UnwrapErr());
+        }
 
         IdentityKeysState identityKeysProto = identityKeysResult.Unwrap();
 
         Result<RatchetState, EcliptixProtocolFailure> ratchetStateResult = connection.ToProtoState();
         if (ratchetStateResult.IsErr)
+        {
             return Result<EcliptixSessionState, EcliptixProtocolFailure>.Err(ratchetStateResult.UnwrapErr());
+        }
 
         RatchetState ratchetStateProto = ratchetStateResult.Unwrap();
 

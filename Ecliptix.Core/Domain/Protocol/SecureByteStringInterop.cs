@@ -32,13 +32,17 @@ public static class SecureByteStringInterop
         }
 
         if (length > source.Length)
+        {
             return Result<ByteString, SodiumFailure>.Err(
                 SodiumFailure.InvalidBufferSize($"Requested length {length} exceeds handle length {source.Length}"));
+        }
 
         Span<byte> tempBuffer = stackalloc byte[length];
         Result<Unit, SodiumFailure> readResult = source.Read(tempBuffer);
         if (readResult.IsErr)
+        {
             return Result<ByteString, SodiumFailure>.Err(readResult.UnwrapErr());
+        }
 
         return Result<ByteString, SodiumFailure>.Ok(ByteString.CopyFrom(tempBuffer));
     }

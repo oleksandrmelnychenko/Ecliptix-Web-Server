@@ -123,13 +123,21 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 return true;
 
             case DeleteMessagesSuccess:
-                if (!_savingFinalSnapshot || !_pendingMessageDeletion) return true;
+                if (!_savingFinalSnapshot || !_pendingMessageDeletion)
+                {
+                    return true;
+                }
+
                 _pendingMessageDeletion = false;
                 TryCompleteShutdown();
 
                 return true;
             case DeleteSnapshotsSuccess:
-                if (!_savingFinalSnapshot || !_pendingSnapshotDeletion) return true;
+                if (!_savingFinalSnapshot || !_pendingSnapshotDeletion)
+                {
+                    return true;
+                }
+
                 _pendingSnapshotDeletion = false;
                 TryCompleteShutdown();
 
@@ -139,7 +147,11 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 Context.GetLogger().Warning("[PERSISTENCE-DELETE-MSG-FAILED] Failed to delete messages. " +
                                             "PersistenceId: {0}, Error: {1}. This is non-critical - continuing operation.",
                     PersistenceId, failure.Cause?.Message ?? "Unknown");
-                if (!_savingFinalSnapshot || !_pendingMessageDeletion) return true;
+                if (!_savingFinalSnapshot || !_pendingMessageDeletion)
+                {
+                    return true;
+                }
+
                 _pendingMessageDeletion = false;
                 TryCompleteShutdown();
 
@@ -150,7 +162,11 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                                             "PersistenceId: {0}, Error: {1}. This is non-critical - continuing operation.",
                     PersistenceId, failure.Cause?.Message ?? "Unknown");
 
-                if (!_savingFinalSnapshot || !_pendingSnapshotDeletion) return true;
+                if (!_savingFinalSnapshot || !_pendingSnapshotDeletion)
+                {
+                    return true;
+                }
+
                 _pendingSnapshotDeletion = false;
                 TryCompleteShutdown();
                 return true;

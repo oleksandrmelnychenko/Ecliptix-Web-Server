@@ -81,7 +81,11 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
                 SodiumSecureMemoryHandle handle = allocateResult.Unwrap();
 
                 Result<Unit, SodiumFailure> writeResult = handle.Write(derivedKey);
-                if (!writeResult.IsErr) return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Ok(handle);
+                if (!writeResult.IsErr)
+                {
+                    return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Ok(handle);
+                }
+
                 {
                     handle.Dispose();
                     SodiumFailure error = writeResult.UnwrapErr();
@@ -120,7 +124,9 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
             Result<byte[], KeySplittingFailure> stretchedResult =
                 await StretchKeyAsync(baseKey, salt, options.OutputLength, options);
             if (stretchedResult.IsErr)
+            {
                 return stretchedResult;
+            }
 
             byte[] stretchedKey = stretchedResult.Unwrap();
 
@@ -158,7 +164,9 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
                 finally
                 {
                     if (hwEntropy != null)
+                    {
                         CryptographicOperations.ZeroMemory(hwEntropy);
+                    }
                 }
             }
 

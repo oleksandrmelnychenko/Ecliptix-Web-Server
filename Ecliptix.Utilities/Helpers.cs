@@ -24,7 +24,9 @@ public static class Helpers
     public static byte[] ReadMemoryToRetrieveBytes(ReadOnlyMemory<byte> readOnlyMemory)
     {
         if (!MemoryMarshal.TryGetArray(readOnlyMemory, out ArraySegment<byte> segment) || segment.Count == 0)
+        {
             throw new ArgumentException("Invalid payload data length.");
+        }
 
         return segment.Array!;
     }

@@ -88,27 +88,22 @@ public sealed class PerformanceProfiler
         return report.ToString();
     }
 
-    private sealed class OperationTimer : IDisposable
+    private sealed class OperationTimer(PerformanceProfiler profiler, string operationName) : IDisposable
     {
-        private readonly PerformanceProfiler _profiler;
-        private readonly string _operationName;
-        private readonly Stopwatch _stopwatch;
+        private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
         private bool _disposed;
-
-        public OperationTimer(PerformanceProfiler profiler, string operationName)
-        {
-            _profiler = profiler;
-            _operationName = operationName;
-            _stopwatch = Stopwatch.StartNew();
-        }
 
         public void Dispose()
         {
-            if (_disposed) return;
+            if (_disposed)
+            {
+                return;
+            }
+
             _disposed = true;
 
             _stopwatch.Stop();
-            _profiler.RecordOperation(_operationName, _stopwatch.Elapsed);
+            profiler.RecordOperation(operationName, _stopwatch.Elapsed);
         }
     }
 
@@ -131,8 +126,15 @@ public sealed class PerformanceProfiler
             _count++;
             _totalMs += ms;
 
-            if (ms > _maxMs) _maxMs = ms;
-            if (ms < _minMs) _minMs = ms;
+            if (ms > _maxMs)
+            {
+                _maxMs = ms;
+            }
+
+            if (ms < _minMs)
+            {
+                _minMs = ms;
+            }
         }
     }
 }

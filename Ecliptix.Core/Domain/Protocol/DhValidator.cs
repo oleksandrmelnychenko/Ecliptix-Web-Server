@@ -7,17 +7,23 @@ public static class DhValidator
     public static Result<Unit, EcliptixProtocolFailure> ValidateX25519PublicKey(byte[] publicKey)
     {
         if (publicKey.Length != Constants.X25519PublicKeySize)
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput(
                     $"Invalid public key size: expected {Constants.X25519PublicKeySize}, got {publicKey.Length}"));
+        }
 
         if (HasSmallOrder(publicKey))
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("Public key has small order"));
+        }
 
         if (!IsValidCurve25519Point(publicKey))
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("Public key is not a valid Curve25519 point"));
+        }
 
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
@@ -25,7 +31,9 @@ public static class DhValidator
     private static bool IsValidCurve25519Point(ReadOnlySpan<byte> publicKey)
     {
         if (publicKey.Length != Constants.Curve25519FieldElementSize)
+        {
             return false;
+        }
 
         return IsValidFieldElement(publicKey) && !HasSmallOrder(publicKey);
     }
@@ -59,8 +67,15 @@ public static class DhValidator
 
         for (int i = 7; i >= 0; i--)
         {
-            if (element[i] < p[i]) return -1;
-            if (element[i] > p[i]) return 1;
+            if (element[i] < p[i])
+            {
+                return -1;
+            }
+
+            if (element[i] > p[i])
+            {
+                return 1;
+            }
         }
 
         return 0;
@@ -107,7 +122,9 @@ public static class DhValidator
         foreach (byte[] smallOrderPoint in SmallOrderPoints)
         {
             if (ConstantTimeEquals(point, smallOrderPoint))
+            {
                 return true;
+            }
         }
 
         return false;
@@ -116,7 +133,9 @@ public static class DhValidator
     private static bool ConstantTimeEquals(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
     {
         if (a.Length != b.Length)
+        {
             return false;
+        }
 
         int result = 0;
         for (int i = 0; i < a.Length; i++)

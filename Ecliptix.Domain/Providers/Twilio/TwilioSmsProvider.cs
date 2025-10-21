@@ -50,10 +50,25 @@ public sealed class TwilioSmsProvider : ISmsProvider
     private static SmsDeliveryStatus MapTwilioStatus(MessageResource.StatusEnum status)
     {
         if (status == MessageResource.StatusEnum.Queued || status == MessageResource.StatusEnum.Accepted || status == MessageResource.StatusEnum.Sending)
+        {
             return SmsDeliveryStatus.Pending;
-        if (status == MessageResource.StatusEnum.Sent) return SmsDeliveryStatus.Sent;
-        if (status == MessageResource.StatusEnum.Delivered) return SmsDeliveryStatus.Delivered;
-        if (status == MessageResource.StatusEnum.Failed) return SmsDeliveryStatus.Failed;
+        }
+
+        if (status == MessageResource.StatusEnum.Sent)
+        {
+            return SmsDeliveryStatus.Sent;
+        }
+
+        if (status == MessageResource.StatusEnum.Delivered)
+        {
+            return SmsDeliveryStatus.Delivered;
+        }
+
+        if (status == MessageResource.StatusEnum.Failed)
+        {
+            return SmsDeliveryStatus.Failed;
+        }
+
         return status == MessageResource.StatusEnum.Undelivered ? SmsDeliveryStatus.Undelivered : SmsDeliveryStatus.Failed;
     }
 }

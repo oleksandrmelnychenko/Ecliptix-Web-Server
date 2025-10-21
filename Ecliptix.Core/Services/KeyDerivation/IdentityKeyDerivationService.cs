@@ -142,11 +142,19 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
         finally
         {
             if (masterKeyBytes != null)
+            {
                 CryptographicOperations.ZeroMemory(masterKeyBytes);
+            }
+
             if (ed25519Seed != null)
+            {
                 CryptographicOperations.ZeroMemory(ed25519Seed);
+            }
+
             if (x25519Seed != null)
+            {
                 CryptographicOperations.ZeroMemory(x25519Seed);
+            }
 
             ed25519SkHandle?.Dispose();
             x25519SkHandle?.Dispose();
@@ -207,7 +215,10 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
         finally
         {
             if (skBytes != null)
+            {
                 CryptographicOperations.ZeroMemory(skBytes);
+            }
+
             skHandle?.Dispose();
         }
     }
@@ -352,9 +363,14 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
         finally
         {
             if (spkSeed != null)
+            {
                 CryptographicOperations.ZeroMemory(spkSeed);
+            }
+
             if (spkPrivateKey != null)
+            {
                 CryptographicOperations.ZeroMemory(spkPrivateKey);
+            }
         }
     }
 

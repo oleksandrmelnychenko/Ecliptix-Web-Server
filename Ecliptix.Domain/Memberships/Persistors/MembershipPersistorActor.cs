@@ -34,7 +34,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         Become(Ready);
     }
-    
+
     public static Props Build(IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
     {
         return Props.Create(() => new MembershipPersistorActor(dbContextFactory));
@@ -137,19 +137,6 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         });
     }
 
-    private void ReceivePersistorCommand<TMessage, TResult>(
-        Func<EcliptixSchemaContext, TMessage, Task<Result<TResult, VerificationFlowFailure>>> handler,
-        string operationName)
-        where TMessage : class, ICancellableActorEvent
-    {
-        Receive<TMessage>(message =>
-        {
-            IActorRef replyTo = Sender;
-            CancellationToken messageToken = ExtractCancellationToken(message);
-            ExecuteWithContext((ctx, _) => handler(ctx, message), operationName, messageToken).PipeTo(replyTo);
-        });
-    }
-
     private static CancellationToken ExtractCancellationToken(object? message)
     {
         return message is ICancellableActorEvent cancellable ? cancellable.CancellationToken : CancellationToken.None;
@@ -165,14 +152,18 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         bool firstActive = first.CanBeCanceled;
         bool secondActive = second.CanBeCanceled;
 
-        if (!firstActive && !secondActive)
-            return CancellationToken.None;
-
-        if (!firstActive)
-            return second;
+        switch (firstActive)
+        {
+            case false when !secondActive:
+                return CancellationToken.None;
+            case false:
+                return second;
+        }
 
         if (!secondActive)
+        {
             return first;
+        }
 
         linkedSource = CancellationTokenSource.CreateLinkedTokenSource(first, second);
         return linkedSource.Token;
@@ -676,7 +667,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 VerificationFlowFailure.PersistorAccess($"Create membership failed: {ex.Message}"));
         }
     }
-    
+
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> GetMembershipByVerificationFlowAsync(
         EcliptixSchemaContext ctx,
         GetMembershipByVerificationFlowEvent cmd,
@@ -800,7 +791,9 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         if (string.IsNullOrEmpty(statusStr) ||
             !MembershipStatusMap.TryGetValue(statusStr, out ProtoMembership.Types.ActivityStatus status))
+        {
             return Option<ProtoMembership.Types.ActivityStatus>.None;
+        }
 
         return Option<ProtoMembership.Types.ActivityStatus>.Some(status);
     }

@@ -1,9 +1,7 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
-using Serilog;
 using Ecliptix.Core.Infrastructure.Grpc.Constants;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
@@ -165,7 +163,9 @@ public class TelemetryInterceptor : Interceptor, IDisposable
     private static string SanitizeUserAgent(string userAgent)
     {
         if (string.IsNullOrEmpty(userAgent) || userAgent.Length > InterceptorConstants.Limits.MaxUserAgentLength)
+        {
             return InterceptorConstants.Connections.Sanitized;
+        }
 
         return userAgent.Split(InterceptorConstants.Characters.Space)[InterceptorConstants.Numbers.FirstIndex];
     }

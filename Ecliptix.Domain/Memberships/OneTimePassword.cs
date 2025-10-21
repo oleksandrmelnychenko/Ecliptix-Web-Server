@@ -85,7 +85,10 @@ public sealed class OneTimePassword
 
     public bool Verify(string code)
     {
-        if (!IsValidForVerification()) return false;
+        if (!IsValidForVerification())
+        {
+            return false;
+        }
 
         if (HasExpired())
         {
@@ -114,7 +117,10 @@ public sealed class OneTimePassword
 
     private bool HasExpired()
     {
-        if (!_otpQueryRecord.HasValue) return true;
+        if (!_otpQueryRecord.HasValue)
+        {
+            return true;
+        }
 
         OtpQueryRecord record = _otpQueryRecord.Value!;
         return _utcNow() > record.ExpiresAt;
@@ -124,7 +130,10 @@ public sealed class OneTimePassword
     {
         OtpQueryRecord record = _otpQueryRecord.Value!;
 
-        if (!OneTimePasswordHashing.VerifyOtp(code, record.OtpHash, record.OtpSalt)) return false;
+        if (!OneTimePasswordHashing.VerifyOtp(code, record.OtpHash, record.OtpSalt))
+        {
+            return false;
+        }
 
         ConsumeOtp();
         return true;
@@ -132,11 +141,11 @@ public sealed class OneTimePassword
 
     public static OneTimePassword FromExisting(OtpQueryRecord record)
     {
-        OneTimePassword otp = new();
-        otp._uniqueIdentifier = record.UniqueIdentifier;
-        otp.ExpiresAt = record.ExpiresAt;
-        otp.IsActive = record.IsActive;
-        otp._otpQueryRecord = Option<OtpQueryRecord>.Some(record);
+        OneTimePassword otp = new()
+        {
+            _uniqueIdentifier = record.UniqueIdentifier, ExpiresAt = record.ExpiresAt, IsActive = record.IsActive,
+            _otpQueryRecord = Option<OtpQueryRecord>.Some(record)
+        };
         return otp;
     }
 

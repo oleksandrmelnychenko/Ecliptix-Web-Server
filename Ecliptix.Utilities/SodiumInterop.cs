@@ -86,8 +86,10 @@ public static class SodiumInterop
     public static Result<Unit, SodiumFailure> SecureWipe(byte[]? buffer)
     {
         if (!IsInitialized)
+        {
             return Result<Unit, SodiumFailure>.Err(
                 SodiumFailure.InitializationFailed("Sodium not initialized"));
+        }
 
         return Result<byte[], SodiumFailure>
             .FromValue(buffer, SodiumFailure.BufferTooSmall("Buffer cannot be null"))
@@ -142,16 +144,22 @@ public static class SodiumInterop
         int outputSize = crypto_generichash_BYTES)
     {
         if (!IsInitialized)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InitializationFailed("Sodium not initialized"));
+        }
 
-        if (message == null || message.Length == 0)
+        if (message.Length == 0)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InvalidParameter("Message cannot be null or empty"));
+        }
 
-        if (outputSize <= 0 || outputSize > 64)
+        if (outputSize is <= 0 or > 64)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InvalidParameter($"Output size must be between 1 and 64 bytes, got {outputSize}"));
+        }
 
         return Result<byte[], SodiumFailure>.Try(
             () =>
@@ -163,10 +171,9 @@ public static class SodiumInterop
                     message, (ulong)message.Length,
                     key, key != null ? (UIntPtr)key.Length : UIntPtr.Zero);
 
-                if (result != 0)
-                    throw new InvalidOperationException($"Blake2b hash failed with result code: {result}");
-
-                return output;
+                return result != 0
+                    ? throw new InvalidOperationException($"Blake2b hash failed with result code: {result}")
+                    : output;
             },
             ex => SodiumFailure.HashFailed($"Blake2b hash operation failed: {ex.Message}", ex));
     }
@@ -179,24 +186,36 @@ public static class SodiumInterop
         int outputSize = crypto_generichash_BYTES)
     {
         if (!IsInitialized)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InitializationFailed("Sodium not initialized"));
+        }
 
-        if (message == null || message.Length == 0)
+        if (message.Length == 0)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InvalidParameter("Message cannot be null or empty"));
+        }
 
-        if (salt == null || salt.Length != crypto_generichash_SALTBYTES)
+        if (salt.Length != crypto_generichash_SALTBYTES)
+        {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter($"Salt must be exactly {crypto_generichash_SALTBYTES} bytes, got {salt?.Length ?? 0}"));
+                SodiumFailure.InvalidParameter(
+                    $"Salt must be exactly {crypto_generichash_SALTBYTES} bytes, got {salt?.Length ?? 0}"));
+        }
 
-        if (personal == null || personal.Length != crypto_generichash_PERSONALBYTES)
+        if (personal.Length != crypto_generichash_PERSONALBYTES)
+        {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter($"Personal must be exactly {crypto_generichash_PERSONALBYTES} bytes, got {personal?.Length ?? 0}"));
+                SodiumFailure.InvalidParameter(
+                    $"Personal must be exactly {crypto_generichash_PERSONALBYTES} bytes, got {personal?.Length ?? 0}"));
+        }
 
-        if (outputSize <= 0 || outputSize > 64)
+        if (outputSize > 64)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InvalidParameter($"Output size must be between 1 and 64 bytes, got {outputSize}"));
+        }
 
         return Result<byte[], SodiumFailure>.Try(
             () =>
@@ -210,10 +229,10 @@ public static class SodiumInterop
                     salt,
                     personal);
 
-                if (result != 0)
-                    throw new InvalidOperationException($"Blake2b salt/personal hash failed with result code: {result}");
-
-                return output;
+                return result != 0
+                    ? throw new InvalidOperationException(
+                        $"Blake2b salt/personal hash failed with result code: {result}")
+                    : output;
             },
             ex => SodiumFailure.HashFailed($"Blake2b salt/personal hash operation failed: {ex.Message}", ex));
     }
@@ -221,12 +240,16 @@ public static class SodiumInterop
     public static Result<byte[], SodiumFailure> GetRandomBytes(int count)
     {
         if (!IsInitialized)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InitializationFailed("Sodium not initialized"));
+        }
 
         if (count <= 0)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InvalidParameter($"Count must be positive, got {count}"));
+        }
 
         return Result<byte[], SodiumFailure>.Try(
             () =>
@@ -241,12 +264,17 @@ public static class SodiumInterop
     public static Result<byte[], SodiumFailure> ScalarMultBase(byte[] secretKey)
     {
         if (!IsInitialized)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InitializationFailed("Sodium not initialized"));
+        }
 
-        if (secretKey == null || secretKey.Length != crypto_scalarmult_SCALARBYTES)
+        if (secretKey.Length != crypto_scalarmult_SCALARBYTES)
+        {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter($"Secret key must be exactly {crypto_scalarmult_SCALARBYTES} bytes, got {secretKey?.Length ?? 0}"));
+                SodiumFailure.InvalidParameter(
+                    $"Secret key must be exactly {crypto_scalarmult_SCALARBYTES} bytes, got {secretKey?.Length ?? 0}"));
+        }
 
         return Result<byte[], SodiumFailure>.Try(
             () =>
@@ -255,7 +283,9 @@ public static class SodiumInterop
                 int result = crypto_scalarmult_base(publicKey, secretKey);
 
                 if (result != 0)
+                {
                     throw new InvalidOperationException($"ScalarMult.Base failed with result code: {result}");
+                }
 
                 return publicKey;
             },
@@ -265,16 +295,24 @@ public static class SodiumInterop
     public static Result<byte[], SodiumFailure> ScalarMult(byte[] secretKey, byte[] publicKey)
     {
         if (!IsInitialized)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InitializationFailed("Sodium not initialized"));
+        }
 
-        if (secretKey == null || secretKey.Length != crypto_scalarmult_SCALARBYTES)
+        if (secretKey.Length != crypto_scalarmult_SCALARBYTES)
+        {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter($"Secret key must be exactly {crypto_scalarmult_SCALARBYTES} bytes, got {secretKey?.Length ?? 0}"));
+                SodiumFailure.InvalidParameter(
+                    $"Secret key must be exactly {crypto_scalarmult_SCALARBYTES} bytes, got {secretKey?.Length ?? 0}"));
+        }
 
-        if (publicKey == null || publicKey.Length != crypto_scalarmult_BYTES)
+        if (publicKey.Length != crypto_scalarmult_BYTES)
+        {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter($"Public key must be exactly {crypto_scalarmult_BYTES} bytes, got {publicKey?.Length ?? 0}"));
+                SodiumFailure.InvalidParameter(
+                    $"Public key must be exactly {crypto_scalarmult_BYTES} bytes, got {publicKey?.Length ?? 0}"));
+        }
 
         return Result<byte[], SodiumFailure>.Try(
             () =>
@@ -282,10 +320,9 @@ public static class SodiumInterop
                 byte[] sharedSecret = new byte[crypto_scalarmult_BYTES];
                 int result = crypto_scalarmult(sharedSecret, secretKey, publicKey);
 
-                if (result != 0)
-                    throw new InvalidOperationException($"ScalarMult failed with result code: {result}");
-
-                return sharedSecret;
+                return result != 0
+                    ? throw new InvalidOperationException($"ScalarMult failed with result code: {result}")
+                    : sharedSecret;
             },
             ex => SodiumFailure.InvalidOperation($"Scalar multiplication failed: {ex.Message}", ex));
     }
@@ -293,8 +330,10 @@ public static class SodiumInterop
     public static Result<(byte[] PublicKey, byte[] SecretKey), SodiumFailure> GenerateSigningKeyPair()
     {
         if (!IsInitialized)
+        {
             return Result<(byte[], byte[]), SodiumFailure>.Err(
                 SodiumFailure.InitializationFailed("Sodium not initialized"));
+        }
 
         return Result<(byte[], byte[]), SodiumFailure>.Try(
             () =>
@@ -304,23 +343,28 @@ public static class SodiumInterop
 
                 int result = crypto_sign_keypair(publicKey, secretKey);
 
-                if (result != 0)
-                    throw new InvalidOperationException($"Key pair generation failed with result code: {result}");
-
-                return (publicKey, secretKey);
+                return result != 0
+                    ? throw new InvalidOperationException($"Key pair generation failed with result code: {result}")
+                    : (publicKey, secretKey);
             },
             ex => SodiumFailure.InvalidOperation($"Signing key pair generation failed: {ex.Message}", ex));
     }
 
-    public static Result<(byte[] PublicKey, byte[] SecretKey), SodiumFailure> GenerateSigningKeyPairFromSeed(byte[] seed)
+    public static Result<(byte[] PublicKey, byte[] SecretKey), SodiumFailure>
+        GenerateSigningKeyPairFromSeed(byte[] seed)
     {
         if (!IsInitialized)
+        {
             return Result<(byte[], byte[]), SodiumFailure>.Err(
                 SodiumFailure.InitializationFailed("Sodium not initialized"));
+        }
 
-        if (seed == null || seed.Length != crypto_sign_SEEDBYTES)
+        if (seed.Length != crypto_sign_SEEDBYTES)
+        {
             return Result<(byte[], byte[]), SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter($"Seed must be exactly {crypto_sign_SEEDBYTES} bytes, got {seed?.Length ?? 0}"));
+                SodiumFailure.InvalidParameter(
+                    $"Seed must be exactly {crypto_sign_SEEDBYTES} bytes, got {seed?.Length ?? 0}"));
+        }
 
         return Result<(byte[], byte[]), SodiumFailure>.Try(
             () =>
@@ -330,10 +374,10 @@ public static class SodiumInterop
 
                 int result = crypto_sign_seed_keypair(publicKey, secretKey, seed);
 
-                if (result != 0)
-                    throw new InvalidOperationException($"Deterministic key pair generation failed with result code: {result}");
-
-                return (publicKey, secretKey);
+                return result != 0
+                    ? throw new InvalidOperationException(
+                        $"Deterministic key pair generation failed with result code: {result}")
+                    : (publicKey, secretKey);
             },
             ex => SodiumFailure.InvalidOperation($"Signing key pair generation from seed failed: {ex.Message}", ex));
     }
@@ -341,32 +385,37 @@ public static class SodiumInterop
     public static Result<byte[], SodiumFailure> SignDetached(byte[] message, byte[] secretKey)
     {
         if (!IsInitialized)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InitializationFailed("Sodium not initialized"));
+        }
 
-        if (message == null || message.Length == 0)
+        if (message.Length == 0)
+        {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InvalidParameter("Message cannot be null or empty"));
+        }
 
-        if (secretKey == null || secretKey.Length != crypto_sign_SECRETKEYBYTES)
+        if (secretKey.Length != crypto_sign_SECRETKEYBYTES)
+        {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter($"Secret key must be exactly {crypto_sign_SECRETKEYBYTES} bytes, got {secretKey?.Length ?? 0}"));
+                SodiumFailure.InvalidParameter(
+                    $"Secret key must be exactly {crypto_sign_SECRETKEYBYTES} bytes, got {secretKey?.Length ?? 0}"));
+        }
 
         return Result<byte[], SodiumFailure>.Try(
             () =>
             {
                 byte[] signature = new byte[crypto_sign_BYTES];
-                ulong signatureLength;
 
                 int result = crypto_sign_detached(
-                    signature, out signatureLength,
+                    signature, out ulong _,
                     message, (ulong)message.Length,
                     secretKey);
 
-                if (result != 0)
-                    throw new InvalidOperationException($"Signing failed with result code: {result}");
-
-                return signature;
+                return result != 0
+                    ? throw new InvalidOperationException($"Signing failed with result code: {result}")
+                    : signature;
             },
             ex => SodiumFailure.InvalidOperation($"Detached signing failed: {ex.Message}", ex));
     }
@@ -374,20 +423,30 @@ public static class SodiumInterop
     public static Result<bool, SodiumFailure> VerifyDetached(byte[] signature, byte[] message, byte[] publicKey)
     {
         if (!IsInitialized)
+        {
             return Result<bool, SodiumFailure>.Err(
                 SodiumFailure.InitializationFailed("Sodium not initialized"));
+        }
 
-        if (signature == null || signature.Length != crypto_sign_BYTES)
+        if (signature.Length != crypto_sign_BYTES)
+        {
             return Result<bool, SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter($"Signature must be exactly {crypto_sign_BYTES} bytes, got {signature?.Length ?? 0}"));
+                SodiumFailure.InvalidParameter(
+                    $"Signature must be exactly {crypto_sign_BYTES} bytes, got {signature?.Length ?? 0}"));
+        }
 
-        if (message == null || message.Length == 0)
+        if (message.Length == 0)
+        {
             return Result<bool, SodiumFailure>.Err(
                 SodiumFailure.InvalidParameter("Message cannot be null or empty"));
+        }
 
-        if (publicKey == null || publicKey.Length != crypto_sign_PUBLICKEYBYTES)
+        if (publicKey.Length != crypto_sign_PUBLICKEYBYTES)
+        {
             return Result<bool, SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter($"Public key must be exactly {crypto_sign_PUBLICKEYBYTES} bytes, got {publicKey?.Length ?? 0}"));
+                SodiumFailure.InvalidParameter(
+                    $"Public key must be exactly {crypto_sign_PUBLICKEYBYTES} bytes, got {publicKey?.Length ?? 0}"));
+        }
 
         return Result<bool, SodiumFailure>.Try(
             () =>
@@ -402,7 +461,8 @@ public static class SodiumInterop
             ex => SodiumFailure.InvalidOperation($"Signature verification failed: {ex.Message}", ex));
     }
 
-    public static Result<(SodiumSecureMemoryHandle SkHandle, byte[] Pk), EcliptixProtocolFailure> GenerateX25519KeyPair(string keyPurpose)
+    public static Result<(SodiumSecureMemoryHandle SkHandle, byte[] Pk), EcliptixProtocolFailure> GenerateX25519KeyPair(
+        string keyPurpose)
     {
         byte[]? secretKeyBytes = null;
         SodiumSecureMemoryHandle? skHandle = null;
@@ -411,43 +471,59 @@ public static class SodiumInterop
         {
             Result<byte[], SodiumFailure> randomResult = GetRandomBytes(crypto_scalarmult_SCALARBYTES);
             if (randomResult.IsErr)
+            {
                 return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.KeyGeneration($"Failed to generate random bytes for {keyPurpose}: {randomResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.KeyGeneration(
+                        $"Failed to generate random bytes for {keyPurpose}: {randomResult.UnwrapErr().Message}"));
+            }
+
             secretKeyBytes = randomResult.Unwrap();
 
             Result<byte[], SodiumFailure> publicKeyResult = ScalarMultBase(secretKeyBytes);
             if (publicKeyResult.IsErr)
+            {
                 return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.KeyGeneration($"Failed to derive public key for {keyPurpose}: {publicKeyResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.KeyGeneration(
+                        $"Failed to derive public key for {keyPurpose}: {publicKeyResult.UnwrapErr().Message}"));
+            }
+
             byte[] publicKey = publicKeyResult.Unwrap();
 
             Result<SodiumSecureMemoryHandle, SodiumFailure> allocResult =
                 SodiumSecureMemoryHandle.Allocate(crypto_scalarmult_SCALARBYTES);
             if (allocResult.IsErr)
+            {
                 return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Failed to allocate secure memory for {keyPurpose}: {allocResult.UnwrapErr().Message}"));
+                    EcliptixProtocolFailure.Generic(
+                        $"Failed to allocate secure memory for {keyPurpose}: {allocResult.UnwrapErr().Message}"));
+            }
+
             skHandle = allocResult.Unwrap();
 
             Result<Unit, SodiumFailure> writeResult = skHandle.Write(secretKeyBytes);
-            if (writeResult.IsErr)
+            if (!writeResult.IsErr)
             {
-                skHandle.Dispose();
-                return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic($"Failed to write secret key to secure memory for {keyPurpose}: {writeResult.UnwrapErr().Message}"));
+                return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Ok((skHandle, publicKey));
             }
 
-            return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Ok((skHandle, publicKey));
+            skHandle.Dispose();
+            return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic(
+                    $"Failed to write secret key to secure memory for {keyPurpose}: {writeResult.UnwrapErr().Message}"));
         }
         catch (Exception ex)
         {
             skHandle?.Dispose();
             return Result<(SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.KeyGeneration($"Unexpected error generating X25519 key pair for {keyPurpose}", ex));
+                EcliptixProtocolFailure.KeyGeneration($"Unexpected error generating X25519 key pair for {keyPurpose}",
+                    ex));
         }
         finally
         {
             if (secretKeyBytes != null)
+            {
                 SecureWipe(secretKeyBytes).IgnoreResult();
+            }
         }
     }
 
@@ -459,7 +535,9 @@ public static class SodiumInterop
                 int result = sodium_init();
                 const int dllImportSuccess = 0;
                 if (result < dllImportSuccess)
+                {
                     throw new InvalidOperationException("sodium_init returned error");
+                }
             },
             ex => ex switch
             {
@@ -490,7 +568,9 @@ public static class SodiumInterop
                 handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
                 IntPtr ptr = handle.AddrOfPinnedObject();
                 if (ptr == IntPtr.Zero && buffer.Length > 0)
+                {
                     throw new InvalidOperationException(SodiumFailureMessages.AddressOfPinnedObjectFailed);
+                }
 
                 sodium_memzero(ptr, (UIntPtr)buffer.Length);
             },
@@ -508,7 +588,10 @@ public static class SodiumInterop
             },
             () =>
             {
-                if (handle.IsAllocated) handle.Free();
+                if (handle.IsAllocated)
+                {
+                    handle.Free();
+                }
             }
         );
     }

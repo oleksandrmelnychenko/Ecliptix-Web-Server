@@ -39,26 +39,23 @@ public class EcliptixProtocolSystemTests : IDisposable
 
     public TestContext TestContext { get; set; }
 
-    private static byte[] CorruptBytes(ReadOnlySpan<byte> input)
-    {
-        if (input.IsEmpty) return [];
-        byte[] corrupted = input.ToArray();
-        const int indexToCorrupt = 0;
-        corrupted[indexToCorrupt] ^= 0xFF;
-        return corrupted;
-    }
-
-    private static byte[] GenerateNonce()
-    {
-        return RandomNumberGenerator.GetBytes(Constants.AesGcmNonceSize);
-    }
-
     private static bool CompareSecureHandles(SodiumSecureMemoryHandle? handleA, SodiumSecureMemoryHandle? handleB)
     {
-        if (ReferenceEquals(handleA, handleB)) return true;
-        if (handleA == null || handleB == null) return false;
+        if (ReferenceEquals(handleA, handleB))
+        {
+            return true;
+        }
+
+        if (handleA == null || handleB == null)
+        {
+            return false;
+        }
+
         if (handleA.IsInvalid || handleB.IsInvalid || handleA.Length != handleB.Length ||
-            handleA.Length == 0) return false;
+            handleA.Length == 0)
+        {
+            return false;
+        }
 
         if (handleA.Length > 1024)
         {
@@ -126,11 +123,17 @@ public class EcliptixProtocolSystemTests : IDisposable
         try
         {
             PublicKeyBundle? bobPublicBundleProto = _bobKeys.CreatePublicBundle().Unwrap();
-            if (bobPublicBundleProto == null) throw new InvalidOperationException("Bob failed to create public bundle");
+            if (bobPublicBundleProto == null)
+            {
+                throw new InvalidOperationException("Bob failed to create public bundle");
+            }
 
             _aliceKeys.GenerateEphemeralKeyPair();
             PublicKeyBundle? alicePublicBundleProto = _aliceKeys.CreatePublicBundle().Unwrap();
-            if (alicePublicBundleProto == null) throw new InvalidOperationException("Alice failed to create bundle");
+            if (alicePublicBundleProto == null)
+            {
+                throw new InvalidOperationException("Alice failed to create bundle");
+            }
 
             Result<PublicKeyBundle, EcliptixProtocolFailure> bobBundleInternalResult =
                 PublicKeyBundle.FromProtobufExchange(bobPublicBundleProto.ToProtobufExchange());

@@ -47,26 +47,34 @@ public sealed class ReplayProtection : IDisposable
         ulong chainIndex = 0)
     {
         if (_disposed)
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(ReplayProtection)));
+        }
 
         if (nonce.Length == 0)
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("Nonce cannot be empty"));
+        }
 
         lock (_lock)
         {
             string nonceKey = Convert.ToBase64String(nonce);
 
             if (_processedNonces.ContainsKey(nonceKey))
+            {
                 return Result<Unit, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.ReplayAttempt($"Message with nonce {nonceKey[..8]}... already processed"));
+            }
 
             MessageWindow window = _messageWindows.GetOrAdd(chainIndex, _ => new MessageWindow());
 
             Result<Unit, EcliptixProtocolFailure> windowResult = window.CheckAndRecordMessage(messageIndex, _maxOutOfOrderWindow);
             if (windowResult.IsErr)
+            {
                 return windowResult;
+            }
 
             _processedNonces[nonceKey] = DateTime.UtcNow;
             _recentMessageCount++;
@@ -77,7 +85,10 @@ public sealed class ReplayProtection : IDisposable
 
     public void OnRatchetRotation()
     {
-        if (_disposed) return;
+        if (_disposed)
+        {
+            return;
+        }
 
         lock (_lock)
         {
@@ -87,17 +98,24 @@ public sealed class ReplayProtection : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (_disposed)
+        {
+            return;
+        }
+
         _disposed = true;
 
-        _cleanupTimer?.Dispose();
+        _cleanupTimer.Dispose();
         _processedNonces.Clear();
         _messageWindows.Clear();
     }
 
     private void CleanupExpiredEntries()
     {
-        if (_disposed) return;
+        if (_disposed)
+        {
+            return;
+        }
 
         lock (_lock)
         {
@@ -107,36 +125,49 @@ public sealed class ReplayProtection : IDisposable
             foreach ((string key, DateTime timestamp) in _processedNonces)
             {
                 if (timestamp < cutoff)
+                {
                     expiredKeys.Add(key);
+                }
             }
 
             foreach (string key in expiredKeys)
+            {
                 _processedNonces.TryRemove(key, out _);
+            }
 
             foreach ((ulong chainIndex, MessageWindow window) in _messageWindows.ToArray())
             {
                 if (window.IsExpired(TimeSpan.FromHours(1)))
+                {
                     _messageWindows.TryRemove(chainIndex, out _);
+                }
             }
         }
     }
 
     private void AdjustWindowSize()
     {
-        if (_disposed) return;
+        if (_disposed)
+        {
+            return;
+        }
 
         lock (_lock)
         {
             TimeSpan timeSinceLastAdjustment = DateTime.UtcNow - _lastWindowAdjustment;
             if (timeSinceLastAdjustment < TimeSpan.FromMinutes(5))
+            {
                 return;
+            }
 
             double messagesPerMinute = _recentMessageCount / Math.Max(1, timeSinceLastAdjustment.TotalMinutes);
 
-            if (messagesPerMinute > 100)
-                _maxOutOfOrderWindow = Math.Min(_maxWindow, _maxOutOfOrderWindow * 2);
-            else if (messagesPerMinute < 10)
-                _maxOutOfOrderWindow = Math.Max(_baseWindow, _maxOutOfOrderWindow / 2);
+            _maxOutOfOrderWindow = messagesPerMinute switch
+            {
+                > 100 => Math.Min(_maxWindow, _maxOutOfOrderWindow * 2),
+                < 10 => Math.Max(_baseWindow, _maxOutOfOrderWindow / 2),
+                _ => _maxOutOfOrderWindow
+            };
 
             _recentMessageCount = 0;
             _lastWindowAdjustment = DateTime.UtcNow;
@@ -155,23 +186,31 @@ internal sealed class MessageWindow
         _lastAccess = DateTime.UtcNow;
 
         if (_processedMessages.Contains(messageIndex))
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ReplayAttempt($"Message with index {messageIndex} already processed"));
+        }
 
-        if (messageIndex <= _highestIndex && (_highestIndex - messageIndex) > maxWindow)
+        if (messageIndex <= _highestIndex && _highestIndex - messageIndex > maxWindow)
+        {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic($"Message index {messageIndex} is too old (current highest: {_highestIndex})"));
+        }
 
         _processedMessages.Add(messageIndex);
 
         if (messageIndex > _highestIndex)
-            _highestIndex = messageIndex;
-
-        if (_processedMessages.Count > (int)maxWindow * 2)
         {
-            ulong cutoff = _highestIndex > maxWindow ? _highestIndex - maxWindow : 0;
-            _processedMessages.RemoveWhere(index => index < cutoff);
+            _highestIndex = messageIndex;
         }
+
+        if (_processedMessages.Count <= (int)maxWindow * 2)
+        {
+            return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
+        }
+
+        ulong cutoff = _highestIndex > maxWindow ? _highestIndex - maxWindow : 0;
+        _processedMessages.RemoveWhere(index => index < cutoff);
 
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }

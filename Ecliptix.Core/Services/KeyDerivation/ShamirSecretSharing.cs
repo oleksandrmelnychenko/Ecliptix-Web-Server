@@ -1,10 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
-using System.Threading.Tasks;
-using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures;
 
@@ -29,14 +24,20 @@ public sealed class ShamirSecretSharing : ISecretSharingService
         int threshold = DefaultThreshold, int totalShares = DefaultTotalShares, byte[]? hmacKey = null)
     {
         if (threshold < MinimumShares || threshold > totalShares)
+        {
             return Result<KeySplitResult, KeySplittingFailure>.Err(
                 KeySplittingFailure.InvalidThreshold(threshold, totalShares));
+        }
 
         if (totalShares is < MinimumShares or > MaximumShares)
+        {
             return Result<KeySplitResult, KeySplittingFailure>.Err(KeySplittingFailure.InvalidShareCount(totalShares));
+        }
 
         if (key.Length > int.MaxValue - Prime256BitSize)
+        {
             return Result<KeySplitResult, KeySplittingFailure>.Err(KeySplittingFailure.InvalidKeyLength(key.Length));
+        }
 
         return await Task.Run(() =>
         {
@@ -50,8 +51,10 @@ public sealed class ShamirSecretSharing : ISecretSharingService
                 int chunksNeeded = checked((key.Length + Prime256BitSize - 1) / Prime256BitSize);
 
                 if (chunksNeeded > MaxKeyChunks)
+                {
                     return Result<KeySplitResult, KeySplittingFailure>.Err(
                         KeySplittingFailure.KeySplittingFailed($"Key requires too many chunks (>{MaxKeyChunks})"));
+                }
 
                 allSharesData = new byte[totalShares][];
                 for (int i = 0; i < totalShares; i++)
@@ -71,7 +74,10 @@ public sealed class ShamirSecretSharing : ISecretSharingService
                     BigInteger secret = new(chunk, true, true);
 
                     secret %= Prime256;
-                    if (secret < 0) secret += Prime256;
+                    if (secret < 0)
+                    {
+                        secret += Prime256;
+                    }
 
                     coefficients = new BigInteger[threshold];
                     coefficients[0] = secret;
@@ -80,7 +86,11 @@ public sealed class ShamirSecretSharing : ISecretSharingService
                     {
                         byte[] randomBytes = RandomNumberGenerator.GetBytes(Prime256BitSize);
                         BigInteger coeff = new BigInteger(randomBytes, true, true) % Prime256;
-                        if (coeff < 0) coeff += Prime256;
+                        if (coeff < 0)
+                        {
+                            coeff += Prime256;
+                        }
+
                         coefficients[i] = coeff;
                     }
 
@@ -113,7 +123,7 @@ public sealed class ShamirSecretSharing : ISecretSharingService
                     }
                 }
 
-                KeySplitResult result = new(null!, threshold);
+                KeySplitResult result = new(null!);
                 Guid sessionId = result.SessionId;
 
                 for (int i = 0; i < totalShares; i++)
@@ -121,7 +131,11 @@ public sealed class ShamirSecretSharing : ISecretSharingService
                     ShareLocation location = (ShareLocation)(i % Enum.GetValues<ShareLocation>().Length);
                     shares[i] = new KeyShare(allSharesData[i], i + 1, location, sessionId);
 
-                    if (hmacKey is not { Length: > 0 }) continue;
+                    if (hmacKey is not { Length: > 0 })
+                    {
+                        continue;
+                    }
+
                     using HMACSHA256 hmac = new(hmacKey);
                     byte[] shareHmac = hmac.ComputeHash(allSharesData[i]);
                     shares[i].SetHmac(shareHmac);
@@ -133,12 +147,15 @@ public sealed class ShamirSecretSharing : ISecretSharingService
             }
             catch (Exception ex)
             {
-                if (shares != null)
+                if (shares == null)
                 {
-                    foreach (KeyShare share in shares)
-                    {
-                        share?.Dispose();
-                    }
+                    return Result<KeySplitResult, KeySplittingFailure>.Err(
+                        KeySplittingFailure.KeySplittingFailed(ex.Message, ex));
+                }
+
+                foreach (KeyShare share in shares)
+                {
+                    share.Dispose();
                 }
 
                 return Result<KeySplitResult, KeySplittingFailure>.Err(
@@ -169,24 +186,32 @@ public sealed class ShamirSecretSharing : ISecretSharingService
         byte[]? hmacKey = null)
     {
         if (shares.Length < MinimumShares)
+        {
             return Result<byte[], KeySplittingFailure>.Err(
                 KeySplittingFailure.InsufficientShares(shares.Length, MinimumShares));
+        }
 
         if (!ValidateSharesForReconstruction(shares, hmacKey, out string validationError))
+        {
             return Result<byte[], KeySplittingFailure>.Err(KeySplittingFailure.ShareValidationFailed(validationError));
+        }
 
         return await Task.Run(() =>
         {
             try
             {
                 if (shares[0].ShareData.Length < 4)
+                {
                     return Result<byte[], KeySplittingFailure>.Err(
                         KeySplittingFailure.InvalidShareData("Invalid share format: missing length header"));
+                }
 
                 int keyLength = BitConverter.ToInt32(shares[0].ShareData, 0);
 
                 if (keyLength is <= 0 or > MaxKeyLength)
+                {
                     return Result<byte[], KeySplittingFailure>.Err(KeySplittingFailure.InvalidKeyLength(keyLength));
+                }
 
                 int chunksNeeded = checked((keyLength + Prime256BitSize - 1) / Prime256BitSize);
 
@@ -202,14 +227,18 @@ public sealed class ShamirSecretSharing : ISecretSharingService
                         int shareOffset = 4 + chunkIndex * (Prime256BitSize + 1);
 
                         if (shareOffset >= shares[i].ShareData.Length)
+                        {
                             return Result<byte[], KeySplittingFailure>.Err(
                                 KeySplittingFailure.InvalidShareData(
                                     $"Invalid share format at index {i}, chunk {chunkIndex}"));
+                        }
 
                         if (shareOffset + 1 + Prime256BitSize > shares[i].ShareData.Length)
+                        {
                             return Result<byte[], KeySplittingFailure>.Err(
                                 KeySplittingFailure.InvalidShareData(
                                     $"Share data truncated at index {i}, chunk {chunkIndex}"));
+                        }
 
                         x[i] = shares[i].ShareData[shareOffset];
 
@@ -239,13 +268,17 @@ public sealed class ShamirSecretSharing : ISecretSharingService
     private static bool ValidateShares(KeyShare[] shares, byte[]? hmacKey = null)
     {
         if (shares.Length < MinimumShares)
+        {
             return false;
+        }
 
         try
         {
             int expectedLength = shares[0].ShareData.Length;
             if (shares.Any(s => s.ShareData.Length != expectedLength))
+            {
                 return false;
+            }
 
             HashSet<int> seenIndices = [];
             if (shares.Any(share => !seenIndices.Add(share.ShareIndex)))
@@ -255,22 +288,34 @@ public sealed class ShamirSecretSharing : ISecretSharingService
 
             Guid? sessionId = shares[0].SessionId;
             if (shares.Any(s => s.SessionId != sessionId))
+            {
                 return false;
+            }
 
             if (shares.Any(s => s.ShareIndex < 1 || s.ShareIndex > MaximumShares))
+            {
                 return false;
+            }
 
-            if (hmacKey is { Length: > 0 })
+            if (hmacKey is not { Length: > 0 })
+            {
+                return true;
+            }
+
             {
                 using HMACSHA256 hmac = new(hmacKey);
                 foreach (KeyShare share in shares)
                 {
                     if (share.Hmac == null || share.Hmac.Length == 0)
+                    {
                         return false;
+                    }
 
                     byte[] expectedHmac = hmac.ComputeHash(share.ShareData);
                     if (!ConstantTimeEquals(expectedHmac, share.Hmac))
+                    {
                         return false;
+                    }
                 }
             }
 
@@ -341,7 +386,9 @@ public sealed class ShamirSecretSharing : ISecretSharingService
         }
 
         while (result < 0)
+        {
             result += Prime256;
+        }
 
         return result;
     }
@@ -365,7 +412,9 @@ public sealed class ShamirSecretSharing : ISecretSharingService
             }
 
             while (denominator < 0)
+            {
                 denominator += Prime256;
+            }
 
             BigInteger inverseDenominator = ModInverse(denominator, Prime256);
             BigInteger term = (y[i] * numerator * inverseDenominator) % Prime256;
@@ -374,7 +423,9 @@ public sealed class ShamirSecretSharing : ISecretSharingService
         }
 
         while (result < 0)
+        {
             result += Prime256;
+        }
 
         return result;
     }
@@ -382,14 +433,21 @@ public sealed class ShamirSecretSharing : ISecretSharingService
     private static BigInteger ModInverse(BigInteger a, BigInteger m)
     {
         if (m <= 1)
+        {
             throw new ArgumentException("Modulus must be greater than 1", nameof(m));
+        }
 
-        a = a % m;
-        if (a < 0) a += m;
+        a %= m;
+        if (a < 0)
+        {
+            a += m;
+        }
 
         BigInteger gcd = BigInteger.GreatestCommonDivisor(a, m);
         if (gcd != 1)
+        {
             throw new InvalidOperationException($"No modular inverse exists for {a} mod {m} (gcd={gcd})");
+        }
 
         BigInteger m0 = m;
         BigInteger x0 = 0;
@@ -408,7 +466,10 @@ public sealed class ShamirSecretSharing : ISecretSharingService
             x1 = t;
         }
 
-        if (x1 < 0) x1 += m0;
+        if (x1 < 0)
+        {
+            x1 += m0;
+        }
 
         return x1;
     }
@@ -416,7 +477,9 @@ public sealed class ShamirSecretSharing : ISecretSharingService
     private static bool ConstantTimeEquals(byte[] a, byte[] b)
     {
         if (a.Length != b.Length)
+        {
             return false;
+        }
 
         uint diff = 0;
         for (int i = 0; i < a.Length; i++)
@@ -434,8 +497,10 @@ public sealed class ShamirSecretSharing : ISecretSharingService
         SodiumSecureMemoryHandle? hmacKeyHandle = null)
     {
         if (keyHandle.IsInvalid)
+        {
             return Result<KeySplitResult, KeySplittingFailure>.Err(
                 KeySplittingFailure.InvalidKeyData("Key handle cannot be null or invalid"));
+        }
 
         byte[]? keyBytes = null;
         byte[]? hmacKeyBytes = null;
@@ -445,30 +510,41 @@ public sealed class ShamirSecretSharing : ISecretSharingService
             Result<byte[], Ecliptix.Utilities.Failures.Sodium.SodiumFailure> readResult =
                 keyHandle.ReadBytes(keyHandle.Length);
             if (readResult.IsErr)
+            {
                 return Result<KeySplitResult, KeySplittingFailure>.Err(
                     KeySplittingFailure.MemoryReadFailed(readResult.UnwrapErr().Message));
+            }
 
             keyBytes = readResult.Unwrap();
 
-            if (hmacKeyHandle is { IsInvalid: false })
+            if (hmacKeyHandle is not { IsInvalid: false })
             {
-                Result<byte[], Ecliptix.Utilities.Failures.Sodium.SodiumFailure> hmacReadResult =
-                    hmacKeyHandle.ReadBytes(hmacKeyHandle.Length);
-                if (hmacReadResult.IsErr)
-                    return Result<KeySplitResult, KeySplittingFailure>.Err(
-                        KeySplittingFailure.HmacKeyRetrievalFailed(hmacReadResult.UnwrapErr().Message));
-
-                hmacKeyBytes = hmacReadResult.Unwrap();
+                return await SplitKeyAsync(keyBytes, threshold, totalShares, hmacKeyBytes);
             }
+
+            Result<byte[], Ecliptix.Utilities.Failures.Sodium.SodiumFailure> hmacReadResult =
+                hmacKeyHandle.ReadBytes(hmacKeyHandle.Length);
+            if (hmacReadResult.IsErr)
+            {
+                return Result<KeySplitResult, KeySplittingFailure>.Err(
+                    KeySplittingFailure.HmacKeyRetrievalFailed(hmacReadResult.UnwrapErr().Message));
+            }
+
+            hmacKeyBytes = hmacReadResult.Unwrap();
 
             return await SplitKeyAsync(keyBytes, threshold, totalShares, hmacKeyBytes);
         }
         finally
         {
             if (keyBytes != null)
+            {
                 CryptographicOperations.ZeroMemory(keyBytes);
+            }
+
             if (hmacKeyBytes != null)
+            {
                 CryptographicOperations.ZeroMemory(hmacKeyBytes);
+            }
         }
     }
 
@@ -485,8 +561,10 @@ public sealed class ShamirSecretSharing : ISecretSharingService
                 Result<byte[], Ecliptix.Utilities.Failures.Sodium.SodiumFailure> hmacReadResult =
                     hmacKeyHandle.ReadBytes(hmacKeyHandle.Length);
                 if (hmacReadResult.IsErr)
+                {
                     return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
                         KeySplittingFailure.HmacKeyRetrievalFailed(hmacReadResult.UnwrapErr().Message));
+                }
 
                 hmacKeyBytes = hmacReadResult.Unwrap();
             }
@@ -494,7 +572,9 @@ public sealed class ShamirSecretSharing : ISecretSharingService
             Result<byte[], KeySplittingFailure> reconstructResult =
                 await ReconstructMasterKeyAsync(shares, hmacKeyBytes);
             if (reconstructResult.IsErr)
+            {
                 return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(reconstructResult.UnwrapErr());
+            }
 
             byte[] reconstructedKey = reconstructResult.Unwrap();
 
@@ -503,21 +583,24 @@ public sealed class ShamirSecretSharing : ISecretSharingService
                 Result<SodiumSecureMemoryHandle, Ecliptix.Utilities.Failures.Sodium.SodiumFailure> allocateResult =
                     SodiumSecureMemoryHandle.Allocate(reconstructedKey.Length);
                 if (allocateResult.IsErr)
+                {
                     return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
                         KeySplittingFailure.AllocationFailed(allocateResult.UnwrapErr().Message));
+                }
 
                 SodiumSecureMemoryHandle handle = allocateResult.Unwrap();
 
                 Result<Unit, Ecliptix.Utilities.Failures.Sodium.SodiumFailure> writeResult =
                     handle.Write(reconstructedKey);
-                if (writeResult.IsErr)
+                if (!writeResult.IsErr)
                 {
-                    handle.Dispose();
-                    return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
-                        KeySplittingFailure.MemoryWriteFailed(writeResult.UnwrapErr().Message));
+                    return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Ok(handle);
                 }
 
-                return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Ok(handle);
+                handle.Dispose();
+                return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
+                    KeySplittingFailure.MemoryWriteFailed(writeResult.UnwrapErr().Message));
+
             }
             finally
             {
@@ -527,7 +610,9 @@ public sealed class ShamirSecretSharing : ISecretSharingService
         finally
         {
             if (hmacKeyBytes != null)
+            {
                 CryptographicOperations.ZeroMemory(hmacKeyBytes);
+            }
         }
     }
 }

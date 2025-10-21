@@ -11,9 +11,8 @@ using Google.Protobuf;
 
 namespace Ecliptix.Security.Opaque.Services;
 
-public sealed class OpaqueProtocolAdapter : IOpaqueProtocolService
+public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeService) : IOpaqueProtocolService
 {
-    private const int ContextTokenSize = 64;
     private const int ServerOprfResponseSize = 32;
     private const int ServerEphemeralKeySize = 33;
     private const int MaskingKeySize = 32;
@@ -24,16 +23,8 @@ public sealed class OpaqueProtocolAdapter : IOpaqueProtocolService
     private const int CredentialsExportKeyOffset = 176;
     private const int ServerMacOffset = 240;
     private const int ServerMacSize = 64;
-    private const int AuthTokenExpirationHours = 24;
     private const string AuthenticationSuccessful = "Authentication successful";
     private const string AuthenticationFailed = "Authentication failed";
-
-    private readonly INativeOpaqueProtocolService _nativeService;
-
-    public OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeService)
-    {
-        _nativeService = nativeService;
-    }
 
     public (byte[] Response, byte[] MaskingKey) ProcessOprfRequest(byte[] oprfRequest)
     {
@@ -48,7 +39,7 @@ public sealed class OpaqueProtocolAdapter : IOpaqueProtocolService
 
         RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
         Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
-            _nativeService.CreateRegistrationResponse(registrationRequest);
+            nativeService.CreateRegistrationResponse(registrationRequest);
 
         return result.Match(
             ok =>
@@ -74,7 +65,7 @@ public sealed class OpaqueProtocolAdapter : IOpaqueProtocolService
 
         RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
         Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
-            _nativeService.CreateRegistrationResponse(registrationRequest);
+            nativeService.CreateRegistrationResponse(registrationRequest);
 
         return result.Match(
             ok =>
@@ -96,14 +87,16 @@ public sealed class OpaqueProtocolAdapter : IOpaqueProtocolService
     {
         Result<KE1, OpaqueFailure> ke1ValidationResult = ValidateKe1(request);
         if (ke1ValidationResult.IsErr)
+        {
             return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(ke1ValidationResult.UnwrapErr());
+        }
 
         KE1 ke1 = ke1ValidationResult.Unwrap();
         byte[] serverCredentials =
             ConstructServerCredentials(queryRecord.RegistrationRecord, queryRecord.MaskingKey);
 
         Result<KE2, OpaqueServerFailure> ke2Result =
-            _nativeService.GenerateKe2(ke1, serverCredentials);
+            nativeService.GenerateKe2(ke1, serverCredentials);
 
         return ke2Result.Match(
             ok =>
@@ -126,12 +119,14 @@ public sealed class OpaqueProtocolAdapter : IOpaqueProtocolService
     {
         Result<KE3, OpaqueFailure> ke3ValidationResult = ValidateKe3(request);
         if (ke3ValidationResult.IsErr)
+        {
             return Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(ke3ValidationResult.UnwrapErr());
+        }
 
         KE3 ke3 = ke3ValidationResult.Unwrap();
 
         Result<SodiumSecureMemoryHandle, OpaqueServerFailure> sessionKeyResult =
-            _nativeService.FinishAuthentication(ke3);
+            nativeService.FinishAuthentication(ke3);
 
         return sessionKeyResult.Match(
             ok => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
@@ -156,7 +151,7 @@ public sealed class OpaqueProtocolAdapter : IOpaqueProtocolService
 
             RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
             Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
-                _nativeService.CreateRegistrationResponse(registrationRequest);
+                nativeService.CreateRegistrationResponse(registrationRequest);
 
             return result.Match(
                 ok =>
@@ -241,10 +236,15 @@ public sealed class OpaqueProtocolAdapter : IOpaqueProtocolService
     private static byte[] ConstructServerCredentials(byte[] clientRegistrationRecord, byte[] maskingKey)
     {
         if (clientRegistrationRecord.Length != ClientRegistrationRecordSize)
+        {
             throw new ArgumentException(
                 $"Client registration record must be {ClientRegistrationRecordSize} bytes, got {clientRegistrationRecord.Length}");
+        }
+
         if (maskingKey.Length != MaskingKeySize)
+        {
             throw new ArgumentException($"Masking key must be {MaskingKeySize} bytes, got {maskingKey.Length}");
+        }
 
         byte[] credentials = ArrayPool<byte>.Shared.Rent(ServerCredentialsSize);
         try

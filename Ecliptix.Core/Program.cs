@@ -61,9 +61,9 @@ try
         using IServiceScope scope = app.Services.CreateScope();
         EcliptixSchemaContext db = scope.ServiceProvider.GetRequiredService<EcliptixSchemaContext>();
         db.Database.Migrate();
-        return; 
+        return;
     }
-    
+
     InitializeOpaqueService(app);
 
     ConfigureMiddleware(app);
@@ -87,7 +87,20 @@ static void ConfigureLogging(WebApplicationBuilder builder)
             .ReadFrom.Configuration(context.Configuration)
             .ReadFrom.Services(services)
             .Enrich.FromLogContext()
-            .Enrich.WithProperty(AppConstants.Logging.Environment, context.HostingEnvironment.EnvironmentName);
+            .Enrich.WithProperty(AppConstants.Logging.Environment, context.HostingEnvironment.EnvironmentName)
+            .Filter.ByExcluding(logEvent =>
+            {
+                if (logEvent.Exception is NullReferenceException nullRefEx)
+                {
+                    string? stackTrace = nullRefEx.StackTrace;
+                    if (!string.IsNullOrEmpty(stackTrace) &&
+                        stackTrace.Contains("Akka.Persistence.Eventsourced.AroundPostStop"))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            });
 
         if (!string.IsNullOrEmpty(appInsightsConnectionString))
         {
@@ -402,8 +415,12 @@ static void InitializeOpaqueService(WebApplication app)
     SecurityKeysSettings securityKeysSettings = app.Services.GetRequiredService<IOptions<SecurityKeysSettings>>().Value;
     Result<Unit, OpaqueServerFailure> initializationResult =
         opaqueService.Initialize(securityKeysSettings.OpaqueSecretKeySeed);
-    if (!initializationResult.IsErr) return;
-    string errorMessage = initializationResult.UnwrapErr().Message;
+    if (!initializationResult.IsErr)
+    {
+        return;
+    }
+
+    _ = initializationResult.UnwrapErr().Message;
 
 }
 

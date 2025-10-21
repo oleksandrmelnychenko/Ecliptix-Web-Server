@@ -65,9 +65,14 @@ public static class LogoutKeyDerivation
         finally
         {
             if (masterKeyBytes != null)
+            {
                 CryptographicOperations.ZeroMemory(masterKeyBytes);
+            }
+
             if (hmacKey != null)
+            {
                 CryptographicOperations.ZeroMemory(hmacKey);
+            }
         }
     }
 
@@ -114,22 +119,29 @@ public static class LogoutKeyDerivation
         finally
         {
             if (masterKeyBytes != null)
+            {
                 CryptographicOperations.ZeroMemory(masterKeyBytes);
+            }
+
             if (proofKey != null)
+            {
                 CryptographicOperations.ZeroMemory(proofKey);
+            }
         }
     }
 
     public static byte[] ComputeHmac(byte[] key, byte[] data)
     {
-        using HMACSHA256 hmac = new HMACSHA256(key);
+        using HMACSHA256 hmac = new(key);
         return hmac.ComputeHash(data);
     }
 
     public static bool VerifyHmac(byte[] key, byte[] data, byte[] expectedHmac)
     {
         if (expectedHmac.Length != HmacSize)
+        {
             return false;
+        }
 
         byte[] computedHmac = ComputeHmac(key, data);
         try

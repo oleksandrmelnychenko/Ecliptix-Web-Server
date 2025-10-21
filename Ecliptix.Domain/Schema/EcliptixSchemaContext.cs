@@ -89,7 +89,9 @@ public class EcliptixSchemaContext : DbContext
         foreach (EntityEntry<EntityBase> entry in entries)
         {
             if (entry.Entity is not IAuditable auditable)
+            {
                 continue;
+            }
 
             switch (entry.State)
             {

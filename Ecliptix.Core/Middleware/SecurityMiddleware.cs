@@ -1,6 +1,5 @@
 using Grpc.Core;
 using Microsoft.Extensions.Primitives;
-using Serilog;
 using Ecliptix.Core.Configuration;
 
 namespace Ecliptix.Core.Middleware;
@@ -35,8 +34,6 @@ internal sealed class SecurityMiddleware(RequestDelegate next)
                 return;
             }
         }
-
-        LogSecurityInfo(context);
 
         try
         {
@@ -80,7 +77,10 @@ internal sealed class SecurityMiddleware(RequestDelegate next)
                 return false;
             }
 
-            if (!ContainsSuspiciousContent(header.Key)) continue;
+            if (!ContainsSuspiciousContent(header.Key))
+            {
+                continue;
+            }
 
             return false;
         }
@@ -91,7 +91,9 @@ internal sealed class SecurityMiddleware(RequestDelegate next)
     private static bool ContainsSuspiciousContent(string value)
     {
         if (string.IsNullOrEmpty(value))
+        {
             return false;
+        }
 
         string lowerValue = value.ToLowerInvariant();
         return lowerValue.Contains(SecurityConstants.SuspiciousContent.Script) ||
@@ -101,21 +103,5 @@ internal sealed class SecurityMiddleware(RequestDelegate next)
                lowerValue.Contains(SecurityConstants.SuspiciousContent.VbScript) ||
                lowerValue.Contains(SecurityConstants.SuspiciousContent.OnLoad) ||
                lowerValue.Contains(SecurityConstants.SuspiciousContent.OnError);
-    }
-
-    private static void LogSecurityInfo(HttpContext context)
-    {
-        if (!Log.IsEnabled(Serilog.Events.LogEventLevel.Debug)) return;
-        object info = new
-        {
-            IpAddress = context.Connection.RemoteIpAddress?.ToString(),
-            UserAgent = context.Request.Headers.UserAgent.ToString(),
-            Path = context.Request.Path.ToString(),
-            Method = context.Request.Method,
-            ContentType = context.Request.ContentType,
-            ContentLength = context.Request.ContentLength,
-            Timestamp = DateTimeOffset.UtcNow
-        };
-
     }
 }

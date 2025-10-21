@@ -23,10 +23,16 @@ public class ShieldProDoubleRatchetTests
     {
         WriteLine("[TestInitialize] Setting up Alice and Bob...");
         Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure> aliceMaterialResult = EcliptixSystemIdentityKeys.Create(1);
-        if (aliceMaterialResult.IsErr) Assert.Fail($"Failed to create Alice keys: {aliceMaterialResult.UnwrapErr()}");
+        if (aliceMaterialResult.IsErr)
+        {
+            Assert.Fail($"Failed to create Alice keys: {aliceMaterialResult.UnwrapErr()}");
+        }
 
         Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure> bobMaterialResult = EcliptixSystemIdentityKeys.Create(2);
-        if (bobMaterialResult.IsErr) Assert.Fail($"Failed to create Bob keys: {bobMaterialResult.UnwrapErr()}");
+        if (bobMaterialResult.IsErr)
+        {
+            Assert.Fail($"Failed to create Bob keys: {bobMaterialResult.UnwrapErr()}");
+        }
 
         _aliceEcliptixProtocolSystem = new EcliptixProtocolSystem(aliceMaterialResult.Unwrap());
         _bobEcliptixProtocolSystem = new EcliptixProtocolSystem(bobMaterialResult.Unwrap());
@@ -35,19 +41,27 @@ public class ShieldProDoubleRatchetTests
         Result<PubKeyExchange, EcliptixProtocolFailure> aliceInitialMsgResult =
             _aliceEcliptixProtocolSystem.BeginDataCenterPubKeyExchange(SessionId, _exchangeType);
         if (aliceInitialMsgResult.IsErr)
+        {
             Assert.Fail($"Alice failed to begin exchange: {aliceInitialMsgResult.UnwrapErr()}");
+        }
+
         PubKeyExchange aliceInitialMsg = aliceInitialMsgResult.Unwrap();
 
         Result<PubKeyExchange, EcliptixProtocolFailure> bobResponseMsgResult =
             _bobEcliptixProtocolSystem.ProcessAndRespondToPubKeyExchange(SessionId, aliceInitialMsg);
         if (bobResponseMsgResult.IsErr)
+        {
             Assert.Fail($"Bob failed to respond to exchange: {bobResponseMsgResult.UnwrapErr()}");
+        }
+
         PubKeyExchange bobResponseMsg = bobResponseMsgResult.Unwrap();
 
         Result<Unit, EcliptixProtocolFailure> aliceCompleteResult =
             _aliceEcliptixProtocolSystem.CompleteDataCenterPubKeyExchange(bobResponseMsg);
         if (aliceCompleteResult.IsErr)
+        {
             Assert.Fail($"Alice failed to complete exchange: {aliceCompleteResult.UnwrapErr()}");
+        }
 
         WriteLine($"[TestInitialize] Handshake Complete for Session ID: {SessionId}");
     }
@@ -60,11 +74,18 @@ public class ShieldProDoubleRatchetTests
             byte[] msg = Encoding.UTF8.GetBytes($"Msg {i}");
 
             Result<SecureEnvelope, EcliptixProtocolFailure> cipherResult = _aliceEcliptixProtocolSystem.ProduceOutboundMessage(msg);
-            if (cipherResult.IsErr) Assert.Fail($"Alice failed to produce message {i}: {cipherResult.UnwrapErr()}");
+            if (cipherResult.IsErr)
+            {
+                Assert.Fail($"Alice failed to produce message {i}: {cipherResult.UnwrapErr()}");
+            }
+
             SecureEnvelope cipher = cipherResult.Unwrap();
 
             Result<byte[], EcliptixProtocolFailure> decryptResult = _bobEcliptixProtocolSystem.ProcessInboundEnvelope(cipher);
-            if (decryptResult.IsErr) Assert.Fail($"Bob failed to process message {i}: {decryptResult.UnwrapErr()}");
+            if (decryptResult.IsErr)
+            {
+                Assert.Fail($"Bob failed to process message {i}: {decryptResult.UnwrapErr()}");
+            }
         }
     }
 
@@ -84,38 +105,49 @@ public class ShieldProDoubleRatchetTests
 
             Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure> aliceMaterialResult = EcliptixSystemIdentityKeys.Create(i * 2 + 1);
             if (aliceMaterialResult.IsErr)
+            {
                 Assert.Fail(
                     $"[Setup] Failed to create Alice keys for session {testSessionId}: {aliceMaterialResult.UnwrapErr()}");
+            }
+
             Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure> bobMaterialResult = EcliptixSystemIdentityKeys.Create(i * 2 + 2);
             if (bobMaterialResult.IsErr)
+            {
                 Assert.Fail(
                     $"[Setup] Failed to create Bob keys for session {testSessionId}: {bobMaterialResult.UnwrapErr()}");
+            }
 
             EcliptixProtocolSystem alice = new EcliptixProtocolSystem(aliceMaterialResult.Unwrap());
             EcliptixProtocolSystem bob = new EcliptixProtocolSystem(bobMaterialResult.Unwrap());
 
             Result<PubKeyExchange, EcliptixProtocolFailure> aliceInitialMsgResult = alice.BeginDataCenterPubKeyExchange(testSessionId, _exchangeType);
             if (aliceInitialMsgResult.IsErr)
+            {
                 Assert.Fail(
                     $"[Setup] Alice failed handshake for session {testSessionId}: {aliceInitialMsgResult.UnwrapErr()}");
+            }
 
             Result<PubKeyExchange, EcliptixProtocolFailure> bobResponseMsgResult =
                 bob.ProcessAndRespondToPubKeyExchange(testSessionId, aliceInitialMsgResult.Unwrap());
             if (bobResponseMsgResult.IsErr)
+            {
                 Assert.Fail(
                     $"[Setup] Bob failed handshake for session {testSessionId}: {bobResponseMsgResult.UnwrapErr()}");
+            }
 
             Result<Unit, EcliptixProtocolFailure> aliceCompleteResult =
                 alice.CompleteDataCenterPubKeyExchange(bobResponseMsgResult.Unwrap());
             if (aliceCompleteResult.IsErr)
+            {
                 Assert.Fail(
                     $"[Setup] Alice failed to complete handshake for session {testSessionId}: {aliceCompleteResult.UnwrapErr()}");
+            }
 
             sessionPairs.Add((alice, bob, testSessionId));
         }
 
         WriteLine($"[Test] Running {sessionCount} conversations with {messagesPerSession} messages each...");
-        List<Task> tasks = new List<Task>();
+        List<Task> tasks = [];
         foreach ((EcliptixProtocolSystem alice, EcliptixProtocolSystem bob, uint testSessionId) in sessionPairs)
         {
             tasks.Add(Task.Run(() =>
@@ -125,27 +157,39 @@ public class ShieldProDoubleRatchetTests
                     byte[] aliceMsg = Encoding.UTF8.GetBytes($"Session {testSessionId}: Alice msg {j + 1}");
                     Result<SecureEnvelope, EcliptixProtocolFailure> aliceCipherResult = alice.ProduceOutboundMessage(aliceMsg);
                     if (aliceCipherResult.IsErr)
+                    {
                         throw new AssertFailedException(
                             $"[Session {testSessionId}] Alice failed to encrypt msg {j + 1}: {aliceCipherResult.UnwrapErr()}");
+                    }
+
                     SecureEnvelope aliceCipher = aliceCipherResult.Unwrap();
 
                     Result<byte[], EcliptixProtocolFailure> bobPlaintextResult = bob.ProcessInboundEnvelope(aliceCipher);
                     if (bobPlaintextResult.IsErr)
+                    {
                         throw new AssertFailedException(
                             $"[Session {testSessionId}] Bob failed to decrypt Alice msg {j + 1}: {bobPlaintextResult.UnwrapErr()}");
+                    }
+
                     CollectionAssert.AreEqual(aliceMsg, bobPlaintextResult.Unwrap());
 
                     byte[] bobMsg = Encoding.UTF8.GetBytes($"Session {testSessionId}: Bob msg {j + 1}");
                     Result<SecureEnvelope, EcliptixProtocolFailure> bobCipherResult = bob.ProduceOutboundMessage(bobMsg);
                     if (bobCipherResult.IsErr)
+                    {
                         throw new AssertFailedException(
                             $"[Session {testSessionId}] Bob failed to encrypt msg {j + 1}: {bobCipherResult.UnwrapErr()}");
+                    }
+
                     SecureEnvelope bobCipher = bobCipherResult.Unwrap();
 
                     Result<byte[], EcliptixProtocolFailure> alicePlaintextResult = alice.ProcessInboundEnvelope(bobCipher);
                     if (alicePlaintextResult.IsErr)
+                    {
                         throw new AssertFailedException(
                             $"[Session {testSessionId}] Alice failed to decrypt Bob msg {j + 1}: {alicePlaintextResult.UnwrapErr()}");
+                    }
+
                     CollectionAssert.AreEqual(bobMsg, alicePlaintextResult.Unwrap());
                 }
             }));
@@ -168,25 +212,37 @@ public class ShieldProDoubleRatchetTests
             byte[] alicePlaintextBytes = Encoding.UTF8.GetBytes(aliceMessage);
             Result<SecureEnvelope, EcliptixProtocolFailure> alicePayloadResult = _aliceEcliptixProtocolSystem.ProduceOutboundMessage(alicePlaintextBytes);
             if (alicePayloadResult.IsErr)
+            {
                 Assert.Fail($"[Iteration {i}] Alice failed to produce message: {alicePayloadResult.UnwrapErr()}");
+            }
+
             SecureEnvelope alicePayload = alicePayloadResult.Unwrap();
 
             Result<byte[], EcliptixProtocolFailure> bobDecryptedResult = _bobEcliptixProtocolSystem.ProcessInboundEnvelope(alicePayload);
             if (bobDecryptedResult.IsErr)
+            {
                 Assert.Fail($"[Iteration {i}] Bob failed to decrypt Alice's message: {bobDecryptedResult.UnwrapErr()}");
+            }
+
             CollectionAssert.AreEqual(alicePlaintextBytes, bobDecryptedResult.Unwrap());
 
             string bobMessage = $"Response {i} from Bob";
             byte[] bobPlaintextBytes = Encoding.UTF8.GetBytes(bobMessage);
             Result<SecureEnvelope, EcliptixProtocolFailure> bobPayloadResult = _bobEcliptixProtocolSystem.ProduceOutboundMessage(bobPlaintextBytes);
             if (bobPayloadResult.IsErr)
+            {
                 Assert.Fail($"[Iteration {i}] Bob failed to produce response: {bobPayloadResult.UnwrapErr()}");
+            }
+
             SecureEnvelope bobPayload = bobPayloadResult.Unwrap();
 
             Result<byte[], EcliptixProtocolFailure> aliceDecryptedResult = _aliceEcliptixProtocolSystem.ProcessInboundEnvelope(bobPayload);
             if (aliceDecryptedResult.IsErr)
+            {
                 Assert.Fail(
                     $"[Iteration {i}] Alice failed to decrypt Bob's response: {aliceDecryptedResult.UnwrapErr()}");
+            }
+
             CollectionAssert.AreEqual(bobPlaintextBytes, aliceDecryptedResult.Unwrap());
         }
 

@@ -23,18 +23,20 @@ public static class MembershipCreationStatusHelper
 
     public static string GetCreationStatusString(Membership.Types.CreationStatus status)
     {
-        if (ReverseCreationStatusMap.TryGetValue(status, out string? statusString)) return statusString;
-
-        throw new ArgumentException($"No mapping found for enum value: {status}", nameof(status));
+        return ReverseCreationStatusMap.TryGetValue(status, out string? statusString)
+            ? statusString
+            : throw new ArgumentException($"No mapping found for enum value: {status}", nameof(status));
     }
 
     public static Membership.Types.CreationStatus GetCreationStatusEnum(string statusString)
     {
         if (string.IsNullOrEmpty(statusString))
+        {
             throw new ArgumentException("Status string cannot be null or empty.", nameof(statusString));
+        }
 
-        if (CreationStatusMap.TryGetValue(statusString, out Membership.Types.CreationStatus status)) return status;
-
-        throw new ArgumentException($"No mapping found for status string: {statusString}", nameof(statusString));
+        return CreationStatusMap.TryGetValue(statusString, out Membership.Types.CreationStatus status)
+            ? status
+            : throw new ArgumentException($"No mapping found for status string: {statusString}", nameof(statusString));
     }
 }

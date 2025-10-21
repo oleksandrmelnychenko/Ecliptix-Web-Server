@@ -15,8 +15,7 @@ public readonly record struct Option<T>
 
     public static Option<T> Some(T value)
     {
-        if (value is null) throw new ArgumentNullException(nameof(value));
-        return new Option<T>(true, value);
+        return value is null ? throw new ArgumentNullException(nameof(value)) : new Option<T>(true, value);
     }
 
     public TResult Match<TResult>(Func<T, TResult> onSome, Func<TResult> onNone)

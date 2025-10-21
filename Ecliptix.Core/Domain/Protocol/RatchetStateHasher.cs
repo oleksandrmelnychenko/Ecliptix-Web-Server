@@ -7,7 +7,10 @@ namespace Ecliptix.Core.Domain.Protocol;
 public static class RatchetStateHasher
 {
     private const string LogTag = "[RATCHET-STATE-HASH]";
-    private const string LogMessageStateFingerprinted = "{LogTag} Ratchet state fingerprinted. ConnectId: {ConnectId}, Fingerprint: {Fingerprint}";
+
+    private const string LogMessageStateFingerprinted =
+        "{LogTag} Ratchet state fingerprinted. ConnectId: {ConnectId}, Fingerprint: {Fingerprint}";
+
     private const string LogMessageEmptyState = "{LogTag} Empty or missing ratchet state for ConnectId: {ConnectId}";
 
     public static byte[] ComputeRatchetFingerprint(EcliptixSessionState? state)
@@ -16,13 +19,13 @@ public static class RatchetStateHasher
         {
             uint connectId = state?.ConnectId ?? 0;
             Log.Warning(LogMessageEmptyState, LogTag, connectId);
-            return Array.Empty<byte>();
+            return [];
         }
 
         RatchetState ratchet = state.RatchetState;
 
-        using MemoryStream ms = new MemoryStream();
-        using BinaryWriter writer = new BinaryWriter(ms);
+        using MemoryStream ms = new();
+        using BinaryWriter writer = new(ms);
 
         try
         {
@@ -85,7 +88,8 @@ public static class RatchetStateHasher
             byte[] fingerprint = SHA256.HashData(canonicalData);
 
             string fingerprintTruncated = Convert.ToHexString(fingerprint).ToLowerInvariant()[..8];
-            Log.Information(LogMessageStateFingerprinted, LogTag, state.ConnectId, fingerprintTruncated + "...[REDACTED]");
+            Log.Information(LogMessageStateFingerprinted, LogTag, state.ConnectId,
+                fingerprintTruncated + "...[REDACTED]");
 
             return fingerprint;
         }
@@ -93,19 +97,7 @@ public static class RatchetStateHasher
         {
             Log.Error(ex, "{LogTag} Failed to compute ratchet fingerprint for ConnectId: {ConnectId}",
                 LogTag, state.ConnectId);
-            return Array.Empty<byte>();
+            return [];
         }
-    }
-
-    public static bool VerifyRatchetFingerprint(EcliptixSessionState? state, byte[] expectedFingerprint)
-    {
-        if (expectedFingerprint == null || expectedFingerprint.Length != 32)
-            return false;
-
-        byte[] actualFingerprint = ComputeRatchetFingerprint(state);
-        if (actualFingerprint.Length == 0)
-            return false;
-
-        return CryptographicOperations.FixedTimeEquals(actualFingerprint, expectedFingerprint);
     }
 }

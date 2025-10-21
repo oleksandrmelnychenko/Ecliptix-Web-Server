@@ -60,9 +60,7 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
         catch (Exception ex) when (ex is not ThreadAbortException and not StackOverflowException)
         {
             TE error = errorMapper(ex);
-            if (error == null)
-                throw new InvalidOperationException("Error mapper returned null, violating TE : notnull");
-            return Err(error);
+            return error == null ? throw new InvalidOperationException("Error mapper returned null, violating TE : notnull") : Err(error);
         }
     }
 
@@ -77,10 +75,8 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
         }
         catch (Exception ex) when (ex is not ThreadAbortException and not StackOverflowException)
         {
-            TE? error = errorMapper(ex);
-            if (error == null)
-                throw new InvalidOperationException("Error mapper returned null, violating TE : notnull");
-            return Result<Unit, TE>.Err(error);
+            TE error = errorMapper(ex);
+            return error == null ? throw new InvalidOperationException("Error mapper returned null, violating TE : notnull") : Result<Unit, TE>.Err(error);
         }
         finally
         {
@@ -133,8 +129,14 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
 
     public void Switch(Action<T> onOk, Action<TE> onErr)
     {
-        if (IsOk) onOk(_value!);
-        else onErr(_error!);
+        if (IsOk)
+        {
+            onOk(_value!);
+        }
+        else
+        {
+            onErr(_error!);
+        }
     }
 
     public Option<T> ToOption()

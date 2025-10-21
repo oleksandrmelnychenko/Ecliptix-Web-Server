@@ -10,9 +10,6 @@ namespace Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 
 public static class GrpcMetadataHandler
 {
-    private const string RequestIdKey = MetadataConstants.Keys.RequestId;
-    private const string DateTimeKey = MetadataConstants.Keys.DateTime;
-
     private const string LocalIpAddressKey = MetadataConstants.Keys.LocalIpAddress;
     private const string PublicIpAddressKey = MetadataConstants.Keys.PublicIpAddress;
 
@@ -35,62 +32,100 @@ public static class GrpcMetadataHandler
     public static Result<Unit, MetaDataSystemFailure> ValidateRequiredMetaDataParams(Metadata requestHeaders)
     {
         Result<string, MetaDataSystemFailure> linkIdResult = requestHeaders.GetValueAsResult(LinkIdKey);
-        if (linkIdResult.IsErr) return Result<Unit, MetaDataSystemFailure>.Err(linkIdResult.UnwrapErr());
+        if (linkIdResult.IsErr)
+        {
+            return Result<Unit, MetaDataSystemFailure>.Err(linkIdResult.UnwrapErr());
+        }
 
-        Result<string, MetaDataSystemFailure> appInstanceIdResult = requestHeaders.GetValueAsResult(ApplicationInstanceIdKey);
-        if (appInstanceIdResult.IsErr) return Result<Unit, MetaDataSystemFailure>.Err(appInstanceIdResult.UnwrapErr());
+        Result<string, MetaDataSystemFailure> appInstanceIdResult =
+            requestHeaders.GetValueAsResult(ApplicationInstanceIdKey);
+        if (appInstanceIdResult.IsErr)
+        {
+            return Result<Unit, MetaDataSystemFailure>.Err(appInstanceIdResult.UnwrapErr());
+        }
 
-        Result<string, MetaDataSystemFailure> contextTypeResult = requestHeaders.GetValueAsResult(KeyExchangeContextTypeKey);
-        if (contextTypeResult.IsErr) return Result<Unit, MetaDataSystemFailure>.Err(contextTypeResult.UnwrapErr());
+        Result<string, MetaDataSystemFailure> contextTypeResult =
+            requestHeaders.GetValueAsResult(KeyExchangeContextTypeKey);
+        if (contextTypeResult.IsErr)
+        {
+            return Result<Unit, MetaDataSystemFailure>.Err(contextTypeResult.UnwrapErr());
+        }
 
         string contextTypeValue = contextTypeResult.Unwrap();
         if (!AllowedKeyExchangeContextTypes.Contains(contextTypeValue))
+        {
             return Result<Unit, MetaDataSystemFailure>.Err(MetaDataSystemFailure.ComponentNotFound(contextTypeValue));
+        }
 
         Result<string, MetaDataSystemFailure> localeResult = requestHeaders.GetValueAsResult(LocaleKey);
-        if (localeResult.IsErr) return Result<Unit, MetaDataSystemFailure>.Err(localeResult.UnwrapErr());
+        if (localeResult.IsErr)
+        {
+            return Result<Unit, MetaDataSystemFailure>.Err(localeResult.UnwrapErr());
+        }
 
         Result<string, MetaDataSystemFailure> appDeviceIdResult = requestHeaders.GetValueAsResult(AppDeviceId);
-        if (appDeviceIdResult.IsErr) return Result<Unit, MetaDataSystemFailure>.Err(appDeviceIdResult.UnwrapErr());
+        if (appDeviceIdResult.IsErr)
+        {
+            return Result<Unit, MetaDataSystemFailure>.Err(appDeviceIdResult.UnwrapErr());
+        }
 
-        Result<string, MetaDataSystemFailure> connectionContextResult = requestHeaders.GetValueAsResult(ConnectionContextId);
-        if (connectionContextResult.IsErr) return Result<Unit, MetaDataSystemFailure>.Err(connectionContextResult.UnwrapErr());
+        Result<string, MetaDataSystemFailure> connectionContextResult =
+            requestHeaders.GetValueAsResult(ConnectionContextId);
+        if (connectionContextResult.IsErr)
+        {
+            return Result<Unit, MetaDataSystemFailure>.Err(connectionContextResult.UnwrapErr());
+        }
 
         return Result<Unit, MetaDataSystemFailure>.Ok(Unit.Value);
     }
 
     public static Result<uint, MetaDataSystemFailure> ComputeUniqueConnectId(Metadata requestHeaders)
     {
-        Result<string, MetaDataSystemFailure> appInstanceIdResult = requestHeaders.GetValueAsResult(ApplicationInstanceIdKey);
-        if (appInstanceIdResult.IsErr) return Result<uint, MetaDataSystemFailure>.Err(appInstanceIdResult.UnwrapErr());
+        Result<string, MetaDataSystemFailure> appInstanceIdResult =
+            requestHeaders.GetValueAsResult(ApplicationInstanceIdKey);
+        if (appInstanceIdResult.IsErr)
+        {
+            return Result<uint, MetaDataSystemFailure>.Err(appInstanceIdResult.UnwrapErr());
+        }
 
         if (!Guid.TryParse(appInstanceIdResult.Unwrap(), out Guid appInstanceId))
         {
             return Result<uint, MetaDataSystemFailure>.Err(
-                MetaDataSystemFailure.ComponentNotFound(string.Format(MetadataConstants.ErrorMessages.InvalidGuidFormat, ApplicationInstanceIdKey)));
+                MetaDataSystemFailure.ComponentNotFound(string.Format(MetadataConstants.ErrorMessages.InvalidGuidFormat,
+                    ApplicationInstanceIdKey)));
         }
 
         Result<string, MetaDataSystemFailure> appDeviceIdResult = requestHeaders.GetValueAsResult(AppDeviceId);
-        if (appDeviceIdResult.IsErr) return Result<uint, MetaDataSystemFailure>.Err(appDeviceIdResult.UnwrapErr());
+        if (appDeviceIdResult.IsErr)
+        {
+            return Result<uint, MetaDataSystemFailure>.Err(appDeviceIdResult.UnwrapErr());
+        }
 
         if (!Guid.TryParse(appDeviceIdResult.Unwrap(), out Guid appDeviceId))
         {
             return Result<uint, MetaDataSystemFailure>.Err(
-                MetaDataSystemFailure.ComponentNotFound(string.Format(MetadataConstants.ErrorMessages.InvalidGuidFormat, AppDeviceId)));
+                MetaDataSystemFailure.ComponentNotFound(string.Format(MetadataConstants.ErrorMessages.InvalidGuidFormat,
+                    AppDeviceId)));
         }
 
-        Result<string, MetaDataSystemFailure> connectionContextIdResult = requestHeaders.GetValueAsResult(ConnectionContextId);
-        if (connectionContextIdResult.IsErr) return Result<uint, MetaDataSystemFailure>.Err(connectionContextIdResult.UnwrapErr());
+        Result<string, MetaDataSystemFailure> connectionContextIdResult =
+            requestHeaders.GetValueAsResult(ConnectionContextId);
+        if (connectionContextIdResult.IsErr)
+        {
+            return Result<uint, MetaDataSystemFailure>.Err(connectionContextIdResult.UnwrapErr());
+        }
 
         if (!Enum.TryParse(connectionContextIdResult.Unwrap(), true, out PubKeyExchangeType contextType) ||
             !Enum.IsDefined(contextType))
         {
             return Result<uint, MetaDataSystemFailure>.Err(
-                MetaDataSystemFailure.ComponentNotFound(string.Format(MetadataConstants.ErrorMessages.InvalidPubKeyExchangeType, ConnectionContextId)));
+                MetaDataSystemFailure.ComponentNotFound(
+                    string.Format(MetadataConstants.ErrorMessages.InvalidPubKeyExchangeType, ConnectionContextId)));
         }
 
         Guid? opContextId = null;
-        Result<string, MetaDataSystemFailure> operationContextResult = requestHeaders.GetValueAsResult(OperationContextId);
+        Result<string, MetaDataSystemFailure> operationContextResult =
+            requestHeaders.GetValueAsResult(OperationContextId);
         if (operationContextResult.IsOk)
         {
             string opContextIdStr = operationContextResult.Unwrap();
@@ -100,19 +135,27 @@ public static class GrpcMetadataHandler
             }
         }
 
-        return Result<uint, MetaDataSystemFailure>.Ok(ComputeHashFromComponents(appInstanceId, appDeviceId, contextType, opContextId));
+        return Result<uint, MetaDataSystemFailure>.Ok(ComputeHashFromComponents(appInstanceId, appDeviceId, contextType,
+            opContextId));
     }
 
-    private static uint ComputeHashFromComponents(Guid appInstanceId, Guid appDeviceId, PubKeyExchangeType contextType, Guid? opContextId)
+    private static uint ComputeHashFromComponents(Guid appInstanceId, Guid appDeviceId, PubKeyExchangeType contextType,
+        Guid? opContextId)
     {
         byte[] appInstanceIdBytes = appInstanceId.ToByteArray();
         byte[] appDeviceIdBytes = appDeviceId.ToByteArray();
         uint contextTypeUint = (uint)contextType;
         byte[] contextTypeBytes = BitConverter.GetBytes(contextTypeUint);
-        if (BitConverter.IsLittleEndian) Array.Reverse(contextTypeBytes);
+        if (BitConverter.IsLittleEndian)
+        {
+            Array.Reverse(contextTypeBytes);
+        }
 
         int totalLength = appInstanceIdBytes.Length + appDeviceIdBytes.Length + contextTypeBytes.Length;
-        if (opContextId.HasValue) totalLength += MetadataConstants.ByteLengths.GuidByteLength;
+        if (opContextId.HasValue)
+        {
+            totalLength += MetadataConstants.ByteLengths.GuidByteLength;
+        }
 
         byte[] combined = new byte[totalLength];
         int offset = MetadataConstants.ByteLengths.InitialOffset;
@@ -129,7 +172,8 @@ public static class GrpcMetadataHandler
         }
 
         byte[] hash = SHA256.HashData(combined);
-        return BinaryPrimitives.ReadUInt32BigEndian(hash.AsSpan(MetadataConstants.ByteLengths.InitialOffset, MetadataConstants.ByteLengths.HashSpanLength));
+        return BinaryPrimitives.ReadUInt32BigEndian(hash.AsSpan(MetadataConstants.ByteLengths.InitialOffset,
+            MetadataConstants.ByteLengths.HashSpanLength));
     }
 
     public static string GetRequestedLocale(Metadata requestHeaders)
@@ -156,10 +200,4 @@ public static class GrpcMetadataHandler
     {
         return requestHeaders.GetValueAsResult(MetadataConstants.Keys.Platform).ToOption();
     }
-
-    public record ExtractedMetadata(
-        Option<string> RequestId,
-        Option<string> RequestDate,
-        Option<string> LocalIpAddress,
-        Option<string> PublicIpAddress);
 }

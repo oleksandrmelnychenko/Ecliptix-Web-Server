@@ -22,7 +22,9 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
         {
             Result<DerivedServerKeys, OpaqueServerFailure> keyResult = DeriveKeysFromMaterial(secretKeySeed);
             if (keyResult.IsErr)
+            {
                 return Result<Unit, OpaqueServerFailure>.Err(keyResult.UnwrapErr());
+            }
 
             _serverKeys = keyResult.Unwrap();
 
@@ -31,16 +33,17 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
                 _serverKeys.PublicKey, (nuint)_serverKeys.PublicKey.Length,
                 out _server);
 
-            if (result != OpaqueResult.Success)
+            if (result == OpaqueResult.Success)
             {
-                Array.Clear(_serverKeys.PrivateKey, 0, _serverKeys.PrivateKey.Length);
-                _serverKeys = null;
-                return Result<Unit, OpaqueServerFailure>.Err(
-                    OpaqueServerFailure.LibraryInitializationFailed(
-                        $"Failed to create server with derived keys: {result}"));
+                return Result<Unit, OpaqueServerFailure>.Ok(Unit.Value);
             }
 
-            return Result<Unit, OpaqueServerFailure>.Ok(Unit.Value);
+            Array.Clear(_serverKeys.PrivateKey, 0, _serverKeys.PrivateKey.Length);
+            _serverKeys = null;
+            return Result<Unit, OpaqueServerFailure>.Err(
+                OpaqueServerFailure.LibraryInitializationFailed(
+                    $"Failed to create server with derived keys: {result}"));
+
         }
         catch (Exception ex)
         {
@@ -61,14 +64,18 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
             credentialsBuffer, (nuint)credentialsBuffer.Length);
 
         if (result != OpaqueResult.Success)
+        {
             return Result<(RegistrationResponse, byte[]), OpaqueServerFailure>.Err(
                 OpaqueServerFailure.RegistrationFailed(
                     $"{OpaqueServerConstants.ErrorMessages.FailedToCreateRegistrationResponse}: {result}"));
+        }
 
         Result<RegistrationResponse, OpaqueServerFailure> registrationResult =
             RegistrationResponse.Create(responseBuffer);
         if (registrationResult.IsErr)
+        {
             return Result<(RegistrationResponse, byte[]), OpaqueServerFailure>.Err(registrationResult.UnwrapErr());
+        }
 
         return Result<(RegistrationResponse, byte[]), OpaqueServerFailure>.Ok((registrationResult.Unwrap(),
             credentialsBuffer));
@@ -80,9 +87,11 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
 
         OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_state_create(out _currentServerState);
         if (result != OpaqueResult.Success)
+        {
             return Result<KE2, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.KeyExchangeFailed(
                     $"{OpaqueServerConstants.ErrorMessages.FailedToCreateServerState}: {result}"));
+        }
 
         result = (OpaqueResult)OpaqueServerNative.opaque_server_generate_ke2(
             _server, ke1.Data, (nuint)ke1.Data.Length,
@@ -118,16 +127,20 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
             _currentServerState = 0;
 
             if (result != OpaqueResult.Success)
+            {
                 return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
                     OpaqueServerFailure.AuthenticationFailed(
                         $"{OpaqueServerConstants.ErrorMessages.FailedToFinishAuthentication}: {result}"));
+            }
 
             Result<SodiumSecureMemoryHandle, SodiumFailure> handleResult =
                 SodiumSecureMemoryHandle.Allocate(OpaqueConstants.HASH_LENGTH);
 
             if (handleResult.IsErr)
+            {
                 return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
                     OpaqueServerFailure.MemoryAllocationFailed(handleResult.UnwrapErr().Message));
+            }
 
             SodiumSecureMemoryHandle handle = handleResult.Unwrap();
 
@@ -192,8 +205,10 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
             keys.PublicKey, (nuint)keys.PublicKey.Length);
 
         if (result != OpaqueResult.Success)
+        {
             return Result<DerivedServerKeys, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.LibraryInitializationFailed($"Failed to derive keys from seed: {result}"));
+        }
 
         return Result<DerivedServerKeys, OpaqueServerFailure>.Ok(keys);
     }
