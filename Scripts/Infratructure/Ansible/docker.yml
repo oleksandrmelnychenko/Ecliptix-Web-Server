@@ -1,12 +1,36 @@
 - hosts: jenkins
   become: true
   tasks:
-    - name: Install Docker
+    - name: Install dependencies
       apt:
         name:
-          - docker.io
-          - docker-compose
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
         state: present
+        update_cache: yes
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
+        state: present
+
+    - name: Install latest Docker & buildx
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+          - docker-buildx-plugin
+        state: latest
         update_cache: yes
 
     - name: Add jenkins user to docker group
@@ -14,15 +38,32 @@
         name: jenkins
         groups: docker
         append: yes
-      
+
     - name: Add ubuntu user to docker group
       user:
         name: ubuntu
         groups: docker
         append: yes
 
-    - name: Restart Docker
+    - name: Allow Jenkins to use sudo without password (for pipelines)
+      copy:
+        dest: /etc/sudoers.d/jenkins
+        content: "jenkins ALL=(ALL) NOPASSWD:ALL"
+        mode: '0440'
+
+    - name: Enable BuildKit in Docker daemon
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {
+            "features": {
+              "buildkit": true
+            }
+          }
+        mode: '0644'
+
+    - name: Restart Docker service
       systemd:
         name: docker
         state: restarted
-        enabled: yes
+        enabled: true

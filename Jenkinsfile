@@ -46,8 +46,7 @@ pipeline {
                                             
                     docker buildx build \
                       --platform=linux/amd64 \
-                      --build-arg DOTNET_CLI_NUM_THREADS=4 \
-                      -t ecliptix-membership:lts \
+                      -t ${ECR_REPO}:${IMAGE_TAG} \
                       -f Ecliptix.Core/Dockerfile .
                 """
             }

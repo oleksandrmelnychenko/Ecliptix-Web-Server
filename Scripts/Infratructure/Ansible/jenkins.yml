@@ -1,10 +1,18 @@
----
 - hosts: jenkins
   become: true
   vars:
+    jenkins_user: jenkins
     jenkins_port: 10001
+    github_host: "github.com"
 
   tasks:
+    - name: Ensure Jenkins user exists
+      user:
+        name: "{{ jenkins_user }}"
+        home: /var/lib/jenkins
+        shell: /bin/bash
+        create_home: yes
+
     - name: Install python-jenkins via apt
       ansible.builtin.apt:
         name: python3-jenkins
@@ -40,6 +48,26 @@
           Environment="JENKINS_PORT={{ jenkins_port }}"
           ExecStart=/usr/bin/java -Djava.awt.headless=true -jar /usr/share/java/jenkins.war --webroot=/var/cache/jenkins/war --httpPort={{ jenkins_port }}
 
+    - name: Ensure Jenkins SSH directory exists
+      file:
+        path: "/var/lib/jenkins/.ssh"
+        state: directory
+        owner: "{{ jenkins_user }}"
+        group: "{{ jenkins_user }}"
+        mode: "0700"
+
+    - name: Add GitHub to known_hosts
+      known_hosts:
+        path: "/var/lib/jenkins/.ssh/known_hosts"
+        name: "{{ github_host }}"
+        key: "{{ lookup('pipe', 'ssh-keyscan -t ed25519 ' + github_host) }}"
+        state: present
+      become_user: "{{ jenkins_user }}"
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
     - name: Ensure Jenkins service is enabled and started
       systemd:
         name: jenkins
@@ -50,130 +78,11 @@
       wait_for:
         host: localhost
         port: "{{ jenkins_port }}"
-        timeout: 180
+        timeout: 120
         state: started
-
-    - name: Ensure init.groovy.d directory exists
-      file:
-        path: /var/lib/jenkins/init.groovy.d
-        state: directory
-        owner: jenkins
-        group: jenkins
-        mode: '0755'
-
-    - name: Create Groovy init script for Jenkins admin
-      copy:
-        dest: /var/lib/jenkins/init.groovy.d/init-admin.groovy
-        owner: jenkins
-        group: jenkins
-        mode: '0644'
-        content: |
-          import jenkins.model.*
-          import hudson.security.*
-          import jenkins.install.InstallState
-
-          def instance = Jenkins.get()
-          def hudsonRealm = new HudsonPrivateSecurityRealm(false)
-
-          def userId = "{{ env_vars.JENKINS_USER }}"
-          def password = "{{ env_vars.JENKINS_PASS }}"
-
-          if (!hudsonRealm.getAllUsers().find { it.id == userId }) {
-            hudsonRealm.createAccount(userId, password)
-          }
-
-          instance.setSecurityRealm(hudsonRealm)
-          def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
-          strategy.setAllowAnonymousRead(false)
-          instance.setAuthorizationStrategy(strategy)
-          instance.setInstallState(InstallState.INITIAL_SETUP_COMPLETED)
-          instance.save()
-
-    - name: Restart Jenkins after Groovy admin creation
-      systemd:
-        name: jenkins
-        state: restarted
-        daemon_reload: yes
-
-    - name: Wait for Jenkins API to be ready
-      uri:
-        url: "http://localhost:{{ jenkins_port }}/api/json"
-        user: "{{ env_vars.JENKINS_USER }}"
-        password: "{{ env_vars.JENKINS_PASS }}"
-        force_basic_auth: yes
-        status_code: 200
-      register: jenkins_api
-      retries: 20
-      delay: 10
-      until: jenkins_api.status == 200
-
-    - name: Install Jenkins plugins
-      community.general.jenkins_script:
-        url: "http://localhost:{{ jenkins_port }}"
-        user: "{{ env_vars.JENKINS_USER }}"
-        password: "{{ env_vars.JENKINS_PASS }}"
-        script: |
-          import jenkins.model.*
-          def instance = Jenkins.getInstance()
-          ["plain-credentials","aws-credentials", "pipeline-aws", "git", "github", "workflow-aggregator"].each { plugin ->
-              def pm = instance.getPluginManager()
-              def uc = instance.getUpdateCenter()
-              if (!pm.getPlugin(plugin)) {
-                  uc.getPlugin(plugin).deploy().get()
-              }
-          }
-
-    - name: Setup GitHub SSH key for Jenkins
-      community.general.jenkins_script:
-        url: "http://localhost:{{ jenkins_port }}"
-        user: "{{ env_vars.JENKINS_USER }}"
-        password: "{{ env_vars.JENKINS_PASS }}"
-        script: |
-          import jenkins.model.*
-          import com.cloudbees.plugins.credentials.*
-          import com.cloudbees.plugins.credentials.domains.*
-          import com.cloudbees.plugins.credentials.impl.*
-          import com.cloudbees.plugins.credentials.CredentialsScope
-          import com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey
-
-          def instance = Jenkins.get()
-          def store = instance.getExtensionList('com.cloudbees.plugins.credentials.SystemCredentialsProvider')[0].getStore()
-          def domain = Domain.global()
-
-          def privateKey = """{{ lookup('file', env_vars.GITHUB_SSH_KEY_PATH) }}"""
-
-          def existing = store.getCredentials(domain).find { it.id == 'github-ssh-key' }
-          if (existing) { store.removeCredentials(domain, existing) }
-
-          def key = new BasicSSHUserPrivateKey(
-            CredentialsScope.GLOBAL,
-            "github-ssh-key",
-            "{{ env_vars.GITHUB_USER }}",
-            new BasicSSHUserPrivateKey.DirectEntryPrivateKeySource(privateKey),
-            null,
-            "GitHub SSH Key"
-          )
-          store.addCredentials(domain, key)
-
-    - name: Setup AWS credentials for Jenkins
-      community.general.jenkins_script:
-        url: "http://localhost:{{ jenkins_port }}"
-        user: "{{ env_vars.JENKINS_USER }}"
-        password: "{{ env_vars.JENKINS_PASS }}"
-        script: |
-          import com.cloudbees.plugins.credentials.*
-          import com.cloudbees.plugins.credentials.domains.*
-          import com.cloudbees.plugins.credentials.SystemCredentialsProvider
-          import com.cloudbees.jenkins.plugins.awscredentials.AWSCredentialsImpl
-          import com.cloudbees.plugins.credentials.CredentialsScope
-
-          def awsCredentials = new AWSCredentialsImpl(
-            CredentialsScope.GLOBAL,
-            "aws-creds",
-            "{{ env_vars.AWS_ACCESS_KEY_ID }}",
-            "{{ env_vars.AWS_SECRET_ACCESS_KEY }}",
-            "AWS credentials for Jenkins"
-          )
-
-          def store = SystemCredentialsProvider.getInstance().getStore()
-          store.addCredentials(Domain.global(), awsCredentials)
+        
+    - name: Create buildx builder for Jenkins
+      become_user: jenkins
+      shell: |
+        docker buildx create --name mybuilder --use || true
+        docker buildx inspect mybuilder || docker buildx ls
