@@ -9,7 +9,6 @@ using Ecliptix.Utilities.Configuration;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.ObjectPool;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
@@ -55,11 +54,20 @@ try
 
     WebApplication app = builder.Build();
 
+    bool migrateOnly = Environment.GetEnvironmentVariable("MIGRATE_ONLY") == "true";
+
+    if (migrateOnly)
+    {
+        using IServiceScope scope = app.Services.CreateScope();
+        EcliptixSchemaContext db = scope.ServiceProvider.GetRequiredService<EcliptixSchemaContext>();
+        db.Database.Migrate();
+        return; 
+    }
+    
     InitializeOpaqueService(app);
 
     ConfigureMiddleware(app);
     ConfigureEndpoints(app);
-
     app.Run();
 }
 finally

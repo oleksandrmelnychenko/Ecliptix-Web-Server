@@ -32,6 +32,6 @@ resource "aws_db_instance" "ecliptix_mssql" {
   vpc_security_group_ids = [var.mssql_sg_id]
 
   multi_az               = false
-  publicly_accessible    = false
+  publicly_accessible    = true
   skip_final_snapshot    = true
 }

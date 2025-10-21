@@ -1,6 +1,6 @@
 terraform {
   backend "s3" {
-    bucket         = "ecliptix-terraform-state"
+    bucket         = "ecliptix-terraform-state-020498483284"
     key            = "ecliptix-global/terraform.tfstate"
     region         = "eu-central-1"
     dynamodb_table = "ecliptix-terraform-locks"

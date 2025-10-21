@@ -57,5 +57,5 @@
     - name: Reload nginx
       systemd:
         name: nginx
-        state: resrarted
+        state: restarted
         enabled: true 

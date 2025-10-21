@@ -1,13 +1,17 @@
 pipeline { 
     agent any
     
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['dev','prod'], description: 'Select environment to deploy')
+    }
+
     environment {
         AWS_DEFAULT_REGION = "eu-central-1"
-        AWS_ACCOUNT_ID = "605009360854"
+        AWS_ACCOUNT_ID = "020498483284"
         ECR_REPO = "ecliptix/memberships"
-        IMAGE_TAG = "lts"
-        CLUSTER_NAME = "ecliptix-production"
-        SERVICE_NAME = "ecliptix-memberships"
+        IMAGE_TAG = "${params.ENVIRONMENT}-lts"
+        CLUSTER_NAME = "${params.ENVIRONMENT == 'prod' ? 'ecliptix-prod-ecs-cluster' : 'ecliptix-dev-ecs-cluster'}"
+        SERVICE_NAME = "${params.ENVIRONMENT == 'prod' ? 'ecliptix-prod-memberships' : 'ecliptix-dev-memberships'}"
         TASK_DEFINITION = "ecliptix-memberships"
         AWS_CREDENTIALS = "aws-creds"
     }
@@ -23,7 +27,27 @@ pipeline {
     
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${ECR_REPO}:${IMAGE_TAG} -f Ecliptix.Core/Dockerfile ."
+                sh """
+                    set -e
+                    if ! sudo systemctl is-active --quiet docker; then
+                      sudo systemctl start docker || true
+                    fi
+                    for i in {1..10}; do
+                      docker info >/dev/null 2>&1 && break
+                      echo "[INFO] Waiting for Docker daemon..."
+                      sleep 2
+                    done
+                    if docker buildx ls | grep -q 'mybuilder'; then
+                      docker buildx use mybuilder
+                    else
+                      docker buildx create --name mybuilder --use
+                    fi
+                    docker buildx inspect --bootstrap     
+                    docker buildx build \
+                      --platform=linux/amd64 \
+                      -t ${ECR_REPO}:${IMAGE_TAG} \
+                      -f Ecliptix.Core/Dockerfile --load .
+                """
             }
         }
 
@@ -45,25 +69,25 @@ pipeline {
             steps {
                 withAWS(credentials: "${AWS_CREDENTIALS}", region: "${AWS_DEFAULT_REGION}") {
                     sh """
-                    aws ecs describe-task-definition \
-                      --task-definition ${TASK_DEFINITION} \
-                      --query 'taskDefinition' > task-def.json
-                
-                    jq '{
-                      family: .family,
-                      taskRoleArn: .taskRoleArn,
-                      executionRoleArn: .executionRoleArn,
-                      networkMode: .networkMode,
-                      containerDefinitions: (.containerDefinitions | map(.image = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}")),
-                      volumes: .volumes,
-                      requiresCompatibilities: .requiresCompatibilities,
-                      cpu: .cpu,
-                      memory: .memory,
-                      runtimePlatform: .runtimePlatform,
-                      enableFaultInjection: .enableFaultInjection
-                    } | with_entries(select(.value != null))' task-def.json > new-task-def.json
-                
-                    aws ecs register-task-definition --cli-input-json file://new-task-def.json
+                        aws ecs describe-task-definition \
+                          --task-definition ${TASK_DEFINITION} \
+                          --query 'taskDefinition' > task-def.json
+                    
+                        jq '{
+                          family: .family,
+                          taskRoleArn: .taskRoleArn,
+                          executionRoleArn: .executionRoleArn,
+                          networkMode: .networkMode,
+                          containerDefinitions: (.containerDefinitions | map(.image = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}")),
+                          volumes: .volumes,
+                          requiresCompatibilities: .requiresCompatibilities,
+                          cpu: .cpu,
+                          memory: .memory,
+                          runtimePlatform: .runtimePlatform,
+                          enableFaultInjection: .enableFaultInjection
+                        } | with_entries(select(.value != null))' task-def.json > new-task-def.json
+                    
+                        aws ecs register-task-definition --cli-input-json file://new-task-def.json
                     """
                 }
             }
@@ -86,4 +110,4 @@ pipeline {
             }
         }
     }
-}
+} 
