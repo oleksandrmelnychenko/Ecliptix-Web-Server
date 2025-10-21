@@ -56,6 +56,19 @@ public sealed record EcliptixProtocolFailure(
                 StatusCode.InvalidArgument,
                 ErrorI18nKeys.Validation),
 
+            EcliptixProtocolFailureType.StateMismatch => new GrpcErrorDescriptor(
+                ErrorCode.PreconditionFailed,
+                StatusCode.FailedPrecondition,
+                ErrorI18nKeys.PreconditionFailed,
+                Retryable: true),
+
+            EcliptixProtocolFailureType.HeaderAuthenticationFailed or
+            EcliptixProtocolFailureType.SessionAuthenticationFailed => new GrpcErrorDescriptor(
+                ErrorCode.PreconditionFailed,
+                StatusCode.FailedPrecondition,
+                ErrorI18nKeys.PreconditionFailed,
+                Retryable: true),
+
             EcliptixProtocolFailureType.DeriveKeyFailed or
             EcliptixProtocolFailureType.DecodeFailed or
             EcliptixProtocolFailureType.KeyGenerationFailed or
@@ -84,11 +97,6 @@ public sealed record EcliptixProtocolFailure(
     public static EcliptixProtocolFailure Decode(string details, Exception? inner = null)
     {
         return new EcliptixProtocolFailure(EcliptixProtocolFailureType.DecodeFailed, details, inner);
-    }
-
-    public static EcliptixProtocolFailure ActorRefNotFound(string details, Exception? inner = null)
-    {
-        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.ActorRefNotFound, details, inner);
     }
 
     public static EcliptixProtocolFailure ActorStateNotFound(string details, Exception? inner = null)
@@ -170,6 +178,21 @@ public sealed record EcliptixProtocolFailure(
     public static EcliptixProtocolFailure ReplayAttempt(string details, Exception? inner = null)
     {
         return new EcliptixProtocolFailure(EcliptixProtocolFailureType.TimestampDrift, $"Replay attack detected: {details}", inner);
+    }
+
+    public static EcliptixProtocolFailure StateMismatch(string details, Exception? inner = null)
+    {
+        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.StateMismatch, details, inner);
+    }
+
+    public static EcliptixProtocolFailure HeaderAuthFailed(string details, Exception? inner = null)
+    {
+        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.HeaderAuthenticationFailed, details, inner);
+    }
+
+    public static EcliptixProtocolFailure SessionAuthFailed(string details, Exception? inner = null)
+    {
+        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.SessionAuthenticationFailed, details, inner);
     }
 
     public override object ToStructuredLog()

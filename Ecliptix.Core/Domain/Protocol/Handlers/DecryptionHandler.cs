@@ -52,8 +52,7 @@ public sealed class DecryptionHandler
         if (decryptionResult.IsErr)
         {
             EcliptixProtocolFailure error = decryptionResult.UnwrapErr();
-            bool requiresSessionClear = error.FailureType == EcliptixProtocolFailureType.StateMissing &&
-                                        error.Message.Contains("Session authentication failed");
+            bool requiresSessionClear = error.FailureType == EcliptixProtocolFailureType.SessionAuthenticationFailed;
 
             return Result<DecryptionResult, EcliptixProtocolFailure>.Ok(new DecryptionResult(
                 currentState ?? new EcliptixSessionState(),
@@ -83,8 +82,7 @@ public sealed class DecryptionHandler
 
     public static bool ShouldClearSession(EcliptixProtocolFailure error)
     {
-        return error.FailureType == EcliptixProtocolFailureType.StateMissing &&
-               error.Message.Contains("Session authentication failed");
+        return error.FailureType == EcliptixProtocolFailureType.SessionAuthenticationFailed;
     }
 }
 

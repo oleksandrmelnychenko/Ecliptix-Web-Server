@@ -20,5 +20,8 @@ public enum EcliptixProtocolFailureType
     KeyGenerationFailed,
     PrepareLocalFailed,
     MemoryBufferError,
-    TimestampDrift
+    TimestampDrift,
+    StateMismatch,
+    HeaderAuthenticationFailed,
+    SessionAuthenticationFailed
 }

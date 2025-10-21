@@ -167,7 +167,7 @@ public static class SecureEnvelopeBuilder
         catch (CryptographicException cryptoEx)
         {
             return Result<EnvelopeMetadata, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Header authentication failed", cryptoEx));
+                EcliptixProtocolFailure.HeaderAuthFailed("Header authentication failed", cryptoEx));
         }
         catch (Exception ex)
         {

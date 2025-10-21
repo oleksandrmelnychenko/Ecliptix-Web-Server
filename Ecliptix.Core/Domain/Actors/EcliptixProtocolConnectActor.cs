@@ -743,16 +743,27 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 "[SERVER-DECRYPT-ERROR] Decryption failed. ConnectId: {0}, ErrorType: {1}, Message: {2}",
                 connectId, error.FailureType, error.Message);
 
-            if (DecryptionHandler.ShouldClearSession(error))
+            bool isHeaderAuthFailure = error.FailureType == EcliptixProtocolFailureType.HeaderAuthenticationFailed;
+
+            if (isHeaderAuthFailure || DecryptionHandler.ShouldClearSession(error))
             {
                 Context.GetLogger()
                     .Warning(
-                        "AD compatibility strategies exhausted - this indicates client-server cryptographic context mismatch. Clearing session to force fresh handshake.");
+                        "[SERVER-STATE-DESYNC] Header authentication failed for ConnectId {0} - protocol state desynchronized. Clearing state to force re-handshake.",
+                        connectId);
                 DisposeAllSystems();
                 _state = null;
                 _currentExchangeType = null;
 
                 SaveSnapshot(new EcliptixSessionState());
+
+                if (isHeaderAuthFailure)
+                {
+                    Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.StateMismatch(
+                            "Protocol state desynchronized after server restart - re-handshake required")));
+                    return;
+                }
             }
 
             Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(error));
@@ -772,7 +783,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
             SaveSnapshot(new EcliptixSessionState());
             Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Session authentication failed")));
+                EcliptixProtocolFailure.SessionAuthFailed("Session authentication failed")));
             return;
         }
 
@@ -1114,7 +1125,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
             SaveSnapshot(new EcliptixSessionState());
             Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Session authentication failed")));
+                EcliptixProtocolFailure.SessionAuthFailed("Session authentication failed")));
             return;
         }
 
