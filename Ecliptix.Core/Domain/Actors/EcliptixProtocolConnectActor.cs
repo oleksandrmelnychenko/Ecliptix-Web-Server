@@ -193,8 +193,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             return;
         }
 
-        EcliptixProtocolSystem? defaultSystem = GetDefaultProtocolSystem();
-        if (defaultSystem == null || _state == null)
+        Option<EcliptixProtocolSystem> defaultSystemOpt = GetDefaultProtocolSystem();
+        if (!defaultSystemOpt.HasValue || _state == null)
         {
             RestoreSecrecyChannelResponse notFoundReply = new()
             {
@@ -206,6 +206,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(notFoundReply));
             return;
         }
+
+        EcliptixProtocolSystem defaultSystem = defaultSystemOpt.Value!;
 
         Result<Unit, EcliptixProtocolFailure> stateValidation = _stateValidationHandler.ValidateRecoveredState(_state);
         if (stateValidation.IsErr)
@@ -614,8 +616,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     {
         if (!_protocolSystems.TryGetValue(cmd.PubKeyExchangeType, out EcliptixProtocolSystem? system))
         {
-            system = GetDefaultProtocolSystem();
-            if (system == null || _state == null)
+            Option<EcliptixProtocolSystem> defaultSystemOpt = GetDefaultProtocolSystem();
+            if (!defaultSystemOpt.HasValue || _state == null)
             {
                 Sender.Tell(
                     Result<SecureEnvelope, EcliptixProtocolFailure>.Err(
@@ -623,6 +625,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                             $"No protocol system found for exchange type {cmd.PubKeyExchangeType}")));
                 return;
             }
+            system = defaultSystemOpt.Value!;
         }
 
         Context.GetLogger().Info("[ENCRYPT] Using protocol system for type {0}", cmd.PubKeyExchangeType);
@@ -681,8 +684,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     {
         if (!_protocolSystems.TryGetValue(actorEvent.PubKeyExchangeType, out EcliptixProtocolSystem? system))
         {
-            system = GetDefaultProtocolSystem();
-            if (system == null || _state == null)
+            Option<EcliptixProtocolSystem> defaultSystemOpt = GetDefaultProtocolSystem();
+            if (!defaultSystemOpt.HasValue || _state == null)
             {
                 Sender.Tell(
                     Result<byte[], EcliptixProtocolFailure>.Err(
@@ -690,6 +693,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                             $"No protocol system found for exchange type {actorEvent.PubKeyExchangeType}")));
                 return;
             }
+            system = defaultSystemOpt.Value!;
         }
 
         Context.GetLogger().Info("[DECRYPT] Using protocol system for type {0}", actorEvent.PubKeyExchangeType);
@@ -975,23 +979,26 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         }
     }
 
-    private EcliptixProtocolSystem? GetDefaultProtocolSystem()
+    private Option<EcliptixProtocolSystem> GetDefaultProtocolSystem()
     {
         if (_protocolSystems.TryGetValue(PubKeyExchangeType.DataCenterEphemeralConnect,
                 out EcliptixProtocolSystem? defaultSystem))
         {
-            return defaultSystem;
+            return Option<EcliptixProtocolSystem>.Some(defaultSystem);
         }
 
-        return _protocolSystems.Values.FirstOrDefault();
+        EcliptixProtocolSystem? firstSystem = _protocolSystems.Values.FirstOrDefault();
+        return firstSystem is not null
+            ? Option<EcliptixProtocolSystem>.Some(firstSystem)
+            : Option<EcliptixProtocolSystem>.None;
     }
 
     private void HandleEncryptComponents(EncryptPayloadComponentsActorEvent cmd)
     {
         if (!_protocolSystems.TryGetValue(cmd.ExchangeType, out EcliptixProtocolSystem? system))
         {
-            system = GetDefaultProtocolSystem();
-            if (system == null || _state == null)
+            Option<EcliptixProtocolSystem> systemOpt = GetDefaultProtocolSystem();
+            if (!systemOpt.HasValue || _state == null)
             {
                 Sender.Tell(
                     Result<(EnvelopeMetadata Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(
@@ -999,6 +1006,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                             $"No protocol system found for exchange type {cmd.ExchangeType}")));
                 return;
             }
+            system = systemOpt.Value!;
         }
 
         Context.GetLogger().Info("[ENCRYPT_COMPONENTS] Using protocol system for type {0}", cmd.ExchangeType);
@@ -1040,8 +1048,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     {
         if (!_protocolSystems.TryGetValue(cmd.ExchangeType, out EcliptixProtocolSystem? system))
         {
-            system = GetDefaultProtocolSystem();
-            if (system == null || _state == null)
+            Option<EcliptixProtocolSystem> defaultSystemOpt = GetDefaultProtocolSystem();
+            if (!defaultSystemOpt.HasValue || _state == null)
             {
                 Sender.Tell(
                     Result<byte[], EcliptixProtocolFailure>.Err(
@@ -1049,6 +1057,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                             $"No protocol system found for exchange type {cmd.ExchangeType}")));
                 return;
             }
+            system = defaultSystemOpt.Value!;
         }
 
         Context.GetLogger().Info("[DECRYPT_WITH_HEADER] Using protocol system for type {0}", cmd.ExchangeType);

@@ -1,17 +1,18 @@
 using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class MembershipQueries
 {
-    public static async Task<MembershipEntity?> GetByMobileNumber(
+    public static async Task<Option<MembershipEntity>> GetByMobileNumber(
         EcliptixSchemaContext ctx,
         string mobileNumber,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.Memberships
+        MembershipEntity? result = await ctx.Memberships
             .Join(ctx.MobileNumbers,
                 m => m.MobileNumberId,
                 mn => mn.UniqueId,
@@ -22,39 +23,45 @@ public static class MembershipQueries
             .Select(x => x.m)
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<MembershipEntity>.Some(result) : Option<MembershipEntity>.None;
     }
 
-    public static async Task<MembershipEntity?> GetByMobileUniqueIdAndDevice(
+    public static async Task<Option<MembershipEntity>> GetByMobileUniqueIdAndDevice(
         EcliptixSchemaContext ctx,
         Guid mobileUniqueId,
         Guid deviceId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.Memberships
+        MembershipEntity? result = await ctx.Memberships
             .Where(m => m.MobileNumberId == mobileUniqueId &&
                         m.AppDeviceId == deviceId &&
                         !m.IsDeleted)
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<MembershipEntity>.Some(result) : Option<MembershipEntity>.None;
     }
 
-    public static async Task<MembershipEntity?> GetByUniqueId(
+    public static async Task<Option<MembershipEntity>> GetByUniqueId(
         EcliptixSchemaContext ctx,
         Guid uniqueId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.Memberships
+        MembershipEntity? result = await ctx.Memberships
             .Where(m => m.UniqueId == uniqueId && !m.IsDeleted)
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<MembershipEntity>.Some(result) : Option<MembershipEntity>.None;
     }
 
-    public static async Task<MembershipEntity?> GetByMobileUniqueId(
+    public static async Task<Option<MembershipEntity>> GetByMobileUniqueId(
         EcliptixSchemaContext ctx,
         Guid mobileUniqueId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.Memberships
+        MembershipEntity? result = await ctx.Memberships
             .Include(m => m.MobileNumber)
             .Include(m => m.VerificationFlow)
             .Where(m => m.MobileNumber!.UniqueId == mobileUniqueId &&
@@ -62,6 +69,8 @@ public static class MembershipQueries
                         !m.MobileNumber.IsDeleted)
             .OrderByDescending(m => m.UpdatedAt)
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<MembershipEntity>.Some(result) : Option<MembershipEntity>.None;
     }
 
     public static async Task<bool> ExistsByMobileNumberId(

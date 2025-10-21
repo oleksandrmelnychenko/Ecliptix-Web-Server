@@ -1,23 +1,26 @@
 using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class LoginAttemptQueries
 {
-    public static async Task<LoginAttemptEntity?> GetMostRecentLockout(
+    public static async Task<Option<LoginAttemptEntity>> GetMostRecentLockout(
         EcliptixSchemaContext ctx,
         string mobileNumber,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.LoginAttempts
+        LoginAttemptEntity? result = await ctx.LoginAttempts
             .Where(l => l.MobileNumber == mobileNumber &&
                         l.LockedUntil != null &&
                         !l.IsDeleted)
             .OrderByDescending(l => l.AttemptedAt)
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<LoginAttemptEntity>.Some(result) : Option<LoginAttemptEntity>.None;
     }
 
     public static async Task<int> CountFailedSince(

@@ -1,3 +1,4 @@
+using Ecliptix.Utilities;
 using Grpc.Core;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
@@ -17,10 +18,10 @@ public static class AuditContextExtractor
 
     private static string? ExtractIpAddress(ServerCallContext context)
     {
-        string? metadataIp = GrpcMetadataHandler.GetLocalIpAddress(context.RequestHeaders);
-        if (!string.IsNullOrEmpty(metadataIp))
+        Option<string> metadataIpOpt = GrpcMetadataHandler.GetLocalIpAddress(context.RequestHeaders);
+        if (metadataIpOpt.HasValue)
         {
-            return metadataIp;
+            return metadataIpOpt.Value;
         }
 
         string? httpContextIp = context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
@@ -34,10 +35,10 @@ public static class AuditContextExtractor
 
     private static string ExtractPlatform(ServerCallContext context)
     {
-        string? metadataPlatform = GrpcMetadataHandler.GetPlatform(context.RequestHeaders);
-        if (!string.IsNullOrEmpty(metadataPlatform))
+        Option<string> metadataPlatformOpt = GrpcMetadataHandler.GetPlatform(context.RequestHeaders);
+        if (metadataPlatformOpt.HasValue)
         {
-            return metadataPlatform;
+            return metadataPlatformOpt.Value;
         }
 
         return PlatformDetector.GetPlatformInfo();

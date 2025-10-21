@@ -1,5 +1,4 @@
 using System.Data.Common;
-using System.Threading;
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.ActorEvents;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
@@ -66,17 +65,19 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                     KeySplittingFailure.KeySplittingFailed("No shares provided"));
             }
 
-            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId, cancellationToken);
-            if (membership == null)
+            Option<MembershipEntity> membershipOpt = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId, cancellationToken);
+            if (!membershipOpt.HasValue)
             {
                 await transaction.RollbackAsync(CancellationToken.None);
                 return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
                     KeySplittingFailure.InvalidIdentifier("Membership not found or inactive"));
             }
 
+            MembershipEntity membership = membershipOpt.Value!;
+
             List<MasterKeyShareEntity> existingShares =
                 await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId, cancellationToken);
-            if (existingShares.Any())
+            if (existingShares.Count != 0)
             {
                 await transaction.RollbackAsync(CancellationToken.None);
                 return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
@@ -86,7 +87,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
             int distinctIndexes = cmd.Shares.Select(s => s.ShareIndex).Distinct().Count();
             if (distinctIndexes != cmd.Shares.Count)
             {
-                await transaction.RollbackAsync();
+                await transaction.RollbackAsync(CancellationToken.None);
                 return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
                     KeySplittingFailure.KeySplittingFailed("Duplicate share indexes detected"));
             }

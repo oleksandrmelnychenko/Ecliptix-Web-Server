@@ -137,6 +137,11 @@ public readonly struct Result<T, TE> : IEquatable<Result<T, TE>>
         else onErr(_error!);
     }
 
+    public Option<T> ToOption()
+    {
+        return IsOk ? Option<T>.Some(_value!) : Option<T>.None;
+    }
+
     public override string ToString()
     {
         return IsOk ? "Ok" : "Err";

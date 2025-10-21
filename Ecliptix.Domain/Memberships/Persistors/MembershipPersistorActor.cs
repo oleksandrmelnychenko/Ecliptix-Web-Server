@@ -34,8 +34,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         Become(Ready);
     }
-
-
+    
     public static Props Build(IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
     {
         return Props.Create(() => new MembershipPersistorActor(dbContextFactory));
@@ -235,13 +234,14 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
         {
             DateTimeOffset now = DateTimeOffset.UtcNow;
 
-            LoginAttemptEntity? lockoutMarker =
+            Option<LoginAttemptEntity> lockoutMarkerOpt =
                 await LoginAttemptQueries.GetMostRecentLockout(ctx, cmd.MobileNumber, cancellationToken);
-            if (lockoutMarker?.LockedUntil != null)
+            if (lockoutMarkerOpt.HasValue && lockoutMarkerOpt.Value!.LockedUntil != null)
             {
-                if (now < lockoutMarker.LockedUntil.Value)
+                LoginAttemptEntity lockoutMarker = lockoutMarkerOpt.Value!;
+                if (now < lockoutMarker.LockedUntil!.Value)
                 {
-                    int remainingMinutes = (int)Math.Ceiling((lockoutMarker.LockedUntil.Value - now).TotalMinutes);
+                    int remainingMinutes = (int)Math.Ceiling((lockoutMarker.LockedUntil!.Value - now).TotalMinutes);
                     await RollbackSilentlyAsync(transaction);
                     return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                         VerificationFlowFailure.RateLimitExceeded(remainingMinutes.ToString()));
@@ -288,9 +288,9 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     VerificationFlowFailure.Validation(VerificationFlowMessageKeys.MobileNumberCannotBeEmpty));
             }
 
-            MembershipEntity? membership =
+            Option<MembershipEntity> membershipOpt =
                 await MembershipQueries.GetByMobileNumber(ctx, cmd.MobileNumber, cancellationToken);
-            if (membership == null)
+            if (!membershipOpt.HasValue)
             {
                 LogLoginAttempt(ctx, cmd.MobileNumber, "mobile_number_not_found", false, now);
                 await ctx.SaveChangesAsync(cancellationToken);
@@ -298,6 +298,8 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation(VerificationFlowMessageKeys.MobileNotFound));
             }
+
+            MembershipEntity membership = membershipOpt.Value!;
 
             if (membership.SecureKey == null || membership.SecureKey.Length == 0)
             {
@@ -457,12 +459,14 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     VerificationFlowFailure.Validation("Masking key must be exactly 32 bytes"));
             }
 
-            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipIdentifier, cancellationToken);
-            if (membership == null)
+            Option<MembershipEntity> membershipOpt = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipIdentifier, cancellationToken);
+            if (!membershipOpt.HasValue)
             {
                 return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation("Membership not found or deleted"));
             }
+
+            MembershipEntity membership = membershipOpt.Value!;
 
             int rowsAffected = await ctx.Memberships
                 .Where(m => m.UniqueId == cmd.MembershipIdentifier && !m.IsDeleted)
@@ -513,16 +517,18 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             const int attemptWindowHours = 1;
             const int maxAttempts = 5;
 
-            VerificationFlowEntity? flow = await VerificationFlowQueries.GetByUniqueIdAndConnectionId(
+            Option<VerificationFlowEntity> flowOpt = await VerificationFlowQueries.GetByUniqueIdAndConnectionId(
                 ctx, cmd.VerificationFlowIdentifier, cmd.ConnectId, cancellationToken);
 
-            if (flow?.MobileNumber == null)
+            if (!flowOpt.HasValue || flowOpt.Value!.MobileNumber == null)
             {
                 await RollbackSilentlyAsync(transaction);
                 return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation(VerificationFlowMessageKeys
                         .CreateMembershipVerificationFlowNotFound));
             }
+
+            VerificationFlowEntity flow = flowOpt.Value!;
 
             Guid mobileUniqueId = flow.MobileNumber.UniqueId;
             string mobileNumber = flow.MobileNumber.Number;
@@ -539,7 +545,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                         cancellationToken);
                 if (earliestFailed.HasValue)
                 {
-                    DateTimeOffset waitUntil = earliestFailed.Value.AddHours(attemptWindowHours);
+                    DateTimeOffset waitUntil = earliestFailed.Value!.AddHours(attemptWindowHours);
                     int waitMinutes = (int)Math.Max(0, (waitUntil - DateTimeOffset.UtcNow).TotalMinutes);
 
                     LoginAttemptEntity rateLimitAttempt = new()
@@ -562,11 +568,12 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 }
             }
 
-            MembershipEntity? existingMembership = await MembershipQueries.GetByMobileUniqueIdAndDevice(
+            Option<MembershipEntity> existingMembershipOpt = await MembershipQueries.GetByMobileUniqueIdAndDevice(
                 ctx, mobileUniqueId, flow.AppDeviceId, cancellationToken);
 
-            if (existingMembership != null)
+            if (existingMembershipOpt.HasValue)
             {
+                MembershipEntity existingMembership = existingMembershipOpt.Value!;
                 LoginAttemptEntity attempt = new()
                 {
                     MembershipUniqueId = existingMembership.UniqueId,
@@ -669,8 +676,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 VerificationFlowFailure.PersistorAccess($"Create membership failed: {ex.Message}"));
         }
     }
-
-
+    
     private async Task<Result<MembershipQueryRecord, VerificationFlowFailure>> GetMembershipByVerificationFlowAsync(
         EcliptixSchemaContext ctx,
         GetMembershipByVerificationFlowEvent cmd,
@@ -761,13 +767,15 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
     {
         try
         {
-            MembershipEntity? membership = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId, cancellationToken);
+            Option<MembershipEntity> membershipOpt = await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipUniqueId, cancellationToken);
 
-            if (membership == null)
+            if (!membershipOpt.HasValue)
             {
                 return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Membership not found"));
             }
+
+            MembershipEntity membership = membershipOpt.Value!;
 
             string creationStatusString = membership.CreationStatus ?? "otp_verified";
             ProtoMembership.Types.CreationStatus creationStatus =

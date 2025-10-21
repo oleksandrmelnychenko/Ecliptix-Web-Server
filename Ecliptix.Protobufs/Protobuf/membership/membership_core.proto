@@ -49,3 +49,53 @@ message LogoutResponse {
   int64 server_timestamp = 2;
   bytes revocation_proof = 3;
 }
+
+message AnonymousLogoutRequest {
+  bytes membership_identifier = 1;
+  string logout_reason = 2;
+  int64 timestamp = 3;
+  bytes hmac_proof = 4;
+  LogoutScope scope = 5;
+  optional bytes account_identifier = 6;
+}
+
+message AnonymousLogoutResponse {
+  enum Result {
+    SUCCEEDED = 0;
+    ALREADY_LOGGED_OUT = 1;
+    SESSION_NOT_FOUND = 2;
+    INVALID_TIMESTAMP = 3;
+    INVALID_HMAC = 4;
+    TIMESTAMP_TOO_OLD = 5;
+    FAILED = 6;
+  }
+  Result result = 1;
+  int64 server_timestamp = 2;
+  optional string message = 3;
+}
+
+message LogoutHistoryRecord {
+  bytes membership_identifier = 1;
+  optional bytes account_identifier = 2;
+  optional bytes device_identifier = 3;
+  string logout_reason = 4;
+  int64 logged_out_at = 5;
+  optional string ip_address = 6;
+  optional string platform = 7;
+}
+
+message GetLogoutHistoryRequest {
+  bytes membership_identifier = 1;
+  int32 limit = 2;
+}
+
+message GetLogoutHistoryResponse {
+  enum Result {
+    SUCCEEDED = 0;
+    UNAUTHORIZED = 1;
+    FAILED = 2;
+  }
+  Result result = 1;
+  repeated LogoutHistoryRecord logout_records = 2;
+  optional string message = 3;
+}

@@ -167,13 +167,14 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            MobileNumberEntity? mobile = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberUniqueId, cancellationToken);
-            if (mobile == null)
+            Option<MobileNumberEntity> mobileOpt = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberUniqueId, cancellationToken);
+            if (!mobileOpt.HasValue)
             {
                 await transaction.RollbackAsync();
                 return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("mobile_number_not_found"));
             }
+            MobileNumberEntity mobile = mobileOpt.Value!;
 
             bool deviceExists = await DeviceQueries.ExistsByUniqueId(ctx, cmd.AppDeviceId, cancellationToken);
             if (!deviceExists)
@@ -183,15 +184,16 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     VerificationFlowFailure.NotFound("device_not_found"));
             }
 
-            VerificationFlowEntity? existingActiveFlow = await VerificationFlowQueries.GetActiveFlowForRecovery(
+            Option<VerificationFlowEntity> existingActiveFlowOpt = await VerificationFlowQueries.GetActiveFlowForRecovery(
                 ctx,
                 cmd.MobileNumberUniqueId,
                 cmd.AppDeviceId,
                 ConvertPurposeToString(cmd.Purpose),
                 cancellationToken);
 
-            if (existingActiveFlow != null)
+            if (existingActiveFlowOpt.HasValue)
             {
+                VerificationFlowEntity existingActiveFlow = existingActiveFlowOpt.Value!;
                 DateTimeOffset now = DateTimeOffset.UtcNow;
 
                 await ctx.VerificationFlows
@@ -302,8 +304,13 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             Log.Information("Transaction committed successfully for flow {FlowId}", flow.UniqueId);
 
-            VerificationFlowEntity? flowWithOtp = await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(ctx, flow.UniqueId, cancellationToken);
-            return MapToVerificationFlowRecord(flowWithOtp!);
+            Option<VerificationFlowEntity> flowWithOtpOpt = await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(ctx, flow.UniqueId, cancellationToken);
+            if (!flowWithOtpOpt.HasValue)
+            {
+                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.NotFound("Flow not found after creation"));
+            }
+            return MapToVerificationFlowRecord(flowWithOtpOpt.Value!);
         }
         catch (Exception ex)
         {
@@ -322,8 +329,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            VerificationFlowEntity? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId, cancellationToken);
-            if (flow == null)
+            Option<VerificationFlowEntity> flowOpt = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId, cancellationToken);
+            if (!flowOpt.HasValue)
                 return Result<string, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Flow not found"));
 
@@ -380,11 +387,12 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            MobileNumberEntity? mobile = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberIdentifier, cancellationToken);
-            if (mobile == null)
+            Option<MobileNumberEntity> mobileOpt = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberIdentifier, cancellationToken);
+            if (!mobileOpt.HasValue)
                 return Result<MobileNumberQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.MobileNotFound));
 
+            MobileNumberEntity mobile = mobileOpt.Value!;
             return Result<MobileNumberQueryRecord, VerificationFlowFailure>.Ok(new MobileNumberQueryRecord
             {
                 MobileNumber = mobile.Number,
@@ -470,14 +478,16 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            MembershipEntity? membership =
+            Option<MembershipEntity> membershipOpt =
                 await MembershipQueries.GetByMobileUniqueId(ctx, cmd.MobileNumberId, cancellationToken);
 
-            if (membership == null)
+            if (!membershipOpt.HasValue)
             {
                 return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(
                     new ExistingMembershipResult { MembershipExists = false });
             }
+
+            MembershipEntity membership = membershipOpt.Value!;
 
             ProtoMembership.Types.CreationStatus creationStatus = ProtoMembership.Types.CreationStatus.OtpVerified;
             string? creationStatusString = membership.CreationStatus;
@@ -550,13 +560,15 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            VerificationFlowEntity? flow = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.OtpRecord.FlowUniqueId, cancellationToken);
-            if (flow == null || flow.ExpiresAt <= DateTimeOffset.UtcNow)
+            Option<VerificationFlowEntity> flowOpt = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.OtpRecord.FlowUniqueId, cancellationToken);
+            if (!flowOpt.HasValue || flowOpt.Value!.ExpiresAt <= DateTimeOffset.UtcNow)
             {
                 await transaction.RollbackAsync();
                 return Result<CreateOtpResult, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("flow_not_found_or_invalid"));
             }
+
+            VerificationFlowEntity flow = flowOpt.Value!;
 
             if (flow.OtpCount >= 5)
             {
@@ -647,13 +659,13 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            MobileNumberEntity? existing = await MobileNumberQueries.GetByNumberAndRegion(
+            Option<MobileNumberEntity> existingOpt = await MobileNumberQueries.GetByNumberAndRegion(
                 ctx, cmd.MobileNumber, cmd.RegionCode, cancellationToken);
 
-            if (existing != null)
+            if (existingOpt.HasValue)
             {
                 await transaction.CommitAsync(cancellationToken);
-                return Result<Guid, VerificationFlowFailure>.Ok(existing.UniqueId);
+                return Result<Guid, VerificationFlowFailure>.Ok(existingOpt.Value!.UniqueId);
             }
 
             MobileNumberEntity mobile = new()
@@ -688,14 +700,14 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            MobileNumberEntity? mobile = await MobileNumberQueries.GetByNumberAndRegion(
+            Option<MobileNumberEntity> mobileOpt = await MobileNumberQueries.GetByNumberAndRegion(
                 ctx, cmd.MobileNumber, cmd.RegionCode, cancellationToken);
 
-            if (mobile == null)
+            if (!mobileOpt.HasValue)
                 return Result<Guid, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Validation("mobile_number_not_found"));
 
-            return Result<Guid, VerificationFlowFailure>.Ok(mobile.UniqueId);
+            return Result<Guid, VerificationFlowFailure>.Ok(mobileOpt.Value!.UniqueId);
         }
         catch (Exception ex)
         {
@@ -755,7 +767,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             Status = Enum.Parse<VerificationFlowStatus>(flow.Status, true),
             Purpose = ConvertStringToPurpose(flow.Purpose),
             OtpCount = flow.OtpCount,
-            OtpActive = otpActive.HasValue ? otpActive.Value : null
+            OtpActive = otpActive.HasValue ? otpActive.Value! : null
         };
 
         return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Ok(flowRecord);
@@ -806,8 +818,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             _ => VerificationFlowStatus.Expired
         };
     }
-
-
+    
     private static async Task<Result<Unit, VerificationFlowFailure>> IncrementOtpAttemptCountAsync(
         EcliptixSchemaContext ctx,
         IncrementOtpAttemptCountActorEvent cmd,
@@ -856,9 +867,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 return Result<Unit, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("OTP not found for logging failed attempt"));
             }
-
-            // Create failed attempt record
-            // Note: We don't store the actual attempted value for security reasons
+            
             FailedOtpAttemptEntity failedAttempt = new()
             {
                 OtpRecordId = otp.Id,

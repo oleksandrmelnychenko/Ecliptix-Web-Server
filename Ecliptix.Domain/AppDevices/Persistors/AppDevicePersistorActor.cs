@@ -52,10 +52,11 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 });
             }
 
-            DeviceEntity? existingDevice = await DeviceQueries.GetByAppInstanceId(ctx, appInstanceId, cancellationToken);
+            Option<DeviceEntity> existingDeviceOpt = await DeviceQueries.GetByAppInstanceId(ctx, appInstanceId, cancellationToken);
 
-            if (existingDevice != null)
+            if (existingDeviceOpt.HasValue)
             {
+                DeviceEntity existingDevice = existingDeviceOpt.Value!;
                 await transaction.RollbackAsync(CancellationToken.None);
                 return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
                 {

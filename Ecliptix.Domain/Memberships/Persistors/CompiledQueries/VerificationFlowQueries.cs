@@ -2,54 +2,61 @@ using System.Threading;
 using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class VerificationFlowQueries
 {
-    public static async Task<VerificationFlowEntity?> GetByUniqueId(
+    public static async Task<Option<VerificationFlowEntity>> GetByUniqueId(
         EcliptixSchemaContext ctx,
         Guid flowId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.VerificationFlows
+        VerificationFlowEntity? result = await ctx.VerificationFlows
             .Where(f => f.UniqueId == flowId && !f.IsDeleted)
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<VerificationFlowEntity>.Some(result) : Option<VerificationFlowEntity>.None;
     }
 
-    public static async Task<VerificationFlowEntity?> GetByUniqueIdWithMobile(
+    public static async Task<Option<VerificationFlowEntity>> GetByUniqueIdWithMobile(
         EcliptixSchemaContext ctx,
         Guid flowId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.VerificationFlows
+        VerificationFlowEntity? result = await ctx.VerificationFlows
             .Where(f => f.UniqueId == flowId && !f.IsDeleted)
             .Include(f => f.MobileNumber)
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<VerificationFlowEntity>.Some(result) : Option<VerificationFlowEntity>.None;
     }
 
-    public static async Task<VerificationFlowEntity?> GetByUniqueIdWithActiveOtp(
+    public static async Task<Option<VerificationFlowEntity>> GetByUniqueIdWithActiveOtp(
         EcliptixSchemaContext ctx,
         Guid flowId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.VerificationFlows
+        VerificationFlowEntity? result = await ctx.VerificationFlows
             .Where(f => f.UniqueId == flowId && !f.IsDeleted)
             .Include(f => f.MobileNumber)
             .Include(f => f.OtpCodes.Where(o => o.Status == "active" && !o.IsDeleted))
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<VerificationFlowEntity>.Some(result) : Option<VerificationFlowEntity>.None;
     }
 
-    public static async Task<VerificationFlowEntity?> GetByUniqueIdAndConnectionId(
+    public static async Task<Option<VerificationFlowEntity>> GetByUniqueIdAndConnectionId(
         EcliptixSchemaContext ctx,
         Guid flowId,
         long connectionId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.VerificationFlows
+        VerificationFlowEntity? result = await ctx.VerificationFlows
             .Where(f => f.UniqueId == flowId &&
                         f.ConnectionId == connectionId &&
                         f.Purpose == "registration" &&
@@ -57,6 +64,8 @@ public static class VerificationFlowQueries
             .Include(f => f.MobileNumber)
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<VerificationFlowEntity>.Some(result) : Option<VerificationFlowEntity>.None;
     }
 
     public static async Task<bool> HasActiveFlow(
@@ -77,14 +86,14 @@ public static class VerificationFlowQueries
             .AnyAsync(cancellationToken);
     }
 
-    public static async Task<VerificationFlowEntity?> GetActiveFlowForRecovery(
+    public static async Task<Option<VerificationFlowEntity>> GetActiveFlowForRecovery(
         EcliptixSchemaContext ctx,
         Guid mobileUniqueId,
         Guid deviceId,
         string purpose,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.VerificationFlows
+        VerificationFlowEntity? result = await ctx.VerificationFlows
             .Where(vf => vf.MobileNumberId == mobileUniqueId &&
                         vf.AppDeviceId == deviceId &&
                         vf.Purpose == purpose &&
@@ -92,6 +101,8 @@ public static class VerificationFlowQueries
                         vf.ExpiresAt > DateTimeOffset.UtcNow &&
                         !vf.IsDeleted)
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<VerificationFlowEntity>.Some(result) : Option<VerificationFlowEntity>.None;
     }
 
     public static async Task<int> CountRecentByMobileId(

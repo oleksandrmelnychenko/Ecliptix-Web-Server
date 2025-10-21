@@ -45,11 +45,13 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         }
     }
 
-    private EcliptixProtocolConnection? GetConnectionSafe()
+    private Option<EcliptixProtocolConnection> GetConnectionSafe()
     {
         lock (_lock)
         {
-            return _connectSession;
+            return _connectSession is not null
+                ? Option<EcliptixProtocolConnection>.Some(_connectSession)
+                : Option<EcliptixProtocolConnection>.None;
         }
     }
 
@@ -553,12 +555,12 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
     public Result<SecureEnvelope, EcliptixProtocolFailure> ProduceOutboundMessage(byte[] plainPayload)
     {
-        EcliptixProtocolConnection? connection = GetConnectionSafe();
-        if (connection == null)
+        Option<EcliptixProtocolConnection> connectionOpt = GetConnectionSafe();
+        if (!connectionOpt.HasValue)
             return Result<SecureEnvelope, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Protocol connection not initialized"));
 
-        return ProduceSingleMessage(plainPayload, connection);
+        return ProduceSingleMessage(plainPayload, connectionOpt.Value!);
     }
 
     private Result<SecureEnvelope, EcliptixProtocolFailure> ProduceSingleMessage(byte[] plainPayload,
@@ -779,13 +781,13 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
     public Result<(EnvelopeMetadata Metadata, byte[] EncryptedPayload), EcliptixProtocolFailure>
         ProduceOutboundEnvelopeMaterials(byte[] plainPayload)
     {
-        EcliptixProtocolConnection? connection = GetConnectionSafe();
-        if (connection == null)
+        Option<EcliptixProtocolConnection> connectionOpt = GetConnectionSafe();
+        if (!connectionOpt.HasValue)
             return Result<(EnvelopeMetadata Metadata, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Protocol connection not initialized"));
 
         Result<(SecureEnvelope Envelope, EnvelopeMetadata Metadata), EcliptixProtocolFailure> payloadResult =
-            ProduceOutboundEnvelope(plainPayload, connection);
+            ProduceOutboundEnvelope(plainPayload, connectionOpt.Value!);
         if (payloadResult.IsErr)
             return Result<(EnvelopeMetadata Metadata, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(
                 payloadResult.UnwrapErr());
@@ -810,12 +812,12 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
     public Result<byte[], EcliptixProtocolFailure> ProcessInboundEnvelope(SecureEnvelope cipherPayloadProto)
     {
-        EcliptixProtocolConnection? connection = GetConnectionSafe();
-        if (connection == null)
+        Option<EcliptixProtocolConnection> connectionOpt = GetConnectionSafe();
+        if (!connectionOpt.HasValue)
             return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Protocol connection not initialized"));
 
-        return ProcessInboundEnvelopeInternal(cipherPayloadProto, connection);
+        return ProcessInboundEnvelopeInternal(cipherPayloadProto, connectionOpt.Value!);
     }
 
     private Result<byte[], EcliptixProtocolFailure> ProcessInboundEnvelopeInternal(SecureEnvelope cipherPayloadProto,
@@ -1264,8 +1266,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                 EcliptixProtocolFailure.Generic($"Client identity check failed: {ex.Message}"));
         }
     }
-
-
+    
     private static uint GenerateRequestId()
     {
         Span<byte> buffer = stackalloc byte[4];

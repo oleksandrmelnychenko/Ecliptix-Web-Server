@@ -142,27 +142,24 @@ public static class GrpcMetadataHandler
         return requestHeaders.GetValueAsResult(ConnectionContextId).Unwrap();
     }
 
-    public static string? GetLocalIpAddress(Metadata requestHeaders)
+    public static Option<string> GetLocalIpAddress(Metadata requestHeaders)
     {
-        Result<string, MetaDataSystemFailure> result = requestHeaders.GetValueAsResult(LocalIpAddressKey);
-        return result.IsOk ? result.Unwrap() : null;
+        return requestHeaders.GetValueAsResult(LocalIpAddressKey).ToOption();
     }
 
-    public static string? GetPublicIpAddress(Metadata requestHeaders)
+    public static Option<string> GetPublicIpAddress(Metadata requestHeaders)
     {
-        Result<string, MetaDataSystemFailure> result = requestHeaders.GetValueAsResult(PublicIpAddressKey);
-        return result.IsOk ? result.Unwrap() : null;
+        return requestHeaders.GetValueAsResult(PublicIpAddressKey).ToOption();
     }
 
-    public static string? GetPlatform(Metadata requestHeaders)
+    public static Option<string> GetPlatform(Metadata requestHeaders)
     {
-        Result<string, MetaDataSystemFailure> result = requestHeaders.GetValueAsResult(MetadataConstants.Keys.Platform);
-        return result.IsOk ? result.Unwrap() : null;
+        return requestHeaders.GetValueAsResult(MetadataConstants.Keys.Platform).ToOption();
     }
 
     public record ExtractedMetadata(
-        string? RequestId,
-        string? RequestDate,
-        string? LocalIpAddress,
-        string? PublicIpAddress);
+        Option<string> RequestId,
+        Option<string> RequestDate,
+        Option<string> LocalIpAddress,
+        Option<string> PublicIpAddress);
 }

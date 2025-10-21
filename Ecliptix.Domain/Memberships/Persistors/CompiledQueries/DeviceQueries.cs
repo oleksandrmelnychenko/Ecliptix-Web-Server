@@ -2,6 +2,7 @@ using System.Threading;
 using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
@@ -18,37 +19,43 @@ public static class DeviceQueries
             .AnyAsync(cancellationToken);
     }
 
-    public static async Task<DeviceEntity?> GetByUniqueId(
+    public static async Task<Option<DeviceEntity>> GetByUniqueId(
         EcliptixSchemaContext ctx,
         Guid uniqueId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.Devices
+        DeviceEntity? result = await ctx.Devices
             .Where(d => d.UniqueId == uniqueId && !d.IsDeleted)
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<DeviceEntity>.Some(result) : Option<DeviceEntity>.None;
     }
 
-    public static async Task<DeviceEntity?> GetByDeviceId(
+    public static async Task<Option<DeviceEntity>> GetByDeviceId(
         EcliptixSchemaContext ctx,
         Guid deviceId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.Devices
+        DeviceEntity? result = await ctx.Devices
             .Where(d => d.UniqueId == deviceId && !d.IsDeleted)
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<DeviceEntity>.Some(result) : Option<DeviceEntity>.None;
     }
 
-    public static async Task<DeviceEntity?> GetByAppInstanceId(
+    public static async Task<Option<DeviceEntity>> GetByAppInstanceId(
         EcliptixSchemaContext ctx,
         Guid appInstanceId,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.Devices
+        DeviceEntity? result = await ctx.Devices
             .Where(d => d.AppInstanceId == appInstanceId && !d.IsDeleted)
             .AsNoTracking()
             .OrderByDescending(d => d.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null ? Option<DeviceEntity>.Some(result) : Option<DeviceEntity>.None;
     }
 }

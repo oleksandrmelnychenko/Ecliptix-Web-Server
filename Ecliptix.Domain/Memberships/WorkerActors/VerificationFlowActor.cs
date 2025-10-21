@@ -311,7 +311,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 return;
             }
 
-            // Check if max verification attempts reached
             if (_currentOtpAttemptCount >= _timeouts.MaxOtpVerificationAttempts)
             {
                 string message = _localizationProvider.Localize(VerificationFlowMessageKeys.OtpMaxAttemptsReached, actorEvent.CultureName);
@@ -465,24 +464,21 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
     private async Task HandleFailedVerification(string cultureName)
     {
-        // Increment attempt count in memory
+
         _currentOtpAttemptCount++;
 
-        // Increment attempt count in database (fire-and-forget for performance)
         if (_activeOtp != null)
         {
             _persistor.Tell(new IncrementOtpAttemptCountActorEvent(
                 _activeOtp.UniqueIdentifier,
                 GetOperationCancellationToken()));
 
-            // Log failed attempt (fire-and-forget for performance)
             _persistor.Tell(new LogFailedOtpAttemptActorEvent(
                 _activeOtp.UniqueIdentifier,
                 "invalid_code",
                 GetOperationCancellationToken()));
         }
 
-        // Check if max attempts reached after increment
         if (_currentOtpAttemptCount >= _timeouts.MaxOtpVerificationAttempts)
         {
             await UpdateOtpStatus(VerificationFlowStatus.MaxAttemptsReached);
@@ -496,7 +492,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 _currentOtpAttemptCount);
             _activity?.AddEvent(new ActivityEvent("verification.otp.max-attempts-reached"));
 
-            // Notify client via countdown channel
             if (_verificationFlow.HasValue)
             {
                 await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
@@ -509,7 +504,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                     }));
             }
 
-            // Expire OTP and transition to waiting state
             CancelOtpTimer();
             Become(OtpExpiredWaitingForSession);
 
@@ -517,7 +511,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             return;
         }
 
-        // Regular failed verification (not max attempts yet)
         await UpdateOtpStatus(VerificationFlowStatus.Failed);
         VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
         Serilog.Log.Warning("[verification.otp.failed] ConnectId {ConnectId} FlowId {FlowId} Attempt {Attempt}/{MaxAttempts} Reason invalid_otp",
@@ -1421,9 +1414,27 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             _activity?.Dispose();
             VerificationFlowTelemetry.ActiveFlows.Add(-1, _metricTags);
         }
+        catch (Exception ex)
+        {
+
+            Serilog.Log.Warning(ex, "[verification.flow.poststop.cleanup] Error during cleanup. ConnectId: {ConnectId}", _connectId);
+        }
         finally
         {
-            base.PostStop();
+            try
+            {
+                base.PostStop();
+            }
+            catch (NullReferenceException ex)
+            {
+                
+                Serilog.Log.Debug("[verification.flow.poststop.suppress] Suppressed Akka.Persistence null reference during shutdown. ConnectId: {ConnectId}, Error: {Error}", _connectId, ex.Message);
+            }
+            catch (Exception ex)
+            {
+
+                Serilog.Log.Warning(ex, "[verification.flow.poststop.error] Unexpected error in base.PostStop(). ConnectId: {ConnectId}", _connectId);
+            }
         }
     }
 }
