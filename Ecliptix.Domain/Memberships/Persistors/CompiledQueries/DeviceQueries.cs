@@ -19,32 +19,6 @@ public static class DeviceQueries
             .AnyAsync(cancellationToken);
     }
 
-    public static async Task<Option<DeviceEntity>> GetByUniqueId(
-        EcliptixSchemaContext ctx,
-        Guid uniqueId,
-        CancellationToken cancellationToken = default)
-    {
-        DeviceEntity? result = await ctx.Devices
-            .Where(d => d.UniqueId == uniqueId && !d.IsDeleted)
-            .AsNoTracking()
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return result is not null ? Option<DeviceEntity>.Some(result) : Option<DeviceEntity>.None;
-    }
-
-    public static async Task<Option<DeviceEntity>> GetByDeviceId(
-        EcliptixSchemaContext ctx,
-        Guid deviceId,
-        CancellationToken cancellationToken = default)
-    {
-        DeviceEntity? result = await ctx.Devices
-            .Where(d => d.UniqueId == deviceId && !d.IsDeleted)
-            .AsNoTracking()
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return result is not null ? Option<DeviceEntity>.Some(result) : Option<DeviceEntity>.None;
-    }
-
     public static async Task<Option<DeviceEntity>> GetByAppInstanceId(
         EcliptixSchemaContext ctx,
         Guid appInstanceId,
