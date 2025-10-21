@@ -47,7 +47,7 @@ pipeline {
                     docker buildx build \
                       --platform=linux/amd64 \
                       -t ${ECR_REPO}:${IMAGE_TAG} \
-                      -f Ecliptix.Core/Dockerfile .
+                      -f Ecliptix.Core/Dockerfile --load .
                 """
             }
         }
@@ -70,25 +70,25 @@ pipeline {
             steps {
                 withAWS(credentials: "${AWS_CREDENTIALS}", region: "${AWS_DEFAULT_REGION}") {
                     sh """
-                    aws ecs describe-task-definition \
-                      --task-definition ${TASK_DEFINITION} \
-                      --query 'taskDefinition' > task-def.json
-                
-                    jq '{
-                      family: .family,
-                      taskRoleArn: .taskRoleArn,
-                      executionRoleArn: .executionRoleArn,
-                      networkMode: .networkMode,
-                      containerDefinitions: (.containerDefinitions | map(.image = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}")),
-                      volumes: .volumes,
-                      requiresCompatibilities: .requiresCompatibilities,
-                      cpu: .cpu,
-                      memory: .memory,
-                      runtimePlatform: .runtimePlatform,
-                      enableFaultInjection: .enableFaultInjection
-                    } | with_entries(select(.value != null))' task-def.json > new-task-def.json
-                
-                    aws ecs register-task-definition --cli-input-json file://new-task-def.json
+                        aws ecs describe-task-definition \
+                          --task-definition ${TASK_DEFINITION} \
+                          --query 'taskDefinition' > task-def.json
+                    
+                        jq '{
+                          family: .family,
+                          taskRoleArn: .taskRoleArn,
+                          executionRoleArn: .executionRoleArn,
+                          networkMode: .networkMode,
+                          containerDefinitions: (.containerDefinitions | map(.image = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}")),
+                          volumes: .volumes,
+                          requiresCompatibilities: .requiresCompatibilities,
+                          cpu: .cpu,
+                          memory: .memory,
+                          runtimePlatform: .runtimePlatform,
+                          enableFaultInjection: .enableFaultInjection
+                        } | with_entries(select(.value != null))' task-def.json > new-task-def.json
+                    
+                        aws ecs register-task-definition --cli-input-json file://new-task-def.json
                     """
                 }
             }
