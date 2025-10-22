@@ -117,6 +117,21 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["device_not_found"] = "Device not found.",
                 ["flow_not_found_or_invalid"] = "Verification session not found or expired.",
                 ["invalid_mobile_number"] = "Invalid mobile number format.",
+                ["resend_allowed"] = "You can now request a new verification code.",
+                ["invalid_opaque"] = "Invalid or corrupted authentication data. Please start over.",
+                ["password_recovery_otp_required"] = "OTP verification is required for password recovery.",
+                ["mobile_number_empty"] = "Mobile number cannot be empty.",
+                ["invalid_default_region"] = "Invalid default region for mobile number validation.",
+                ["mobile_invalid"] = "Invalid phone number; please check.",
+                ["mobile_cannot_be_empty"] = "Mobile number cannot be empty.",
+                ["mobile_parsing_invalid_country_code"] = "Invalid country code in phone number.",
+                ["mobile_parsing_invalid_number"] = "Mobile number format is invalid.",
+                ["mobile_parsing_too_short"] = "Mobile number is too short.",
+                ["mobile_parsing_too_long"] = "Mobile number is too long.",
+                ["mobile_parsing_generic_error"] = "Error parsing phone number.",
+                ["mobile_parsing_possible_but_local_only"] =
+                    "Number might be valid locally; add country code or region.",
+                ["mobile_validation_unexpected_error"] = "Unexpected error validating phone number.",
             }.ToFrozenDictionary(),
 
             ["uk-UA"] = new Dictionary<string, string>
@@ -228,6 +243,21 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["device_not_found"] = "Пристрій не знайдено.",
                 ["flow_not_found_or_invalid"] = "Сесію верифікації не знайдено або вона закінчилася.",
                 ["invalid_mobile_number"] = "Неправильний формат номера телефону.",
+                ["resend_allowed"] = "Ви можете запросити новий код верифікації.",
+                ["invalid_opaque"] = "Неправильні або пошкоджені дані автентифікації. Будь ласка, почніть знову.",
+                ["password_recovery_otp_required"] = "Для відновлення пароля потрібна верифікація OTP.",
+                ["mobile_number_empty"] = "Номер телефону не може бути порожнім.",
+                ["invalid_default_region"] = "Неправильний регіон за замовчуванням для валідації номера телефону.",
+                ["mobile_invalid"] = "Неправильний номер телефону; будь ласка, перевірте.",
+                ["mobile_cannot_be_empty"] = "Номер телефону не може бути пустим.",
+                ["mobile_parsing_invalid_country_code"] = "Неправильний код країни в номері телефону.",
+                ["mobile_parsing_invalid_number"] = "Формат номера телефону неправильний.",
+                ["mobile_parsing_too_short"] = "Номер телефону занадто короткий.",
+                ["mobile_parsing_too_long"] = "Номер телефону занадто довгий.",
+                ["mobile_parsing_generic_error"] = "Помилка аналізу номера телефону.",
+                ["mobile_parsing_possible_but_local_only"] =
+                    "Номер може бути дійсним локально; додайте код країни або регіон.",
+                ["mobile_validation_unexpected_error"] = "Неочікувана помилка при валідації номера телефону.",
             }.ToFrozenDictionary()
         }.ToFrozenDictionary();
 

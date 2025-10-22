@@ -182,7 +182,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                     ValidateMobileNumberResponse response = new()
                     {
                         Result = VerificationResult.InvalidMobile,
-                        Message = phoneValidationResult.MessageKey.Value!
+                        Message = phoneValidationResult.LocalizedMessage.Value!
                     };
                     return Result<ValidateMobileNumberResponse, FailureBase>.Ok(response);
                 }
@@ -238,7 +238,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                     ValidateMobileNumberResponse response = new()
                     {
                         Result = VerificationResult.InvalidMobile,
-                        Message = phoneValidationResult.MessageKey.Value!
+                        Message = phoneValidationResult.LocalizedMessage.Value!
                     };
                     return Result<ValidateMobileNumberResponse, FailureBase>.Ok(response);
                 }

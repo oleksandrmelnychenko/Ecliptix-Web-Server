@@ -7,7 +7,6 @@ public static class VerificationFlowMessageKeys
     public const string CreateMembershipVerificationFlowNotFound = "verification_session_not_found";
 
     public const string InvalidOtp = "otp_invalid";
-    public const string GlobalRateLimitExceeded = "global_rate_limit_exceeded";
     public const string OtpGenerationFailed = "otp_generation_failed";
     public const string OtpMaxAttemptsReached = "max_otp_attempts_reached";
     public const string ResendAllowed = "resend_allowed";
@@ -25,7 +24,6 @@ public static class VerificationFlowMessageKeys
     public const string DataAccess = "data_access_failed";
 
     public const string RateLimitExceeded = "security_rate_limit_exceeded";
-    public const string TooManyMembershipAttempts = "membership_too_many_attempts";
     public const string TooManySigninAttempts = "signin_too_many_attempts";
 
     public const string ActivityStatusInvalid = "activity_status_invalid";
@@ -36,13 +34,8 @@ public static class VerificationFlowMessageKeys
     public const string InvalidCredentials = "invalid_credentials";
     public const string PasswordRecoveryOtpRequired = "password_recovery_otp_required";
     public const string InactiveMembership = "inactive_membership";
-    public const string InvalidSecureKey = "invalid_secure_key";
-    public const string MembershipAlreadyExists = "membership_already_exists";
-    public const string MembershipNotFound = "membership_not_found";
-    public const string SecureKeyCannotBeEmpty = "secure_key_cannot_be_empty";
     public const string SecureKeyNotSet = "secure_key_not_set";
 
-    public const string Created = "created";
     public const string Generic = "generic_error";
 
     public const string MobileNumberEmpty = "mobile_number_empty";

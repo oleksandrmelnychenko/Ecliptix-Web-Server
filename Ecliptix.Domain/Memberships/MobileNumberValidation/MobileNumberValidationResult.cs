@@ -13,19 +13,19 @@ public record MobileNumberValidationResult
         ParsedMobileNumberE164 = Option<string>.Some(parsedMobileNumberE164);
         DetectedRegion = Option<string>.Some(detectedRegion);
         MobileStatus = mobileStatus;
-        MessageKey = Option<string>.None;
+        LocalizedMessage = Option<string>.None;
         MessageArgs = Option<object[]>.None;
         LibFailureReason = Option<ValidationFailureReason>.None;
     }
 
     private MobileNumberValidationResult(
-        string messageKey,
+        string localizedMessage,
         Option<ValidationFailureReason> libFailureReason,
         Option<string> parsedNumberIfAvailable,
         Option<object[]> messageArgs)
     {
         IsValid = false;
-        MessageKey = Option<string>.Some(messageKey);
+        LocalizedMessage = Option<string>.Some(localizedMessage);
         LibFailureReason = libFailureReason;
         ParsedMobileNumberE164 = parsedNumberIfAvailable;
         MobileStatus = MobileCheckStatus.IsNotMobile;
@@ -37,18 +37,18 @@ public record MobileNumberValidationResult
     public Option<string> ParsedMobileNumberE164 { get; }
     public Option<string> DetectedRegion { get; }
     public MobileCheckStatus MobileStatus { get; }
-    public Option<string> MessageKey { get; }
+    public Option<string> LocalizedMessage { get; }
     public Option<object[]> MessageArgs { get; }
     public Option<ValidationFailureReason> LibFailureReason { get; }
 
     public static MobileNumberValidationResult CreateInvalid(
-        string messageKey,
+        string localizedMessage,
         ValidationFailureReason libFailureReason,
         Option<string> parsedNumberIfAvailable,
         Option<object[]> messageArgs)
     {
         return new MobileNumberValidationResult(
-            messageKey,
+            localizedMessage,
             Option<ValidationFailureReason>.Some(libFailureReason),
             parsedNumberIfAvailable,
             messageArgs);

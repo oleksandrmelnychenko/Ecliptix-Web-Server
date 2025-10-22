@@ -95,7 +95,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                     return Result<OpaqueSignInInitResponse, FailureBase>.Ok(new OpaqueSignInInitResponse
                     {
                         Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
-                        Message = phoneNumberResult.MessageKey.Value!
+                        Message = phoneNumberResult.LocalizedMessage.Value!
                     });
                 }
 

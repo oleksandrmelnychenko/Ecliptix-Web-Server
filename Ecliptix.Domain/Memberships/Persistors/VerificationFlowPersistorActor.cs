@@ -39,9 +39,11 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         Become(Ready);
     }
 
-    public static Props Build(IDbContextFactory<EcliptixSchemaContext> dbContextFactory, IOptions<SecurityConfiguration> securityConfig, IActorRef? membershipPersistorActor = null)
+    public static Props Build(IDbContextFactory<EcliptixSchemaContext> dbContextFactory,
+        IOptions<SecurityConfiguration> securityConfig, IActorRef? membershipPersistorActor = null)
     {
-        return Props.Create(() => new VerificationFlowPersistorActor(dbContextFactory, securityConfig, membershipPersistorActor));
+        return Props.Create(() =>
+            new VerificationFlowPersistorActor(dbContextFactory, securityConfig, membershipPersistorActor));
     }
 
     private void Ready()
@@ -113,7 +115,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
-        Func<EcliptixSchemaContext, TMessage, CancellationToken, Task<Result<TResult, VerificationFlowFailure>>> handler,
+        Func<EcliptixSchemaContext, TMessage, CancellationToken, Task<Result<TResult, VerificationFlowFailure>>>
+            handler,
         string operationName)
         where TMessage : class, ICancellableActorEvent
     {
@@ -122,9 +125,11 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             IActorRef replyTo = Sender;
             CancellationToken messageToken = message.CancellationToken;
 
-            Task<Result<TResult, VerificationFlowFailure>> Operation(EcliptixSchemaContext ctx, CancellationToken cancellationToken)
+            Task<Result<TResult, VerificationFlowFailure>> Operation(EcliptixSchemaContext ctx,
+                CancellationToken cancellationToken)
             {
-                CancellationToken effectiveToken = CombineCancellationTokens(cancellationToken, messageToken, out CancellationTokenSource? linkedSource);
+                CancellationToken effectiveToken = CombineCancellationTokens(cancellationToken, messageToken,
+                    out CancellationTokenSource? linkedSource);
                 try
                 {
                     return handler(ctx, message, effectiveToken);
@@ -176,13 +181,15 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            Option<MobileNumberEntity> mobileOpt = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberUniqueId, cancellationToken);
+            Option<MobileNumberEntity> mobileOpt =
+                await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberUniqueId, cancellationToken);
             if (!mobileOpt.HasValue)
             {
                 await transaction.RollbackAsync();
                 return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("mobile_number_not_found"));
             }
+
             MobileNumberEntity mobile = mobileOpt.Value!;
 
             bool deviceExists = await DeviceQueries.ExistsByUniqueId(ctx, cmd.AppDeviceId, cancellationToken);
@@ -193,12 +200,13 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     VerificationFlowFailure.NotFound("device_not_found"));
             }
 
-            Option<VerificationFlowEntity> existingActiveFlowOpt = await VerificationFlowQueries.GetActiveFlowForRecovery(
-                ctx,
-                cmd.MobileNumberUniqueId,
-                cmd.AppDeviceId,
-                ConvertPurposeToString(cmd.Purpose),
-                cancellationToken);
+            Option<VerificationFlowEntity> existingActiveFlowOpt =
+                await VerificationFlowQueries.GetActiveFlowForRecovery(
+                    ctx,
+                    cmd.MobileNumberUniqueId,
+                    cmd.AppDeviceId,
+                    ConvertPurposeToString(cmd.Purpose),
+                    cancellationToken);
 
             if (existingActiveFlowOpt.HasValue)
             {
@@ -208,10 +216,10 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 await ctx.VerificationFlows
                     .Where(vf => vf.Id == existingActiveFlow.Id)
                     .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(vf => vf.Status, "expired")
-                        .SetProperty(vf => vf.ConnectionId, (long?)null)
-                        .SetProperty(vf => vf.ExpiresAt, now)
-                        .SetProperty(vf => vf.UpdatedAt, now),
+                            .SetProperty(vf => vf.Status, "expired")
+                            .SetProperty(vf => vf.ConnectionId, (long?)null)
+                            .SetProperty(vf => vf.ExpiresAt, now)
+                            .SetProperty(vf => vf.UpdatedAt, now),
                         cancellationToken);
 
                 await ctx.OtpCodes
@@ -219,17 +227,20 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                                 o.Status == "active" &&
                                 !o.IsDeleted)
                     .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(o => o.Status, "expired")
-                        .SetProperty(o => o.UpdatedAt, now),
+                            .SetProperty(o => o.Status, "expired")
+                            .SetProperty(o => o.UpdatedAt, now),
                         cancellationToken);
 
-                Log.Information("[verification.flow.recovered] Expired lingering flow {FlowId} before creating a new one",
+                Log.Information(
+                    "[verification.flow.recovered] Expired lingering flow {FlowId} before creating a new one",
                     existingActiveFlow.UniqueId);
             }
 
             if (cmd.Purpose == VerificationPurpose.PasswordRecovery)
             {
-                Log.Information("[INITIATE-PASSWORD-RECOVERY] Password recovery flow initiated for mobile ID {MobileId}", mobile.UniqueId);
+                Log.Information(
+                    "[INITIATE-PASSWORD-RECOVERY] Password recovery flow initiated for mobile ID {MobileId}",
+                    mobile.UniqueId);
 
                 DateTimeOffset oneHourAgo = DateTimeOffset.UtcNow.AddHours(-1);
 
@@ -244,11 +255,14 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     .AsNoTracking()
                     .CountAsync(cancellationToken);
 
-                Log.Information("[INITIATE-PASSWORD-RECOVERY] Recent password recovery counts - Mobile: {MobileCount}, Device: {DeviceCount} for mobile ID {MobileId}",
+                Log.Information(
+                    "[INITIATE-PASSWORD-RECOVERY] Recent password recovery counts - Mobile: {MobileCount}, Device: {DeviceCount} for mobile ID {MobileId}",
                     recoveryCountByMobile, recoveryCountByDevice, mobile.UniqueId);
 
-                int maxAttemptsByMobile = _securityConfig.Value.VerificationFlowLimits.PasswordRecoveryAttemptsPerHourPerMobile;
-                int maxAttemptsByDevice = _securityConfig.Value.VerificationFlowLimits.PasswordRecoveryAttemptsPerHourPerDevice;
+                int maxAttemptsByMobile = _securityConfig.Value.VerificationFlowLimits
+                    .PasswordRecoveryAttemptsPerHourPerMobile;
+                int maxAttemptsByDevice = _securityConfig.Value.VerificationFlowLimits
+                    .PasswordRecoveryAttemptsPerHourPerDevice;
 
                 if (recoveryCountByMobile >= maxAttemptsByMobile || recoveryCountByDevice >= maxAttemptsByDevice)
                 {
@@ -264,7 +278,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                                  !vf.IsDeleted)
                     .ToListAsync(cancellationToken);
 
-                Log.Information("[INITIATE-PASSWORD-RECOVERY] Found {Count} old password recovery flows (pending + verified) to expire for mobile ID {MobileId}",
+                Log.Information(
+                    "[INITIATE-PASSWORD-RECOVERY] Found {Count} old password recovery flows (pending + verified) to expire for mobile ID {MobileId}",
                     oldActiveFlows.Count, mobile.UniqueId);
 
                 if (oldActiveFlows.Count > 0)
@@ -274,11 +289,14 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                         string oldStatus = oldFlow.Status;
                         oldFlow.Status = "expired";
                         oldFlow.UpdatedAt = DateTimeOffset.UtcNow;
-                        Log.Information("[INITIATE-PASSWORD-RECOVERY] Expiring flow {FlowId} with status '{OldStatus}' for mobile ID {MobileId}",
+                        Log.Information(
+                            "[INITIATE-PASSWORD-RECOVERY] Expiring flow {FlowId} with status '{OldStatus}' for mobile ID {MobileId}",
                             oldFlow.UniqueId, oldStatus, mobile.UniqueId);
                     }
 
-                    Log.Information("[INITIATE-PASSWORD-RECOVERY] Successfully expired {Count} old password recovery flows", oldActiveFlows.Count);
+                    Log.Information(
+                        "[INITIATE-PASSWORD-RECOVERY] Successfully expired {Count} old password recovery flows",
+                        oldActiveFlows.Count);
                 }
             }
 
@@ -327,12 +345,14 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             Log.Information("Transaction committed successfully for flow {FlowId}", flow.UniqueId);
 
-            Option<VerificationFlowEntity> flowWithOtpOpt = await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(ctx, flow.UniqueId, cancellationToken);
+            Option<VerificationFlowEntity> flowWithOtpOpt =
+                await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(ctx, flow.UniqueId, cancellationToken);
             if (!flowWithOtpOpt.HasValue)
             {
                 return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Flow not found after creation"));
             }
+
             return MapToVerificationFlowRecord(flowWithOtpOpt.Value!);
         }
         catch (Exception ex)
@@ -352,7 +372,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            Option<VerificationFlowEntity> flowOpt = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId, cancellationToken);
+            Option<VerificationFlowEntity> flowOpt =
+                await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId, cancellationToken);
             if (!flowOpt.HasValue)
             {
                 return Result<string, VerificationFlowFailure>.Err(
@@ -400,9 +421,9 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             int rowsAffected = await ctx.OtpCodes
                 .Where(o => o.UniqueId == cmd.OtpIdentified && !o.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(o => o.Status, newStatus)
-                    .SetProperty(o => o.UpdatedAt, utcNow)
-                    .SetProperty(o => o.VerifiedAt, newStatus == "used" ? utcNow : (DateTimeOffset?)null),
+                        .SetProperty(o => o.Status, newStatus)
+                        .SetProperty(o => o.UpdatedAt, utcNow)
+                        .SetProperty(o => o.VerifiedAt, newStatus == "used" ? utcNow : (DateTimeOffset?)null),
                     cancellationToken);
 
             if (rowsAffected == 0)
@@ -430,7 +451,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         try
         {
-            Option<MobileNumberEntity> mobileOpt = await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberIdentifier, cancellationToken);
+            Option<MobileNumberEntity> mobileOpt =
+                await MobileNumberQueries.GetByUniqueId(ctx, cmd.MobileNumberIdentifier, cancellationToken);
             if (!mobileOpt.HasValue)
             {
                 return Result<MobileNumberQueryRecord, VerificationFlowFailure>.Err(
@@ -440,9 +462,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             MobileNumberEntity mobile = mobileOpt.Value!;
             return Result<MobileNumberQueryRecord, VerificationFlowFailure>.Ok(new MobileNumberQueryRecord
             {
-                MobileNumber = mobile.Number,
-                Region = mobile.Region,
-                UniqueId = mobile.UniqueId
+                MobileNumber = mobile.Number, Region = mobile.Region, UniqueId = mobile.UniqueId
             });
         }
         catch (Exception ex)
@@ -477,8 +497,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             int rowsAffected = await ctx.VerificationFlows
                 .Where(f => f.UniqueId == cmd.FlowIdentifier && !f.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(f => f.Status, newStatus)
-                    .SetProperty(f => f.UpdatedAt, DateTimeOffset.UtcNow),
+                        .SetProperty(f => f.Status, newStatus)
+                        .SetProperty(f => f.UpdatedAt, DateTimeOffset.UtcNow),
                     cancellationToken);
 
             if (rowsAffected == 0)
@@ -492,7 +512,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             if (purpose == "password_recovery" && newStatus == "verified" && _membershipPersistorActor != null)
             {
-                Log.Information("[UPDATE-FLOW-STATUS] Password recovery flow {FlowId} marked as verified. Sending async request to update membership VerificationFlowId",
+                Log.Information(
+                    "[UPDATE-FLOW-STATUS] Password recovery flow {FlowId} marked as verified. Sending async request to update membership VerificationFlowId",
                     cmd.FlowIdentifier);
 
                 UpdateMembershipVerificationFlowEvent updateMembershipEvent = new(
@@ -503,7 +524,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
                 _membershipPersistorActor.Tell(updateMembershipEvent);
 
-                Log.Information("[UPDATE-FLOW-STATUS] Membership update request sent for flow {FlowId}", cmd.FlowIdentifier);
+                Log.Information("[UPDATE-FLOW-STATUS] Membership update request sent for flow {FlowId}",
+                    cmd.FlowIdentifier);
             }
 
             return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
@@ -563,11 +585,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             };
 
             return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(
-                new ExistingMembershipResult
-                {
-                    MembershipExists = true,
-                    Membership = existingMembership
-                });
+                new ExistingMembershipResult { MembershipExists = true, Membership = existingMembership });
         }
         catch (Exception ex)
         {
@@ -605,7 +623,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            Option<VerificationFlowEntity> flowOpt = await VerificationFlowQueries.GetByUniqueId(ctx, cmd.OtpRecord.FlowUniqueId, cancellationToken);
+            Option<VerificationFlowEntity> flowOpt =
+                await VerificationFlowQueries.GetByUniqueId(ctx, cmd.OtpRecord.FlowUniqueId, cancellationToken);
             if (!flowOpt.HasValue || flowOpt.Value!.ExpiresAt <= DateTimeOffset.UtcNow)
             {
                 await transaction.RollbackAsync();
@@ -637,8 +656,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     await transaction.CommitAsync(cancellationToken);
                     return Result<CreateOtpResult, VerificationFlowFailure>.Ok(new CreateOtpResult
                     {
-                        OtpUniqueId = cmd.OtpRecord.UniqueIdentifier,
-                        Outcome = "idempotent"
+                        OtpUniqueId = cmd.OtpRecord.UniqueIdentifier, Outcome = "idempotent"
                     });
                 }
             }
@@ -646,8 +664,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             await ctx.OtpCodes
                 .Where(o => o.VerificationFlowId == flow.Id && o.Status == "active" && !o.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(o => o.Status, "expired")
-                    .SetProperty(o => o.UpdatedAt, DateTimeOffset.UtcNow),
+                        .SetProperty(o => o.Status, "expired")
+                        .SetProperty(o => o.UpdatedAt, DateTimeOffset.UtcNow),
                     cancellationToken);
 
             OtpCodeEntity otp = new()
@@ -670,9 +688,9 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             await ctx.VerificationFlows
                 .Where(f => f.Id == flow.Id)
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(f => f.OtpCount, f => f.OtpCount + 1)
-                    .SetProperty(f => f.LastOtpSentAt, now)
-                    .SetProperty(f => f.UpdatedAt, now),
+                        .SetProperty(f => f.OtpCount, f => f.OtpCount + 1)
+                        .SetProperty(f => f.LastOtpSentAt, now)
+                        .SetProperty(f => f.UpdatedAt, now),
                     cancellationToken);
 
             await ctx.SaveChangesAsync(cancellationToken);
@@ -681,8 +699,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             return Result<CreateOtpResult, VerificationFlowFailure>.Ok(new CreateOtpResult
             {
-                OtpUniqueId = otp.UniqueId,
-                Outcome = "created"
+                OtpUniqueId = otp.UniqueId, Outcome = "created"
             });
         }
         catch (Exception ex)
@@ -857,8 +874,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             int updated = await ctx.OtpCodes
                 .Where(o => o.UniqueId == cmd.OtpUniqueId && !o.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(o => o.AttemptCount, o => (short)(o.AttemptCount + 1))
-                    .SetProperty(o => o.UpdatedAt, DateTimeOffset.UtcNow),
+                        .SetProperty(o => o.AttemptCount, o => (short)(o.AttemptCount + 1))
+                        .SetProperty(o => o.UpdatedAt, DateTimeOffset.UtcNow),
                     cancellationToken);
 
             if (updated == 0)
@@ -899,7 +916,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             FailedOtpAttemptEntity failedAttempt = new()
             {
                 OtpRecordId = otp.Id,
-                AttemptedValue = "***",  // Anonymized for security
+                AttemptedValue = "***", // Anonymized for security
                 FailureReason = cmd.FailureReason,
                 AttemptedAt = DateTimeOffset.UtcNow,
                 CreatedAt = DateTimeOffset.UtcNow,
@@ -958,13 +975,15 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         {
             return sqlEx.Number switch
             {
-                2627 or 2601 => VerificationFlowFailure.ConcurrencyConflict($"Unique constraint violation: {sqlEx.Message}"),
+                2627 or 2601 => VerificationFlowFailure.ConcurrencyConflict(
+                    $"Unique constraint violation: {sqlEx.Message}"),
                 547 => VerificationFlowFailure.Validation($"Foreign key constraint violation: {sqlEx.Message}"),
                 1205 => VerificationFlowFailure.ConcurrencyConflict($"Deadlock detected: {sqlEx.Message}"),
                 -2 => VerificationFlowFailure.PersistorAccess("Command timeout occurred", sqlEx),
                 2 => VerificationFlowFailure.PersistorAccess("Network error occurred", sqlEx),
                 18456 => VerificationFlowFailure.PersistorAccess("Authentication failed", sqlEx),
-                _ => VerificationFlowFailure.PersistorAccess($"Database error (Code: {sqlEx.Number}): {sqlEx.Message}", sqlEx)
+                _ => VerificationFlowFailure.PersistorAccess($"Database error (Code: {sqlEx.Number}): {sqlEx.Message}",
+                    sqlEx)
             };
         }
 
