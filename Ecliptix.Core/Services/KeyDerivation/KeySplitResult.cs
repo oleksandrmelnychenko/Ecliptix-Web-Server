@@ -72,4 +72,11 @@ public sealed class KeyShare(byte[] shareData, int index, ShareLocation location
     }
 }
 
-public enum ShareLocation;
+public enum ShareLocation
+{
+    HardwareSecurity,
+    PlatformKeychain,
+    SecureMemory,
+    LocalEncrypted,
+    BackupStorage
+}

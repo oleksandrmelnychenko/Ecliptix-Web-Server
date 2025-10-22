@@ -11,6 +11,7 @@ public class VerificationFlowEntity : EntityBase, IExpirable
     public string Purpose { get; set; } = "unspecified";
     public short OtpCount { get; set; } = 0;
     public long? ConnectionId { get; set; }
+    public DateTimeOffset? LastOtpSentAt { get; set; }
 
     public DateTimeOffset ExpiresAt { get; set; }
 

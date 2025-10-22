@@ -625,7 +625,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                     {
                         SecondsRemaining = 0,
                         SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value.UniqueIdentifier),
-                        Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Failed,
+                        Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.ResendCooldown,
                         Message = _localizationProvider.Localize(VerificationFlowMessageKeys.ResendCooldown)
                     }));
                 break;

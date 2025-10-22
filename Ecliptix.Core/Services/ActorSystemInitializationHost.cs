@@ -43,7 +43,7 @@ public sealed class ActorSystemInitializationHost(
             ApplicationConstants.ActorNames.MembershipPersistorActor);
 
         IActorRef verificationFlowPersistorActor = actorSystem.ActorOf(
-            VerificationFlowPersistorActor.Build(dbContextFactory, membershipPersistorActor),
+            VerificationFlowPersistorActor.Build(dbContextFactory, securityConfig, membershipPersistorActor),
             ApplicationConstants.ActorNames.VerificationFlowPersistorActor);
 
         IActorRef masterKeySharePersistorActor = actorSystem.ActorOf(

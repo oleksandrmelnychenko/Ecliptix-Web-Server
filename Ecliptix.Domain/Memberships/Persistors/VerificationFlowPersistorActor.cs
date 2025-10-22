@@ -11,10 +11,12 @@ using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
+using Ecliptix.Utilities.Configuration;
 using Ecliptix.Protobuf.Membership;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Options;
 using Serilog;
 using MembershipEntity = Ecliptix.Domain.Schema.Entities.MembershipEntity;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
@@ -24,19 +26,22 @@ namespace Ecliptix.Domain.Memberships.Persistors;
 public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFailure>
 {
     private readonly IActorRef? _membershipPersistorActor;
+    private readonly IOptions<SecurityConfiguration> _securityConfig;
 
     public VerificationFlowPersistorActor(
         IDbContextFactory<EcliptixSchemaContext> dbContextFactory,
+        IOptions<SecurityConfiguration> securityConfig,
         IActorRef? membershipPersistorActor = null)
         : base(dbContextFactory)
     {
         _membershipPersistorActor = membershipPersistorActor;
+        _securityConfig = securityConfig;
         Become(Ready);
     }
 
-    public static Props Build(IDbContextFactory<EcliptixSchemaContext> dbContextFactory, IActorRef? membershipPersistorActor = null)
+    public static Props Build(IDbContextFactory<EcliptixSchemaContext> dbContextFactory, IOptions<SecurityConfiguration> securityConfig, IActorRef? membershipPersistorActor = null)
     {
-        return Props.Create(() => new VerificationFlowPersistorActor(dbContextFactory, membershipPersistorActor));
+        return Props.Create(() => new VerificationFlowPersistorActor(dbContextFactory, securityConfig, membershipPersistorActor));
     }
 
     private void Ready()
@@ -161,7 +166,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         return linkedSource.Token;
     }
 
-    private static async Task<Result<VerificationFlowQueryRecord, VerificationFlowFailure>> InitiateFlowAsync(
+    private async Task<Result<VerificationFlowQueryRecord, VerificationFlowFailure>> InitiateFlowAsync(
         EcliptixSchemaContext ctx,
         InitiateFlowAndReturnStateActorEvent cmd,
         CancellationToken cancellationToken)
@@ -226,12 +231,26 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             {
                 Log.Information("[INITIATE-PASSWORD-RECOVERY] Password recovery flow initiated for mobile ID {MobileId}", mobile.UniqueId);
 
-                int recoveryCount = await VerificationFlowQueries.CountRecentPasswordRecovery(
-                    ctx, mobile.UniqueId, DateTimeOffset.UtcNow.AddHours(-1), cancellationToken);
+                DateTimeOffset oneHourAgo = DateTimeOffset.UtcNow.AddHours(-1);
 
-                Log.Information("[INITIATE-PASSWORD-RECOVERY] Recent password recovery count: {Count} for mobile ID {MobileId}", recoveryCount, mobile.UniqueId);
+                int recoveryCountByMobile = await VerificationFlowQueries.CountRecentPasswordRecovery(
+                    ctx, mobile.UniqueId, oneHourAgo, cancellationToken);
 
-                if (recoveryCount >= 3)
+                int recoveryCountByDevice = await ctx.VerificationFlows
+                    .Where(f => f.AppDeviceId == cmd.AppDeviceId &&
+                                f.Purpose == "password_recovery" &&
+                                f.CreatedAt >= oneHourAgo &&
+                                !f.IsDeleted)
+                    .AsNoTracking()
+                    .CountAsync(cancellationToken);
+
+                Log.Information("[INITIATE-PASSWORD-RECOVERY] Recent password recovery counts - Mobile: {MobileCount}, Device: {DeviceCount} for mobile ID {MobileId}",
+                    recoveryCountByMobile, recoveryCountByDevice, mobile.UniqueId);
+
+                int maxAttemptsByMobile = _securityConfig.Value.VerificationFlowLimits.PasswordRecoveryAttemptsPerHourPerMobile;
+                int maxAttemptsByDevice = _securityConfig.Value.VerificationFlowLimits.PasswordRecoveryAttemptsPerHourPerDevice;
+
+                if (recoveryCountByMobile >= maxAttemptsByMobile || recoveryCountByDevice >= maxAttemptsByDevice)
                 {
                     await transaction.RollbackAsync();
                     return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
@@ -326,7 +345,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         }
     }
 
-    private static async Task<Result<string, VerificationFlowFailure>> RequestResendOtpAsync(
+    private async Task<Result<string, VerificationFlowFailure>> RequestResendOtpAsync(
         EcliptixSchemaContext ctx,
         RequestResendOtpActorEvent cmd,
         CancellationToken cancellationToken)
@@ -340,7 +359,25 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     VerificationFlowFailure.NotFound("Flow not found"));
             }
 
-            return Result<string, VerificationFlowFailure>.Ok("resend_allowed");
+            VerificationFlowEntity flow = flowOpt.Value!;
+
+            if (flow.LastOtpSentAt.HasValue)
+            {
+                TimeSpan elapsed = DateTimeOffset.UtcNow - flow.LastOtpSentAt.Value;
+                TimeSpan cooldown = TimeSpan.FromSeconds(_securityConfig.Value.VerificationFlow.OtpExpirationSeconds);
+
+                if (elapsed < cooldown)
+                {
+                    return Result<string, VerificationFlowFailure>.Ok(VerificationFlowMessageKeys.ResendCooldown);
+                }
+            }
+
+            if (flow.OtpCount >= _securityConfig.Value.VerificationFlowLimits.MaxOtpSendsPerFlow)
+            {
+                return Result<string, VerificationFlowFailure>.Ok(VerificationFlowMessageKeys.OtpMaxAttemptsReached);
+            }
+
+            return Result<string, VerificationFlowFailure>.Ok(VerificationFlowMessageKeys.ResendAllowed);
         }
         catch (Exception ex)
         {
@@ -559,7 +596,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         }
     }
 
-    private static async Task<Result<CreateOtpResult, VerificationFlowFailure>> CreateOtpAsync(
+    private async Task<Result<CreateOtpResult, VerificationFlowFailure>> CreateOtpAsync(
         EcliptixSchemaContext ctx,
         CreateOtpActorEvent cmd,
         CancellationToken cancellationToken)
@@ -578,7 +615,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             VerificationFlowEntity flow = flowOpt.Value!;
 
-            if (flow.OtpCount >= 5)
+            if (flow.OtpCount >= _securityConfig.Value.VerificationFlowLimits.MaxOtpSendsPerFlow)
             {
                 await transaction.RollbackAsync();
                 return Result<CreateOtpResult, VerificationFlowFailure>.Err(
@@ -629,11 +666,13 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             ctx.OtpCodes.Add(otp);
 
+            DateTimeOffset now = DateTimeOffset.UtcNow;
             await ctx.VerificationFlows
                 .Where(f => f.Id == flow.Id)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(f => f.OtpCount, f => f.OtpCount + 1)
-                    .SetProperty(f => f.UpdatedAt, DateTimeOffset.UtcNow),
+                    .SetProperty(f => f.LastOtpSentAt, now)
+                    .SetProperty(f => f.UpdatedAt, now),
                     cancellationToken);
 
             await ctx.SaveChangesAsync(cancellationToken);

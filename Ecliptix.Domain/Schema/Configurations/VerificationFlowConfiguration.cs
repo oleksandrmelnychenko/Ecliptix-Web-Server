@@ -31,6 +31,9 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntit
         builder.Property(e => e.OtpCount)
             .HasDefaultValue((short)0);
 
+        builder.Property(e => e.LastOtpSentAt)
+            .IsRequired(false);
+
         builder.Property(e => e.ExpiresAt)
             .IsRequired();
 
@@ -59,6 +62,10 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntit
                 .HasFilter("IsDeleted = 0 AND Status = 'pending'"),
             e => new { e.UniqueId, e.ConnectionId, e.OtpCount, e.CreatedAt, e.UpdatedAt })
             .HasDatabaseName("IX_VerificationFlows_ActiveFlowRecovery");
+
+        builder.HasIndex(e => new { e.UniqueId, e.LastOtpSentAt, e.OtpCount, e.ExpiresAt })
+            .HasFilter("IsDeleted = 0 AND Status = 'pending'")
+            .HasDatabaseName("IX_VerificationFlows_CooldownCheck");
 
         builder.HasOne(e => e.MobileNumber)
             .WithMany(p => p.VerificationFlows)

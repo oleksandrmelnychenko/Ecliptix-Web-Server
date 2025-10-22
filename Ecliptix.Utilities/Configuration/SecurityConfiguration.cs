@@ -13,6 +13,8 @@ public sealed class SecurityConfiguration
     public OtpHashingConfiguration OtpHashing { get; set; } = new();
 
     public GrpcSecurityParameters GrpcSecurity { get; set; } = new();
+
+    public VerificationFlowLimitsConfiguration VerificationFlowLimits { get; set; } = new();
 }
 
 public sealed class VerificationFlowTimeouts
@@ -104,4 +106,13 @@ public sealed class GrpcSecurityParameters
     public int MaxTimestampDriftSeconds { get; set; } = 300;
 
     public TimeSpan MaxTimestampDrift => TimeSpan.FromSeconds(MaxTimestampDriftSeconds);
+}
+
+public sealed class VerificationFlowLimitsConfiguration
+{
+    public int MaxOtpSendsPerFlow { get; set; } = 5;
+    public int PasswordRecoveryAttemptsPerHourPerMobile { get; set; } = 3;
+    public int PasswordRecoveryAttemptsPerHourPerDevice { get; set; } = 3;
+    public int VerificationFlowInitiationsPerHourPerMobile { get; set; } = 10;
+    public int VerificationFlowInitiationsPerHourPerDevice { get; set; } = 15;
 }
