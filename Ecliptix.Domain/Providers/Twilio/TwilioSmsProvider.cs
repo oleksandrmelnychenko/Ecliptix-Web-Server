@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Twilio;
+using Ecliptix.Utilities;
 using Twilio.Rest.Api.V2010.Account;
 using Twilio.Types;
 
@@ -25,7 +26,8 @@ public sealed class TwilioSmsProvider : ISmsProvider
             return new SmsDeliveryResult
             {
                 IsSuccess = true,
-                MessageId = Guid.NewGuid().ToString(),
+                MessageId = Option<string>.Some(Guid.NewGuid().ToString()),
+                ErrorMessage = Option<string>.None,
                 Status = MapTwilioStatus(MessageResource.StatusEnum.Sent)
             };
         }
@@ -34,7 +36,8 @@ public sealed class TwilioSmsProvider : ISmsProvider
             return new SmsDeliveryResult
             {
                 IsSuccess = false,
-                ErrorMessage = ex.Message,
+                MessageId = Option<string>.None,
+                ErrorMessage = Option<string>.Some(ex.Message),
                 Status = SmsDeliveryStatus.Failed
             };
         }

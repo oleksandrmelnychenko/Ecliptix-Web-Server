@@ -58,7 +58,7 @@ internal sealed class DeviceService : Protobuf.Device.DeviceService.DeviceServic
     public override async Task<SecureEnvelope> RegisterDevice(SecureEnvelope request, ServerCallContext context)
     {
         return await _baseService.ExecuteEncryptedOperationAsync<AppDevice, AppDeviceRegisteredStateReply>(
-            request, context, async (appDevice, _, cancellationToken) =>
+            request, context, async (appDevice, _, _, cancellationToken) =>
             {
                 RegisterAppDeviceIfNotExistActorEvent registerEvent = new(appDevice, cancellationToken);
                 Task<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>> registerTask =

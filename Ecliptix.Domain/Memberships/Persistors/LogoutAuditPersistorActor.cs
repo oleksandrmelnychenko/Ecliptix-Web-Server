@@ -29,28 +29,28 @@ public class LogoutAuditPersistorActor : PersistorBase<VerificationFlowFailure>
         Receive<RecordLogoutEvent>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, ct) => RecordLogoutAsync(ctx, cmd, ct), "RecordLogout", cancellationToken)
+            ExecuteWithContext((ctx, cancellationToken) => RecordLogoutAsync(ctx, cmd, cancellationToken), "RecordLogout", cancellationToken)
                 .PipeTo(Sender);
         });
 
         Receive<GetLogoutHistoryEvent>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, ct) => GetLogoutHistoryAsync(ctx, cmd), "GetLogoutHistory", cancellationToken)
+            ExecuteWithContext((ctx, cancellationToken) => GetLogoutHistoryAsync(ctx, cmd), "GetLogoutHistory", cancellationToken)
                 .PipeTo(Sender);
         });
 
         Receive<GetMostRecentLogoutEvent>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, ct) => GetMostRecentLogoutAsync(ctx, cmd), "GetMostRecentLogout", cancellationToken)
+            ExecuteWithContext((ctx, cancellationToken) => GetMostRecentLogoutAsync(ctx, cmd), "GetMostRecentLogout", cancellationToken)
                 .PipeTo(Sender);
         });
 
         Receive<GetLogoutByDeviceEvent>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, ct) => GetLogoutByDeviceAsync(ctx, cmd), "GetLogoutByDevice", cancellationToken)
+            ExecuteWithContext((ctx, cancellationToken) => GetLogoutByDeviceAsync(ctx, cmd), "GetLogoutByDevice", cancellationToken)
                 .PipeTo(Sender);
         });
     }

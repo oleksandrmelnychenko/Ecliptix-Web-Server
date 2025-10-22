@@ -69,7 +69,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
     {
         return await _service.ExecuteEncryptedOperationAsync<OpaqueSignInInitRequest, OpaqueSignInInitResponse>(
             request, context,
-            async (message, connectId, ct) =>
+            async (message, connectId, idempotencyKey, cancellationToken) =>
             {
                 Result<MobileNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
                     _phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
@@ -95,7 +95,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                     return Result<OpaqueSignInInitResponse, FailureBase>.Ok(new OpaqueSignInInitResponse
                     {
                         Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
-                        Message = phoneNumberResult.MessageKey
+                        Message = phoneNumberResult.MessageKey.Value!
                     });
                 }
 
@@ -103,11 +103,11 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
                 SignInMembershipActorEvent signInEvent = new(
                     connectId,
-                    phoneNumberResult.ParsedMobileNumberE164!,
+                    phoneNumberResult.ParsedMobileNumberE164.Value!,
                     deviceId,
                     message,
                     _cultureName,
-                    ct);
+                    cancellationToken);
 
                 Task<Result<OpaqueSignInInitResponse, VerificationFlowFailure>> initSignInTask =
                     _membershipActor.Ask<Result<OpaqueSignInInitResponse, VerificationFlowFailure>>(
@@ -115,7 +115,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                         TimeoutConfiguration.Actor.AskTimeout);
 
                 Result<OpaqueSignInInitResponse, VerificationFlowFailure> initSignInResult =
-                    await initSignInTask.WaitAsync(ct).ConfigureAwait(false);
+                    await initSignInTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return initSignInResult.Match(
                     ok: Result<OpaqueSignInInitResponse, FailureBase>.Ok,
@@ -130,7 +130,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         return await _service
             .ExecuteEncryptedOperationAsync<OpaqueSignInFinalizeRequest, OpaqueSignInFinalizeResponse>(
                 request, context,
-                async (message, connectId, ct) =>
+                async (message, connectId, idempotencyKey, cancellationToken) =>
                 {
                     Task<Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>> finalizeSignInTask =
                         _membershipActor.Ask<Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>>(
@@ -138,7 +138,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                             TimeoutConfiguration.Actor.AskTimeout);
 
                     Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure> finalizeSignInResult =
-                        await finalizeSignInTask.WaitAsync(ct).ConfigureAwait(false);
+                        await finalizeSignInTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     return finalizeSignInResult.Match(
                         ok: Result<OpaqueSignInFinalizeResponse, FailureBase>.Ok,
@@ -153,7 +153,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         return await _service
             .ExecuteEncryptedOperationAsync<OprfRegistrationCompleteRequest, OprfRegistrationCompleteResponse>(request,
                 context,
-                async (message, connectId, ct) =>
+                async (message, connectId, idempotencyKey, cancellationToken) =>
                 {
                     Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
 
@@ -162,7 +162,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory),
                         connectId,
                         deviceId,
-                        ct);
+                        cancellationToken);
 
                     Task<Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>> completeRegistrationRecordTask =
                         _membershipActor.Ask<Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>>(
@@ -170,7 +170,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                             TimeoutConfiguration.Actor.AskTimeout);
 
                     Result<OprfRegistrationCompleteResponse, VerificationFlowFailure> completeRegistrationRecordResult =
-                        await completeRegistrationRecordTask.WaitAsync(ct).ConfigureAwait(false);
+                        await completeRegistrationRecordTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     return completeRegistrationRecordResult.Match(
                         ok: Result<OprfRegistrationCompleteResponse, FailureBase>.Ok,
@@ -186,7 +186,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             .ExecuteEncryptedOperationAsync<OprfRecoverySecretKeyCompleteRequest,
                 OprfRecoverySecretKeyCompleteResponse>(
                 request, context,
-                async (message, _, cancellationToken) =>
+                async (message, _, idempotencyKey, cancellationToken) =>
                 {
                     OprfCompleteRecoverySecureKeyEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
@@ -214,7 +214,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         return await _service
             .ExecuteEncryptedOperationAsync<OprfRegistrationInitRequest, OprfRegistrationInitResponse>(
                 request, context,
-                async (message, _, cancellationToken) =>
+                async (message, _, idempotencyKey, cancellationToken) =>
                 {
                     GenerateMembershipOprfRegistrationRequestEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
@@ -242,7 +242,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         return await _service
             .ExecuteEncryptedOperationAsync<OprfRecoverySecureKeyInitRequest, OprfRecoverySecureKeyInitResponse>(
                 request, context,
-                async (message, _, cancellationToken) =>
+                async (message, _, idempotencyKey, cancellationToken) =>
                 {
                     OprfInitRecoverySecureKeyEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
@@ -468,7 +468,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
     {
         SecureEnvelope response = await _service.ExecuteEncryptedOperationAsync<LogoutRequest, LogoutResponse>(
             request, context,
-            async (message, connectId, ct) =>
+            async (message, connectId, idempotencyKey, cancellationToken) =>
             {
                 try
                 {
@@ -549,13 +549,13 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                         membershipId, connectId, deviceId, accountId, reason, message.Scope);
 
                     RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason,
-                        "", "", ct);
+                        "", "", cancellationToken);
                     Task<Result<Unit, VerificationFlowFailure>> auditTask =
                         _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(
                             logoutEvent,
                             TimeoutConfiguration.Actor.AskTimeout);
                     Result<Unit, VerificationFlowFailure> auditResult =
-                        await auditTask.WaitAsync(ct).ConfigureAwait(false);
+                        await auditTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     if (auditResult.IsErr)
                     {
@@ -577,7 +577,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                         RevocationProof = Google.Protobuf.ByteString.CopyFrom(revocationProof)
                     });
                 }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     throw;
                 }
@@ -688,7 +688,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
     {
         SecureEnvelope response = await _service.ExecuteEncryptedOperationAsync<AnonymousLogoutRequest, AnonymousLogoutResponse>(
             request, context,
-            async (message, connectId, ct) =>
+            async (message, connectId, idempotencyKey, cancellationToken) =>
             {
                 try
                 {
@@ -772,13 +772,13 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                         membershipId, connectId, deviceId, accountId, reason, message.Scope);
 
                     RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason,
-                        "","", ct);
+                        "","", cancellationToken);
                     Task<Result<Unit, VerificationFlowFailure>> auditTask =
                         _logoutAuditPersistor.Ask<Result<Unit, VerificationFlowFailure>>(
                             logoutEvent,
                             TimeoutConfiguration.Actor.AskTimeout);
                     Result<Unit, VerificationFlowFailure> auditResult =
-                        await auditTask.WaitAsync(ct).ConfigureAwait(false);
+                        await auditTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     if (auditResult.IsErr)
                     {
@@ -795,7 +795,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                         Message = "Logout successful"
                     });
                 }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     throw;
                 }
@@ -836,7 +836,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
     {
         return await _service.ExecuteEncryptedOperationAsync<GetLogoutHistoryRequest, GetLogoutHistoryResponse>(
             request, context,
-            async (message, connectId, ct) =>
+            async (message, connectId, idempotencyKey, cancellationToken) =>
             {
                 try
                 {
@@ -847,14 +847,14 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                         "[GET-LOGOUT-HISTORY] Retrieving logout history for MembershipId: {MembershipId}, Limit: {Limit}",
                         membershipId, limit);
 
-                    GetLogoutHistoryEvent queryEvent = new(membershipId, limit, ct);
+                    GetLogoutHistoryEvent queryEvent = new(membershipId, limit, cancellationToken);
                     Task<Result<List<LogoutAuditEntity>, VerificationFlowFailure>> historyTask =
                         _logoutAuditPersistor.Ask<Result<List<LogoutAuditEntity>, VerificationFlowFailure>>(
                             queryEvent,
                             TimeoutConfiguration.Actor.AskTimeout);
 
                     Result<List<LogoutAuditEntity>, VerificationFlowFailure> historyResult =
-                        await historyTask.WaitAsync(ct).ConfigureAwait(false);
+                        await historyTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     if (historyResult.IsErr)
                     {
@@ -906,7 +906,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
                     return Result<GetLogoutHistoryResponse, FailureBase>.Ok(response);
                 }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     throw;
                 }

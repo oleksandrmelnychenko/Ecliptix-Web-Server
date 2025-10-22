@@ -13,8 +13,6 @@ namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 
 public sealed class FailureHandlingInterceptor(ILocalizationProvider localizationProvider) : Interceptor
 {
-    private readonly ILocalizationProvider _localizationProvider = localizationProvider;
-
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
         TRequest request,
         ServerCallContext context,
@@ -78,7 +76,7 @@ public sealed class FailureHandlingInterceptor(ILocalizationProvider localizatio
     private static bool HasErrorMetadata(RpcException rpcException) =>
         rpcException.Trailers?.GetValue(ErrorMetadataConstants.ErrorCode) is not null;
 
-    private GrpcErrorDescriptor ResolveDescriptor(Exception exception) =>
+    private static GrpcErrorDescriptor ResolveDescriptor(Exception exception) =>
         exception switch
         {
             GrpcFailureException failure => failure.Descriptor,
@@ -163,7 +161,7 @@ public sealed class FailureHandlingInterceptor(ILocalizationProvider localizatio
         GrpcErrorDescriptor descriptor,
         string locale)
     {
-        string localized = _localizationProvider.Localize(descriptor.I18nKey, locale);
+        string localized = localizationProvider.Localize(descriptor.I18nKey, locale);
         if (!string.Equals(localized, descriptor.I18nKey, StringComparison.Ordinal))
         {
             return (localized, descriptor);
@@ -172,14 +170,14 @@ public sealed class FailureHandlingInterceptor(ILocalizationProvider localizatio
         string fallbackKey = GetFallbackKey(descriptor.ErrorCode);
         if (!string.Equals(fallbackKey, descriptor.I18nKey, StringComparison.Ordinal))
         {
-            string fallbackMessage = _localizationProvider.Localize(fallbackKey, locale);
+            string fallbackMessage = localizationProvider.Localize(fallbackKey, locale);
             if (!string.Equals(fallbackMessage, fallbackKey, StringComparison.Ordinal))
             {
                 return (fallbackMessage, descriptor with { I18nKey = fallbackKey });
             }
         }
 
-        string safeMessage = _localizationProvider.Localize(ErrorI18nKeys.Internal, locale);
+        string safeMessage = localizationProvider.Localize(ErrorI18nKeys.Internal, locale);
         return (safeMessage, descriptor with { I18nKey = ErrorI18nKeys.Internal });
     }
 
@@ -275,7 +273,7 @@ public sealed class FailureHandlingInterceptor(ILocalizationProvider localizatio
             .ForContext("ErrorCode", descriptor.ErrorCode)
             .ForContext("StatusCode", descriptor.StatusCode);
 
-        if (exception is GrpcFailureException failure && failure.StructuredLogPayload is not null)
+        if (exception is GrpcFailureException { StructuredLogPayload: not null } failure)
         {
             logger = logger.ForContext("Details", failure.StructuredLogPayload, true);
         }

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
@@ -35,7 +36,7 @@ public class GrpcSecurityService
     public async Task<SecureEnvelope> ExecuteEncryptedOperationAsync<TRequest, TResponse>(
         SecureEnvelope encryptedRequest,
         ServerCallContext context,
-        Func<TRequest, uint, CancellationToken, Task<Result<TResponse, FailureBase>>> handler,
+        Func<TRequest, uint, Option<string>, CancellationToken, Task<Result<TResponse, FailureBase>>> handler,
         [CallerMemberName] string operationName = "")
         where TRequest : class, IMessage<TRequest>, new()
         where TResponse : class, IMessage<TResponse>, new()
@@ -48,6 +49,8 @@ public class GrpcSecurityService
 
         uint connectId = ExtractConnectionId(context);
         ValidateConnectionId(connectId);
+
+        Option<string> idempotencyKey = ExtractIdempotencyKey(context);
 
         Result<Unit, FailureBase> timestampValidation = ValidateTimestamp(encryptedRequest, connectId);
         if (timestampValidation.IsErr)
@@ -65,7 +68,7 @@ public class GrpcSecurityService
         }
 
         Result<TResponse, FailureBase> handlerResult =
-            await handler(decryptResult.Unwrap(), connectId, context.CancellationToken);
+            await handler(decryptResult.Unwrap(), connectId, idempotencyKey, context.CancellationToken);
         if (handlerResult.IsErr)
         {
             activity?.SetTag(GrpcServiceConstants.ActivityTags.HandlerSuccess, false);
@@ -84,7 +87,7 @@ public class GrpcSecurityService
     public async Task<Result<Unit, FailureBase>> ExecuteEncryptedStreamingOperationAsync<TRequest, TFailure>(
         SecureEnvelope encryptedRequest,
         ServerCallContext context,
-        Func<TRequest, uint, CancellationToken, Task<Result<Unit, TFailure>>> handler,
+        Func<TRequest, uint, Option<string>, CancellationToken, Task<Result<Unit, TFailure>>> handler,
         [CallerMemberName] string operationName = "")
         where TRequest : class, IMessage<TRequest>, new()
         where TFailure : FailureBase
@@ -96,6 +99,8 @@ public class GrpcSecurityService
 
         uint connectId = ExtractConnectionId(context);
         ValidateConnectionId(connectId);
+
+        Option<string> idempotencyKey = ExtractIdempotencyKey(context);
 
         Result<Unit, FailureBase> timestampValidation = ValidateTimestamp(encryptedRequest, connectId);
         if (timestampValidation.IsErr)
@@ -112,7 +117,7 @@ public class GrpcSecurityService
             return Result<Unit, FailureBase>.Err(decryptResult.UnwrapErr());
         }
 
-        Result<Unit, TFailure> result = await handler(decryptResult.Unwrap(), connectId, context.CancellationToken);
+        Result<Unit, TFailure> result = await handler(decryptResult.Unwrap(), connectId, idempotencyKey, context.CancellationToken);
         activity?.SetTag(GrpcServiceConstants.ActivityTags.HandlerSuccess, result.IsOk);
 
         return result.Match(
@@ -238,6 +243,11 @@ public class GrpcSecurityService
     private static uint ExtractConnectionId(ServerCallContext context)
     {
         return ServiceUtilities.ExtractConnectId(context);
+    }
+
+    private static Option<string> ExtractIdempotencyKey(ServerCallContext context)
+    {
+        return ServiceUtilities.ExtractIdempotencyKey(context);
     }
 
     private static void ValidateConnectionId(uint connectId)

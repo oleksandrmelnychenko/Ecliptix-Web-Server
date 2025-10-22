@@ -15,6 +15,7 @@ public record InitiateVerificationFlowActorEvent(
     InitiateVerificationRequest.Types.Type RequestType,
     ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> ChannelWriter,
     string CultureName,
+    Option<string> IdempotencyKey,
     ActivityContext ActivityContext = default,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;

@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Threading;
 using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
@@ -16,7 +15,6 @@ using Google.Protobuf;
 using Grpc.Core;
 using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
-using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Serilog;
 using Ecliptix.Utilities.Configuration;
 using Microsoft.Extensions.Options;
@@ -37,7 +35,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
         IGrpcCipherService grpcCipherService,
         IOptions<SecurityConfiguration> securityConfig)
     {
-        _service = new(grpcCipherService, securityConfig);
+        _service = new GrpcSecurityService(grpcCipherService, securityConfig);
         _verificationFlowManagerActor = actorRegistry.Get(ActorIds.VerificationFlowManagerActor);
         _phoneNumberValidator = phoneNumberValidator;
         _grpcCipherService = grpcCipherService;
@@ -52,7 +50,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
             await _service
                 .ExecuteEncryptedStreamingOperationAsync<InitiateVerificationRequest, VerificationFlowFailure>(
                     request, context,
-                    async (initiateRequest, connectId, ct) =>
+                    async (initiateRequest, connectId, idempotencyKey, cancellationToken) =>
                     {
                         BoundedChannelOptions channelOptions =
                             new(GrpcServiceConstants.ChannelOptions.BoundedChannelCapacity)
@@ -63,7 +61,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                             };
 
                         using CancellationTokenSource linkedCts =
-                            CancellationTokenSource.CreateLinkedTokenSource(ct, context.CancellationToken);
+                            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, context.CancellationToken);
 
                         Channel<Result<VerificationCountdownUpdate, VerificationFlowFailure>> channel =
                             Channel.CreateBounded<Result<VerificationCountdownUpdate, VerificationFlowFailure>>(
@@ -91,6 +89,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                                     initiateRequest.Type,
                                     channel.Writer,
                                     _cultureName,
+                                    idempotencyKey,
                                     flowActivity?.Context ?? Activity.Current?.Context ?? default,
                                     linkedCts.Token
                                 ),
@@ -136,7 +135,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
     public override async Task<SecureEnvelope> ValidateMobileNumber(SecureEnvelope request, ServerCallContext context) =>
         await _service.ExecuteEncryptedOperationAsync<ValidateMobileNumberRequest, ValidateMobileNumberResponse>(
             request, context,
-            async (message, _, ct) =>
+            async (message, _, _, cancellationToken) =>
             {
                 Result<MobileNumberValidationResult, VerificationFlowFailure> validationResult =
                     _phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
@@ -151,10 +150,10 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                 if (phoneValidationResult.IsValid)
                 {
                     EnsureMobileNumberActorEvent ensureMobileNumberEvent = new(
-                        phoneValidationResult.ParsedMobileNumberE164!,
-                        phoneValidationResult.DetectedRegion,
+                        phoneValidationResult.ParsedMobileNumberE164.Value!,
+                        phoneValidationResult.DetectedRegion.Match(region => region, () => null),
                         Helpers.FromByteStringToGuid(message.AppDeviceIdentifier),
-                        ct);
+                        cancellationToken);
 
                     Task<Result<Guid, VerificationFlowFailure>> ensureMobileTask =
                         _verificationFlowManagerActor.Ask<Result<Guid, VerificationFlowFailure>>(
@@ -162,7 +161,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                             TimeoutConfiguration.Actor.AskTimeout);
 
                     Result<Guid, VerificationFlowFailure> ensureMobileNumberResult =
-                        await ensureMobileTask.WaitAsync(ct).ConfigureAwait(false);
+                        await ensureMobileTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     ValidateMobileNumberResponse response = ensureMobileNumberResult.Match(
                         guid => new ValidateMobileNumberResponse
@@ -183,7 +182,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                     ValidateMobileNumberResponse response = new()
                     {
                         Result = VerificationResult.InvalidMobile,
-                        Message = phoneValidationResult.MessageKey
+                        Message = phoneValidationResult.MessageKey.Value!
                     };
                     return Result<ValidateMobileNumberResponse, FailureBase>.Ok(response);
                 }
@@ -193,7 +192,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
         ServerCallContext context) =>
         await _service.ExecuteEncryptedOperationAsync<ValidateMobileNumberRequest, ValidateMobileNumberResponse>(
             request, context,
-            async (message, _, ct) =>
+            async (message, _, _, cancellationToken) =>
             {
                 Result<MobileNumberValidationResult, VerificationFlowFailure> validationResult =
                     _phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
@@ -207,16 +206,16 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                 if (phoneValidationResult.IsValid)
                 {
                     VerifyMobileForSecretKeyRecoveryActorEvent verifyMobileEvent = new(
-                        phoneValidationResult.ParsedMobileNumberE164!,
-                        phoneValidationResult.DetectedRegion,
-                        ct);
+                        phoneValidationResult.ParsedMobileNumberE164.Value!,
+                        phoneValidationResult.DetectedRegion.Match(region => region, () => null),
+                        cancellationToken);
 
                     Task<Result<Guid, VerificationFlowFailure>> verifyMobileTask =
                         _verificationFlowManagerActor.Ask<Result<Guid, VerificationFlowFailure>>(
                             verifyMobileEvent,
                             TimeoutConfiguration.Actor.AskTimeout);
                     Result<Guid, VerificationFlowFailure> verifyMobileResult =
-                        await verifyMobileTask.WaitAsync(ct).ConfigureAwait(false);
+                        await verifyMobileTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     ValidateMobileNumberResponse response = verifyMobileResult.Match(
                         guid => new ValidateMobileNumberResponse
@@ -239,7 +238,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                     ValidateMobileNumberResponse response = new()
                     {
                         Result = VerificationResult.InvalidMobile,
-                        Message = phoneValidationResult.MessageKey
+                        Message = phoneValidationResult.MessageKey.Value!
                     };
                     return Result<ValidateMobileNumberResponse, FailureBase>.Ok(response);
                 }
@@ -248,11 +247,11 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
     public override async Task<SecureEnvelope> CheckMobileNumberAvailability(SecureEnvelope request, ServerCallContext context) =>
         await _service.ExecuteEncryptedOperationAsync<CheckMobileNumberAvailabilityRequest, CheckMobileNumberAvailabilityResponse>(
             request, context,
-            async (message, _, ct) =>
+            async (message, _, _, cancellationToken) =>
             {
                 CheckMobileNumberAvailabilityActorEvent actorEvent = new(
                     Helpers.FromByteStringToGuid(message.MobileNumberIdentifier),
-                    ct);
+                    cancellationToken);
 
                 Task<Result<string, VerificationFlowFailure>> checkTask =
                     _verificationFlowManagerActor.Ask<Result<string, VerificationFlowFailure>>(
@@ -260,7 +259,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                         TimeoutConfiguration.Actor.AskTimeout);
 
                 Result<string, VerificationFlowFailure> checkResult =
-                    await checkTask.WaitAsync(ct).ConfigureAwait(false);
+                    await checkTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return checkResult.Match(
                     status => Result<CheckMobileNumberAvailabilityResponse, FailureBase>.Ok(new CheckMobileNumberAvailabilityResponse
@@ -273,10 +272,10 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
 
     public override async Task<SecureEnvelope> VerifyOtp(SecureEnvelope request, ServerCallContext context) =>
         await _service.ExecuteEncryptedOperationAsync<VerifyCodeRequest, VerifyCodeResponse>(request, context,
-            async (message, _, ct) =>
+            async (message, _, _, cancellationToken) =>
             {
-                VerifyFlowActorEvent actorEvent = new(message.StreamConnectId, message.Code, _cultureName, ct);
-                actorEvent = actorEvent with { CancellationToken = ct };
+                VerifyFlowActorEvent actorEvent = new(message.StreamConnectId, message.Code, _cultureName, cancellationToken);
+                actorEvent = actorEvent with { CancellationToken = cancellationToken };
 
                 Task<Result<VerifyCodeResponse, VerificationFlowFailure>> verifyTask =
                     _verificationFlowManagerActor.Ask<Result<VerifyCodeResponse, VerificationFlowFailure>>(
@@ -284,7 +283,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                         TimeoutConfiguration.Actor.AskTimeout);
 
                 Result<VerifyCodeResponse, VerificationFlowFailure> verificationResult =
-                    await verifyTask.WaitAsync(ct).ConfigureAwait(false);
+                    await verifyTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return verificationResult.Match(
                     Result<VerifyCodeResponse, FailureBase>.Ok,

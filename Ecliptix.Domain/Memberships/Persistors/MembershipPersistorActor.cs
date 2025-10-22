@@ -51,7 +51,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 cmd.VerificationFlowId, cmd.Purpose, cmd.FlowStatus);
 
             Result<Unit, VerificationFlowFailure> result = await ExecuteWithContext(
-                (ctx, ct) => UpdateMembershipVerificationFlowAsync(ctx, cmd, ct),
+                (ctx, cancellationToken) => UpdateMembershipVerificationFlowAsync(ctx, cmd, cancellationToken),
                 "UpdateMembershipVerificationFlow");
 
             result.Match<Unit>(
@@ -120,9 +120,9 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             IActorRef replyTo = Sender;
             CancellationToken messageToken = ExtractCancellationToken(message);
 
-            Task<Result<TResult, VerificationFlowFailure>> Operation(EcliptixSchemaContext ctx, CancellationToken ct)
+            Task<Result<TResult, VerificationFlowFailure>> Operation(EcliptixSchemaContext ctx, CancellationToken cancellationToken)
             {
-                CancellationToken effectiveToken = CombineCancellationTokens(ct, messageToken, out CancellationTokenSource? linkedCts);
+                CancellationToken effectiveToken = CombineCancellationTokens(cancellationToken, messageToken, out CancellationTokenSource? linkedCts);
                 try
                 {
                     return handler(ctx, message, effectiveToken);

@@ -28,10 +28,10 @@ public abstract class PersistorBase<TFailure> : ReceiveActor
         TimeSpan operationTimeout = GetOperationTimeout(operationName);
 
         return await PersistorRetryPolicy.ExecuteWithRetryAsync(
-            async (ct) =>
+            async (cancellationToken) =>
             {
-                await using EcliptixSchemaContext ctx = await _dbContextFactory.CreateDbContextAsync(ct);
-                return await operation(ctx, ct);
+                await using EcliptixSchemaContext ctx = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+                return await operation(ctx, cancellationToken);
             },
             operationName,
             operationTimeout,

@@ -62,7 +62,7 @@ public static class PersistorRetryPolicy
         try
         {
             return await policyWrap.ExecuteAsync(
-                async (ct) => await operation(ct),
+                async (cancellationToken) => await operation(cancellationToken),
                 cancellationToken);
         }
         catch (TimeoutRejectedException timeoutEx)

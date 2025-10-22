@@ -270,6 +270,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         CommandAsync<PrepareForTerminationMessage>(HandleClientDisconnection);
         CommandAsync<SessionExpiredMessageDeliveredEvent>(HandleSessionExpiredMessageDelivered);
         CommandAsync<FallbackCleanupEvent>(HandleFallbackCleanup);
+        Command<CheckSessionValidityQuery>(HandleSessionValidityCheck);
+        CommandAsync<ReplaceChannelWriterCommand>(HandleReplaceChannelWriter);
     }
 
     private void OtpActive()
@@ -282,6 +284,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         CommandAsync<PrepareForTerminationMessage>(HandleClientDisconnection);
         CommandAsync<SessionExpiredMessageDeliveredEvent>(HandleSessionExpiredMessageDelivered);
         CommandAsync<FallbackCleanupEvent>(HandleFallbackCleanup);
+        Command<CheckSessionValidityQuery>(HandleSessionValidityCheck);
+        CommandAsync<ReplaceChannelWriterCommand>(HandleReplaceChannelWriter);
     }
 
     private void OtpExpiredWaitingForSession()
@@ -994,7 +998,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 _connectId,
                 _verificationFlow.Value?.UniqueIdentifier,
                 smsAttempt,
-                smsResult?.ErrorMessage ?? "unknown");
+                smsResult?.ErrorMessage.Match(err => err, () => "unknown") ?? "unknown");
             _activity?.AddEvent(new ActivityEvent("verification.otp.failed"));
 
             _activeOtp = null;
@@ -1442,6 +1446,51 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             VerificationFlowTelemetry.ChannelDrops.Add(1, _metricTags);
             CompleteWriter();
         }
+    }
+
+    private void HandleSessionValidityCheck(CheckSessionValidityQuery _)
+    {
+        TimeSpan remaining = _sessionDeadline - DateTimeOffset.UtcNow;
+        bool isValid = remaining > TimeSpan.Zero && _activeOtp != null;
+        uint remainingSeconds = (uint)Math.Max(0, remaining.TotalSeconds);
+
+        Sender.Tell(new SessionValidityResponse(isValid, remainingSeconds));
+    }
+
+    private async Task HandleReplaceChannelWriter(ReplaceChannelWriterCommand cmd)
+    {
+        if (cmd.ConnectId != _connectId)
+        {
+            return;
+        }
+
+        Serilog.Log.Information(
+            "[verification.flow.writer-replace] ConnectId {ConnectId} - Replacing channel writer for stream resume",
+            _connectId);
+
+        CompleteWriter();
+
+        _writer = cmd.NewWriter;
+        _writerCompleted = false;
+
+        TimeSpan remaining = _sessionDeadline - DateTimeOffset.UtcNow;
+        uint remainingSeconds = (uint)Math.Max(0, remaining.TotalSeconds);
+        _activeOtpRemainingSeconds = remainingSeconds;
+
+        await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+            new VerificationCountdownUpdate
+            {
+                SecondsRemaining = remainingSeconds,
+                SessionIdentifier = _verificationFlow.HasValue
+                    ? Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier)
+                    : ByteString.Empty,
+                Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Active,
+                Message = ""
+            }));
+
+        Serilog.Log.Information(
+            "[verification.flow.resumed] ConnectId {ConnectId} - Stream resumed at {RemainingSeconds}s",
+            _connectId, remainingSeconds);
     }
 
     protected override void PostStop()

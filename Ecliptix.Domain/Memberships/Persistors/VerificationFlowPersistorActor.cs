@@ -117,9 +117,9 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             IActorRef replyTo = Sender;
             CancellationToken messageToken = message.CancellationToken;
 
-            Task<Result<TResult, VerificationFlowFailure>> Operation(EcliptixSchemaContext ctx, CancellationToken ct)
+            Task<Result<TResult, VerificationFlowFailure>> Operation(EcliptixSchemaContext ctx, CancellationToken cancellationToken)
             {
-                CancellationToken effectiveToken = CombineCancellationTokens(ct, messageToken, out CancellationTokenSource? linkedSource);
+                CancellationToken effectiveToken = CombineCancellationTokens(cancellationToken, messageToken, out CancellationTokenSource? linkedSource);
                 try
                 {
                     return handler(ctx, message, effectiveToken);

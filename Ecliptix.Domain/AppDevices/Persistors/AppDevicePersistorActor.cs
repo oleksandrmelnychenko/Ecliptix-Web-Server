@@ -25,7 +25,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
     {
         Receive<RegisterAppDeviceIfNotExistActorEvent>(args =>
             ExecuteWithContext(
-                    (ctx, ct) => RegisterAppDeviceAsync(ctx, args.AppDevice, ct),
+                    (ctx, cancellationToken) => RegisterAppDeviceAsync(ctx, args.AppDevice, cancellationToken),
                     "RegisterAppDevice",
                     args.CancellationToken)
                 .PipeTo(Sender));

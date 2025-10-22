@@ -39,7 +39,6 @@ using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Services;
 using Ecliptix.Utilities;
-using static Ecliptix.Core.Configuration.NetworkConstants;
 using AppConstants = Ecliptix.Core.Configuration.ApplicationConstants;
 using HealthStatus = Ecliptix.Core.Json.HealthStatus;
 
@@ -126,10 +125,13 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<RequestMetaDataInterceptor>();
     builder.Services.AddSingleton<ThreadCultureInterceptor>();
 
-    RegisterSecurity(builder.Services);
+    NetworkConfiguration networkConfig = new();
+    builder.Configuration.GetSection(NetworkConfiguration.SectionName).Bind(networkConfig);
+
+    RegisterSecurity(builder.Services, networkConfig);
     RegisterLocalization(builder.Services);
     RegisterValidators(builder.Services);
-    RegisterGrpc(builder.Services);
+    RegisterGrpc(builder.Services, networkConfig);
 
     builder.Services.Configure<TwilioSettings>(
         builder.Configuration.GetSection(AppConstants.Configuration.TwilioSettings));
@@ -137,6 +139,8 @@ static void ConfigureServices(WebApplicationBuilder builder)
         builder.Configuration.GetSection(AppConstants.Configuration.SecurityKeys));
     builder.Services.Configure<SecurityConfiguration>(
         builder.Configuration.GetSection(SecurityConfiguration.SectionName));
+    builder.Services.Configure<NetworkConfiguration>(
+        builder.Configuration.GetSection(NetworkConfiguration.SectionName));
 
     IConfigurationSection securityKeysSection =
         builder.Configuration.GetSection(AppConstants.Configuration.SecurityKeys);
@@ -301,7 +305,7 @@ static void RegisterLocalization(IServiceCollection services)
     });
 }
 
-static void RegisterSecurity(IServiceCollection services)
+static void RegisterSecurity(IServiceCollection services, NetworkConfiguration networkConfig)
 {
     services.AddRateLimiter(options =>
     {
@@ -311,11 +315,11 @@ static void RegisterSecurity(IServiceCollection services)
                               AppConstants.FallbackValues.UnknownIpAddress,
                 factory: _ => new SlidingWindowRateLimiterOptions
                 {
-                    PermitLimit = RateLimit.PermitLimit,
-                    Window = TimeSpan.FromMinutes(RateLimit.WindowMinutes),
-                    SegmentsPerWindow = RateLimit.SegmentsPerWindow,
+                    PermitLimit = networkConfig.RateLimit.PermitLimit,
+                    Window = TimeSpan.FromMinutes(networkConfig.RateLimit.WindowMinutes),
+                    SegmentsPerWindow = networkConfig.RateLimit.SegmentsPerWindow,
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    QueueLimit = RateLimit.QueueLimit
+                    QueueLimit = networkConfig.RateLimit.QueueLimit
                 }));
 
         options.OnRejected = (context, _) =>
@@ -330,11 +334,11 @@ static void RegisterSecurity(IServiceCollection services)
 
     services.Configure<KestrelServerOptions>(options =>
     {
-        options.Limits.MaxRequestBodySize = Limits.MaxRequestBodySizeBytes;
+        options.Limits.MaxRequestBodySize = networkConfig.Limits.MaxRequestBodySizeBytes;
         options.Limits.RequestHeadersTimeout = TimeoutConfiguration.Network.RequestHeadersTimeout;
         options.Limits.KeepAliveTimeout = TimeoutConfiguration.Network.KeepAliveTimeout;
-        options.Limits.MaxConcurrentConnections = Limits.MaxConcurrentConnections;
-        options.Limits.MaxConcurrentUpgradedConnections = Limits.MaxConcurrentUpgradedConnections;
+        options.Limits.MaxConcurrentConnections = networkConfig.Limits.MaxConcurrentConnections;
+        options.Limits.MaxConcurrentUpgradedConnections = networkConfig.Limits.MaxConcurrentUpgradedConnections;
     });
 
     services.AddDistributedMemoryCache();
@@ -347,12 +351,12 @@ static void RegisterValidators(IServiceCollection services)
     services.AddResponseCompression();
 }
 
-static void RegisterGrpc(IServiceCollection services)
+static void RegisterGrpc(IServiceCollection services, NetworkConfiguration networkConfig)
 {
     services.AddGrpc(options =>
     {
         options.ResponseCompressionLevel = CompressionLevel.Fastest;
-        options.ResponseCompressionAlgorithm = Compression.Algorithm;
+        options.ResponseCompressionAlgorithm = networkConfig.Compression.Algorithm;
         options.EnableDetailedErrors = true;
         options.Interceptors.Add<FailureHandlingInterceptor>();
         options.Interceptors.Add<RequestMetaDataInterceptor>();
@@ -363,8 +367,8 @@ static void RegisterGrpc(IServiceCollection services)
 
     services.Configure<KestrelServerOptions>(options =>
     {
-        options.ListenAnyIP(Ports.Grpc, listenOptions => { listenOptions.Protocols = HttpProtocols.Http2; });
-        options.ListenAnyIP(Ports.Http, listenOptions => { listenOptions.Protocols = HttpProtocols.Http1; });
+        options.ListenAnyIP(networkConfig.Ports.Grpc, listenOptions => { listenOptions.Protocols = HttpProtocols.Http2; });
+        options.ListenAnyIP(networkConfig.Ports.Http, listenOptions => { listenOptions.Protocols = HttpProtocols.Http1; });
     });
 }
 

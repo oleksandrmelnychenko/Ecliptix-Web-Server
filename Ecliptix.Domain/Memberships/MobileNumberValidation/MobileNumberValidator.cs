@@ -81,7 +81,11 @@ public class MobileNumberValidator(ILocalizationProvider localizationProvider) :
                 string messageKey = MapLibValidationReasonToMessageKey(possibility);
                 string message = localizationProvider.Localize(messageKey, cultureName);
 
-                return MobileNumberValidationResult.CreateInvalid(message, internalReason, e164Format);
+                return MobileNumberValidationResult.CreateInvalid(
+                    message,
+                    internalReason,
+                    Option<string>.Some(e164Format),
+                    Option<object[]>.None);
             }
 
             PhoneNumberType libType = _phoneNumberUtil.GetNumberType(parsedMobileNumber);

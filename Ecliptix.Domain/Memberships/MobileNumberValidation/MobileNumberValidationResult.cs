@@ -1,3 +1,5 @@
+using Ecliptix.Utilities;
+
 namespace Ecliptix.Domain.Memberships.MobileNumberValidation;
 
 public record MobileNumberValidationResult
@@ -8,39 +10,47 @@ public record MobileNumberValidationResult
         MobileCheckStatus mobileStatus)
     {
         IsValid = true;
-        ParsedMobileNumberE164 = parsedMobileNumberE164;
-        DetectedRegion = detectedRegion;
+        ParsedMobileNumberE164 = Option<string>.Some(parsedMobileNumberE164);
+        DetectedRegion = Option<string>.Some(detectedRegion);
         MobileStatus = mobileStatus;
+        MessageKey = Option<string>.None;
+        MessageArgs = Option<object[]>.None;
+        LibFailureReason = Option<ValidationFailureReason>.None;
     }
 
     private MobileNumberValidationResult(
         string messageKey,
-        ValidationFailureReason? libFailureReason,
-        string? parsedNumberIfAvailable = null,
-        object[]? messageArgs = null)
+        Option<ValidationFailureReason> libFailureReason,
+        Option<string> parsedNumberIfAvailable,
+        Option<object[]> messageArgs)
     {
         IsValid = false;
-        MessageKey = messageKey;
+        MessageKey = Option<string>.Some(messageKey);
         LibFailureReason = libFailureReason;
         ParsedMobileNumberE164 = parsedNumberIfAvailable;
         MobileStatus = MobileCheckStatus.IsNotMobile;
         MessageArgs = messageArgs;
+        DetectedRegion = Option<string>.None;
     }
 
     public bool IsValid { get; }
-    public string? ParsedMobileNumberE164 { get; }
-    public string? DetectedRegion { get; }
+    public Option<string> ParsedMobileNumberE164 { get; }
+    public Option<string> DetectedRegion { get; }
     public MobileCheckStatus MobileStatus { get; }
-    public string? MessageKey { get; }
-    public object[]? MessageArgs { get; }
-    public ValidationFailureReason? LibFailureReason { get; }
+    public Option<string> MessageKey { get; }
+    public Option<object[]> MessageArgs { get; }
+    public Option<ValidationFailureReason> LibFailureReason { get; }
 
     public static MobileNumberValidationResult CreateInvalid(
         string messageKey,
         ValidationFailureReason libFailureReason,
-        string? parsedNumberIfAvailable = null,
-        object[]? messageArgs = null)
+        Option<string> parsedNumberIfAvailable,
+        Option<object[]> messageArgs)
     {
-        return new MobileNumberValidationResult(messageKey, libFailureReason, parsedNumberIfAvailable, messageArgs);
+        return new MobileNumberValidationResult(
+            messageKey,
+            Option<ValidationFailureReason>.Some(libFailureReason),
+            parsedNumberIfAvailable,
+            messageArgs);
     }
 }

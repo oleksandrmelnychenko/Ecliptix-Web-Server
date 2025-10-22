@@ -34,6 +34,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
 
     private readonly Dictionary<IActorRef, ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>>
         _flowWriters = new();
+    private readonly Dictionary<string, IActorRef> _idempotencyToActor = new();
 
     public VerificationFlowManagerActor(
         IActorRef persistor,
@@ -69,7 +70,96 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
 
         if (actorEvent.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
         {
-            if (!existingActor.IsNobody())
+            IActorRef? idempotencyActor = null;
+            if (actorEvent.IdempotencyKey.HasValue &&
+                _idempotencyToActor.TryGetValue(actorEvent.IdempotencyKey.Value!, out IActorRef? trackedActor))
+            {
+                idempotencyActor = trackedActor;
+            }
+
+            if (idempotencyActor != null && !idempotencyActor.IsNobody())
+            {
+                try
+                {
+                    Task<SessionValidityResponse> validityTask = idempotencyActor.Ask<SessionValidityResponse>(
+                        new CheckSessionValidityQuery(),
+                        timeout: TimeSpan.FromSeconds(5));
+
+                    SessionValidityResponse validity = await validityTask;
+
+                    if (validity.IsValid)
+                    {
+                        Log.Information(
+                            "[verification.flow.manager.resume] ConnectId {ConnectId} IdempotencyKey {IdempotencyKey} - Resuming valid session with {RemainingSeconds}s remaining",
+                            actorEvent.ConnectId, actorEvent.IdempotencyKey, validity.RemainingSeconds);
+
+                        _flowWriters[idempotencyActor] = actorEvent.ChannelWriter;
+                        idempotencyActor.Tell(new ReplaceChannelWriterCommand(actorEvent.ConnectId, actorEvent.ChannelWriter));
+
+                        Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
+                        return;
+                    }
+
+                    Log.Information(
+                        "[verification.flow.manager.expired] ConnectId {ConnectId} IdempotencyKey {IdempotencyKey} - Session expired, creating new flow",
+                        actorEvent.ConnectId, actorEvent.IdempotencyKey);
+                }
+                catch (AskTimeoutException)
+                {
+                    Log.Warning(
+                        "[verification.flow.manager.timeout] ConnectId {ConnectId} IdempotencyKey {IdempotencyKey} - Actor not responding",
+                        actorEvent.ConnectId, actorEvent.IdempotencyKey);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex,
+                        "[verification.flow.manager.validity-check-failed] ConnectId {ConnectId} IdempotencyKey {IdempotencyKey} - Validity check failed",
+                        actorEvent.ConnectId, actorEvent.IdempotencyKey);
+                }
+
+                _flowWriters.Remove(idempotencyActor, out _);
+                Context.Unwatch(idempotencyActor);
+                if (actorEvent.IdempotencyKey.HasValue)
+                {
+                    _idempotencyToActor.Remove(actorEvent.IdempotencyKey.Value!);
+                }
+
+                TimeSpan terminationTimeout = TimeSpan.FromSeconds(
+                    Math.Max(5,
+                        _securityConfig.Value.VerificationFlow.ChannelWriteTimeoutSeconds +
+                        _securityConfig.Value.VerificationFlow.OtpExpirationSeconds));
+
+                try
+                {
+                    Task<bool> gracefulStop = idempotencyActor.GracefulStop(
+                        terminationTimeout,
+                        new PrepareForTerminationMessage());
+
+                    if (actorEvent.CancellationToken.CanBeCanceled)
+                    {
+                        await gracefulStop.WaitAsync(actorEvent.CancellationToken);
+                    }
+                    else
+                    {
+                        await gracefulStop;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    Log.Warning(
+                        "[verification.flow.manager.force-stop] Cancellation while waiting for termination of ConnectId {ConnectId}",
+                        actorEvent.ConnectId);
+                    Context.Stop(idempotencyActor);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex,
+                        "[verification.flow.manager.force-stop] Failed to gracefully stop flow actor for ConnectId {ConnectId}",
+                        actorEvent.ConnectId);
+                    Context.Stop(idempotencyActor);
+                }
+            }
+            else if (!existingActor.IsNobody())
             {
                 _flowWriters.Remove(existingActor, out _);
                 Context.Unwatch(existingActor);
@@ -130,8 +220,13 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
             Context.Watch(newFlowActor);
             _flowWriters[newFlowActor] = actorEvent.ChannelWriter;
 
-            Log.Information("[verification.flow.manager.spawned] ConnectId {ConnectId} Purpose {Purpose}",
-                actorEvent.ConnectId, actorEvent.Purpose);
+            if (actorEvent.IdempotencyKey.HasValue)
+            {
+                _idempotencyToActor[actorEvent.IdempotencyKey.Value!] = newFlowActor;
+            }
+
+            Log.Information("[verification.flow.manager.spawned] ConnectId {ConnectId} Purpose {Purpose} IdempotencyKey {IdempotencyKey}",
+                actorEvent.ConnectId, actorEvent.Purpose, actorEvent.IdempotencyKey.Match(key => key, () => "none"));
 
             Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
             return;
@@ -187,11 +282,42 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         IActorRef completedActor = actorEvent.ActorRef;
         _flowWriters.Remove(completedActor,
             out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? _);
+
+        string? keyToRemove = null;
+        foreach (KeyValuePair<string, IActorRef> kvp in _idempotencyToActor)
+        {
+            if (kvp.Value.Equals(completedActor))
+            {
+                keyToRemove = kvp.Key;
+                break;
+            }
+        }
+
+        if (keyToRemove != null)
+        {
+            _idempotencyToActor.Remove(keyToRemove);
+        }
     }
 
     private void HandleTerminated(Terminated terminatedMessage)
     {
         IActorRef deadActor = terminatedMessage.ActorRef;
+
+        string? keyToRemove = null;
+        foreach (KeyValuePair<string, IActorRef> kvp in _idempotencyToActor)
+        {
+            if (kvp.Value.Equals(deadActor))
+            {
+                keyToRemove = kvp.Key;
+                break;
+            }
+        }
+
+        if (keyToRemove != null)
+        {
+            _idempotencyToActor.Remove(keyToRemove);
+        }
+
         if (_flowWriters.Remove(deadActor,
                 out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? writer))
         {

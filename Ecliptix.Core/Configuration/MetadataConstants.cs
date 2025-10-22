@@ -7,7 +7,6 @@ public static class MetadataConstants
     public static class Keys
     {
         public const string RequestId = "request-id";
-        public const string DateTime = "request-date";
         public const string LocalIpAddress = "local-ip-address";
         public const string PublicIpAddress = "public-ip-address";
         public const string Platform = "platform";
@@ -17,6 +16,7 @@ public static class MetadataConstants
         public const string AppDeviceId = "d-identifier";
         public const string ConnectionContextId = "c-context-id";
         public const string OperationContextId = "o-context-id";
+        public const string IdempotencyKey = "x-idempotency-key";
     }
 
     public static class SecurityKeys

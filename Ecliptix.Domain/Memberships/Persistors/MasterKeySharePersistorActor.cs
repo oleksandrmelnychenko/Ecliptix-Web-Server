@@ -30,21 +30,21 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
     {
         Receive<InsertMasterKeySharesEvent>(cmd =>
             ExecuteWithContext(
-                    (ctx, ct) => InsertMasterKeySharesAsync(ctx, cmd, ct),
+                    (ctx, cancellationToken) => InsertMasterKeySharesAsync(ctx, cmd, cancellationToken),
                     "InsertMasterKeyShares",
                     cmd.CancellationToken)
                 .PipeTo(Sender));
 
         Receive<GetMasterKeySharesEvent>(cmd =>
             ExecuteWithContext(
-                    (ctx, ct) => GetMasterKeySharesByMembershipIdAsync(ctx, cmd, ct),
+                    (ctx, cancellationToken) => GetMasterKeySharesByMembershipIdAsync(ctx, cmd, cancellationToken),
                     "GetMasterKeyShares",
                     cmd.CancellationToken)
                 .PipeTo(Sender));
 
         Receive<DeleteMasterKeySharesEvent>(cmd =>
             ExecuteWithContext(
-                    (ctx, ct) => DeleteMasterKeySharesAsync(ctx, cmd, ct),
+                    (ctx, cancellationToken) => DeleteMasterKeySharesAsync(ctx, cmd, cancellationToken),
                     "DeleteMasterKeyShares",
                     cmd.CancellationToken)
                 .PipeTo(Sender));
