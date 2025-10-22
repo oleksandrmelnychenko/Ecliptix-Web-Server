@@ -3,7 +3,7 @@ namespace Ecliptix.Domain.Memberships.Failures;
 public static class VerificationFlowMessageKeys
 {
     public const string VerificationFlowExpired = "flow_expired";
-    public const string VerificationFlowNotFound = "verification_flow_not_found";
+    public const string VerificationFlowNotFound = "verification_flow_not_exist";
     public const string CreateMembershipVerificationFlowNotFound = "verification_session_not_found";
 
     public const string InvalidOtp = "otp_invalid";
@@ -25,6 +25,7 @@ public static class VerificationFlowMessageKeys
 
     public const string RateLimitExceeded = "security_rate_limit_exceeded";
     public const string TooManySigninAttempts = "signin_too_many_attempts";
+    public const string MobileOtpLimitExhausted = "mobile_otp_limit_exhausted";
 
     public const string ActivityStatusInvalid = "activity_status_invalid";
     public const string MobileNumberCannotBeEmpty = "mobile_cannot_be_empty";

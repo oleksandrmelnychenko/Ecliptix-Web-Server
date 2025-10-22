@@ -147,4 +147,33 @@ public static class VerificationFlowQueries
             .AsNoTracking()
             .CountAsync(cancellationToken);
     }
+
+    public static async Task<(int OtpCount, DateTimeOffset? LastFlowUpdatedAt)> CountRecentOtpsByMobileWithLastUpdate(
+        EcliptixSchemaContext ctx,
+        Guid mobileUniqueId,
+        DateTimeOffset since,
+        CancellationToken cancellationToken = default)
+    {
+        var flowsWithOtpCounts = await ctx.VerificationFlows
+            .Where(vf => vf.MobileNumberId == mobileUniqueId &&
+                        vf.CreatedAt >= since &&
+                        !vf.IsDeleted)
+            .Select(vf => new
+            {
+                vf.UpdatedAt,
+                OtpCount = ctx.OtpCodes.Count(o => o.VerificationFlowId == vf.Id && !o.IsDeleted)
+            })
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        if (!flowsWithOtpCounts.Any())
+        {
+            return (0, null);
+        }
+
+        int totalOtps = flowsWithOtpCounts.Sum(x => x.OtpCount);
+        DateTimeOffset lastUpdated = flowsWithOtpCounts.Max(x => x.UpdatedAt);
+
+        return (totalOtps, lastUpdated);
+    }
 }

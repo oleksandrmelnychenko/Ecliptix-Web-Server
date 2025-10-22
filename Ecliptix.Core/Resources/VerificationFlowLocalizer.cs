@@ -36,7 +36,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["verification_flow_reused_and_updated"] = "Existing session updated; please continue.",
                 ["verification_flow_conflict"] = "Active session exists; finish or cancel first.",
                 ["flow_expired"] = "Session expired; start a new one.",
-                ["verification_flow_not_found"] = "Session not found; start over.",
+                ["verification_flow_not_exist"] = "Session expired. Please start over.",
                 ["verification_flow_not_verified"] = "Session not verified; please complete verification.",
                 ["verification_session_not_found"] = "Verification details not found; please retry.",
                 ["otp_invalid"] = "Invalid OTP; try again.",
@@ -113,6 +113,8 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["resend_cooldown_active"] = "Please wait a moment before requesting a new code",
                 ["max_otp_attempts_reached"] =
                     "You've reached the maximum number of OTP requests. Please try again later",
+                ["mobile_otp_limit_exhausted"] =
+                    "Too many verification attempts for this phone number. Please try again in {0} minutes",
                 ["mobile_number_not_found"] = "Mobile number not found.",
                 ["device_not_found"] = "Device not found.",
                 ["flow_not_found_or_invalid"] = "Verification session not found or expired.",
@@ -159,7 +161,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["verification_flow_reused_and_updated"] = "Існуючу сесію оновлено; будь ласка, продовжуйте.",
                 ["verification_flow_conflict"] = "Активна сесія існує, завершіть або скасуйте її.",
                 ["flow_expired"] = "Сесія закінчилася, почніть нову.",
-                ["verification_flow_not_found"] = "Сесію не знайдено, почніть знову.",
+                ["verification_flow_not_exist"] = "Сесія закінчилась. Будь ласка, почніть знову.",
                 ["verification_flow_not_verified"] = "Сесію не підтверджено; будь ласка, завершіть перевірку.",
                 ["verification_session_not_found"] = "Дані для перевірки не знайдено; будь ласка, повторіть спробу.",
                 ["otp_invalid"] = "Неправильний OTP; спробуйте ще раз.",
@@ -239,6 +241,8 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["resend_cooldown_active"] = "Будь ласка, зачекайте хвилинку перед запитом нового коду",
                 ["max_otp_attempts_reached"] =
                     "Ви досягли максимальної кількості запитів OTP. Будь ласка, спробуйте пізніше",
+                ["mobile_otp_limit_exhausted"] =
+                    "Забагато спроб верифікації для цього номера телефону. Будь ласка, спробуйте через {0} хвилин",
                 ["mobile_number_not_found"] = "Номер телефону не знайдено.",
                 ["device_not_found"] = "Пристрій не знайдено.",
                 ["flow_not_found_or_invalid"] = "Сесію верифікації не знайдено або вона закінчилася.",

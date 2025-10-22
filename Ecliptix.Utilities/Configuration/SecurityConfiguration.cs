@@ -25,6 +25,8 @@ public sealed class VerificationFlowTimeouts
 
     public int OtpExpirationSeconds { get; set; } = 30;
 
+    public int ResendCooldownBufferSeconds { get; set; } = 5;
+
     public int MembershipCreationTimeoutSeconds { get; set; } = 10;
 
     public int ResendOtpCheckTimeoutSeconds { get; set; } = 15;
@@ -111,6 +113,8 @@ public sealed class GrpcSecurityParameters
 public sealed class VerificationFlowLimitsConfiguration
 {
     public int MaxOtpSendsPerFlow { get; set; } = 5;
+    public int MaxOtpSendsPerMobilePerHour { get; set; } = 5;
+    public int OtpExhaustionCooldownMinutes { get; set; } = 60;
     public int PasswordRecoveryAttemptsPerHourPerMobile { get; set; } = 3;
     public int PasswordRecoveryAttemptsPerHourPerDevice { get; set; } = 3;
     public int VerificationFlowInitiationsPerHourPerMobile { get; set; } = 10;

@@ -65,7 +65,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             InitiateFlowAsync,
             "InitiateVerificationFlow");
 
-        ReceivePersistorCommand<RequestResendOtpActorEvent, string>(
+        ReceivePersistorCommand<RequestResendOtpActorEvent, (string Outcome, uint RemainingSeconds)>(
             RequestResendOtpAsync,
             "RequestResendOtp");
 
@@ -365,7 +365,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         }
     }
 
-    private async Task<Result<string, VerificationFlowFailure>> RequestResendOtpAsync(
+    private async Task<Result<(string Outcome, uint RemainingSeconds), VerificationFlowFailure>> RequestResendOtpAsync(
         EcliptixSchemaContext ctx,
         RequestResendOtpActorEvent cmd,
         CancellationToken cancellationToken)
@@ -376,33 +376,35 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 await VerificationFlowQueries.GetByUniqueId(ctx, cmd.FlowUniqueId, cancellationToken);
             if (!flowOpt.HasValue)
             {
-                return Result<string, VerificationFlowFailure>.Err(
+                return Result<(string, uint), VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("Flow not found"));
             }
 
             VerificationFlowEntity flow = flowOpt.Value!;
 
-            if (flow.LastOtpSentAt.HasValue)
+            if (flow.ResendAvailableAt.HasValue)
             {
-                TimeSpan elapsed = DateTimeOffset.UtcNow - flow.LastOtpSentAt.Value;
-                TimeSpan cooldown = TimeSpan.FromSeconds(_securityConfig.Value.VerificationFlow.OtpExpirationSeconds);
-
-                if (elapsed < cooldown)
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                if (now < flow.ResendAvailableAt.Value)
                 {
-                    return Result<string, VerificationFlowFailure>.Ok(VerificationFlowMessageKeys.ResendCooldown);
+                    uint remainingSeconds = (uint)Math.Ceiling((flow.ResendAvailableAt.Value - now).TotalSeconds);
+                    return Result<(string, uint), VerificationFlowFailure>.Ok(
+                        (VerificationFlowMessageKeys.ResendCooldown, remainingSeconds));
                 }
             }
 
             if (flow.OtpCount >= _securityConfig.Value.VerificationFlowLimits.MaxOtpSendsPerFlow)
             {
-                return Result<string, VerificationFlowFailure>.Ok(VerificationFlowMessageKeys.OtpMaxAttemptsReached);
+                return Result<(string, uint), VerificationFlowFailure>.Ok(
+                    (VerificationFlowMessageKeys.OtpMaxAttemptsReached, 0));
             }
 
-            return Result<string, VerificationFlowFailure>.Ok(VerificationFlowMessageKeys.ResendAllowed);
+            return Result<(string, uint), VerificationFlowFailure>.Ok(
+                (VerificationFlowMessageKeys.ResendAllowed, 0));
         }
         catch (Exception ex)
         {
-            return Result<string, VerificationFlowFailure>.Err(
+            return Result<(string, uint), VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Request resend failed: {ex.Message}"));
         }
     }
@@ -418,21 +420,38 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             string newStatus = ConvertVerificationFlowStatusToOtpStatus(cmd.Status);
             DateTimeOffset utcNow = DateTimeOffset.UtcNow;
 
-            int rowsAffected = await ctx.OtpCodes
+            OtpCodeEntity? otp = await ctx.OtpCodes
                 .Where(o => o.UniqueId == cmd.OtpIdentified && !o.IsDeleted)
-                .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(o => o.Status, newStatus)
-                        .SetProperty(o => o.UpdatedAt, utcNow)
-                        .SetProperty(o => o.VerifiedAt, newStatus == "used" ? utcNow : (DateTimeOffset?)null),
-                    cancellationToken);
+                .FirstOrDefaultAsync(cancellationToken);
 
-            if (rowsAffected == 0)
+            if (otp == null)
             {
                 await transaction.RollbackAsync();
                 return Result<Unit, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound("OTP not found"));
             }
 
+            otp.Status = newStatus;
+            otp.UpdatedAt = utcNow;
+            if (newStatus == "used")
+            {
+                otp.VerifiedAt = utcNow;
+            }
+
+            if (cmd.Status == VerificationFlowStatus.Expired)
+            {
+                int cooldownSeconds = _securityConfig.Value.VerificationFlow.ResendCooldownBufferSeconds;
+                DateTimeOffset resendAvailableAt = utcNow.AddSeconds(cooldownSeconds);
+
+                await ctx.VerificationFlows
+                    .Where(vf => vf.Id == otp.VerificationFlowId && !vf.IsDeleted)
+                    .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(vf => vf.ResendAvailableAt, resendAvailableAt)
+                            .SetProperty(vf => vf.UpdatedAt, utcNow),
+                        cancellationToken);
+            }
+
+            await ctx.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
         }
@@ -634,6 +653,31 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             VerificationFlowEntity flow = flowOpt.Value!;
 
+            DateTimeOffset oneHourAgo = DateTimeOffset.UtcNow.AddHours(-1);
+            (int mobileOtpCount, DateTimeOffset? lastFlowUpdate) =
+                await VerificationFlowQueries.CountRecentOtpsByMobileWithLastUpdate(
+                    ctx, flow.MobileNumberId, oneHourAgo, cancellationToken);
+
+            int maxOtpsPerMobile = _securityConfig.Value.VerificationFlowLimits.MaxOtpSendsPerMobilePerHour;
+
+            if (mobileOtpCount >= maxOtpsPerMobile)
+            {
+                if (lastFlowUpdate.HasValue)
+                {
+                    int cooldownMinutes = _securityConfig.Value.VerificationFlowLimits.OtpExhaustionCooldownMinutes;
+                    DateTimeOffset cooldownEndsAt = lastFlowUpdate.Value.AddMinutes(cooldownMinutes);
+                    DateTimeOffset currentTime = DateTimeOffset.UtcNow;
+
+                    if (currentTime < cooldownEndsAt)
+                    {
+                        uint remainingMinutes = (uint)Math.Ceiling((cooldownEndsAt - currentTime).TotalMinutes);
+                        await transaction.RollbackAsync();
+                        return Result<CreateOtpResult, VerificationFlowFailure>.Err(
+                            VerificationFlowFailure.RateLimitExceeded(remainingMinutes.ToString()));
+                    }
+                }
+            }
+
             if (flow.OtpCount >= _securityConfig.Value.VerificationFlowLimits.MaxOtpSendsPerFlow)
             {
                 await transaction.RollbackAsync();
@@ -690,6 +734,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 .ExecuteUpdateAsync(setters => setters
                         .SetProperty(f => f.OtpCount, f => f.OtpCount + 1)
                         .SetProperty(f => f.LastOtpSentAt, now)
+                        .SetProperty(f => f.ResendAvailableAt, (DateTimeOffset?)null)
                         .SetProperty(f => f.UpdatedAt, now),
                     cancellationToken);
 

@@ -225,7 +225,21 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
             if (failure.IsUserFacing)
             {
-                string message = _localizationProvider.Localize(failure.Message, _cultureName);
+                string message;
+
+                if (failure.FailureType == VerificationFlowFailureType.RateLimitExceeded
+                    && uint.TryParse(failure.Message, out uint minutes))
+                {
+                    string messageTemplate = _localizationProvider.Localize(
+                        VerificationFlowMessageKeys.MobileOtpLimitExhausted,
+                        _cultureName);
+                    message = string.Format(messageTemplate, minutes);
+                }
+                else
+                {
+                    message = _localizationProvider.Localize(failure.Message, _cultureName);
+                }
+
                 await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
                     new VerificationCountdownUpdate
                     {
@@ -549,6 +563,71 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (actorEvent.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
         {
+            if (_verificationFlow.HasValue && _verificationFlow.Value.OtpCount > 0)
+            {
+                Result<(string Outcome, uint RemainingSeconds), VerificationFlowFailure> cooldownCheckResult =
+                    await _persistor.Ask<Result<(string, uint), VerificationFlowFailure>>(
+                        new RequestResendOtpActorEvent(_verificationFlow.Value!.UniqueIdentifier, actorEvent.CancellationToken),
+                        _timeouts.ResendOtpCheckTimeout);
+
+                if (cooldownCheckResult.IsErr)
+                {
+                    VerificationFlowFailure failure = cooldownCheckResult.UnwrapErr();
+
+                    if (failure.IsUserFacing)
+                    {
+                        string message = _localizationProvider.Localize(failure.Message, _cultureName);
+                        await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                            new VerificationCountdownUpdate
+                            {
+                                SecondsRemaining = 0,
+                                SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
+                                Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Failed,
+                                Message = message
+                            }));
+                    }
+
+                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(failure));
+                    return;
+                }
+
+                (string cooldownOutcome, uint cooldownRemainingSeconds) = cooldownCheckResult.Unwrap();
+                if (cooldownOutcome != VerificationFlowMessageKeys.ResendAllowed)
+                {
+                    switch (cooldownOutcome)
+                    {
+                        case VerificationFlowMessageKeys.OtpMaxAttemptsReached:
+                            await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                                new VerificationCountdownUpdate
+                                {
+                                    SecondsRemaining = 0,
+                                    SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value.UniqueIdentifier),
+                                    Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.MaxAttemptsReached,
+                                    Message = _localizationProvider.Localize(VerificationFlowMessageKeys.OtpMaxAttemptsReached,
+                                        actorEvent.CultureName)
+                                }));
+                            break;
+                        case VerificationFlowMessageKeys.ResendCooldown:
+                            await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                                new VerificationCountdownUpdate
+                                {
+                                    SecondsRemaining = cooldownRemainingSeconds,
+                                    SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value.UniqueIdentifier),
+                                    Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.ResendCooldown,
+                                    Message = _localizationProvider.Localize(VerificationFlowMessageKeys.ResendCooldown)
+                                }));
+                            break;
+                        default:
+                            await CompleteWithError(
+                                VerificationFlowFailure.Generic($"Unknown outcome from RequestResendOtp: {cooldownOutcome}"));
+                            break;
+                    }
+
+                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
+                    return;
+                }
+            }
+
             _isCompleting = false;
             _timersStarted = false;
             CancelTimers();
@@ -571,8 +650,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             return;
         }
 
-        Result<string, VerificationFlowFailure> checkResult =
-            await _persistor.Ask<Result<string, VerificationFlowFailure>>(
+        Result<(string Outcome, uint RemainingSeconds), VerificationFlowFailure> checkResult =
+            await _persistor.Ask<Result<(string, uint), VerificationFlowFailure>>(
                 new RequestResendOtpActorEvent(_verificationFlow.Value!.UniqueIdentifier, actorEvent.CancellationToken),
                 _timeouts.ResendOtpCheckTimeout);
         if (checkResult.IsErr)
@@ -596,7 +675,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             return;
         }
 
-        string outcome = checkResult.Unwrap();
+        (string outcome, uint remainingSeconds) = checkResult.Unwrap();
         switch (outcome)
         {
             case VerificationFlowMessageKeys.ResendAllowed:
@@ -623,7 +702,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
                     new VerificationCountdownUpdate
                     {
-                        SecondsRemaining = 0,
+                        SecondsRemaining = remainingSeconds,
                         SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value.UniqueIdentifier),
                         Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.ResendCooldown,
                         Message = _localizationProvider.Localize(VerificationFlowMessageKeys.ResendCooldown)
