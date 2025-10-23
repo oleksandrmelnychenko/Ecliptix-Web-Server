@@ -23,7 +23,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
     private readonly Lock _lock = new();
     private readonly ReplayProtection _replayProtection = new();
     private readonly RatchetConfig _ratchetConfig;
-    private readonly RatchetRecovery _ratchetRecovery = new();
     private readonly PerformanceProfiler _profiler = new();
 
     private readonly DateTimeOffset _createdAt;
@@ -731,11 +730,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
-    public Result<Option<RatchetChainKey>, EcliptixProtocolFailure> TryRecoverMessageKey(uint messageIndex)
-    {
-        return _ratchetRecovery.TryRecoverMessageKey(messageIndex);
-    }
-
     public bool IsInitiator()
     {
         return _isInitiator;
@@ -782,7 +776,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
             }
 
             _replayProtection.Dispose();
-            _ratchetRecovery.Dispose();
             _profiler.Reset();
 
             _rootKeyHandle?.Dispose();
