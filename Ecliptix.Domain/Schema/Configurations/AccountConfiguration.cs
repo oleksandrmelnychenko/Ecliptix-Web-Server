@@ -22,15 +22,6 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
             .IsRequired()
             .HasMaxLength(200);
 
-        builder.Property(e => e.SecureKey)
-            .HasColumnType("VARBINARY(176)");
-
-        builder.Property(e => e.MaskingKey)
-            .HasColumnType("VARBINARY(32)");
-
-        builder.Property(e => e.CredentialsVersion)
-            .HasDefaultValue(1);
-
         builder.Property(e => e.Status)
             .IsRequired();
 

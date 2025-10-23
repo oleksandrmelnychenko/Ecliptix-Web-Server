@@ -596,11 +596,16 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 _ => ProtoMembership.Types.ActivityStatus.Active
             };
 
+            Option<AccountEntity> accountOpt = await AccountQueries.GetDefaultAccountByMembershipId(ctx, membership.UniqueId);
+
             ProtoMembership existingMembership = new()
             {
                 UniqueIdentifier = Helpers.GuidToByteString(membership.UniqueId),
                 Status = activityStatus,
-                CreationStatus = creationStatus
+                CreationStatus = creationStatus,
+                AccountUniqueIdentifier = accountOpt.HasValue
+                    ? Helpers.GuidToByteString(accountOpt.Value.UniqueId)
+                    : null
             };
 
             return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(

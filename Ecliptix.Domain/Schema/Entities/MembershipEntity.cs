@@ -6,9 +6,6 @@ public class MembershipEntity : EntityBase
     public Guid AppDeviceId { get; set; }
     public Guid? VerificationFlowId { get; set; }
 
-    public byte[]? SecureKey { get; set; }
-    public byte[]? MaskingKey { get; set; }
-    public int CredentialsVersion { get; set; } = 1;
     public string Status { get; set; } = "inactive";
     public string? CreationStatus { get; set; }
 
@@ -19,4 +16,5 @@ public class MembershipEntity : EntityBase
     public virtual ICollection<MasterKeyShareEntity> MasterKeyShares { get; set; } = new List<MasterKeyShareEntity>();
     public virtual ICollection<AccountEntity> Accounts { get; set; } = new List<AccountEntity>();
     public virtual ICollection<DeviceContextEntity> DeviceContexts { get; set; } = new List<DeviceContextEntity>();
+    public virtual ICollection<VerificationLogEntity> VerificationLogs { get; set; } = new List<VerificationLogEntity>();
 }

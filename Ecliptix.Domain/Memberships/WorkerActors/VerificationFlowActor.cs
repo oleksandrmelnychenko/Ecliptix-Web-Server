@@ -1315,7 +1315,10 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             {
                 UniqueIdentifier = Helpers.GuidToByteString(membership.UniqueIdentifier),
                 Status = membership.ActivityStatus,
-                CreationStatus = membership.CreationStatus
+                CreationStatus = membership.CreationStatus,
+                AccountUniqueIdentifier = membership.ActiveAccountId.HasValue
+                    ? Helpers.GuidToByteString(membership.ActiveAccountId.Value)
+                    : null
             }
         });
     }

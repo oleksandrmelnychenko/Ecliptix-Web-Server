@@ -101,6 +101,10 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             CreateDefaultAccountAsync,
             "CreateDefaultAccount");
 
+        ReceivePersistorCommand<GetDefaultAccountIdEvent, Option<Guid>>(
+            GetDefaultAccountIdAsync,
+            "GetDefaultAccountId");
+
         ReceivePersistorCommand<ValidatePasswordRecoveryFlowEvent, PasswordRecoveryFlowValidation>(
             ValidatePasswordRecoveryFlowAsync,
             "ValidatePasswordRecoveryFlow");
@@ -292,7 +296,23 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             MembershipEntity membership = membershipOpt.Value!;
 
-            if (membership.SecureKey == null || membership.SecureKey.Length == 0)
+            // Check if the default account has credentials set
+            Option<AccountEntity> defaultAccountOpt =
+                await AccountQueries.GetDefaultAccountByMembershipId(ctx, membership.UniqueId);
+
+            if (!defaultAccountOpt.HasValue)
+            {
+                LogLoginAttempt(ctx, cmd.MobileNumber, "default_account_not_found", false, now);
+                await ctx.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.PersistorAccess("Default account not found"));
+            }
+
+            Option<AccountSecureKeyAuthEntity> defaultAuthOpt =
+                await AccountSecureKeyAuthQueries.GetPrimaryForAccount(ctx, defaultAccountOpt.Value.UniqueId);
+
+            if (!defaultAuthOpt.HasValue)
             {
                 LogLoginAttempt(ctx, cmd.MobileNumber, "secure_key_not_set", false, now);
                 await ctx.SaveChangesAsync(cancellationToken);
@@ -392,15 +412,27 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             await transaction.CommitAsync(cancellationToken);
 
+            // Fetch credentials for the active account (or default if no device context)
+            Guid activeAccountId = deviceContext?.ActiveAccountId ?? defaultAccountOpt.Value.UniqueId;
+            (byte[] SecureKey, byte[] MaskingKey, int Version)? credentials =
+                await AccountSecureKeyAuthQueries.GetCredentialsForAccount(ctx, activeAccountId);
+
+            if (credentials == null)
+            {
+                // This should not happen as we already checked, but handle gracefully
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.PersistorAccess("Credentials not found for active account"));
+            }
+
             return BuildMembershipResult(
                 membership.UniqueId,
                 membership.Status,
                 ProtoMembership.Types.CreationStatus.OtpVerified,
-                membership.CredentialsVersion,
+                credentials.Value.Version,
                 accounts,
                 deviceContext?.ActiveAccountId,
-                membership.SecureKey,
-                membership.MaskingKey);
+                credentials.Value.SecureKey,
+                credentials.Value.MaskingKey);
         }
         catch (OperationCanceledException)
         {
@@ -459,15 +491,59 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
 
             MembershipEntity membership = membershipOpt.Value!;
 
+            // Get the default account for this membership
+            Option<AccountEntity> accountOpt = await AccountQueries.GetDefaultAccountByMembershipId(ctx, membership.UniqueId);
+            if (!accountOpt.HasValue)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.PersistorAccess("Default account not found for membership"));
+            }
+
+            AccountEntity account = accountOpt.Value;
+
+            // Get existing AccountSecureKeyAuth or create new one
+            Option<AccountSecureKeyAuthEntity> authOpt = await AccountSecureKeyAuthQueries.GetPrimaryForAccount(ctx, account.UniqueId);
+
+            int newCredentialsVersion;
+
+            if (authOpt.HasValue)
+            {
+                // Update existing credentials
+                AccountSecureKeyAuthEntity existingAuth = authOpt.Value;
+                await ctx.AccountSecureKeyAuths
+                    .Where(a => a.UniqueId == existingAuth.UniqueId && !a.IsDeleted)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(a => a.SecureKey, cmd.SecureKey)
+                        .SetProperty(a => a.MaskingKey, cmd.MaskingKey)
+                        .SetProperty(a => a.CredentialsVersion, a => a.CredentialsVersion + 1)
+                        .SetProperty(a => a.UpdatedAt, DateTimeOffset.UtcNow), cancellationToken);
+
+                newCredentialsVersion = existingAuth.CredentialsVersion + 1;
+            }
+            else
+            {
+                // Create new AccountSecureKeyAuth
+                AccountSecureKeyAuthEntity newAuth = new()
+                {
+                    AccountId = account.UniqueId,
+                    SecureKey = cmd.SecureKey,
+                    MaskingKey = cmd.MaskingKey,
+                    CredentialsVersion = 1,
+                    IsPrimary = true,
+                    IsEnabled = true
+                };
+                ctx.AccountSecureKeyAuths.Add(newAuth);
+                newCredentialsVersion = 1;
+            }
+
+            // Update Membership status and creation status
             int rowsAffected = await ctx.Memberships
                 .Where(m => m.UniqueId == cmd.MembershipIdentifier && !m.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(m => m.SecureKey, cmd.SecureKey)
-                    .SetProperty(m => m.MaskingKey, cmd.MaskingKey)
                     .SetProperty(m => m.Status, "active")
                     .SetProperty(m => m.CreationStatus, "secure_key_set")
-                    .SetProperty(m => m.CredentialsVersion, m => m.CredentialsVersion + 1)
-                    .SetProperty(m => m.UpdatedAt, DateTimeOffset.UtcNow));
+                    .SetProperty(m => m.UpdatedAt, DateTimeOffset.UtcNow), cancellationToken);
 
             if (rowsAffected == 0)
             {
@@ -476,9 +552,8 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                     VerificationFlowFailure.PersistorAccess("Failed to update membership"));
             }
 
+            await ctx.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-
-            int newCredentialsVersion = membership.CredentialsVersion + 1;
 
             ProtoMembership.Types.CreationStatus creationStatus =
                 MembershipCreationStatusHelper.GetCreationStatusEnum("secure_key_set");
@@ -488,6 +563,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 "active",
                 creationStatus,
                 newCredentialsVersion,
+                secureKey: cmd.SecureKey,
                 maskingKey: cmd.MaskingKey);
         }
         catch (Exception ex)
@@ -585,11 +661,17 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 ProtoMembership.Types.CreationStatus existingCreationStatus =
                     MembershipCreationStatusHelper.GetCreationStatusEnum(existingCreationStatusString);
 
+                // Fetch credentials from default account if they exist
+                (byte[] SecureKey, byte[] MaskingKey, int Version)? existingCredentials =
+                    await AccountSecureKeyAuthQueries.GetCredentialsForMembership(ctx, existingMembership.UniqueId);
+
                 return BuildMembershipResult(
                     existingMembership.UniqueId,
                     existingMembership.Status,
                     existingCreationStatus,
-                    existingMembership.CredentialsVersion);
+                    existingCredentials?.Version ?? 0,
+                    secureKey: existingCredentials?.SecureKey,
+                    maskingKey: existingCredentials?.MaskingKey);
             }
 
             MembershipEntity newMembership = new()
@@ -649,11 +731,12 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             ProtoMembership.Types.CreationStatus newMembershipCreationStatus =
                 MembershipCreationStatusHelper.GetCreationStatusEnum(newMembership.CreationStatus);
 
+            // New membership has no credentials yet
             return BuildMembershipResult(
                 newMembership.UniqueId,
                 newMembership.Status,
                 newMembershipCreationStatus,
-                newMembership.CredentialsVersion);
+                credentialsVersion: 0);
         }
         catch (OperationCanceledException)
         {
@@ -736,11 +819,17 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             ProtoMembership.Types.CreationStatus creationStatus =
                 MembershipCreationStatusHelper.GetCreationStatusEnum(creationStatusString);
 
+            // Fetch credentials from default account if they exist
+            (byte[] SecureKey, byte[] MaskingKey, int Version)? credentials =
+                await AccountSecureKeyAuthQueries.GetCredentialsForMembership(ctx, membership.UniqueId);
+
             return BuildMembershipResult(
                 membership.UniqueId,
                 membership.Status,
                 creationStatus,
-                membership.CredentialsVersion);
+                credentials?.Version ?? 0,
+                secureKey: credentials?.SecureKey,
+                maskingKey: credentials?.MaskingKey);
         }
         catch (Exception ex)
         {
@@ -772,13 +861,17 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             ProtoMembership.Types.CreationStatus creationStatus =
                 MembershipCreationStatusHelper.GetCreationStatusEnum(creationStatusString);
 
+            // Fetch credentials from default account if they exist
+            (byte[] SecureKey, byte[] MaskingKey, int Version)? credentials =
+                await AccountSecureKeyAuthQueries.GetCredentialsForMembership(ctx, membership.UniqueId);
+
             return BuildMembershipResult(
                 membership.UniqueId,
                 membership.Status,
                 creationStatus,
-                membership.CredentialsVersion,
-                secureKey: membership.SecureKey,
-                maskingKey: membership.MaskingKey);
+                credentials?.Version ?? 0,
+                secureKey: credentials?.SecureKey,
+                maskingKey: credentials?.MaskingKey);
         }
         catch (Exception ex)
         {
@@ -810,8 +903,7 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
                 AccountType = Protobuf.Account.AccountType.Personal,
                 AccountName = "Personal",
                 Status = Protobuf.Account.AccountStatus.Active,
-                IsDefaultAccount = true,
-                CredentialsVersion = 1
+                IsDefaultAccount = true
             };
 
             ctx.Accounts.Add(personalAccount);
@@ -838,6 +930,28 @@ public class MembershipPersistorActor : PersistorBase<VerificationFlowFailure>
             Log.Error(ex, "Failed to create default account for MembershipId: {MembershipId}", cmd.MembershipId);
             return Result<AccountCreationResult, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.PersistorAccess($"Failed to create default account: {ex.Message}"));
+        }
+    }
+
+    private async Task<Result<Option<Guid>, VerificationFlowFailure>> GetDefaultAccountIdAsync(
+        EcliptixSchemaContext ctx, GetDefaultAccountIdEvent cmd, CancellationToken cancellationToken)
+    {
+        try
+        {
+            Option<AccountEntity> accountOption = await AccountQueries.GetDefaultAccountByMembershipId(ctx, cmd.MembershipId);
+
+            if (!accountOption.HasValue)
+            {
+                return Result<Option<Guid>, VerificationFlowFailure>.Ok(Option<Guid>.None);
+            }
+
+            return Result<Option<Guid>, VerificationFlowFailure>.Ok(Option<Guid>.Some(accountOption.Value.UniqueId));
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to get default account for MembershipId: {MembershipId}", cmd.MembershipId);
+            return Result<Option<Guid>, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.PersistorAccess($"Failed to get default account: {ex.Message}"));
         }
     }
 

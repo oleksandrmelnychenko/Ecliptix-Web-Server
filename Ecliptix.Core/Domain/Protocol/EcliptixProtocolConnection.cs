@@ -688,8 +688,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
         }
     }
 
-
-
     internal Result<byte[], EcliptixProtocolFailure> GenerateNextNonce()
     {
         lock (_lock)
@@ -737,8 +735,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
     {
         return _ratchetRecovery.TryRecoverMessageKey(messageIndex);
     }
-
-    public uint ConnectId => _id;
 
     public bool IsInitiator()
     {

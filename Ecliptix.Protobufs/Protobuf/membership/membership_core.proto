@@ -19,6 +19,7 @@ message Membership {
 
   ActivityStatus status = 3;
   optional CreationStatus creation_status = 4;
+  optional bytes account_unique_identifier = 5;
 }
 
 enum LogoutScope {

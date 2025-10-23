@@ -14,21 +14,20 @@ public static class AccountQueries
         Guid membershipId,
         CancellationToken cancellationToken = default)
     {
-        List<AccountEntity> accounts = await ctx.Accounts
+        // OPTIMIZED: Single allocation by projecting in query
+        return await ctx.Accounts
             .Where(a => a.MembershipId == membershipId && !a.IsDeleted)
             .OrderByDescending(a => a.IsDefaultAccount)
             .ThenBy(a => a.AccountType)
             .AsNoTracking()
+            .Select(a => new AccountInfo(
+                a.UniqueId,
+                a.MembershipId,
+                a.AccountType,
+                a.AccountName,
+                a.IsDefaultAccount,
+                a.Status))
             .ToListAsync(cancellationToken);
-
-        return accounts.Select(a => new AccountInfo(
-            a.UniqueId,
-            a.MembershipId,
-            a.AccountType,
-            a.AccountName,
-            a.IsDefaultAccount,
-            a.Status))
-        .ToList();
     }
 
     private static readonly Func<EcliptixSchemaContext, Guid, Task<AccountEntity?>>

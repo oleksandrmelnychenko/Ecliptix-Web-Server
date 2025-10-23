@@ -13,14 +13,8 @@ public abstract class EntityBaseMap<T> : EntityTypeConfiguration<T> where T : En
         entity.Property(e => e.UniqueId).HasDefaultValueSql("NEWID()");
 
         entity.Property(e => e.CreatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
-        entity.Property(e => e.CreatedBy).IsRequired(false);
-
         entity.Property(e => e.UpdatedAt).HasDefaultValueSql("SYSDATETIMEOFFSET()");
-        entity.Property(e => e.UpdatedBy).IsRequired(false);
-
         entity.Property(e => e.IsDeleted).HasDefaultValue(false);
-        entity.Property(e => e.DeletedAt).IsRequired(false);
-        entity.Property(e => e.DeletedBy).IsRequired(false);
 
         entity.Property(e => e.RowVersion)
             .IsRowVersion()

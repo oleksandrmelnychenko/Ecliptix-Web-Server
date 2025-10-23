@@ -160,8 +160,6 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                     CompleteRegistrationRecordActorEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
                         Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory),
-                        connectId,
-                        deviceId,
                         cancellationToken);
 
                     Task<Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>> completeRegistrationRecordTask =
@@ -242,7 +240,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         return await _service
             .ExecuteEncryptedOperationAsync<OprfRecoverySecureKeyInitRequest, OprfRecoverySecureKeyInitResponse>(
                 request, context,
-                async (message, _, idempotencyKey, cancellationToken) =>
+                async (message, _, _, cancellationToken) =>
                 {
                     OprfInitRecoverySecureKeyEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),

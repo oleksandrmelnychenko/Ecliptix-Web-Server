@@ -8,15 +8,8 @@ namespace Ecliptix.Domain.Schema;
 
 public class EcliptixSchemaContext : DbContext
 {
-    private Guid? _currentActorId;
-
     public EcliptixSchemaContext(DbContextOptions<EcliptixSchemaContext> options) : base(options)
     {
-    }
-
-    public void SetCurrentActor(Guid? actorId)
-    {
-        _currentActorId = actorId;
     }
 
     public DbSet<MobileNumberEntity> MobileNumbers { get; set; }
@@ -30,6 +23,9 @@ public class EcliptixSchemaContext : DbContext
     public DbSet<LogoutAuditEntity> LogoutAudits { get; set; }
     public DbSet<AccountEntity> Accounts { get; set; }
     public DbSet<DeviceContextEntity> DeviceContexts { get; set; }
+    public DbSet<AccountSecureKeyAuthEntity> AccountSecureKeyAuths { get; set; }
+    public DbSet<AccountPinAuthEntity> AccountPinAuths { get; set; }
+    public DbSet<VerificationLogEntity> VerificationLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -46,6 +42,9 @@ public class EcliptixSchemaContext : DbContext
         modelBuilder.AddConfiguration(new DeviceContextConfiguration());
         modelBuilder.AddConfiguration(new LoginAttemptConfiguration());
         modelBuilder.AddConfiguration(new LogoutAuditConfiguration());
+        modelBuilder.AddConfiguration(new AccountSecureKeyAuthConfiguration());
+        modelBuilder.AddConfiguration(new AccountPinAuthConfiguration());
+        modelBuilder.AddConfiguration(new VerificationLogConfiguration());
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -97,26 +96,18 @@ public class EcliptixSchemaContext : DbContext
             {
                 case EntityState.Added:
                     auditable.CreatedAt = now;
-                    auditable.CreatedBy = _currentActorId;
                     auditable.UpdatedAt = now;
-                    auditable.UpdatedBy = _currentActorId;
                     auditable.IsDeleted = false;
-                    auditable.DeletedAt = null;
-                    auditable.DeletedBy = null;
                     break;
 
                 case EntityState.Modified:
                     auditable.UpdatedAt = now;
-                    auditable.UpdatedBy = _currentActorId;
                     break;
 
                 case EntityState.Deleted:
                     entry.State = EntityState.Modified;
                     auditable.IsDeleted = true;
-                    auditable.DeletedAt = now;
-                    auditable.DeletedBy = _currentActorId;
                     auditable.UpdatedAt = now;
-                    auditable.UpdatedBy = _currentActorId;
                     break;
             }
         }

@@ -21,15 +21,6 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
         builder.Property(e => e.VerificationFlowId)
             .IsRequired(false);
 
-        builder.Property(e => e.SecureKey)
-            .HasColumnType("VARBINARY(176)");
-
-        builder.Property(e => e.MaskingKey)
-            .HasColumnType("VARBINARY(32)");
-
-        builder.Property(e => e.CredentialsVersion)
-            .HasDefaultValue(1);
-
         builder.Property(e => e.Status)
             .IsRequired()
             .HasMaxLength(20)
@@ -43,9 +34,6 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_Memberships_CreationStatus",
             "CreationStatus IN ('otp_verified', 'secure_key_set', 'passphrase_set')"));
-
-        builder.ToTable(t => t.HasCheckConstraint("CHK_Memberships_Credentials_Consistency",
-            "(SecureKey IS NULL AND MaskingKey IS NULL) OR (SecureKey IS NOT NULL AND MaskingKey IS NOT NULL)"));
 
         builder.HasIndex(e => e.UniqueId)
             .IsUnique()
@@ -69,7 +57,7 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
         Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
             builder.HasIndex(e => e.MobileNumberId)
                 .HasFilter("IsDeleted = 0 AND Status = 'active'"),
-            e => new { e.UniqueId, e.SecureKey, e.MaskingKey, e.CredentialsVersion, e.CreationStatus })
+            e => new { e.UniqueId, e.CreationStatus })
             .HasDatabaseName("IX_Memberships_Login_Covering");
 
         builder.HasOne(e => e.MobileNumber)

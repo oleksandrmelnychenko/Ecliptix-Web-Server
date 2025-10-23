@@ -40,10 +40,12 @@ public static class VerificationFlowQueries
         Guid flowId,
         CancellationToken cancellationToken = default)
     {
+        // OPTIMIZED: Use split query to avoid cartesian explosion with filtered includes
         VerificationFlowEntity? result = await ctx.VerificationFlows
             .Where(f => f.UniqueId == flowId && !f.IsDeleted)
             .Include(f => f.MobileNumber)
             .Include(f => f.OtpCodes.Where(o => o.Status == "active" && !o.IsDeleted))
+            .AsSplitQuery() // Generates 3 separate SQL queries instead of cartesian product
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
 

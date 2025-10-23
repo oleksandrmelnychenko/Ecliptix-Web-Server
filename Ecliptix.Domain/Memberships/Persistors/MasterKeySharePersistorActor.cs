@@ -75,6 +75,29 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
 
             MembershipEntity membership = membershipOpt.Value!;
 
+            // Fetch credentials version from default account's AccountSecureKeyAuth
+            Option<AccountEntity> defaultAccountOpt =
+                await AccountQueries.GetDefaultAccountByMembershipId(ctx, membership.UniqueId);
+
+            if (!defaultAccountOpt.HasValue)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
+                    KeySplittingFailure.InvalidIdentifier("Default account not found"));
+            }
+
+            (byte[] SecureKey, byte[] MaskingKey, int Version)? credentials =
+                await AccountSecureKeyAuthQueries.GetCredentialsForAccount(ctx, defaultAccountOpt.Value.UniqueId);
+
+            if (credentials == null)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                return Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
+                    KeySplittingFailure.InvalidIdentifier("Credentials not found for default account"));
+            }
+
+            int credentialsVersion = credentials.Value.Version;
+
             List<MasterKeyShareEntity> existingShares =
                 await MasterKeyShareQueries.GetByMembershipUniqueId(ctx, cmd.MembershipUniqueId, cancellationToken);
             if (existingShares.Count != 0)
@@ -108,7 +131,7 @@ public class MasterKeySharePersistorActor : PersistorBase<KeySplittingFailure>
                 EncryptedShare = s.EncryptedShare,
                 ShareMetadata = s.ShareMetadata,
                 StorageLocation = s.StorageLocation,
-                CredentialsVersion = membership.CredentialsVersion
+                CredentialsVersion = credentialsVersion
             }).ToList();
 
             ctx.MasterKeyShares.AddRange(sharesToInsert);
