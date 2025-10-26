@@ -9,19 +9,19 @@ pipeline {
         AWS_DEFAULT_REGION = "eu-central-1"
         AWS_ACCOUNT_ID = "020498483284"
         ECR_REPO = "ecliptix/memberships"
-        IMAGE_TAG = "${params.ENVIRONMENT}-lts"
         CLUSTER_NAME = "${params.ENVIRONMENT == 'prod' ? 'ecliptix-prod-ecs-cluster' : 'ecliptix-dev-ecs-cluster'}"
         SERVICE_NAME = "${params.ENVIRONMENT == 'prod' ? 'ecliptix-prod-memberships' : 'ecliptix-dev-memberships'}"
         TASK_DEFINITION = "ecliptix-memberships"
         AWS_CREDENTIALS = "aws-creds"
+        GIT_COMMIT_HASH = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+        IMAGE_TAG = "${params.ENVIRONMENT}-${GIT_COMMIT_HASH}"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main',
-                    url: 'git@github.com:oleksandrmelnychenko/Ecliptix-Web-Server.git',
-                    credentialsId: 'github-ssh-key'
+                deleteDir()
+                checkout scm
             }
         }
     
@@ -104,6 +104,7 @@ pipeline {
                     aws ecs update-service \
                       --cluster ${CLUSTER_NAME} \
                       --service ${SERVICE_NAME} \
+                      --force-new-deployment \
                       --task-definition ${TASK_DEFINITION}:\$NEW_REVISION
                     """
                 }
