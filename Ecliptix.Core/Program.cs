@@ -398,11 +398,14 @@ static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
                     options.RecordException = true;
                     options.Filter = httpContext =>
                     {
-                        return !httpContext.Request.Path.Value?.Contains("/health") ?? true;
+                        var path = httpContext.Request.Path.Value;
+                        if (string.IsNullOrEmpty(path)) return true;
+                        return !path.Contains("/health") && path != "/";
                     };
                 });
 
             string? otlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
+            string? consoleExporter = Environment.GetEnvironmentVariable("OTEL_CONSOLE_EXPORTER_ENABLED");
 
             if (!string.IsNullOrEmpty(otlpEndpoint))
             {
@@ -411,12 +414,13 @@ static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
                     otlpOptions.Endpoint = new Uri(otlpEndpoint);
                 });
             }
-            else
+            else if (string.Equals(consoleExporter, "true", StringComparison.OrdinalIgnoreCase))
             {
                 tracing.AddConsoleExporter();
             }
         });
 }
+
 
 static void InitializeOpaqueService(WebApplication app)
 {
