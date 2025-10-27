@@ -719,7 +719,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
         Result<Unit, EcliptixProtocolFailure> replayCheckResult = _replayProtection.CheckAndRecordMessage(nonce, messageIndex);
         if (replayCheckResult.IsErr)
         {
-            // Return the actual replay failure without wrapping it, so the correct failure type is preserved
             return replayCheckResult;
         }
 

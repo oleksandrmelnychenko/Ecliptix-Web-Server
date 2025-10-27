@@ -531,7 +531,6 @@ internal sealed class MasterKeyService(
                     insertEvent,
                     TimeSpan.FromSeconds(AskTimeoutSeconds));
 
-            // Convert MasterKeyFailure to KeySplittingFailure for consistency with internal operations
             return result.Match(
                 ok => Result<InsertMasterKeySharesResult, KeySplittingFailure>.Ok(ok),
                 err => Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
@@ -561,7 +560,6 @@ internal sealed class MasterKeyService(
                     getEvent,
                     TimeSpan.FromSeconds(AskTimeoutSeconds));
 
-            // Convert MasterKeyFailure to KeySplittingFailure for consistency with internal operations
             return result.Match(
                 ok => Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Ok(ok),
                 err => Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Err(

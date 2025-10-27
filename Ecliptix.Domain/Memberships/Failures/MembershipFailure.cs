@@ -105,7 +105,6 @@ public sealed record MembershipFailure(
             details ?? MembershipMessageKeys.Generic, ex);
     }
 
-    // Converters
     public static MembershipFailure FromLogout(LogoutFailure logoutFailure)
     {
         return logoutFailure.FailureType switch

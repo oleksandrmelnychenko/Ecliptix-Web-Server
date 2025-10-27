@@ -46,7 +46,6 @@ public class VerificationLogConfiguration : EntityBaseMap<VerificationLogEntity>
         builder.Property(e => e.ExpiresAt)
             .HasColumnType("DATETIMEOFFSET");
 
-        // Indexes
         builder.HasIndex(e => e.MembershipId)
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_VerificationLogs_Membership");
@@ -60,7 +59,6 @@ public class VerificationLogConfiguration : EntityBaseMap<VerificationLogEntity>
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_VerificationLogs_VerifiedAt");
 
-        // Foreign keys
         builder.HasOne(e => e.Membership)
             .WithMany(m => m.VerificationLogs)
             .HasForeignKey(e => e.MembershipId)

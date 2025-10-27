@@ -1625,22 +1625,16 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     {
         try
         {
-            // Defensive null-check for Stash before calling base implementation
-            // The Stash property is injected by Akka.NET's Actor Construction Pipeline
-            // and may be null during rapid termination or abnormal shutdown sequences
             if (Stash != null)
             {
                 base.AroundPostStop();
             }
             else
             {
-                // Skip Akka's AroundPostStop which would call Stash.UnstashAll()
-                // and directly call PostStop() to ensure cleanup still happens
                 Serilog.Log.Debug(
                     "[verification.flow.aroundpoststop] Stash is null during shutdown. Skipping unstash operations. ConnectId: {ConnectId}",
                     _connectId);
 
-                // Call PostStop directly (base.base.AroundPostStop would call this)
                 PostStop();
             }
         }
@@ -1650,7 +1644,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 "[verification.flow.aroundpoststop.suppress] Suppressed NullReferenceException in AroundPostStop. ConnectId: {ConnectId}, Error: {Error}",
                 _connectId, ex.Message);
 
-            // Ensure PostStop cleanup still runs
             try
             {
                 PostStop();
@@ -1668,7 +1661,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 "[verification.flow.aroundpoststop.error] Unexpected error in AroundPostStop. ConnectId: {ConnectId}",
                 _connectId);
 
-            // Ensure PostStop cleanup still runs
             try
             {
                 PostStop();

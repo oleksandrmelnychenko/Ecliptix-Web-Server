@@ -44,7 +44,6 @@ public class AccountSecureKeyAuthConfiguration : EntityBaseMap<AccountSecureKeyA
         builder.Property(e => e.LockedUntil)
             .HasColumnType("DATETIMEOFFSET");
 
-        // Indexes
         builder.HasIndex(e => new { e.AccountId, e.IsPrimary })
             .IsUnique()
             .HasFilter("IsDeleted = 0 AND IsPrimary = 1")
@@ -60,7 +59,6 @@ public class AccountSecureKeyAuthConfiguration : EntityBaseMap<AccountSecureKeyA
             e => new { e.UniqueId, e.SecureKey, e.MaskingKey, e.CredentialsVersion, e.IsPrimary })
             .HasDatabaseName("IX_AccountSecureKeyAuth_Covering");
 
-        // Foreign key
         builder.HasOne(e => e.Account)
             .WithMany(a => a.SecureKeyAuths)
             .HasForeignKey(e => e.AccountId)

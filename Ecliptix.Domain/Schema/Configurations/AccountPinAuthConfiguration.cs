@@ -50,14 +50,6 @@ public class AccountPinAuthConfiguration : EntityBaseMap<AccountPinAuthEntity>
         builder.Property(e => e.LockedUntil)
             .HasColumnType("DATETIMEOFFSET");
 
-        // Indexes
-        // NOTE: There are two indexes on (AccountId, DeviceId) with different purposes:
-        // 1. UX_AccountPinAuth_Account_Device (UNIQUE): Enforces business rule that each account
-        //    can have only one device-specific PIN per device.
-        // 2. IX_AccountPinAuth_Covering (NON-UNIQUE): Performance optimization for queries,
-        //    includes columns for covering index to avoid key lookups.
-        // These serve complementary purposes and their filters are mostly non-overlapping.
-
         builder.HasIndex(e => new { e.AccountId, e.DeviceId })
             .IsUnique()
             .HasFilter("IsDeleted = 0 AND IsDeviceSpecific = 1 AND DeviceId IS NOT NULL")
@@ -73,7 +65,6 @@ public class AccountPinAuthConfiguration : EntityBaseMap<AccountPinAuthEntity>
             e => new { e.UniqueId, e.SecureKey, e.MaskingKey, e.CredentialsVersion, e.IsDeviceSpecific })
             .HasDatabaseName("IX_AccountPinAuth_Covering");
 
-        // Foreign keys
         builder.HasOne(e => e.Account)
             .WithMany(a => a.PinAuths)
             .HasForeignKey(e => e.AccountId)

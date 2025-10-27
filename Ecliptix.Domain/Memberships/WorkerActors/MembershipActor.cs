@@ -637,8 +637,6 @@ public sealed class MembershipActor : ReceivePersistentActor
         {
             MembershipFailure failure = persistorResult.UnwrapErr();
 
-            // For security: Don't leak information about which mobile numbers exist
-            // Return success with InvalidCredentials for user-facing auth failures
             if (failure.IsUserFacing)
             {
                 string message = _localizationProvider.Localize(
@@ -654,7 +652,6 @@ public sealed class MembershipActor : ReceivePersistentActor
                 return;
             }
 
-            // Infrastructure errors should still return as errors
             replyTo.Tell(Result<OpaqueSignInInitResponse, MembershipFailure>.Err(failure));
             return;
         }
@@ -668,7 +665,6 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         if (initiateSignInResult.IsErr)
         {
-            // OPAQUE failure during sign-in - treat as invalid credentials for security
             string message = _localizationProvider.Localize(
                 VerificationFlowMessageKeys.InvalidCredentials,
                 @event.CultureName);
@@ -712,7 +708,6 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         if (!_pendingSignIns.TryGetValue(@event.ConnectId, out PendingSignInState? state))
         {
-            // No pending sign-in found - treat as invalid credentials
             replyTo.Tell(Result<OpaqueSignInFinalizeResponse, MembershipFailure>.Ok(
                 new OpaqueSignInFinalizeResponse
                 {
@@ -728,7 +723,6 @@ public sealed class MembershipActor : ReceivePersistentActor
         if (opaqueResult.IsErr)
         {
             RemovePendingSignIn(@event.ConnectId);
-            // OPAQUE protocol failure - treat as invalid credentials
             replyTo.Tell(Result<OpaqueSignInFinalizeResponse, MembershipFailure>.Ok(
                 new OpaqueSignInFinalizeResponse
                 {
