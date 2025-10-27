@@ -45,7 +45,7 @@ internal sealed class DeviceService : Protobuf.Device.DeviceService.DeviceServic
         CertificatePinningService certificatePinningService,
         IOptions<SecurityConfiguration> securityConfig)
     {
-        _baseService = new(cipherService, securityConfig);
+        _baseService = new GrpcSecurityService(cipherService, securityConfig);
         _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
         _appDevicePersistorActor = actorRegistry.Get(ActorIds.AppDevicePersistorActor);
         _secureChannelEstablisher = secureChannelEstablisher;

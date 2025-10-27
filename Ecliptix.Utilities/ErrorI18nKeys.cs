@@ -1,6 +1,6 @@
 namespace Ecliptix.Utilities;
 
-public static class ErrorI18nKeys
+public static class ErrorI18NKeys
 {
     public const string Validation = "error.validation";
     public const string MaxAttempts = "error.max_attempts";

@@ -1,6 +1,8 @@
+using Ecliptix.Domain.Memberships;
+using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Domain.Schema.ValueConverters;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
@@ -26,11 +28,13 @@ public class VerificationLogConfiguration : EntityBaseMap<VerificationLogEntity>
 
         builder.Property(e => e.Purpose)
             .IsRequired()
-            .HasMaxLength(50);
+            .HasMaxLength(50)
+            .HasConversion(new EnumToSnakeCaseConverter<VerificationPurpose>());
 
         builder.Property(e => e.Status)
             .IsRequired()
-            .HasMaxLength(20);
+            .HasMaxLength(20)
+            .HasConversion(new EnumToSnakeCaseConverter<VerificationFlowStatus>());
 
         builder.Property(e => e.OtpCount)
             .HasDefaultValue(0);

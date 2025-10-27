@@ -29,22 +29,30 @@ public static class PersistorSupervisorStrategy
                     SqlException { Number: 4060 } => HandlePermanentFailure("Database not accessible", Directive.Stop),
                     SqlException { Number: 40197 } => HandlePermanentFailure("Service unavailable", Directive.Stop),
 
-                    SqlException { Number: 824 or 825 } => HandlePermanentFailure("Data corruption detected", Directive.Stop),
-                    SqlException { Number: 102 or 156 or 207 or 208 } => HandlePermanentFailure("Invalid SQL syntax", Directive.Stop),
+                    SqlException { Number: 824 or 825 } => HandlePermanentFailure("Data corruption detected",
+                        Directive.Stop),
+                    SqlException { Number: 102 or 156 or 207 or 208 } => HandlePermanentFailure("Invalid SQL syntax",
+                        Directive.Stop),
 
-                    SqlException { Number: 2 or 53 or 11001 } => HandleTransientFailure(actorType, "Network error", Directive.Restart),
-                    SqlException { Number: 2146893022 } => HandleTransientFailure(actorType, "Connection timeout", Directive.Restart),
+                    SqlException { Number: 2 or 53 or 11001 } => HandleTransientFailure(actorType, "Network error",
+                        Directive.Restart),
+                    SqlException { Number: 2146893022 } => HandleTransientFailure(actorType, "Connection timeout",
+                        Directive.Restart),
 
-                    SqlException { Number: -2 } => HandleTransientFailure(actorType, "Command timeout", Directive.Restart),
+                    SqlException { Number: -2 } => HandleTransientFailure(actorType, "Command timeout",
+                        Directive.Restart),
                     TimeoutException => HandleTransientFailure(actorType, "Operation timeout", Directive.Restart),
 
                     SqlException { Number: 40501 or 40613 or 49918 or 49919 or 49920 } =>
                         HandleTransientFailure(actorType, "Transient Azure SQL error", Directive.Restart),
 
-                    SqlException { Number: 1205 } => HandleTransientFailure(actorType, "Deadlock detected", Directive.Restart),
-                    SqlException { Number: 2627 or 2601 } => HandleTransientFailure(actorType, "Concurrency conflict", Directive.Restart),
+                    SqlException { Number: 1205 } => HandleTransientFailure(actorType, "Deadlock detected",
+                        Directive.Restart),
+                    SqlException { Number: 2627 or 2601 } => HandleTransientFailure(actorType, "Concurrency conflict",
+                        Directive.Restart),
 
-                    SqlException { Number: 547 or 515 } => HandleApplicationError("Constraint violation", Directive.Escalate),
+                    SqlException { Number: 547 or 515 } => HandleApplicationError("Constraint violation",
+                        Directive.Escalate),
 
                     DbException => HandleTransientFailure(actorType, "Database error", Directive.Restart),
 
@@ -91,13 +99,11 @@ public static class PersistorSupervisorStrategy
 
     private static Directive HandleSystemError(string reason, Directive directive)
     {
-
         return directive;
     }
 
     private static Directive HandleNormalCancellation()
     {
-
         return Directive.Resume;
     }
 
@@ -105,7 +111,6 @@ public static class PersistorSupervisorStrategy
     {
         if (ShouldThrottleRestart(actorType))
         {
-
             return Directive.Stop;
         }
 
@@ -150,7 +155,9 @@ public static class PersistorSupervisorStrategy
     private static void CleanupOldRestartRecords(DateTimeOffset now)
     {
         List<Type> keysToRemove = [];
-        keysToRemove.AddRange(from kvp in LastRestartTimes.ToList() where now - kvp.Value > RestartCooldown select kvp.Key);
+        keysToRemove.AddRange(from kvp in LastRestartTimes.ToList()
+                              where now - kvp.Value > RestartCooldown
+                              select kvp.Key);
 
         foreach (Type key in keysToRemove)
         {

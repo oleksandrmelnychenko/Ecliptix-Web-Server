@@ -1,24 +1,28 @@
 using System.Security.Cryptography;
-using System.Threading;
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
-using Ecliptix.Utilities;
-using Ecliptix.Domain.Services.Security;
-using Ecliptix.Domain.Memberships.ActorEvents;
+using Ecliptix.Domain.Memberships.ActorEvents.Account;
+using Ecliptix.Domain.Memberships.ActorEvents.Common;
+using Ecliptix.Domain.Memberships.ActorEvents.Logout;
+using Ecliptix.Domain.Memberships.ActorEvents.MasterKeyShares;
+using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Security.Opaque.Models;
-using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.Domain.Services.Security;
 using Ecliptix.Protobuf.Membership;
+using Ecliptix.Security.Opaque.Contracts;
+using Ecliptix.Security.Opaque.Models;
+using Ecliptix.Utilities;
+using Ecliptix.Utilities.Configuration;
 using Ecliptix.Utilities.Failures.Sodium;
-using Serilog;
-using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
+using Microsoft.Extensions.Options;
+using ByteString = Google.Protobuf.ByteString;
 using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteResponse;
 using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitResponse;
+using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
 using OprfRegistrationInitResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationInitResponse;
-using ByteString = Google.Protobuf.ByteString;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors;
 
@@ -29,7 +33,7 @@ internal sealed class PendingSignInState : IDisposable
     public required string MobileNumber { get; init; }
     public required Membership.Types.ActivityStatus ActivityStatus { get; init; }
     public required Membership.Types.CreationStatus CreationStatus { get; init; }
-    public required DateTime CreatedAt { get; init; }
+    public required DateTimeOffset CreatedAt { get; init; }
     public required byte[] ServerMac { get; init; }
     public List<AccountInfo>? AvailableAccounts { get; init; }
     public Guid? ActiveAccountId { get; init; }
@@ -43,34 +47,42 @@ internal sealed class PendingSignInState : IDisposable
 public sealed class MembershipActor : ReceivePersistentActor
 {
     private const string PersistenceIdValue = "membership-actor";
-    private const int SnapshotInterval = 100;
+    private static readonly TimeSpan PendingPasswordRecoveryTimeout = TimeSpan.FromMinutes(15);
 
     private readonly ILocalizationProvider _localizationProvider;
-    private readonly IActorRef _persistor;
+    private readonly IActorRef _membershipPersistor;
+    private readonly IActorRef _accountPersistor;
+    private readonly IActorRef _passwordRecoveryPersistor;
     private readonly IOpaqueProtocolService _opaqueProtocolService;
     private readonly IMasterKeyService _masterKeyService;
+    private readonly IOptionsMonitor<SecurityConfiguration> _securityConfig;
 
-    private readonly Dictionary<uint, PendingSignInState> _pendingSignIns = new();
+    private readonly Dictionary<uint, PendingSignInState> _pendingSignIns = new(capacity: 8);
 
-    private readonly Dictionary<Guid, byte[]> _pendingMaskingKeys = new();
-    private readonly Dictionary<Guid, SodiumSecureMemoryHandle> _pendingSessionKeys = new();
-    private readonly Dictionary<Guid, DateTime> _pendingRecoveryTimestamps = new();
+    private readonly Dictionary<Guid, byte[]> _pendingMaskingKeys = new(capacity: 8);
+    private readonly Dictionary<Guid, SodiumSecureMemoryHandle> _pendingSessionKeys = new(capacity: 8);
+    private readonly Dictionary<Guid, DateTimeOffset> _pendingRecoveryTimestamps = new(capacity: 8);
 
-    private static readonly TimeSpan PendingSignInTimeout = TimeSpan.FromMinutes(10);
-    private static readonly TimeSpan PendingPasswordRecoveryTimeout = TimeSpan.FromMinutes(10);
     private ICancelable? _cleanupTimer;
+    private ICancelable? _passwordRecoveryCleanupTimer;
 
     public override string PersistenceId => PersistenceIdValue;
 
-    public MembershipActor(IActorRef persistor,
+    public MembershipActor(IActorRef membershipPersistor,
+        IActorRef accountPersistor,
+        IActorRef passwordRecoveryPersistor,
         IOpaqueProtocolService opaqueProtocolService,
         ILocalizationProvider localizationProvider,
-        IMasterKeyService masterKeyService)
+        IMasterKeyService masterKeyService,
+        IOptionsMonitor<SecurityConfiguration> securityConfig)
     {
-        _persistor = persistor;
+        _membershipPersistor = membershipPersistor;
+        _accountPersistor = accountPersistor;
+        _passwordRecoveryPersistor = passwordRecoveryPersistor;
         _opaqueProtocolService = opaqueProtocolService;
         _localizationProvider = localizationProvider;
         _masterKeyService = masterKeyService;
+        _securityConfig = securityConfig;
 
         CommandAsync<SignInCompleteEvent>(HandleSignInComplete);
         CommandAsync<CleanupExpiredPendingSignIns>(_ => HandleCleanupExpiredPendingSignIns());
@@ -111,28 +123,33 @@ public sealed class MembershipActor : ReceivePersistentActor
             Log.Debug("MembershipActor recovery completed with sequence {Sequence}", LastSequenceNr));
     }
 
-    public static Props Build(IActorRef persistor,
+    public static Props Build(IActorRef membershipPersistor,
+        IActorRef accountPersistor,
+        IActorRef passwordRecoveryPersistor,
         IOpaqueProtocolService opaqueProtocolService,
         ILocalizationProvider localizationProvider,
-        IMasterKeyService masterKeyService)
+        IMasterKeyService masterKeyService,
+        IOptionsMonitor<SecurityConfiguration> securityConfig)
     {
-        return Props.Create(() => new MembershipActor(persistor, opaqueProtocolService,
-            localizationProvider, masterKeyService));
+        return Props.Create(() => new MembershipActor(membershipPersistor, accountPersistor,
+            passwordRecoveryPersistor, opaqueProtocolService, localizationProvider, masterKeyService, securityConfig));
     }
 
     protected override void PreStart()
     {
         base.PreStart();
+        MembershipActorSettings settings = _securityConfig.CurrentValue.MembershipActor;
+
         _cleanupTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
-            TimeSpan.FromMinutes(5),
-            TimeSpan.FromMinutes(5),
+            settings.CleanupInterval,
+            settings.CleanupInterval,
             Self,
             new CleanupExpiredPendingSignIns(),
             ActorRefs.NoSender);
 
-        Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
-            TimeSpan.FromMinutes(2),
-            TimeSpan.FromMinutes(2),
+        _passwordRecoveryCleanupTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
+            settings.PasswordRecoveryCleanupInterval,
+            settings.PasswordRecoveryCleanupInterval,
             Self,
             new CleanupExpiredPasswordRecovery(),
             ActorRefs.NoSender);
@@ -141,6 +158,7 @@ public sealed class MembershipActor : ReceivePersistentActor
     protected override void PostStop()
     {
         _cleanupTimer?.Cancel();
+        _passwordRecoveryCleanupTimer?.Cancel();
         ClearState();
         base.PostStop();
     }
@@ -151,119 +169,132 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         if (!_pendingMaskingKeys.TryGetValue(@event.MembershipIdentifier, out byte[]? maskingKey))
         {
-            replyTo.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.InvalidOpaque(
+            replyTo.Tell(Result<OprfRegistrationCompleteResponse, AccountFailure>.Err(
+                AccountFailure.ValidationFailed(
                     "No masking key found for membership during registration completion")));
             return;
         }
 
-        byte[] maskingKeyCopy = (byte[])maskingKey.Clone();
+        byte[] maskingKeyCopy = maskingKey.AsSpan().ToArray();
 
-        UpdateMembershipSecureKeyEvent updateEvent = new(
+        Result<AccountCreationResult, AccountFailure> accountResult =
+            await _accountPersistor.Ask<Result<AccountCreationResult, AccountFailure>>(
+                new CreateDefaultAccountEvent(@event.MembershipIdentifier, @event.CancellationToken),
+                @event.CancellationToken);
+
+        if (accountResult.IsErr)
+        {
+            RemovePendingMaskingKey(@event.MembershipIdentifier);
+            replyTo.Tell(
+                Result<OprfRegistrationCompleteResponse, AccountFailure>.Err(
+                    accountResult.UnwrapErr()));
+            return;
+        }
+
+        AccountCreationResult accountInfo = accountResult.Unwrap();
+        Guid defaultAccountId = accountInfo.Accounts.First(a => a.IsDefault).AccountId;
+
+        UpdateAccountSecureKeyEvent updateEvent = new(
             @event.MembershipIdentifier,
             @event.PeerRegistrationRecord,
             maskingKeyCopy,
-            @event.CancellationToken);
+            AccountId: defaultAccountId,
+            CancellationToken: @event.CancellationToken);
 
-        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent,
+        Result<AccountSecureKeyUpdateResult, AccountFailure> persistorResult =
+            await _accountPersistor.Ask<Result<AccountSecureKeyUpdateResult, AccountFailure>>(updateEvent,
                 @event.CancellationToken);
 
         if (persistorResult.IsErr)
         {
             RemovePendingMaskingKey(@event.MembershipIdentifier);
             replyTo.Tell(
-                Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Err(persistorResult.UnwrapErr()));
+                Result<OprfRegistrationCompleteResponse, AccountFailure>.Err(
+                    persistorResult.UnwrapErr()));
             return;
         }
 
         RemovePendingMaskingKey(@event.MembershipIdentifier);
 
-        Result<AccountCreationResult, VerificationFlowFailure> accountResult =
-            await _persistor.Ask<Result<AccountCreationResult, VerificationFlowFailure>>(
-                new CreateDefaultAccountEvent(@event.MembershipIdentifier, @event.CancellationToken),
-                @event.CancellationToken);
-
-        if (accountResult.IsErr)
+        int accountCount = accountInfo.Accounts.Count;
+        List<Protobuf.Account.Account> availableAccounts = new(accountCount);
+        for (int i = 0; i < accountCount; i++)
         {
-            replyTo.Tell(
-                Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Err(accountResult.UnwrapErr()));
-            return;
+            AccountInfo a = accountInfo.Accounts[i];
+            availableAccounts.Add(new Protobuf.Account.Account
+            {
+                UniqueIdentifier = Helpers.GuidToByteString(a.AccountId),
+                MembershipIdentifier = Helpers.GuidToByteString(a.MembershipId),
+                AccountType = a.Type,
+                AccountName = a.Name,
+                Status = a.Status,
+                IsDefaultAccount = a.IsDefault
+            });
         }
 
-        AccountCreationResult accountInfo = accountResult.Unwrap();
-
-        List<Protobuf.Account.Account> availableAccounts = accountInfo.Accounts.Select(a => new Protobuf.Account.Account
-        {
-            UniqueIdentifier = Helpers.GuidToByteString(a.AccountId),
-            MembershipIdentifier = Helpers.GuidToByteString(a.MembershipId),
-            AccountType = a.Type,
-            AccountName = a.Name,
-            Status = a.Status,
-            IsDefaultAccount = a.IsDefault
-        }).ToList();
-
-        replyTo.Tell(Result<OprfRegistrationCompleteResponse, VerificationFlowFailure>.Ok(
+        replyTo.Tell(Result<OprfRegistrationCompleteResponse, AccountFailure>.Ok(
             new OprfRegistrationCompleteResponse
             {
                 Result = OprfRegistrationCompleteResponse.Types.RegistrationResult.Succeeded,
                 Message = "Registration completed successfully.",
                 SessionKey = ByteString.Empty,
                 AvailableAccounts = { availableAccounts },
-                ActiveAccount = availableAccounts.First()
+                ActiveAccount = availableAccounts[0]
             }));
     }
 
     private async Task HandleCompleteRecoverySecureKeyEvent(OprfCompleteRecoverySecureKeyEvent @event)
     {
         IActorRef replyTo = Sender;
-        Serilog.Log.Information(
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        Log.Info(
             "[PASSWORD-RECOVERY-COMPLETE] Starting password recovery completion for membership {MembershipId}",
             @event.MembershipIdentifier);
 
-        if (!_pendingRecoveryTimestamps.TryGetValue(@event.MembershipIdentifier, out DateTime initTimestamp))
+        if (!_pendingRecoveryTimestamps.TryGetValue(@event.MembershipIdentifier, out DateTimeOffset initTimestamp))
         {
             Log.Warning("[PASSWORD-RECOVERY-COMPLETE] No recovery session found for membership {MembershipId}",
                 @event.MembershipIdentifier);
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.InvalidOpaque(
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Err(
+                PasswordRecoveryFailure.TokenInvalid(
                     "No password recovery session found. Please restart the password recovery process.")));
             return;
         }
 
-        TimeSpan elapsed = DateTime.UtcNow - initTimestamp;
+        TimeSpan elapsed = now - initTimestamp;
         if (elapsed > PendingPasswordRecoveryTimeout)
         {
             Log.Warning(
                 "[PASSWORD-RECOVERY-COMPLETE] Password recovery timeout exceeded for membership {MembershipId}. Elapsed: {Elapsed}, Max: {Max}",
                 @event.MembershipIdentifier, elapsed, PendingPasswordRecoveryTimeout);
             ClearPendingRecoverySession(@event.MembershipIdentifier);
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Generic(
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Err(
+                PasswordRecoveryFailure.TokenExpired(
                     "Password recovery session expired. Please restart the password recovery process.")));
             return;
         }
 
-        Serilog.Log.Information(
+        Log.Info(
             "[PASSWORD-RECOVERY-COMPLETE] Recovery session validated. MembershipId: {MembershipId}, SessionAge: {Elapsed}",
             @event.MembershipIdentifier, elapsed);
 
         if (!_pendingMaskingKeys.TryGetValue(@event.MembershipIdentifier, out byte[]? maskingKey))
         {
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.InvalidOpaque(
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Err(
+                PasswordRecoveryFailure.TokenInvalid(
                     "No masking key found for membership during recovery completion")));
             return;
         }
 
-        byte[] maskingKeyCopy = (byte[])maskingKey.Clone();
+        byte[] maskingKeyCopy = maskingKey.AsSpan().ToArray();
 
         if (!_pendingSessionKeys.TryGetValue(@event.MembershipIdentifier,
                 out SodiumSecureMemoryHandle? sessionKeyHandle))
         {
             ClearPendingRecoverySession(@event.MembershipIdentifier);
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.InvalidOpaque(
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Err(
+                PasswordRecoveryFailure.TokenInvalid(
                     "No session key found for membership during recovery completion")));
             return;
         }
@@ -271,8 +302,8 @@ public sealed class MembershipActor : ReceivePersistentActor
         if (sessionKeyHandle.IsInvalid)
         {
             ClearPendingRecoverySession(@event.MembershipIdentifier);
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.InvalidOpaque("Session key handle is invalid")));
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Err(
+                PasswordRecoveryFailure.TokenInvalid("Session key handle is invalid")));
             return;
         }
 
@@ -286,27 +317,28 @@ public sealed class MembershipActor : ReceivePersistentActor
                 "CRITICAL: Failed to regenerate master key shares for membership {MembershipId}: {Error}. Password reset aborted.",
                 @event.MembershipIdentifier, regenerateResult.UnwrapErr().Message);
             ClearPendingRecoverySession(@event.MembershipIdentifier);
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Generic(
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Err(
+                PasswordRecoveryFailure.ResetFailed(
                     "Failed to regenerate encryption keys. Password reset aborted. Please try again.")));
             return;
         }
 
-        Serilog.Log.Information("Master key shares regenerated successfully for membership {MembershipId}",
+        Log.Info("Master key shares regenerated successfully for membership {MembershipId}",
             @event.MembershipIdentifier);
 
-        UpdateMembershipSecureKeyEvent updateEvent = new(
+        UpdateAccountSecureKeyEvent updateEvent = new(
             @event.MembershipIdentifier,
             @event.PeerRecoveryRecord,
             maskingKeyCopy,
-            @event.CancellationToken);
+            AccountId: null,
+            CancellationToken: @event.CancellationToken);
 
-        Serilog.Log.Information(
+        Log.Info(
             "[PASSWORD-RECOVERY-COMPLETE] Updating OPAQUE credentials in database for membership {MembershipId}",
             @event.MembershipIdentifier);
 
-        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(updateEvent,
+        Result<AccountSecureKeyUpdateResult, AccountFailure> persistorResult =
+            await _accountPersistor.Ask<Result<AccountSecureKeyUpdateResult, AccountFailure>>(updateEvent,
                 @event.CancellationToken);
 
         if (persistorResult.IsErr)
@@ -316,15 +348,15 @@ public sealed class MembershipActor : ReceivePersistentActor
                 "CRITICAL: Master keys regenerated but password update failed for membership {MembershipId}: {Error}. User may be locked out!",
                 @event.MembershipIdentifier, persistorResult.UnwrapErr().Message);
             replyTo.Tell(
-                Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>
-                    .Err(persistorResult.UnwrapErr()));
+                Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>
+                    .Err(PasswordRecoveryFailure.FromAccount(persistorResult.UnwrapErr())));
             return;
         }
 
         ClearPendingRecoverySession(@event.MembershipIdentifier);
 
-        Result<Unit, VerificationFlowFailure> expireResult =
-            await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
+        Result<Unit, PasswordRecoveryFailure> expireResult =
+            await _passwordRecoveryPersistor.Ask<Result<Unit, PasswordRecoveryFailure>>(
                 new ExpirePasswordRecoveryFlowsEvent(@event.MembershipIdentifier, @event.CancellationToken),
                 @event.CancellationToken);
 
@@ -334,19 +366,19 @@ public sealed class MembershipActor : ReceivePersistentActor
                 @event.MembershipIdentifier, expireResult.UnwrapErr().Message);
         }
 
-        replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, VerificationFlowFailure>.Ok(
+        replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Ok(
             new OprfRecoverySecretKeyCompleteResponse { Message = "Recovery secret key completed successfully." }));
     }
 
     private async Task HandleInitRecoveryRequestEvent(OprfInitRecoverySecureKeyEvent @event)
     {
         IActorRef replyTo = Sender;
-        Serilog.Log.Information(
+        Log.Info(
             "[PASSWORD-RECOVERY-INIT] Starting password recovery init for membership {MembershipId}",
             @event.MembershipIdentifier);
 
-        Result<PasswordRecoveryFlowValidation, VerificationFlowFailure> flowValidation =
-            await _persistor.Ask<Result<PasswordRecoveryFlowValidation, VerificationFlowFailure>>(
+        Result<PasswordRecoveryFlowValidation, PasswordRecoveryFailure> flowValidation =
+            await _passwordRecoveryPersistor.Ask<Result<PasswordRecoveryFlowValidation, PasswordRecoveryFailure>>(
                 new ValidatePasswordRecoveryFlowEvent(@event.MembershipIdentifier, @event.CancellationToken),
                 @event.CancellationToken);
 
@@ -355,7 +387,8 @@ public sealed class MembershipActor : ReceivePersistentActor
             Log.Error("[PASSWORD-RECOVERY-INIT] Flow validation failed for membership {MembershipId}: {Error}",
                 @event.MembershipIdentifier, flowValidation.UnwrapErr().Message);
             replyTo.Tell(
-                Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Err(flowValidation.UnwrapErr()));
+                Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure>.Err(
+                    flowValidation.UnwrapErr()));
             return;
         }
 
@@ -370,31 +403,31 @@ public sealed class MembershipActor : ReceivePersistentActor
                 VerificationFlowMessageKeys.PasswordRecoveryOtpRequired,
                 @event.CultureName);
 
-            replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Unauthorized(errorMessage)));
+            replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure>.Err(
+                PasswordRecoveryFailure.ValidationFailed(errorMessage)));
             return;
         }
 
-        Serilog.Log.Information(
+        Log.Info(
             "[PASSWORD-RECOVERY-INIT] Recovery flow validated. MembershipId: {MembershipId}, FlowId: {FlowId}",
             @event.MembershipIdentifier, validation.FlowId);
 
-        if (_pendingRecoveryTimestamps.TryGetValue(@event.MembershipIdentifier, out DateTime existingTimestamp))
+        if (_pendingRecoveryTimestamps.TryGetValue(@event.MembershipIdentifier, out DateTimeOffset existingTimestamp))
         {
-            TimeSpan elapsed = DateTime.UtcNow - existingTimestamp;
+            TimeSpan elapsed = DateTimeOffset.UtcNow - existingTimestamp;
             if (elapsed < PendingPasswordRecoveryTimeout)
             {
                 int remainingSeconds = (int)(PendingPasswordRecoveryTimeout - elapsed).TotalSeconds;
                 Log.Warning(
                     "Password recovery already in progress for membership {MembershipId}. Time remaining: {Seconds}s",
                     @event.MembershipIdentifier, remainingSeconds);
-                replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.Generic(
+                replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure>.Err(
+                    PasswordRecoveryFailure.InternalError(
                         $"A password reset is already in progress. Please wait {remainingSeconds} seconds before trying again.")));
                 return;
             }
 
-            Serilog.Log.Information(
+            Log.Info(
                 "Previous password recovery attempt expired for membership {MembershipId}. Cleaning up and allowing new attempt.",
                 @event.MembershipIdentifier);
             ClearPendingRecoverySession(@event.MembershipIdentifier);
@@ -404,7 +437,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             _opaqueProtocolService.ProcessOprfRequestWithSessionKey(@event.OprfRequest);
 
         string sessionKeyFingerprint = Convert.ToHexString(SHA256.HashData(sessionKey))[..16];
-        Serilog.Log.Information(
+        Log.Info(
             "[PASSWORD-RECOVERY-INIT-EXPORTKEY] OPAQUE export_key derived during password recovery INIT. MembershipId: {MembershipId}, ExportKeyFingerprint: {ExportKeyFingerprint}",
             @event.MembershipIdentifier, sessionKeyFingerprint);
 
@@ -412,17 +445,17 @@ public sealed class MembershipActor : ReceivePersistentActor
         {
             CryptographicOperations.ZeroMemory(maskingKey);
             CryptographicOperations.ZeroMemory(sessionKey);
-            replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Generic("Failed to process session key securely")));
+            replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure>.Err(
+                PasswordRecoveryFailure.InternalError("Failed to process session key securely")));
             return;
         }
 
-        byte[] maskingKeyCopy = (byte[])maskingKey.Clone();
+        byte[] maskingKeyCopy = maskingKey.AsSpan().ToArray();
         byte[] sessionKeyCopy = (byte[])sessionKey.Clone();
         CryptographicOperations.ZeroMemory(sessionKey);
 
-        Result<Option<Guid>, VerificationFlowFailure> accountResult =
-            await _persistor.Ask<Result<Option<Guid>, VerificationFlowFailure>>(
+        Result<Option<Guid>, AccountFailure> accountResult =
+            await _accountPersistor.Ask<Result<Option<Guid>, AccountFailure>>(
                 new GetDefaultAccountIdEvent(@event.MembershipIdentifier, @event.CancellationToken),
                 @event.CancellationToken);
 
@@ -445,7 +478,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             Result = OprfRecoverySecureKeyInitResponse.Types.RecoveryResult.Succeeded
         };
 
-        Serilog.Log.Information(
+        Log.Info(
             "[PASSWORD-RECOVERY-INIT] OPRF generated for membership {MembershipId}. Credentials stored in pending state (persisted).",
             @event.MembershipIdentifier);
 
@@ -454,12 +487,12 @@ public sealed class MembershipActor : ReceivePersistentActor
                 @event.MembershipIdentifier,
                 maskingKeyCopy,
                 sessionKeyCopy,
-                DateTime.UtcNow),
+                DateTimeOffset.UtcNow),
             evt =>
             {
                 Apply(evt);
                 MaybeSaveSnapshot();
-                replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, VerificationFlowFailure>.Ok(response));
+                replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure>.Ok(response));
             });
     }
 
@@ -487,7 +520,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             {
                 Apply(evt);
                 MaybeSaveSnapshot();
-                replyTo.Tell(Result<OprfRegistrationInitResponse, VerificationFlowFailure>.Ok(response));
+                replyTo.Tell(Result<OprfRegistrationInitResponse, AccountFailure>.Ok(response));
             });
 
         await Task.CompletedTask;
@@ -495,31 +528,63 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private async Task HandleCreateMembership(CreateMembershipActorEvent @event)
     {
-        Result<MembershipQueryRecord, VerificationFlowFailure> operationResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event,
+        Result<MembershipQueryRecord, MembershipFailure> operationResult =
+            await _membershipPersistor.Ask<Result<MembershipQueryRecord, MembershipFailure>>(@event,
                 @event.CancellationToken);
-        Sender.Tell(operationResult);
+
+        Result<MembershipQueryRecord, VerificationFlowFailure> convertedResult = operationResult.Match(
+            ok => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(ok),
+            err => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.FromMembership(err)));
+
+        Sender.Tell(convertedResult);
     }
 
     private async Task HandleGetMembershipByVerificationFlow(GetMembershipByVerificationFlowEvent @event)
     {
-        Result<MembershipQueryRecord, VerificationFlowFailure> operationResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event,
+        Result<MembershipQueryRecord, MembershipFailure> operationResult =
+            await _membershipPersistor.Ask<Result<MembershipQueryRecord, MembershipFailure>>(@event,
                 @event.CancellationToken);
-        Sender.Tell(operationResult);
+
+        Result<MembershipQueryRecord, VerificationFlowFailure> convertedResult = operationResult.Match(
+            ok => Result<MembershipQueryRecord, VerificationFlowFailure>.Ok(ok),
+            err => Result<MembershipQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.FromMembership(err)));
+
+        Sender.Tell(convertedResult);
     }
 
     private async Task HandleSignInMembership(SignInMembershipActorEvent @event)
     {
         IActorRef replyTo = Sender;
 
-        Result<MembershipQueryRecord, VerificationFlowFailure> persistorResult =
-            await _persistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(@event,
+        Result<MembershipQueryRecord, MembershipFailure> persistorResult =
+            await _membershipPersistor.Ask<Result<MembershipQueryRecord, MembershipFailure>>(@event,
                 @event.CancellationToken);
 
         if (persistorResult.IsErr)
         {
-            replyTo.Tell(TranslateSignInFailure(persistorResult.UnwrapErr(), @event.CultureName));
+            MembershipFailure failure = persistorResult.UnwrapErr();
+
+            // For security: Don't leak information about which mobile numbers exist
+            // Return success with InvalidCredentials for user-facing auth failures
+            if (failure.IsUserFacing)
+            {
+                string message = _localizationProvider.Localize(
+                    VerificationFlowMessageKeys.InvalidCredentials,
+                    @event.CultureName);
+
+                replyTo.Tell(Result<OpaqueSignInInitResponse, MembershipFailure>.Ok(
+                    new OpaqueSignInInitResponse
+                    {
+                        Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
+                        Message = message
+                    }));
+                return;
+            }
+
+            // Infrastructure errors should still return as errors
+            replyTo.Tell(Result<OpaqueSignInInitResponse, MembershipFailure>.Err(failure));
             return;
         }
 
@@ -532,14 +597,23 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         if (initiateSignInResult.IsErr)
         {
-            replyTo.Tell(Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.InvalidOpaque()));
+            // OPAQUE failure during sign-in - treat as invalid credentials for security
+            string message = _localizationProvider.Localize(
+                VerificationFlowMessageKeys.InvalidCredentials,
+                @event.CultureName);
+
+            replyTo.Tell(Result<OpaqueSignInInitResponse, MembershipFailure>.Ok(
+                new OpaqueSignInInitResponse
+                {
+                    Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
+                    Message = message
+                }));
             return;
         }
 
         (OpaqueSignInInitResponse response, byte[] serverMac) = initiateSignInResult.Unwrap();
 
-        List<AccountInfo>? accountsCopy = record.AvailableAccounts?.Select(CloneAccountInfo).ToList();
+        List<AccountInfo> accountsCopy = record.AvailableAccounts.Select(CloneAccountInfo).ToList();
 
         PersistAsync(
             new PendingSignInStoredEvent(
@@ -549,7 +623,7 @@ public sealed class MembershipActor : ReceivePersistentActor
                 @event.MobileNumber,
                 record.ActivityStatus,
                 record.CreationStatus,
-                DateTime.UtcNow,
+                DateTimeOffset.UtcNow,
                 serverMac,
                 accountsCopy,
                 record.ActiveAccountId),
@@ -557,7 +631,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             {
                 Apply(evt);
                 MaybeSaveSnapshot();
-                replyTo.Tell(Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(response));
+                replyTo.Tell(Result<OpaqueSignInInitResponse, MembershipFailure>.Ok(response));
             });
     }
 
@@ -567,8 +641,12 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         if (!_pendingSignIns.TryGetValue(@event.ConnectId, out PendingSignInState? state))
         {
-            replyTo.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.InvalidOpaque("No matching sign-in initiation found for this connection")));
+            // No pending sign-in found - treat as invalid credentials
+            replyTo.Tell(Result<OpaqueSignInFinalizeResponse, MembershipFailure>.Ok(
+                new OpaqueSignInFinalizeResponse
+                {
+                    Result = OpaqueSignInFinalizeResponse.Types.SignInResult.InvalidCredentials
+                }));
             return;
         }
 
@@ -579,39 +657,33 @@ public sealed class MembershipActor : ReceivePersistentActor
         if (opaqueResult.IsErr)
         {
             RemovePendingSignIn(@event.ConnectId);
-            replyTo.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.InvalidOpaque(opaqueResult.UnwrapErr().Message)));
+            // OPAQUE protocol failure - treat as invalid credentials
+            replyTo.Tell(Result<OpaqueSignInFinalizeResponse, MembershipFailure>.Ok(
+                new OpaqueSignInFinalizeResponse
+                {
+                    Result = OpaqueSignInFinalizeResponse.Types.SignInResult.InvalidCredentials
+                }));
             return;
         }
 
         (SodiumSecureMemoryHandle sessionKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) =
             opaqueResult.Unwrap();
 
-        // SessionKeyHandle is null when OPAQUE authentication fails (wrong password)
-        if (sessionKeyHandle != null)
+        Result<byte[], SodiumFailure> sessionKeyBytesResult = sessionKeyHandle.ReadBytes(sessionKeyHandle.Length);
+        if (sessionKeyBytesResult.IsOk)
         {
-            Result<byte[], SodiumFailure> sessionKeyBytesResult = sessionKeyHandle.ReadBytes(sessionKeyHandle.Length);
-            if (sessionKeyBytesResult.IsOk)
-            {
-                byte[] sessionKeyBytes = sessionKeyBytesResult.Unwrap();
-                string sessionKeyFingerprint = Convert.ToHexString(SHA256.HashData(sessionKeyBytes))[..16];
-                Serilog.Log.Information(
-                    "[SERVER-OPAQUE-EXPORTKEY] OPAQUE export_key (session key) derived. MembershipId: {MembershipId}, SessionKeyFingerprint: {SessionKeyFingerprint}",
-                    state.MembershipId, sessionKeyFingerprint);
-                CryptographicOperations.ZeroMemory(sessionKeyBytes);
-            }
-
-            if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
-                !sessionKeyHandle.IsInvalid)
-            {
-                await EnsureMasterKeySharesExist(sessionKeyHandle, state.MembershipId);
-            }
+            byte[] sessionKeyBytes = sessionKeyBytesResult.Unwrap();
+            string sessionKeyFingerprint = Convert.ToHexString(SHA256.HashData(sessionKeyBytes))[..16];
+            Log.Info(
+                "[SERVER-OPAQUE-EXPORTKEY] OPAQUE export_key (session key) derived. MembershipId: {0}, SessionKeyFingerprint: {1}",
+                state.MembershipId, sessionKeyFingerprint);
+            CryptographicOperations.ZeroMemory(sessionKeyBytes);
         }
-        else
+
+        if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
+            !sessionKeyHandle.IsInvalid)
         {
-            Serilog.Log.Information(
-                "[SERVER-OPAQUE-AUTH-FAILED] OPAQUE authentication failed (session key is null). ConnectId: {ConnectId}, MembershipId: {MembershipId}, Result: {Result}",
-                @event.ConnectId, state.MembershipId, finalizeResponse.Result);
+            await EnsureMasterKeySharesExist(sessionKeyHandle, state.MembershipId);
         }
 
         RemovePendingSignIn(@event.ConnectId);
@@ -623,7 +695,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             CreationStatus = state.CreationStatus,
             AccountUniqueIdentifier = state.ActiveAccountId.HasValue
                 ? Helpers.GuidToByteString(state.ActiveAccountId.Value)
-                : null
+                : ByteString.Empty
         };
 
         if (state.AvailableAccounts != null && state.AvailableAccounts.Any())
@@ -648,16 +720,23 @@ public sealed class MembershipActor : ReceivePersistentActor
             }
         }
 
-        replyTo.Tell(Result<OpaqueSignInFinalizeResponse, VerificationFlowFailure>.Ok(finalizeResponse));
+        replyTo.Tell(Result<OpaqueSignInFinalizeResponse, MembershipFailure>.Ok(finalizeResponse));
     }
 
     private Task HandleCleanupExpiredPendingSignIns()
     {
-        DateTime cutoffTime = DateTime.UtcNow - PendingSignInTimeout;
-        List<uint> expiredConnections = _pendingSignIns
-            .Where(kvp => kvp.Value.CreatedAt < cutoffTime)
-            .Select(kvp => kvp.Key)
-            .ToList();
+        MembershipActorSettings settings = _securityConfig.CurrentValue.MembershipActor;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset cutoffTime = now - settings.PendingSignInTimeout;
+
+        List<uint> expiredConnections = new(_pendingSignIns.Count);
+        foreach (KeyValuePair<uint, PendingSignInState> kvp in _pendingSignIns)
+        {
+            if (kvp.Value.CreatedAt < cutoffTime)
+            {
+                expiredConnections.Add(kvp.Key);
+            }
+        }
 
         foreach (uint connectId in expiredConnections)
         {
@@ -669,15 +748,22 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private Task HandleCleanupExpiredPasswordRecovery()
     {
-        DateTime cutoffTime = DateTime.UtcNow - PendingPasswordRecoveryTimeout;
-        List<Guid> expiredRecoveries = _pendingRecoveryTimestamps
-            .Where(kvp => kvp.Value < cutoffTime)
-            .Select(kvp => kvp.Key)
-            .ToList();
+        MembershipActorSettings settings = _securityConfig.CurrentValue.MembershipActor;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset cutoffTime = now - settings.PendingPasswordRecoveryTimeout;
+
+        List<Guid> expiredRecoveries = new(_pendingRecoveryTimestamps.Count);
+        foreach (KeyValuePair<Guid, DateTimeOffset> kvp in _pendingRecoveryTimestamps)
+        {
+            if (kvp.Value < cutoffTime)
+            {
+                expiredRecoveries.Add(kvp.Key);
+            }
+        }
 
         foreach (Guid membershipId in expiredRecoveries)
         {
-            Serilog.Log.Information("Cleaning up expired password recovery attempt for membership {MembershipId}",
+            Log.Info("Cleaning up expired password recovery attempt for membership {MembershipId}",
                 membershipId);
             ClearPendingRecoverySession(membershipId);
         }
@@ -830,7 +916,8 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private void MaybeSaveSnapshot()
     {
-        if (LastSequenceNr == 0 || LastSequenceNr % SnapshotInterval != 0)
+        MembershipActorSettings settings = _securityConfig.CurrentValue.MembershipActor;
+        if (LastSequenceNr == 0 || LastSequenceNr % settings.SnapshotInterval != 0)
         {
             return;
         }
@@ -840,8 +927,21 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private MembershipActorSnapshot CreateSnapshot()
     {
-        List<PendingSignInStoredEvent> pendingSignIns = _pendingSignIns
-            .Select(kvp => new PendingSignInStoredEvent(
+        List<PendingSignInStoredEvent> pendingSignIns = new(_pendingSignIns.Count);
+        foreach (KeyValuePair<uint, PendingSignInState> kvp in _pendingSignIns)
+        {
+            List<AccountInfo>? accountsCopy = null;
+            if (kvp.Value.AvailableAccounts != null)
+            {
+                int count = kvp.Value.AvailableAccounts.Count;
+                accountsCopy = new List<AccountInfo>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    accountsCopy.Add(CloneAccountInfo(kvp.Value.AvailableAccounts[i]));
+                }
+            }
+
+            pendingSignIns.Add(new PendingSignInStoredEvent(
                 kvp.Key,
                 kvp.Value.MembershipId,
                 kvp.Value.MobileNumberId,
@@ -849,19 +949,21 @@ public sealed class MembershipActor : ReceivePersistentActor
                 kvp.Value.ActivityStatus,
                 kvp.Value.CreationStatus,
                 kvp.Value.CreatedAt,
-                (byte[])kvp.Value.ServerMac.Clone(),
-                kvp.Value.AvailableAccounts?.Select(CloneAccountInfo).ToList(),
-                kvp.Value.ActiveAccountId))
-            .ToList();
+                kvp.Value.ServerMac.AsSpan().ToArray(),
+                accountsCopy,
+                kvp.Value.ActiveAccountId));
+        }
 
-        List<RegistrationMaskingKeyStoredEvent> pendingMaskingKeys = _pendingMaskingKeys
-            .Select(kvp => new RegistrationMaskingKeyStoredEvent(
+        List<RegistrationMaskingKeyStoredEvent> pendingMaskingKeys = new(_pendingMaskingKeys.Count);
+        foreach (KeyValuePair<Guid, byte[]> kvp in _pendingMaskingKeys)
+        {
+            pendingMaskingKeys.Add(new RegistrationMaskingKeyStoredEvent(
                 kvp.Key,
-                (byte[])kvp.Value.Clone()))
-            .ToList();
+                kvp.Value.AsSpan().ToArray()));
+        }
 
         List<RecoverySessionSnapshot> recoverySessions = new();
-        foreach ((Guid membershipId, DateTime startedAt) in _pendingRecoveryTimestamps)
+        foreach ((Guid membershipId, DateTimeOffset startedAt) in _pendingRecoveryTimestamps)
         {
             if (_pendingSessionKeys.TryGetValue(membershipId, out SodiumSecureMemoryHandle? handle))
             {
@@ -1010,8 +1112,8 @@ public sealed class MembershipActor : ReceivePersistentActor
             }
             else
             {
-                Serilog.Log.Information(
-                    "[MASTER-KEY-CREATE] Successfully created master key shares for membership {MembershipId} on first login",
+                Log.Info(
+                    "[MASTER-KEY-CREATE] Successfully created master key shares for membership {0} on first login",
                     membershipId);
             }
 
@@ -1033,7 +1135,7 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         if (validationStatus == "mismatch")
         {
-            Serilog.Log.Warning(
+            Log.Warning(
                 "[MASTER-KEY-MISMATCH] Export key mismatch detected for membership {MembershipId}. OPAQUE credentials changed since last login. Regenerating master key shares...",
                 membershipId);
 
@@ -1049,67 +1151,26 @@ public sealed class MembershipActor : ReceivePersistentActor
             }
             else
             {
-                Serilog.Log.Information(
+                Log.Info(
                     "[MASTER-KEY-REGEN] Successfully regenerated master key shares for membership {MembershipId} after export key change",
                     membershipId);
             }
         }
         else
         {
-            Serilog.Log.Information(
+            Log.Info(
                 "[MASTER-KEY-VALID] Master key shares are valid for membership {MembershipId}. No regeneration needed.",
                 membershipId);
         }
     }
 
-    private Result<OpaqueSignInInitResponse, VerificationFlowFailure> TranslateSignInFailure(
-        VerificationFlowFailure failure,
-        string cultureName)
-    {
-        switch (failure.FailureType)
-        {
-            case VerificationFlowFailureType.Validation:
-            case VerificationFlowFailureType.NotFound:
-            {
-                string message = _localizationProvider.Localize(
-                    VerificationFlowMessageKeys.InvalidCredentials,
-                    cultureName
-                );
-                return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
-                {
-                    Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials, Message = message
-                });
-            }
-
-            case VerificationFlowFailureType.RateLimitExceeded:
-            {
-                string messageTemplate = _localizationProvider.Localize(
-                    VerificationFlowMessageKeys.TooManySigninAttempts,
-                    cultureName
-                );
-
-                int.TryParse(failure.Message, out int minutesUntilRetry);
-                string message = string.Format(messageTemplate, minutesUntilRetry);
-
-                return Result<OpaqueSignInInitResponse, VerificationFlowFailure>.Ok(new OpaqueSignInInitResponse
-                {
-                    Result = OpaqueSignInInitResponse.Types.SignInResult.LoginAttemptExceeded,
-                    Message = message,
-                    MinutesUntilRetry = minutesUntilRetry
-                });
-            }
-
-            default:
-                return Result<OpaqueSignInInitResponse, VerificationFlowFailure>
-                    .Err(failure);
-        }
-    }
 }
 
-public record UpdateMembershipSecureKeyEvent(
+public record UpdateAccountSecureKeyEvent(
     Guid MembershipIdentifier,
     byte[] SecureKey,
     byte[] MaskingKey,
+    Guid? AccountId = null,
     CancellationToken CancellationToken = default) : ICancellableActorEvent;
 
 public record GenerateMembershipOprfRegistrationRequestEvent(

@@ -5,10 +5,10 @@ using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Domain.Protocol.Handlers;
 using Ecliptix.Domain.Memberships.WorkerActors;
-using Ecliptix.Utilities;
-using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.Common;
+using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Utilities;
 using Unit = Ecliptix.Utilities.Unit;
 
 namespace Ecliptix.Core.Domain.Actors;

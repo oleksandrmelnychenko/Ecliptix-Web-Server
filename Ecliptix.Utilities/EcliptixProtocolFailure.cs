@@ -17,7 +17,7 @@ public sealed record EcliptixProtocolFailure(
             EcliptixProtocolFailureType.DataTooLarge => new GrpcErrorDescriptor(
                 ErrorCode.ValidationFailed,
                 StatusCode.InvalidArgument,
-                ErrorI18nKeys.Validation),
+                ErrorI18NKeys.Validation),
 
             EcliptixProtocolFailureType.ObjectDisposed or
             EcliptixProtocolFailureType.EphemeralMissing or
@@ -25,48 +25,53 @@ public sealed record EcliptixProtocolFailure(
             EcliptixProtocolFailureType.ActorRefNotFound => new GrpcErrorDescriptor(
                 ErrorCode.PreconditionFailed,
                 StatusCode.FailedPrecondition,
-                ErrorI18nKeys.PreconditionFailed),
+                ErrorI18NKeys.PreconditionFailed),
 
             EcliptixProtocolFailureType.ActorNotCreated => new GrpcErrorDescriptor(
                 ErrorCode.DependencyUnavailable,
                 StatusCode.Unavailable,
-                ErrorI18nKeys.DependencyUnavailable,
+                ErrorI18NKeys.DependencyUnavailable,
                 Retryable: true),
 
             EcliptixProtocolFailureType.HandshakeFailed => new GrpcErrorDescriptor(
                 ErrorCode.ServiceUnavailable,
                 StatusCode.Unavailable,
-                ErrorI18nKeys.ServiceUnavailable,
+                ErrorI18NKeys.ServiceUnavailable,
                 Retryable: true),
 
             EcliptixProtocolFailureType.PinningFailure => new GrpcErrorDescriptor(
                 ErrorCode.DependencyUnavailable,
                 StatusCode.Unavailable,
-                ErrorI18nKeys.DependencyUnavailable,
+                ErrorI18NKeys.DependencyUnavailable,
                 Retryable: true),
 
             EcliptixProtocolFailureType.AllocationFailed => new GrpcErrorDescriptor(
                 ErrorCode.ResourceExhausted,
                 StatusCode.ResourceExhausted,
-                ErrorI18nKeys.ResourceExhausted,
+                ErrorI18NKeys.ResourceExhausted,
                 Retryable: true),
 
             EcliptixProtocolFailureType.TimestampDrift => new GrpcErrorDescriptor(
                 ErrorCode.ValidationFailed,
                 StatusCode.InvalidArgument,
-                ErrorI18nKeys.Validation),
+                ErrorI18NKeys.Validation),
+
+            EcliptixProtocolFailureType.ReplayAttempt => new GrpcErrorDescriptor(
+                ErrorCode.PreconditionFailed,
+                StatusCode.FailedPrecondition,
+                ErrorI18NKeys.PreconditionFailed),
 
             EcliptixProtocolFailureType.StateMismatch => new GrpcErrorDescriptor(
                 ErrorCode.PreconditionFailed,
                 StatusCode.FailedPrecondition,
-                ErrorI18nKeys.PreconditionFailed,
+                ErrorI18NKeys.PreconditionFailed,
                 Retryable: true),
 
             EcliptixProtocolFailureType.HeaderAuthenticationFailed or
             EcliptixProtocolFailureType.SessionAuthenticationFailed => new GrpcErrorDescriptor(
                 ErrorCode.PreconditionFailed,
                 StatusCode.FailedPrecondition,
-                ErrorI18nKeys.PreconditionFailed,
+                ErrorI18NKeys.PreconditionFailed,
                 Retryable: true),
 
             EcliptixProtocolFailureType.DeriveKeyFailed or
@@ -76,17 +81,17 @@ public sealed record EcliptixProtocolFailure(
             EcliptixProtocolFailureType.MemoryBufferError => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18nKeys.Internal),
+                ErrorI18NKeys.Internal),
 
             EcliptixProtocolFailureType.Generic => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18nKeys.Internal),
+                ErrorI18NKeys.Internal),
 
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18nKeys.Internal)
+                ErrorI18NKeys.Internal)
         };
 
     public static EcliptixProtocolFailure Generic(string details, Exception? inner = null)
@@ -177,7 +182,7 @@ public sealed record EcliptixProtocolFailure(
 
     public static EcliptixProtocolFailure ReplayAttempt(string details, Exception? inner = null)
     {
-        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.TimestampDrift, $"Replay attack detected: {details}", inner);
+        return new EcliptixProtocolFailure(EcliptixProtocolFailureType.ReplayAttempt, $"Replay attack detected: {details}", inner);
     }
 
     public static EcliptixProtocolFailure StateMismatch(string details, Exception? inner = null)

@@ -544,7 +544,7 @@ public sealed class EcliptixSystemIdentityKeys : IDisposable
             OneTimePreKeyRecord? first = remoteBundle.OneTimePreKeys.FirstOrDefault();
 
             bool useOpk = first?.PublicKey is
-                { Length: Constants.X25519PublicKeySize };
+            { Length: Constants.X25519PublicKeySize };
             Result<byte[], SodiumFailure> dh1Result =
                 SodiumInterop.ScalarMult(ephemeralSecretBytes, remoteBundle.IdentityX25519);
             if (dh1Result.IsErr)

@@ -1,17 +1,17 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Ecliptix.Core.Configuration;
+using Ecliptix.Core.Infrastructure.Grpc.Constants;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
-using Ecliptix.Utilities;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Protobuf.Common;
+using Ecliptix.Utilities;
+using Ecliptix.Utilities.Configuration;
 using Google.Protobuf;
 using Grpc.Core;
-using GrpcStatus = Grpc.Core.Status;
-using Serilog;
-using Ecliptix.Core.Infrastructure.Grpc.Constants;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
-using Ecliptix.Utilities.Configuration;
 using Microsoft.Extensions.Options;
+using Serilog;
+using GrpcStatus = Grpc.Core.Status;
 
 namespace Ecliptix.Core.Api.Grpc.Base;
 
@@ -257,7 +257,7 @@ public class GrpcSecurityService
             GrpcErrorDescriptor descriptor = new(
                 ErrorCode.ValidationFailed,
                 StatusCode.InvalidArgument,
-                ErrorI18nKeys.Validation);
+                ErrorI18NKeys.Validation);
 
             throw new GrpcFailureException(
                 descriptor.CreateStatus(GrpcServiceConstants.ErrorMessages.ConnectionIdOutOfRange),

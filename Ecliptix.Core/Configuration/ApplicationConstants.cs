@@ -18,6 +18,8 @@ public static class ApplicationConstants
         public const string MembershipActor = "MembershipActor";
         public const string MasterKeySharePersistorActor = "MasterKeySharePersistorActor";
         public const string LogoutAuditPersistorActor = "LogoutAuditPersistorActor";
+        public const string AccountPersistorActor = "AccountPersistorActor";
+        public const string PasswordRecoveryPersistorActor = "PasswordRecoveryPersistorActor";
     }
 
     public static class Endpoints

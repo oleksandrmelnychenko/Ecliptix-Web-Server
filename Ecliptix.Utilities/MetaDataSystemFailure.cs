@@ -26,11 +26,11 @@ public sealed record MetaDataSystemFailure(
             MetaDataSystemFailureType.RequiredComponentNotFound => new GrpcErrorDescriptor(
                 ErrorCode.PreconditionFailed,
                 StatusCode.FailedPrecondition,
-                ErrorI18nKeys.PreconditionFailed),
+                ErrorI18NKeys.PreconditionFailed),
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18nKeys.Internal)
+                ErrorI18NKeys.Internal)
         };
     }
 

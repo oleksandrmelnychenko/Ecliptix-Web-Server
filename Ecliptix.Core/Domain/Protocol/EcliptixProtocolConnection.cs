@@ -1,8 +1,8 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
-using Ecliptix.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures.Sodium;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
@@ -23,7 +23,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
     private readonly Lock _lock = new();
     private readonly ReplayProtection _replayProtection = new();
     private readonly RatchetConfig _ratchetConfig;
-    private readonly PerformanceProfiler _profiler = new();
 
     private readonly DateTimeOffset _createdAt;
     private readonly uint _id;
@@ -509,7 +508,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
     internal Result<(RatchetChainKey MessageKey, bool IncludeDhKey), EcliptixProtocolFailure>
         PrepareNextSendMessage()
     {
-        using IDisposable profilerScope = _profiler.StartOperation("PrepareNextSendMessage");
         lock (_lock)
         {
             byte[]? keyMaterial = null;
@@ -592,7 +590,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
     internal Result<RatchetChainKey, EcliptixProtocolFailure> ProcessReceivedMessage(uint receivedIndex)
     {
-        using IDisposable profilerScope = _profiler.StartOperation("ProcessReceivedMessage");
         lock (_lock)
         {
             Result<Unit, EcliptixProtocolFailure> disposedCheckResult = CheckDisposed();
@@ -637,7 +634,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
     public Result<Unit, EcliptixProtocolFailure> PerformReceivingRatchet(byte[]? receivedDhKey)
     {
-        using IDisposable profilerScope = _profiler.StartOperation("PerformReceivingRatchet");
         lock (_lock)
         {
             if (receivedDhKey == null)
@@ -723,8 +719,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
         Result<Unit, EcliptixProtocolFailure> replayCheckResult = _replayProtection.CheckAndRecordMessage(nonce, messageIndex);
         if (replayCheckResult.IsErr)
         {
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic($"Replay protection check failed: {replayCheckResult.UnwrapErr()}"));
+            // Return the actual replay failure without wrapping it, so the correct failure type is preserved
+            return replayCheckResult;
         }
 
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
@@ -776,8 +772,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
             }
 
             _replayProtection.Dispose();
-            _profiler.Reset();
-
             _rootKeyHandle?.Dispose();
             _metadataEncryptionKeyHandle?.Dispose();
             _sendingStep.Dispose();
@@ -804,7 +798,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
     private Result<Unit, EcliptixProtocolFailure> PerformDhRatchet(bool isSender,
         byte[]? receivedDhPublicKeyBytes = null)
     {
-        using IDisposable profilerScope = _profiler.StartOperation("PerformDhRatchet");
         byte[]? dhSecret = null, newRootKey = null, newChainKeyForTargetStep = null, newEphemeralPublicKey = null;
         byte[]? localPrivateKeyBytes = null, currentRootKey = null, newDhPrivateKeyBytes = null;
         byte[]? hkdfOutput = null;

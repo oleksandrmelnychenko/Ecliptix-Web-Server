@@ -29,16 +29,12 @@ public sealed record AppDeviceFailure(
             AppDeviceFailureType.InfrastructureFailure => new GrpcErrorDescriptor(
                 ErrorCode.ServiceUnavailable,
                 StatusCode.Unavailable,
-                ErrorI18nKeys.ServiceUnavailable,
+                ErrorI18NKeys.ServiceUnavailable,
                 Retryable: true),
-            AppDeviceFailureType.InternalError => new GrpcErrorDescriptor(
-                ErrorCode.InternalError,
-                StatusCode.Internal,
-                ErrorI18nKeys.Internal),
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18nKeys.Internal)
+                ErrorI18NKeys.Internal)
         };
 
     public override object ToStructuredLog()

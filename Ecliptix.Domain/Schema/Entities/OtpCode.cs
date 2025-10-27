@@ -1,3 +1,4 @@
+using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Schema.Interfaces;
 
 namespace Ecliptix.Domain.Schema.Entities;
@@ -8,8 +9,8 @@ public class OtpCodeEntity : EntityBase, IExpirable
 
     public string OtpValue { get; set; } = string.Empty;
     public string OtpSalt { get; set; } = string.Empty;
-    public string Status { get; set; } = "active";
-    public short AttemptCount { get; set; } = 0;
+    public OtpStatus Status { get; set; } = OtpStatus.Active;
+    public short AttemptCount { get; set; }
 
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? VerifiedAt { get; set; }

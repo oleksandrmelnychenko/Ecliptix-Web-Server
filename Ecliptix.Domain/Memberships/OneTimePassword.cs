@@ -90,24 +90,27 @@ public sealed class OneTimePassword
             return false;
         }
 
-        if (HasExpired())
+        if (!HasExpired())
         {
-            ConsumeOtp();
-            return false;
+            return PerformVerification(code);
         }
 
-        return PerformVerification(code);
+        ConsumeOtp();
+        return false;
+
     }
 
     private void ConsumeOtp()
     {
         IsActive = false;
 
-        if (_otpQueryRecord.HasValue)
+        if (!_otpQueryRecord.HasValue)
         {
-            OtpQueryRecord record = _otpQueryRecord.Value!;
-            _otpQueryRecord = Option<OtpQueryRecord>.Some(record with { IsActive = false });
+            return;
         }
+
+        OtpQueryRecord record = _otpQueryRecord.Value!;
+        _otpQueryRecord = Option<OtpQueryRecord>.Some(record with { IsActive = false });
     }
 
     private bool IsValidForVerification()
@@ -143,7 +146,9 @@ public sealed class OneTimePassword
     {
         OneTimePassword otp = new()
         {
-            _uniqueIdentifier = record.UniqueIdentifier, ExpiresAt = record.ExpiresAt, IsActive = record.IsActive,
+            _uniqueIdentifier = record.UniqueIdentifier,
+            ExpiresAt = record.ExpiresAt,
+            IsActive = record.IsActive,
             _otpQueryRecord = Option<OtpQueryRecord>.Some(record)
         };
         return otp;

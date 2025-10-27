@@ -1,9 +1,9 @@
 using Akka.Actor;
 using Ecliptix.Core.Domain.Events;
-using Ecliptix.Utilities;
-using Ecliptix.Utilities.Configuration;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
+using Ecliptix.Utilities;
+using Ecliptix.Utilities.Configuration;
 using Grpc.Core;
 using Serilog;
 

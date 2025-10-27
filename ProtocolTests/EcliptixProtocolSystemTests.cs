@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using Ecliptix.Core.Domain.Protocol;
-using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Protocol;
+using Ecliptix.Utilities;
 using Google.Protobuf;
 using PublicKeyBundle = Ecliptix.Core.Domain.Protocol.PublicKeyBundle;
 

@@ -13,5 +13,5 @@ public abstract class EntityBase : IEntity, IAuditable, IConcurrent
     public bool IsDeleted { get; set; }
 
     [Timestamp]
-    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+    public byte[] RowVersion { get; set; } = [];
 }

@@ -1,6 +1,6 @@
-using Ecliptix.Utilities;
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.Security.Certificate.Pinning.Services;
+using Ecliptix.Utilities;
 using Serilog;
 
 namespace Ecliptix.Core.Services;

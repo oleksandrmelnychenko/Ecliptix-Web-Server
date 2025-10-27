@@ -21,6 +21,7 @@ public enum EcliptixProtocolFailureType
     PrepareLocalFailed,
     MemoryBufferError,
     TimestampDrift,
+    ReplayAttempt,
     StateMismatch,
     HeaderAuthenticationFailed,
     SessionAuthenticationFailed

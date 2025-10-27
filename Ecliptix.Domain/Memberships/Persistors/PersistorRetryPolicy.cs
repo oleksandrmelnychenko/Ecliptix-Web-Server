@@ -36,7 +36,7 @@ public static class PersistorRetryPolicy
         return Policy.TimeoutAsync(
             operationTimeout,
             TimeoutStrategy.Pessimistic,
-            onTimeoutAsync: (context, timeout, task, exception) =>
+            onTimeoutAsync: (_, timeout, _, _) =>
             {
                 Log.Warning("Persistor operation '{OperationName}' timed out after {Timeout}s",
                     operationName, timeout.TotalSeconds);
@@ -56,13 +56,12 @@ public static class PersistorRetryPolicy
     {
         AsyncTimeoutPolicy timeoutPolicy = CreateTimeoutPolicy(operationName, operationTimeout);
         AsyncRetryPolicy retryPolicy = CreateRetryPolicy(operationName);
-
         AsyncPolicyWrap policyWrap = Policy.WrapAsync(retryPolicy, timeoutPolicy);
 
         try
         {
             return await policyWrap.ExecuteAsync(
-                async (cancellationToken) => await operation(cancellationToken),
+                async token => await operation(token),
                 cancellationToken);
         }
         catch (TimeoutRejectedException timeoutEx)

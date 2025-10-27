@@ -1,7 +1,7 @@
-using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
+using Microsoft.EntityFrameworkCore;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
@@ -76,7 +76,8 @@ public static class LoginAttemptQueries
                         x.la.Outcome == "membership_creation" &&
                         !x.la.IsSuccess &&
                         x.la.AttemptedAt > since &&
-                        !x.la.IsDeleted)
+                        !x.la.IsDeleted &&
+                        !x.m.IsDeleted)
             .Select(x => (DateTimeOffset?)x.la.AttemptedAt)
             .MinAsync(cancellationToken);
     }

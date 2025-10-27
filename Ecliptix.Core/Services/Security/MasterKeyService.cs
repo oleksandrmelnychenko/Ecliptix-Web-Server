@@ -3,7 +3,8 @@ using Akka.Actor;
 using Ecliptix.Core;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Services.KeyDerivation;
-using Ecliptix.Domain.Memberships.ActorEvents;
+using Ecliptix.Domain.Memberships.ActorEvents.Account;
+using Ecliptix.Domain.Memberships.ActorEvents.MasterKeyShares;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
@@ -270,14 +271,14 @@ internal sealed class MasterKeyService(
             IActorRef masterKeySharePersistor = actorRegistry.Get(ActorIds.MasterKeySharePersistorActor);
             DeleteMasterKeySharesEvent deleteEvent = new(membershipId);
 
-            Result<Unit, KeySplittingFailure> deleteResult =
-                await masterKeySharePersistor.Ask<Result<Unit, KeySplittingFailure>>(
+            Result<Unit, MasterKeyFailure> deleteResult =
+                await masterKeySharePersistor.Ask<Result<Unit, MasterKeyFailure>>(
                     deleteEvent,
                     TimeSpan.FromSeconds(AskTimeoutSeconds));
 
             if (deleteResult.IsErr)
             {
-                KeySplittingFailure error = deleteResult.UnwrapErr();
+                MasterKeyFailure error = deleteResult.UnwrapErr();
                 Log.Warning("Failed to delete old master key shares during regeneration: {Error}", error.Message);
             }
 
@@ -525,12 +526,16 @@ internal sealed class MasterKeyService(
                 shareDataList
             );
 
-            Result<InsertMasterKeySharesResult, KeySplittingFailure> result =
-                await masterKeySharePersistor.Ask<Result<InsertMasterKeySharesResult, KeySplittingFailure>>(
+            Result<InsertMasterKeySharesResult, MasterKeyFailure> result =
+                await masterKeySharePersistor.Ask<Result<InsertMasterKeySharesResult, MasterKeyFailure>>(
                     insertEvent,
                     TimeSpan.FromSeconds(AskTimeoutSeconds));
 
-            return result;
+            // Convert MasterKeyFailure to KeySplittingFailure for consistency with internal operations
+            return result.Match(
+                ok => Result<InsertMasterKeySharesResult, KeySplittingFailure>.Ok(ok),
+                err => Result<InsertMasterKeySharesResult, KeySplittingFailure>.Err(
+                    KeySplittingFailure.KeySplittingFailed($"{ErrorMessagePersistSharesFailed}: {err.Message}", err.InnerException)));
         }
         catch (TimeoutException)
         {
@@ -551,12 +556,16 @@ internal sealed class MasterKeyService(
             IActorRef masterKeySharePersistor = actorRegistry.Get(ActorIds.MasterKeySharePersistorActor);
             GetMasterKeySharesEvent getEvent = new(membershipId);
 
-            Result<MasterKeyShareQueryRecord[], KeySplittingFailure> result =
-                await masterKeySharePersistor.Ask<Result<MasterKeyShareQueryRecord[], KeySplittingFailure>>(
+            Result<MasterKeyShareQueryRecord[], MasterKeyFailure> result =
+                await masterKeySharePersistor.Ask<Result<MasterKeyShareQueryRecord[], MasterKeyFailure>>(
                     getEvent,
                     TimeSpan.FromSeconds(AskTimeoutSeconds));
 
-            return result;
+            // Convert MasterKeyFailure to KeySplittingFailure for consistency with internal operations
+            return result.Match(
+                ok => Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Ok(ok),
+                err => Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Err(
+                    KeySplittingFailure.KeyReconstructionFailed($"{ErrorMessageRetrieveSharesFailed}: {err.Message}", err.InnerException)));
         }
         catch (TimeoutException)
         {

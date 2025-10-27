@@ -4,7 +4,9 @@ using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
 using System.Globalization;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
-using Ecliptix.Domain.Memberships.ActorEvents;
+using Ecliptix.Domain.Memberships.ActorEvents.Common;
+using Ecliptix.Domain.Memberships.ActorEvents.MobileNumber;
+using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Domain.Memberships.Instrumentation;
@@ -85,7 +87,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                                     connectId,
                                     Helpers.FromByteStringToGuid(initiateRequest.MobileNumberIdentifier),
                                     Helpers.FromByteStringToGuid(initiateRequest.AppDeviceIdentifier),
-                                    initiateRequest.Purpose,
+                                    ConvertProtoPurposeToDomain(initiateRequest.Purpose),
                                     initiateRequest.Type,
                                     channel.Writer,
                                     _cultureName,
@@ -250,21 +252,29 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
             async (message, _, _, cancellationToken) =>
             {
                 CheckMobileNumberAvailabilityActorEvent actorEvent = new(
-                    Helpers.FromByteStringToGuid(message.MobileNumberIdentifier),
+                    Helpers.FromByteStringToGuid(message.MobileNumberId),
+                    Helpers.FromByteStringToGuid(message.DeviceId),
                     cancellationToken);
 
-                Task<Result<string, VerificationFlowFailure>> checkTask =
-                    _verificationFlowManagerActor.Ask<Result<string, VerificationFlowFailure>>(
+                Task<Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>> checkTask =
+                    _verificationFlowManagerActor.Ask<Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>>(
                         actorEvent,
                         TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<string, VerificationFlowFailure> checkResult =
+                Result<MobileNumberAvailabilityResponse, VerificationFlowFailure> checkResult =
                     await checkTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return checkResult.Match(
-                    status => Result<CheckMobileNumberAvailabilityResponse, FailureBase>.Ok(new CheckMobileNumberAvailabilityResponse
+                    response => Result<CheckMobileNumberAvailabilityResponse, FailureBase>.Ok(new CheckMobileNumberAvailabilityResponse
                     {
-                        Status = status
+                        Status = response.Status,
+                        CanRegister = response.CanRegister,
+                        CanContinue = response.CanContinue,
+                        ExistingMembershipId = response.ExistingMembershipId,
+                        RegisteredDeviceId = response.RegisteredDeviceId,
+                        CreationStatus = response.CreationStatus,
+                        ActivityStatus = response.ActivityStatus,
+                        LocalizationKey = response.LocalizationKey
                     }),
                     Result<CheckMobileNumberAvailabilityResponse, FailureBase>.Err
                 );
@@ -346,6 +356,18 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
         {
             Log.Debug("[verification.flow.grpc.stream-cancelled] ConnectId {ConnectId}", connectId);
         }
+    }
+
+    private static Ecliptix.Domain.Memberships.VerificationPurpose ConvertProtoPurposeToDomain(
+        VerificationPurpose protoPurpose)
+    {
+        return protoPurpose switch
+        {
+            VerificationPurpose.Registration => Ecliptix.Domain.Memberships.VerificationPurpose.Registration,
+            VerificationPurpose.Login => Ecliptix.Domain.Memberships.VerificationPurpose.Login,
+            VerificationPurpose.PasswordRecovery => Ecliptix.Domain.Memberships.VerificationPurpose.PasswordRecovery,
+            _ => Ecliptix.Domain.Memberships.VerificationPurpose.Unspecified
+        };
     }
 
     private static void StopVerificationFlowActor(ServerCallContext context, uint connectId)

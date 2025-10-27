@@ -1,15 +1,12 @@
-using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
+using Microsoft.EntityFrameworkCore;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class AccountSecureKeyAuthQueries
 {
-    /// <summary>
-    /// Get the primary AccountSecureKeyAuth for a specific account
-    /// </summary>
     private static readonly Func<EcliptixSchemaContext, Guid, Task<AccountSecureKeyAuthEntity?>>
         GetPrimaryForAccountCompiled = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid accountId) =>
@@ -31,10 +28,6 @@ public static class AccountSecureKeyAuthQueries
             : Option<AccountSecureKeyAuthEntity>.None;
     }
 
-    /// <summary>
-    /// Get the primary AccountSecureKeyAuth for the default account of a membership
-    /// OPTIMIZED: Single query with JOIN instead of 2 sequential queries
-    /// </summary>
     private static readonly Func<EcliptixSchemaContext, Guid, Task<AccountSecureKeyAuthEntity?>>
         GetPrimaryForMembershipCompiled = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid membershipId) =>
@@ -58,35 +51,31 @@ public static class AccountSecureKeyAuthQueries
             : Option<AccountSecureKeyAuthEntity>.None;
     }
 
-    /// <summary>
-    /// Get the primary AccountSecureKeyAuth for the active account on a specific device
-    /// OPTIMIZED: Single query with conditional logic, falls back to default account
-    /// </summary>
     private static readonly Func<EcliptixSchemaContext, Guid, Guid, Task<AccountSecureKeyAuthEntity?>>
         GetPrimaryForActiveAccountCompiled = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid membershipId, Guid deviceId) =>
                 ctx.AccountSecureKeyAuths
                     .Where(auth =>
-                        // Try to get auth for active account on device
                         (ctx.DeviceContexts
                             .Where(dc => dc.MembershipId == membershipId &&
                                         dc.DeviceId == deviceId &&
                                         dc.ActiveAccountId.HasValue &&
+                                        dc.IsActive &&
                                         !dc.IsDeleted)
                             .Select(dc => dc.ActiveAccountId)
                             .FirstOrDefault() == auth.AccountId
                         ||
-                        // Fallback: get auth for default account
-                        (ctx.Accounts
+                        ctx.Accounts
                             .Where(a => a.MembershipId == membershipId &&
-                                       a.IsDefaultAccount &&
-                                       !a.IsDeleted)
+                                        a.IsDefaultAccount &&
+                                        !a.IsDeleted)
                             .Select(a => a.UniqueId)
-                            .FirstOrDefault() == auth.AccountId))
+                            .FirstOrDefault() == auth.AccountId)
                         &&
                         auth.IsPrimary &&
                         auth.IsEnabled &&
-                        !auth.IsDeleted)
+                        !auth.IsDeleted &&
+                        !auth.Account.IsDeleted)
                     .AsNoTracking()
                     .FirstOrDefault());
 
@@ -101,9 +90,6 @@ public static class AccountSecureKeyAuthQueries
             : Option<AccountSecureKeyAuthEntity>.None;
     }
 
-    /// <summary>
-    /// Get credentials tuple (SecureKey, MaskingKey, Version) for an account
-    /// </summary>
     public static async Task<(byte[] SecureKey, byte[] MaskingKey, int Version)?> GetCredentialsForAccount(
         EcliptixSchemaContext ctx,
         Guid accountId)
@@ -119,10 +105,6 @@ public static class AccountSecureKeyAuthQueries
         return (auth.SecureKey, auth.MaskingKey, auth.CredentialsVersion);
     }
 
-    /// <summary>
-    /// Get credentials for the default account of a membership
-    /// OPTIMIZED: Single query instead of chaining queries
-    /// </summary>
     private static readonly Func<EcliptixSchemaContext, Guid, Task<AccountSecureKeyAuthEntity?>>
         GetCredentialsForMembershipCompiled = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid membershipId) =>

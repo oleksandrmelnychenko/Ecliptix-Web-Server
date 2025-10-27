@@ -1,8 +1,10 @@
 using System.Threading;
-using Microsoft.EntityFrameworkCore;
+using Ecliptix.Domain.Memberships;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Protobuf.Membership;
 using Ecliptix.Utilities;
+using Microsoft.EntityFrameworkCore;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
@@ -40,11 +42,10 @@ public static class VerificationFlowQueries
         Guid flowId,
         CancellationToken cancellationToken = default)
     {
-        // OPTIMIZED: Use split query to avoid cartesian explosion with filtered includes
         VerificationFlowEntity? result = await ctx.VerificationFlows
             .Where(f => f.UniqueId == flowId && !f.IsDeleted)
             .Include(f => f.MobileNumber)
-            .Include(f => f.OtpCodes.Where(o => o.Status == "active" && !o.IsDeleted))
+            .Include(f => f.OtpCodes.Where(o => o.Status == OtpStatus.Active && !o.IsDeleted))
             .AsSplitQuery() // Generates 3 separate SQL queries instead of cartesian product
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
@@ -61,7 +62,7 @@ public static class VerificationFlowQueries
         VerificationFlowEntity? result = await ctx.VerificationFlows
             .Where(f => f.UniqueId == flowId &&
                         f.ConnectionId == connectionId &&
-                        f.Purpose == "registration" &&
+                        f.Purpose == VerificationPurpose.Registration &&
                         !f.IsDeleted)
             .Include(f => f.MobileNumber)
             .AsNoTracking()
@@ -74,14 +75,14 @@ public static class VerificationFlowQueries
         EcliptixSchemaContext ctx,
         Guid mobileUniqueId,
         Guid deviceId,
-        string purpose,
+        VerificationPurpose purpose,
         CancellationToken cancellationToken = default)
     {
         return await ctx.VerificationFlows
             .Where(vf => vf.MobileNumberId == mobileUniqueId &&
                         vf.AppDeviceId == deviceId &&
                         vf.Purpose == purpose &&
-                        vf.Status == "pending" &&
+                        vf.Status == VerificationFlowStatus.Pending &&
                         vf.ExpiresAt > DateTimeOffset.UtcNow &&
                         !vf.IsDeleted)
             .AsNoTracking()
@@ -92,14 +93,14 @@ public static class VerificationFlowQueries
         EcliptixSchemaContext ctx,
         Guid mobileUniqueId,
         Guid deviceId,
-        string purpose,
+        VerificationPurpose purpose,
         CancellationToken cancellationToken = default)
     {
         VerificationFlowEntity? result = await ctx.VerificationFlows
             .Where(vf => vf.MobileNumberId == mobileUniqueId &&
                         vf.AppDeviceId == deviceId &&
                         vf.Purpose == purpose &&
-                        vf.Status == "pending" &&
+                        vf.Status == VerificationFlowStatus.Pending &&
                         vf.ExpiresAt > DateTimeOffset.UtcNow &&
                         !vf.IsDeleted)
             .FirstOrDefaultAsync(cancellationToken);
@@ -143,7 +144,7 @@ public static class VerificationFlowQueries
     {
         return await ctx.VerificationFlows
             .Where(f => f.MobileNumberId == mobileUniqueId &&
-                        f.Purpose == "password_recovery" &&
+                        f.Purpose == VerificationPurpose.PasswordRecovery &&
                         f.CreatedAt >= since &&
                         !f.IsDeleted)
             .AsNoTracking()
@@ -156,26 +157,30 @@ public static class VerificationFlowQueries
         DateTimeOffset since,
         CancellationToken cancellationToken = default)
     {
-        var flowsWithOtpCounts = await ctx.VerificationFlows
+        IQueryable<VerificationFlowEntity> flowsQuery = ctx.VerificationFlows
             .Where(vf => vf.MobileNumberId == mobileUniqueId &&
-                        vf.CreatedAt >= since &&
-                        !vf.IsDeleted)
-            .Select(vf => new
-            {
-                vf.UpdatedAt,
-                OtpCount = ctx.OtpCodes.Count(o => o.VerificationFlowId == vf.Id && !o.IsDeleted)
-            })
-            .AsNoTracking()
-            .ToListAsync(cancellationToken);
+                         vf.CreatedAt >= since &&
+                         !vf.IsDeleted)
+            .AsNoTracking();
 
-        if (!flowsWithOtpCounts.Any())
+        DateTimeOffset? lastUpdated = await flowsQuery
+            .OrderByDescending(vf => vf.UpdatedAt)
+            .Select(vf => (DateTimeOffset?)vf.UpdatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (!lastUpdated.HasValue)
         {
             return (0, null);
         }
 
-        int totalOtps = flowsWithOtpCounts.Sum(x => x.OtpCount);
-        DateTimeOffset lastUpdated = flowsWithOtpCounts.Max(x => x.UpdatedAt);
+        int totalOtps = await ctx.OtpCodes
+            .Where(o => !o.IsDeleted)
+            .Join(flowsQuery,
+                otp => otp.VerificationFlowId,
+                vf => vf.Id,
+                (otp, _) => otp)
+            .CountAsync(cancellationToken);
 
-        return (totalOtps, lastUpdated);
+        return (totalOtps, lastUpdated.Value);
     }
 }

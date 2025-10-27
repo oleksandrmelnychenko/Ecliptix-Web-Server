@@ -4,12 +4,12 @@ using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Failures;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
-using Ecliptix.Utilities;
-using Ecliptix.Protobuf.Device;
-using Google.Protobuf;
-using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Protobuf.Device;
+using Ecliptix.Utilities;
+using Google.Protobuf;
+using Microsoft.EntityFrameworkCore;
 
 namespace Ecliptix.Domain.AppDevices.Persistors;
 
