@@ -70,7 +70,7 @@ public sealed class OneTimePassword
                     OtpSalt = salt,
                     ExpiresAt = expiresAt,
                     IsActive = true,
-                    Status = VerificationFlowStatus.Pending
+                    Status = OtpStatus.Active
                 };
 
                 ExpiresAt = expiresAt;

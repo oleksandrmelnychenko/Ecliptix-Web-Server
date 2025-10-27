@@ -438,7 +438,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             await schemeContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
-            OtpStatus newStatus = ConvertVerificationFlowStatusToOtpStatus(cmd.Status);
             DateTimeOffset utcNow = DateTimeOffset.UtcNow;
 
             OtpCodeEntity? otp = await schemeContext.OtpCodes
@@ -453,14 +452,14 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     VerificationFlowFailure.FromOtp(OtpFailure.NotFound()));
             }
 
-            otp.Status = newStatus;
+            otp.Status = cmd.Status;
             otp.UpdatedAt = utcNow;
-            if (newStatus == OtpStatus.Used)
+            if (cmd.Status == OtpStatus.Used)
             {
                 otp.VerifiedAt = utcNow;
             }
 
-            if (cmd.Status == VerificationFlowStatus.Expired)
+            if (cmd.Status == OtpStatus.Expired)
             {
                 int cooldownSeconds = _securityConfig.CurrentValue.VerificationFlow.ResendCooldownBufferSeconds;
                 DateTimeOffset resendAvailableAt = utcNow.AddSeconds(cooldownSeconds);
@@ -980,7 +979,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 VerificationFlowId = flow.Id,
                 OtpValue = cmd.OtpRecord.OtpHash,
                 OtpSalt = cmd.OtpRecord.OtpSalt,
-                Status = ConvertVerificationFlowStatusToOtpStatus(cmd.OtpRecord.Status),
+                Status = cmd.OtpRecord.Status,
                 ExpiresAt = cmd.OtpRecord.ExpiresAt,
                 AttemptCount = 0,
                 CreatedAt = DateTimeOffset.UtcNow,
@@ -1106,7 +1105,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 OtpHash = activeOtp.OtpValue,
                 OtpSalt = activeOtp.OtpSalt,
                 ExpiresAt = activeOtp.ExpiresAt,
-                Status = ConvertOtpStatusToVerificationFlowStatus(activeOtp.Status),
+                Status = activeOtp.Status,
                 IsActive = activeOtp.Status == OtpStatus.Active
             })
             : Option<OtpQueryRecord>.None;
@@ -1127,30 +1126,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Ok(flowRecord);
     }
 
-    private static OtpStatus ConvertVerificationFlowStatusToOtpStatus(VerificationFlowStatus status)
-    {
-        return status switch
-        {
-            VerificationFlowStatus.Pending => OtpStatus.Active,
-            VerificationFlowStatus.Verified => OtpStatus.Used,
-            VerificationFlowStatus.Failed => OtpStatus.Invalid,
-            VerificationFlowStatus.Expired => OtpStatus.Expired,
-            VerificationFlowStatus.MaxAttemptsReached => OtpStatus.Invalid,
-            _ => OtpStatus.Expired
-        };
-    }
-
-    private static VerificationFlowStatus ConvertOtpStatusToVerificationFlowStatus(OtpStatus otpStatus)
-    {
-        return otpStatus switch
-        {
-            OtpStatus.Active => VerificationFlowStatus.Pending,
-            OtpStatus.Used => VerificationFlowStatus.Verified,
-            OtpStatus.Invalid => VerificationFlowStatus.Failed,
-            OtpStatus.Expired => VerificationFlowStatus.Expired,
-            _ => VerificationFlowStatus.Expired
-        };
-    }
 
     private static async Task<Result<Unit, VerificationFlowFailure>> IncrementOtpAttemptCountAsync(
         EcliptixSchemaContext schemeContext,

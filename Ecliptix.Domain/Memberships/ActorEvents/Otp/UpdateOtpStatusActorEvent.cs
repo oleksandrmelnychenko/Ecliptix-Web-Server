@@ -5,6 +5,6 @@ namespace Ecliptix.Domain.Memberships.ActorEvents.Otp;
 
 public record UpdateOtpStatusActorEvent(
     Guid OtpIdentified,
-    VerificationFlowStatus Status,
+    OtpStatus Status,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;

@@ -404,7 +404,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         try
         {
-            await UpdateOtpStatus(VerificationFlowStatus.Verified);
+            await UpdateOtpStatus(OtpStatus.Used);
 
             if (_verificationFlow.HasValue)
             {
@@ -519,7 +519,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (_currentOtpAttemptCount >= _timeouts.MaxOtpVerificationAttempts)
         {
-            await UpdateOtpStatus(VerificationFlowStatus.MaxAttemptsReached);
+            await UpdateOtpStatus(OtpStatus.Active);
             VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
 
             string maxAttemptsMessage =
@@ -546,7 +546,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             return;
         }
 
-        await UpdateOtpStatus(VerificationFlowStatus.Failed);
+        await UpdateOtpStatus(OtpStatus.Invalid);
         VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
 
         _activity?.AddEvent(new ActivityEvent("verification.otp.failed"));
@@ -894,7 +894,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (_activeOtp != null)
         {
-            await UpdateOtpStatus(VerificationFlowStatus.Expired);
+            await UpdateOtpStatus(OtpStatus.Expired);
 
             _activeOtp = null;
         }
@@ -953,7 +953,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (_activeOtp?.IsActive == true)
         {
-            await UpdateOtpStatus(VerificationFlowStatus.Expired);
+            await UpdateOtpStatus(OtpStatus.Expired);
         }
 
         await TerminateActor(graceful: true, updateFlowToExpired: true, reason: "client_disconnect");
@@ -1072,7 +1072,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         {
             try
             {
-                await UpdateOtpStatus(VerificationFlowStatus.Failed);
+                await UpdateOtpStatus(OtpStatus.Invalid);
             }
             catch
             {
@@ -1281,7 +1281,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     {
         if (_activeOtp != null)
         {
-            await UpdateOtpStatus(VerificationFlowStatus.Expired);
+            await UpdateOtpStatus(OtpStatus.Expired);
             _activeOtp = null;
             _activeOtpRecord = null;
         }
@@ -1307,7 +1307,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             : _currentRequestCancellationToken;
     }
 
-    private async Task UpdateOtpStatus(VerificationFlowStatus status)
+    private async Task UpdateOtpStatus(OtpStatus status)
     {
         if (_activeOtp == null)
         {

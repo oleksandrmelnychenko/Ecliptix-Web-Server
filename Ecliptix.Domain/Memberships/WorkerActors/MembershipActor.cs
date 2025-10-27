@@ -96,31 +96,92 @@ public sealed class MembershipActor : ReceivePersistentActor
         CommandAsync<GetMembershipByVerificationFlowEvent>(HandleGetMembershipByVerificationFlow);
 
         Command<SaveSnapshotSuccess>(_ =>
-            Log.Debug("MembershipActor snapshot saved at sequence {Sequence}", LastSequenceNr));
+            Log.Info("[MEMBERSHIP-SNAPSHOT] ✅ Snapshot saved successfully at sequence {Sequence}", LastSequenceNr));
+
         Command<SaveSnapshotFailure>(failure =>
         {
-            Log.Warning(failure.Cause, "MembershipActor failed to save snapshot at sequence {Sequence}",
+            Log.Error(failure.Cause, "[MEMBERSHIP-SNAPSHOT] ❌ Failed to save snapshot at sequence {Sequence}",
                 LastSequenceNr);
         });
 
         Recover<SnapshotOffer>(offer =>
         {
+            Log.Info("[MEMBERSHIP-RECOVERY] Snapshot offered at sequence {Sequence}, snapshot type: {Type}",
+                offer.Metadata.SequenceNr, offer.Snapshot?.GetType().Name ?? "null");
+
             if (offer.Snapshot is MembershipActorSnapshot snapshot)
             {
                 RestoreSnapshot(snapshot);
+                Log.Info("[MEMBERSHIP-RECOVERY] Snapshot restored successfully. PendingSignIns: {SignIns}, PendingMaskingKeys: {Keys}, RecoverySessions: {Sessions}",
+                    _pendingSignIns.Count, _pendingMaskingKeys.Count, _pendingRecoveryTimestamps.Count);
+            }
+            else
+            {
+                Log.Warning("[MEMBERSHIP-RECOVERY] Snapshot type mismatch. Expected MembershipActorSnapshot, got {Type}",
+                    offer.Snapshot?.GetType().Name ?? "null");
             }
         });
 
-        Recover<MembershipActorSnapshot>(RestoreSnapshot);
-        Recover<PendingSignInStoredEvent>(Apply);
-        Recover<PendingSignInRemovedEvent>(Apply);
-        Recover<RegistrationMaskingKeyStoredEvent>(Apply);
-        Recover<RegistrationMaskingKeyRemovedEvent>(Apply);
-        Recover<RecoverySessionStartedEvent>(Apply);
-        Recover<RecoverySessionClearedEvent>(Apply);
-        Recover<RecoverySessionSnapshot>(ApplyRecoverySnapshot);
+        Recover<MembershipActorSnapshot>(snapshot =>
+        {
+            Log.Info("[MEMBERSHIP-RECOVERY] Direct snapshot recovery at sequence {Sequence}", LastSequenceNr);
+            RestoreSnapshot(snapshot);
+        });
+
+        Recover<PendingSignInStoredEvent>(evt =>
+        {
+            Log.Debug("[MEMBERSHIP-RECOVERY] Recovering PendingSignInStoredEvent for ConnectId: {ConnectId}, MembershipId: {MembershipId} at sequence {Sequence}",
+                evt.ConnectId, evt.MembershipId, LastSequenceNr);
+            Apply(evt);
+        });
+
+        Recover<PendingSignInRemovedEvent>(evt =>
+        {
+            Log.Debug("[MEMBERSHIP-RECOVERY] Recovering PendingSignInRemovedEvent for ConnectId: {ConnectId} at sequence {Sequence}",
+                evt.ConnectId, LastSequenceNr);
+            Apply(evt);
+        });
+
+        Recover<RegistrationMaskingKeyStoredEvent>(evt =>
+        {
+            Log.Debug("[MEMBERSHIP-RECOVERY] Recovering RegistrationMaskingKeyStoredEvent for MembershipId: {MembershipId} at sequence {Sequence}",
+                evt.MembershipId, LastSequenceNr);
+            Apply(evt);
+        });
+
+        Recover<RegistrationMaskingKeyRemovedEvent>(evt =>
+        {
+            Log.Debug("[MEMBERSHIP-RECOVERY] Recovering RegistrationMaskingKeyRemovedEvent for MembershipId: {MembershipId} at sequence {Sequence}",
+                evt.MembershipId, LastSequenceNr);
+            Apply(evt);
+        });
+
+        Recover<RecoverySessionStartedEvent>(evt =>
+        {
+            Log.Debug("[MEMBERSHIP-RECOVERY] Recovering RecoverySessionStartedEvent for MembershipId: {MembershipId} at sequence {Sequence}",
+                evt.MembershipId, LastSequenceNr);
+            Apply(evt);
+        });
+
+        Recover<RecoverySessionClearedEvent>(evt =>
+        {
+            Log.Debug("[MEMBERSHIP-RECOVERY] Recovering RecoverySessionClearedEvent for MembershipId: {MembershipId} at sequence {Sequence}",
+                evt.MembershipId, LastSequenceNr);
+            Apply(evt);
+        });
+
+        Recover<RecoverySessionSnapshot>(snapshot =>
+        {
+            Log.Debug("[MEMBERSHIP-RECOVERY] Recovering RecoverySessionSnapshot for MembershipId: {MembershipId} at sequence {Sequence}",
+                snapshot.MembershipId, LastSequenceNr);
+            ApplyRecoverySnapshot(snapshot);
+        });
+
         Recover<RecoveryCompleted>(_ =>
-            Log.Debug("MembershipActor recovery completed with sequence {Sequence}", LastSequenceNr));
+        {
+            Log.Info("[MEMBERSHIP-RECOVERY] ✅ Recovery completed successfully. LastSequenceNr: {Sequence}, PendingSignIns: {SignIns}, PendingMaskingKeys: {Keys}, RecoverySessions: {Sessions}",
+                LastSequenceNr, _pendingSignIns.Count, _pendingMaskingKeys.Count, _pendingRecoveryTimestamps.Count);
+        });
     }
 
     public static Props Build(IActorRef membershipPersistor,
@@ -138,6 +199,9 @@ public sealed class MembershipActor : ReceivePersistentActor
     protected override void PreStart()
     {
         base.PreStart();
+        Log.Info("[MEMBERSHIP-START] MembershipActor starting with PersistenceId: '{PersistenceId}', Initial LastSequenceNr: {Sequence}",
+            PersistenceId, LastSequenceNr);
+
         MembershipActorSettings settings = _securityConfig.CurrentValue.MembershipActor;
 
         _cleanupTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
@@ -153,6 +217,8 @@ public sealed class MembershipActor : ReceivePersistentActor
             Self,
             new CleanupExpiredPasswordRecovery(),
             ActorRefs.NoSender);
+
+        Log.Info("[MEMBERSHIP-START] MembershipActor initialization complete. Waiting for recovery...");
     }
 
     protected override void PostStop()
@@ -514,11 +580,16 @@ public sealed class MembershipActor : ReceivePersistentActor
             Result = OprfRegistrationInitResponse.Types.UpdateResult.Succeeded
         };
 
+        Log.Info("[MEMBERSHIP-PERSIST] Persisting RegistrationMaskingKeyStoredEvent for MembershipId: {MembershipId}. Current LastSequenceNr: {Sequence}",
+            @event.MembershipIdentifier, LastSequenceNr);
+
         PersistAsync(
             new RegistrationMaskingKeyStoredEvent(@event.MembershipIdentifier, maskingKey),
             evt =>
             {
                 Apply(evt);
+                Log.Info("[MEMBERSHIP-PERSIST] ✅ RegistrationMaskingKeyStoredEvent persisted successfully. New LastSequenceNr: {Sequence}",
+                    LastSequenceNr);
                 MaybeSaveSnapshot();
                 replyTo.Tell(Result<OprfRegistrationInitResponse, AccountFailure>.Ok(response));
             });

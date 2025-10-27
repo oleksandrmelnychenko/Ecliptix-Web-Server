@@ -398,8 +398,12 @@ static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
                     options.RecordException = true;
                     options.Filter = httpContext =>
                     {
-                        var path = httpContext.Request.Path.Value;
-                        if (string.IsNullOrEmpty(path)) return true;
+                        string? path = httpContext.Request.Path.Value;
+                        if (string.IsNullOrEmpty(path))
+                        {
+                            return true;
+                        }
+
                         return !path.Contains("/health") && path != "/";
                     };
                 });
@@ -476,11 +480,7 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
 
         coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeServiceUnbind,
             AppConstants.ActorSystemTasks.StopAcceptingNewConnections,
-            () =>
-            {
-
-                return Task.FromResult(Done.Instance);
-            });
+            () => Task.FromResult(Done.Instance));
 
         coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone,
             AppConstants.ActorSystemTasks.DrainActiveRequests, async () =>
@@ -492,10 +492,6 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
             });
 
         coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate,
-            AppConstants.ActorSystemTasks.CleanupResources, () =>
-            {
-
-                return Task.FromResult(Done.Instance);
-            });
+            AppConstants.ActorSystemTasks.CleanupResources, () => Task.FromResult(Done.Instance));
     }
 }
