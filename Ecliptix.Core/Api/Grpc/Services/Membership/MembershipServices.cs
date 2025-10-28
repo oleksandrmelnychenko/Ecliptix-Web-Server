@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Security.Cryptography;
 using Akka.Actor;
@@ -312,20 +313,36 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             logoutHmacKey = hmacKeyResult.Unwrap();
 
             string canonical = BuildCanonicalLogoutRequest(message);
-            byte[] canonicalBytes = System.Text.Encoding.UTF8.GetBytes(canonical);
+            int maxByteCount = System.Text.Encoding.UTF8.GetMaxByteCount(canonical.Length);
+            byte[]? canonicalBytes = ArrayPool<byte>.Shared.Rent(maxByteCount);
 
-            byte[] clientHmac = message.HmacProof.ToByteArray();
-            bool isValid = LogoutKeyDerivation.VerifyHmac(logoutHmacKey, canonicalBytes, clientHmac);
-
-            if (!isValid)
+            try
             {
-                Log.Warning("[LOGOUT-HMAC] HMAC verification failed for MembershipId: {MembershipId}", membershipId);
-                return Result<Unit, FailureBase>.Err(
-                    MembershipFailure.ValidationFailed("Invalid HMAC authentication proof"));
-            }
+                int actualByteCount = System.Text.Encoding.UTF8.GetBytes(canonical, canonicalBytes);
+                byte[] canonicalData = canonicalBytes.AsSpan(0, actualByteCount).ToArray();
 
-            Log.Information("[LOGOUT-HMAC] HMAC validation succeeded for MembershipId: {MembershipId}", membershipId);
-            return Result<Unit, FailureBase>.Ok(Unit.Value);
+                byte[] clientHmac = message.HmacProof.ToByteArray();
+                bool isValid = LogoutKeyDerivation.VerifyHmac(logoutHmacKey, canonicalData, clientHmac);
+
+                if (!isValid)
+                {
+                    Log.Warning("[LOGOUT-HMAC] HMAC verification failed for MembershipId: {MembershipId}",
+                        membershipId);
+                    return Result<Unit, FailureBase>.Err(
+                        MembershipFailure.ValidationFailed("Invalid HMAC authentication proof"));
+                }
+
+                Log.Information("[LOGOUT-HMAC] HMAC validation succeeded for MembershipId: {MembershipId}",
+                    membershipId);
+                return Result<Unit, FailureBase>.Ok(Unit.Value);
+            }
+            finally
+            {
+                if (canonicalBytes != null)
+                {
+                    ArrayPool<byte>.Shared.Return(canonicalBytes);
+                }
+            }
         }
         finally
         {
@@ -587,7 +604,8 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                         Log.Information("Protocol cleanup event published for ConnectId: {ConnectId}", connectId);
                     });
 
-                    Log.Information("Logout completed for ConnectId: {ConnectId}. Protocol cleanup scheduled.", connectId);
+                    Log.Information("Logout completed for ConnectId: {ConnectId}. Protocol cleanup scheduled.",
+                        connectId);
 
                     return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
                     {
@@ -659,22 +677,36 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             logoutHmacKey = hmacKeyResult.Unwrap();
 
             string canonical = BuildCanonicalAnonymousLogoutRequest(message);
-            byte[] canonicalBytes = System.Text.Encoding.UTF8.GetBytes(canonical);
+            int maxByteCount = System.Text.Encoding.UTF8.GetMaxByteCount(canonical.Length);
+            byte[]? canonicalBytes = ArrayPool<byte>.Shared.Rent(maxByteCount);
 
-            byte[] clientHmac = message.HmacProof.ToByteArray();
-            bool isValid = LogoutKeyDerivation.VerifyHmac(logoutHmacKey, canonicalBytes, clientHmac);
-
-            if (!isValid)
+            try
             {
-                Log.Warning("[LOGOUT-ANONYMOUS-HMAC] HMAC verification failed for MembershipId: {MembershipId}",
-                    membershipId);
-                return Result<Unit, FailureBase>.Err(
-                    VerificationFlowFailure.Unauthorized("Invalid HMAC authentication proof"));
-            }
+                int actualByteCount = System.Text.Encoding.UTF8.GetBytes(canonical, canonicalBytes);
+                byte[] canonicalData = canonicalBytes.AsSpan(0, actualByteCount).ToArray();
 
-            Log.Information("[LOGOUT-ANONYMOUS-HMAC] HMAC validation succeeded for MembershipId: {MembershipId}",
-                membershipId);
-            return Result<Unit, FailureBase>.Ok(Unit.Value);
+                byte[] clientHmac = message.HmacProof.ToByteArray();
+                bool isValid = LogoutKeyDerivation.VerifyHmac(logoutHmacKey, canonicalData, clientHmac);
+
+                if (!isValid)
+                {
+                    Log.Warning("[LOGOUT-ANONYMOUS-HMAC] HMAC verification failed for MembershipId: {MembershipId}",
+                        membershipId);
+                    return Result<Unit, FailureBase>.Err(
+                        VerificationFlowFailure.Unauthorized("Invalid HMAC authentication proof"));
+                }
+
+                Log.Information("[LOGOUT-ANONYMOUS-HMAC] HMAC validation succeeded for MembershipId: {MembershipId}",
+                    membershipId);
+                return Result<Unit, FailureBase>.Ok(Unit.Value);
+            }
+            finally
+            {
+                if (canonicalBytes != null)
+                {
+                    ArrayPool<byte>.Shared.Return(canonicalBytes);
+                }
+            }
         }
         finally
         {
@@ -806,10 +838,13 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                         {
                             await Task.Delay(2000);
                             _actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
-                            Log.Information("[LOGOUT-ANONYMOUS] Protocol cleanup event published for ConnectId: {ConnectId}", connectId);
+                            Log.Information(
+                                "[LOGOUT-ANONYMOUS] Protocol cleanup event published for ConnectId: {ConnectId}",
+                                connectId);
                         });
 
-                        Log.Information("[LOGOUT-ANONYMOUS] Anonymous logout completed for ConnectId: {ConnectId}. Protocol cleanup scheduled.",
+                        Log.Information(
+                            "[LOGOUT-ANONYMOUS] Anonymous logout completed for ConnectId: {ConnectId}. Protocol cleanup scheduled.",
                             connectId);
 
                         return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
