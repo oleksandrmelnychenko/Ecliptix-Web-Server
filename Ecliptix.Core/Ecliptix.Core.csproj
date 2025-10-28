@@ -31,10 +31,17 @@
         <UseSystemResourceKeys>false</UseSystemResourceKeys>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="Akka" Version="1.5.54" />
-        <PackageReference Include="Akka.Hosting" Version="1.5.53" />
-        <PackageReference Include="Akka.Persistence" Version="1.5.54" />
-        <PackageReference Include="Akka.Persistence.Sql" Version="1.5.53" />
+        <PackageReference Include="Akka" Version="1.5.55" />
+        <PackageReference Include="Akka.Cluster" Version="1.5.55" />
+        <PackageReference Include="Akka.Cluster.Metrics" Version="1.5.55" />
+        <PackageReference Include="Akka.Cluster.Sharding" Version="1.5.55" />
+        <PackageReference Include="Akka.Cluster.Tools" Version="1.5.55" />
+        <PackageReference Include="Akka.DependencyInjection" Version="1.5.55" />
+        <PackageReference Include="Akka.Discovery" Version="1.5.55" />
+        <PackageReference Include="Akka.Hosting" Version="1.5.55" />
+        <PackageReference Include="Akka.Persistence" Version="1.5.55" />
+        <PackageReference Include="Akka.Persistence.Sql" Version="1.5.55" />
+        <PackageReference Include="Akka.Remote" Version="1.5.55" />
         <PackageReference Include="Dapper" Version="2.1.66" />
         <PackageReference Include="dbup" Version="5.0.41" />
         <PackageReference Include="Grpc.AspNetCore.Server" Version="2.71.0" />
