@@ -253,7 +253,6 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         byte[] maskingKeyCopy = maskingKey.AsSpan().ToArray();
 
-        // Step 1: Create default account FIRST (master key splitting needs it)
         Result<AccountCreationResult, AccountFailure> accountResult =
             await _accountPersistor.Ask<Result<AccountCreationResult, AccountFailure>>(
                 new CreateDefaultAccountEvent(@event.MembershipIdentifier, @event.CancellationToken),
@@ -271,7 +270,6 @@ public sealed class MembershipActor : ReceivePersistentActor
         AccountCreationResult accountInfo = accountResult.Unwrap();
         Guid defaultAccountId = accountInfo.Accounts.First(a => a.IsDefault).AccountId;
 
-        // Step 2: Store account credentials (registration record + masking key)
         UpdateAccountSecureKeyEvent updateEvent = new(
             @event.MembershipIdentifier,
             @event.PeerRegistrationRecord,
@@ -292,7 +290,6 @@ public sealed class MembershipActor : ReceivePersistentActor
             return;
         }
 
-        // Step 2.5: Update membership creation status to SecureKeySet
         Log.Info(
             "[REGISTRATION-STATUS] Updating CreationStatus to SecureKeySet for MembershipId: {0}",
             @event.MembershipIdentifier);
@@ -314,7 +311,6 @@ public sealed class MembershipActor : ReceivePersistentActor
                 @event.MembershipIdentifier, statusUpdateResult.UnwrapErr().Message);
         }
 
-        // Step 3: Split master key into Shamir shares (now account has credentials)
         Log.Info("[REGISTRATION-MASTER-KEY] Splitting master key into Shamir shares for MembershipId: {0}", @event.MembershipIdentifier);
 
         Result<dynamic, FailureBase> splitResult = await _masterKeyService.SplitAndStoreMasterKeyAsync(

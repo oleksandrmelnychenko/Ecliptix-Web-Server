@@ -46,7 +46,7 @@ public static class VerificationFlowQueries
             .Where(f => f.UniqueId == flowId && !f.IsDeleted)
             .Include(f => f.MobileNumber)
             .Include(f => f.OtpCodes.Where(o => o.Status == OtpStatus.Active && !o.IsDeleted))
-            .AsSplitQuery() // Generates 3 separate SQL queries instead of cartesian product
+            .AsSplitQuery()
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
 

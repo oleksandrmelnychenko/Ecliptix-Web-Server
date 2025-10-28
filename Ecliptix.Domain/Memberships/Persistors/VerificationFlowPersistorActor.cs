@@ -737,11 +737,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     "Treating as complete registration (SecureKeySet). Migration will fix status in DB.",
                     creationStatus, membershipInfo.MembershipId, membershipInfo.DeviceId);
 
-                // Defensive programming: Treat as if status was correct (in-memory only, no DB write)
-                // This prevents exposing internal state to clients and avoids adding write operations to hot read path
                 creationStatus = Membership.Types.CreationStatus.SecureKeySet;
-
-                // Fall through to normal "already registered" logic below
             }
 
             if (membershipInfo.HasDefaultAccount &&
@@ -1182,7 +1178,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             FailedOtpAttemptEntity failedAttempt = new()
             {
                 OtpRecordId = otp.Id,
-                AttemptedValue = "***", // Anonymized for security
+                AttemptedValue = "***",
                 FailureReason = cmd.FailureReason,
                 AttemptedAt = DateTimeOffset.UtcNow,
                 CreatedAt = DateTimeOffset.UtcNow,

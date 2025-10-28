@@ -272,7 +272,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         {
             _lastPublishedRemainingSeconds = 0;
             _otpTimerStartLogged = false;
-            _currentOtpAttemptCount = 0; // Reset attempt count for new OTP
+            _currentOtpAttemptCount = 0;
             Become(Running);
             Stash.UnstashAll();
             Self.Tell(new StartOtpTimerEvent());

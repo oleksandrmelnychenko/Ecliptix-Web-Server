@@ -72,7 +72,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
     {
         return await _service.ExecuteEncryptedOperationAsync<OpaqueSignInInitRequest, OpaqueSignInInitResponse>(
             request, context,
-            async (message, connectId, idempotencyKey, cancellationToken) =>
+            async (message, connectId, _, cancellationToken) =>
             {
                 Result<MobileNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
                     _phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
