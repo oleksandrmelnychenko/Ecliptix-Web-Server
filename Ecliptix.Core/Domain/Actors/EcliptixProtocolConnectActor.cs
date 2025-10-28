@@ -15,11 +15,6 @@ namespace Ecliptix.Core.Domain.Actors;
 
 public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWithTimers
 {
-    public ITimerScheduler Timers { get; set; } = null!;
-
-    public override string PersistenceId { get; } = $"{ActorConstants.ActorNamePrefixes.Connect}{connectId}";
-
-    private const int SnapshotInterval = ActorConstants.Constants.SnapshotInterval;
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(ActorConstants.Timeouts.IdleTimeoutMinutes);
     private const int MaxRecoveryRetries = ActorConstants.Recovery.MaxRetries;
     private const string RecoveryRetryTimerKey = ActorConstants.Recovery.RetryTimerKey;
@@ -31,9 +26,11 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     private bool _pendingMessageDeletion;
     private bool _pendingSnapshotDeletion;
     private PubKeyExchangeType? _currentExchangeType;
-    private readonly EncryptionHandler _encryptionHandler = new();
     private readonly DecryptionHandler _decryptionHandler = new();
-    private readonly StateValidationHandler _stateValidationHandler = new();
+
+    public ITimerScheduler Timers { get; set; } = null!;
+
+    public override string PersistenceId { get; } = $"{ActorConstants.ActorNamePrefixes.Connect}{connectId}";
 
     protected override bool ReceiveRecover(object message)
     {
@@ -108,15 +105,17 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 return true;
 
             case SaveSnapshotSuccess success:
-                if (_savingFinalSnapshot)
+                if (!_savingFinalSnapshot)
                 {
-                    Context.GetLogger().Info(ActorConstants.LogMessages.FinalSnapshotSaved);
-                    _pendingMessageDeletion = true;
-                    _pendingSnapshotDeletion = true;
-
-                    DeleteMessages(success.Metadata.SequenceNr);
-                    DeleteSnapshots(new SnapshotSelectionCriteria(success.Metadata.SequenceNr - 1));
+                    return true;
                 }
+
+                Context.GetLogger().Info(ActorConstants.LogMessages.FinalSnapshotSaved);
+                _pendingMessageDeletion = true;
+                _pendingSnapshotDeletion = true;
+
+                DeleteMessages(success.Metadata.SequenceNr);
+                DeleteSnapshots(new SnapshotSelectionCriteria(success.Metadata.SequenceNr - 1));
 
                 return true;
             case SaveSnapshotFailure:
@@ -197,22 +196,14 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         if (_currentExchangeType == PubKeyExchangeType.ServerStreaming)
         {
             Context.GetLogger().Info(ActorConstants.LogMessages.SessionRestorationPrevented);
-
-            RestoreSecrecyChannelResponse streamingReply = new()
-            {
-                Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
-                ReceivingChainLength = ActorConstants.Constants.Zero,
-                SendingChainLength = ActorConstants.Constants.Zero
-            };
-
-            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(streamingReply));
+            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(CreateSessionNotFoundResponse()));
             return;
         }
 
-        Option<EcliptixProtocolSystem> defaultSystemOpt = GetDataCenterProtocolSystem();
-        if (!defaultSystemOpt.HasValue || _state == null)
+        Option<EcliptixProtocolSystem> primaryProtocolSystemOpt = GetPrimaryProtocolSystem();
+        if (!primaryProtocolSystemOpt.HasValue || _state == null)
         {
-            if (!defaultSystemOpt.HasValue && _state != null)
+            if (!primaryProtocolSystemOpt.HasValue && _state != null)
             {
                 Context.GetLogger().Warning(
                     "[SERVER-RESTORE] Inconsistent state detected (state exists but no DataCenter protocol). " +
@@ -224,18 +215,11 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 SaveSnapshot(new EcliptixSessionState());
             }
 
-            RestoreSecrecyChannelResponse notFoundReply = new()
-            {
-                Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
-                ReceivingChainLength = ActorConstants.Constants.Zero,
-                SendingChainLength = ActorConstants.Constants.Zero
-            };
-
-            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(notFoundReply));
+            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(CreateSessionNotFoundResponse()));
             return;
         }
 
-        EcliptixProtocolSystem defaultSystem = defaultSystemOpt.Value!;
+        EcliptixProtocolSystem primaryProtocolSystem = primaryProtocolSystemOpt.Value!;
 
         Result<Unit, EcliptixProtocolFailure> stateValidation = StateValidationHandler.ValidateRecoveredState(_state);
         if (stateValidation.IsErr)
@@ -243,14 +227,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             Context.GetLogger().Warning(ActorConstants.LogMessages.StateIntegrityValidationFailed,
                 stateValidation.UnwrapErr().Message);
 
-            RestoreSecrecyChannelResponse failureReply = new()
-            {
-                Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
-                ReceivingChainLength = ActorConstants.Constants.Zero,
-                SendingChainLength = ActorConstants.Constants.Zero
-            };
-
-            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(failureReply));
+            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(CreateSessionNotFoundResponse()));
 
             DisposeAllSystems();
             _state = null;
@@ -260,7 +237,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
         try
         {
-            defaultSystem.GetConnection();
+            primaryProtocolSystem.GetConnection();
         }
         catch (InvalidOperationException)
         {
@@ -268,14 +245,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 .Warning("[SERVER-RESTORE] Fresh handshake required. ConnectId: {0}, Reason: InvalidConnection",
                     connectId);
 
-            RestoreSecrecyChannelResponse freshHandshakeReply = new()
-            {
-                Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
-                ReceivingChainLength = ActorConstants.Constants.Zero,
-                SendingChainLength = ActorConstants.Constants.Zero
-            };
-
-            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(freshHandshakeReply));
+            Sender.Tell(Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>.Ok(CreateSessionNotFoundResponse()));
 
             DisposeAllSystems();
             _state = null;
@@ -331,12 +301,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         {
             if (IsAuthenticatedSession())
             {
-                Context.GetLogger().Info(
-                    "[HANDSHAKE-TRANSITION] Disposing authenticated session for anonymous handshake. ConnectId: {0}",
-                    cmd.ConnectId);
-                DisposeAllSystems();
-                _state = null;
-                SaveSnapshot(new EcliptixSessionState());
+                HandleAuthenticatedToAnonymousTransition(cmd.ConnectId);
             }
             else
             {
@@ -373,35 +338,14 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                                 _state = newStateResult.Unwrap();
                                 Persist(_state, _ => { });
                             }
-
-                            _currentExchangeType = exchangeType;
-                            Context.SetReceiveTimeout(IdleTimeout);
-                            Context.GetLogger().Info("[PROTOCOL] DataCenter - using idle timeout for ConnectId {0}",
-                                cmd.ConnectId);
-                        }
-                        else
-                        {
-                            _currentExchangeType = exchangeType;
-                            Context.SetReceiveTimeout(null);
-                            Context.GetLogger()
-                                .Info(
-                                    "[PROTOCOL] {0} - no timeout (ephemeral) for ConnectId {1}",
-                                    exchangeType, cmd.ConnectId);
                         }
 
-                        if (existingReplyResult.IsOk)
-                        {
-                            PubKeyExchange pubKeyReply = existingReplyResult.Unwrap();
-                            Sender.Tell(
-                                Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(
-                                    new DeriveSharedSecretReply(pubKeyReply)));
-                        }
-                        else
-                        {
-                            Sender.Tell(
-                                Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(
-                                    existingReplyResult.UnwrapErr()));
-                        }
+                        ConfigureSessionTimeout(exchangeType, cmd.ConnectId);
+
+                        PubKeyExchange pubKeyReply = existingReplyResult.Unwrap();
+                        Sender.Tell(
+                            Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(
+                                new DeriveSharedSecretReply(pubKeyReply)));
                     }
                     else
                     {
@@ -414,35 +358,16 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             }
         }
 
-        Context.GetLogger().Info(ActorConstants.LogMessages.CreatingNewSession, cmd.ConnectId, exchangeType);
+        Result<(EcliptixProtocolSystem System, EcliptixSessionState State, PubKeyExchange Reply), EcliptixProtocolFailure>
+            sessionResult = CreateNewAnonymousSession(cmd.ConnectId, cmd.PubKeyExchange);
 
-        EcliptixSystemIdentityKeys identityKeys =
-            EcliptixSystemIdentityKeys.Create(ActorConstants.Constants.IdentityKeySize).Unwrap();
-
-        EcliptixProtocolSystem system = new(identityKeys);
-
-        Context.GetLogger().Info("[PROTOCOL] Created protocol system for exchange type {0}", exchangeType);
-        Result<PubKeyExchange, EcliptixProtocolFailure> replyResult =
-            system.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.PubKeyExchange);
-
-        if (replyResult.IsErr)
+        if (sessionResult.IsErr)
         {
-            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(replyResult.UnwrapErr()));
-            system.Dispose();
+            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(sessionResult.UnwrapErr()));
             return;
         }
 
-        Result<EcliptixSessionState, EcliptixProtocolFailure> stateToPersistResult =
-            EcliptixProtocol.CreateInitialState(cmd.ConnectId, cmd.PubKeyExchange, system);
-        if (stateToPersistResult.IsErr)
-        {
-            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(stateToPersistResult.UnwrapErr()));
-            system.Dispose();
-            return;
-        }
-
-        EcliptixSessionState newState = stateToPersistResult.Unwrap();
-        PubKeyExchange reply = replyResult.Unwrap();
+        (EcliptixProtocolSystem system, EcliptixSessionState newState, PubKeyExchange reply) = sessionResult.Unwrap();
         IActorRef? originalSender = Sender;
 
         if (exchangeType == PubKeyExchangeType.DataCenterEphemeralConnect)
@@ -562,45 +487,18 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             SaveSnapshot(new EcliptixSessionState());
         }
 
-        Context.GetLogger().Info(
-            "[SERVER-AUTH-NEW] Creating new authenticated session. ConnectId: {0}, MembershipId: {1}, ExchangeType: {2}",
-            cmd.ConnectId, cmd.MembershipId, exchangeType);
+        Result<(EcliptixProtocolSystem System, EcliptixSessionState State, PubKeyExchange Reply), EcliptixProtocolFailure>
+            sessionResult = CreateNewAuthenticatedSession(cmd.ConnectId, cmd.MembershipId, cmd.ClientPubKeyExchange,
+                cmd.RootKey, cmd.IdentityKeys);
 
-        string rootKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(cmd.RootKey))[..16];
-        Context.GetLogger().Info(
-            "[SERVER-AUTH-ROOTKEY] Received root key for authenticated session. ConnectId: {0}, MembershipId: {1}, RootKeyHash: {2}",
-            cmd.ConnectId, cmd.MembershipId, rootKeyHash);
-
-        EcliptixProtocolSystem system = new(cmd.IdentityKeys);
-
-        Context.GetLogger().Info("[PROTOCOL] Processing authenticated pub key exchange for ConnectId {0}",
-            cmd.ConnectId);
-        Result<PubKeyExchange, EcliptixProtocolFailure> replyResult =
-            system.ProcessAuthenticatedPubKeyExchange(cmd.ConnectId, cmd.ClientPubKeyExchange, cmd.RootKey);
-
-        if (replyResult.IsErr)
+        if (sessionResult.IsErr)
         {
             Sender.Tell(
-                Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(replyResult.UnwrapErr()));
-            system.Dispose();
+                Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(sessionResult.UnwrapErr()));
             return;
         }
 
-        Result<EcliptixSessionState, EcliptixProtocolFailure> stateToPersistResult =
-            EcliptixProtocol.CreateInitialState(cmd.ConnectId, cmd.ClientPubKeyExchange, system);
-        if (stateToPersistResult.IsErr)
-        {
-            Sender.Tell(
-                Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(
-                    stateToPersistResult.UnwrapErr()));
-            system.Dispose();
-            return;
-        }
-
-        EcliptixSessionState newState = stateToPersistResult.Unwrap();
-        newState.MembershipId = Helpers.GuidToByteString(cmd.MembershipId);
-
-        PubKeyExchange reply = replyResult.Unwrap();
+        (EcliptixProtocolSystem system, EcliptixSessionState newState, PubKeyExchange reply) = sessionResult.Unwrap();
         IActorRef? originalSender = Sender;
 
         if (exchangeType == PubKeyExchangeType.DataCenterEphemeralConnect)
@@ -663,7 +561,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         }
     }
 
-    private bool AreIdentityKeysEqual(EcliptixSystemIdentityKeys keys1, EcliptixSystemIdentityKeys keys2)
+    private static bool AreIdentityKeysEqual(EcliptixSystemIdentityKeys keys1, EcliptixSystemIdentityKeys keys2)
     {
         try
         {
@@ -685,8 +583,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     {
         if (!_protocolSystems.TryGetValue(cmd.PubKeyExchangeType, out EcliptixProtocolSystem? system))
         {
-            Option<EcliptixProtocolSystem> defaultSystemOpt = GetDataCenterProtocolSystem();
-            if (!defaultSystemOpt.HasValue || _state == null)
+            Option<EcliptixProtocolSystem> primaryProtocolSystemOpt = GetPrimaryProtocolSystem();
+            if (!primaryProtocolSystemOpt.HasValue || _state == null)
             {
                 Sender.Tell(
                     Result<SecureEnvelope, EcliptixProtocolFailure>.Err(
@@ -694,7 +592,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                             $"No protocol system found for exchange type {cmd.PubKeyExchangeType}")));
                 return;
             }
-            system = defaultSystemOpt.Value!;
+            system = primaryProtocolSystemOpt.Value!;
         }
 
         Context.GetLogger().Info("[ENCRYPT] Using protocol system for type {0}", cmd.PubKeyExchangeType);
@@ -755,8 +653,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     {
         if (!_protocolSystems.TryGetValue(actorEvent.PubKeyExchangeType, out EcliptixProtocolSystem? system))
         {
-            Option<EcliptixProtocolSystem> defaultSystemOpt = GetDataCenterProtocolSystem();
-            if (!defaultSystemOpt.HasValue || _state == null)
+            Option<EcliptixProtocolSystem> primaryProtocolSystemOpt = GetPrimaryProtocolSystem();
+            if (!primaryProtocolSystemOpt.HasValue || _state == null)
             {
                 Sender.Tell(
                     Result<byte[], EcliptixProtocolFailure>.Err(
@@ -764,7 +662,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                             $"No protocol system found for exchange type {actorEvent.PubKeyExchangeType}")));
                 return;
             }
-            system = defaultSystemOpt.Value!;
+            system = primaryProtocolSystemOpt.Value!;
         }
 
         Context.GetLogger().Info("[DECRYPT] Using protocol system for type {0}", actorEvent.PubKeyExchangeType);
@@ -793,35 +691,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
         if (result.IsErr)
         {
-            EcliptixProtocolFailure error = result.UnwrapErr();
-            Context.GetLogger().Error(
-                "[SERVER-DECRYPT-ERROR] Decryption failed. ConnectId: {0}, ErrorType: {1}, Message: {2}",
-                connectId, error.FailureType, error.Message);
-
-            bool isHeaderAuthFailure = error.FailureType == EcliptixProtocolFailureType.HeaderAuthenticationFailed;
-
-            if (isHeaderAuthFailure || DecryptionHandler.ShouldClearSession(error))
-            {
-                Context.GetLogger()
-                    .Warning(
-                        "[SERVER-STATE-DESYNC] Header authentication failed for ConnectId {0} - protocol state desynchronized. Clearing state to force re-handshake.",
-                        connectId);
-                DisposeAllSystems();
-                _state = null;
-                _currentExchangeType = null;
-
-                SaveSnapshot(new EcliptixSessionState());
-
-                if (isHeaderAuthFailure)
-                {
-                    Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(
-                        EcliptixProtocolFailure.StateMismatch(
-                            "Protocol state desynchronized after server restart - re-handshake required")));
-                    return;
-                }
-            }
-
-            Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(error));
+            HandleDecryptionError(result.UnwrapErr(), connectId);
             return;
         }
 
@@ -1084,23 +954,18 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                _state.MembershipId.Length > 0;
     }
 
-    private Option<EcliptixProtocolSystem> GetDataCenterProtocolSystem()
+    private Option<EcliptixProtocolSystem> GetPrimaryProtocolSystem()
     {
-        if (_protocolSystems.TryGetValue(PubKeyExchangeType.DataCenterEphemeralConnect,
-                out EcliptixProtocolSystem? system))
-        {
-            return Option<EcliptixProtocolSystem>.Some(system);
-        }
-
-        return Option<EcliptixProtocolSystem>.None;
+        return _protocolSystems.TryGetValue(PubKeyExchangeType.DataCenterEphemeralConnect,
+            out EcliptixProtocolSystem? system) ? Option<EcliptixProtocolSystem>.Some(system) : Option<EcliptixProtocolSystem>.None;
     }
 
     private void HandleEncryptComponents(EncryptPayloadComponentsActorEvent cmd)
     {
         if (!_protocolSystems.TryGetValue(cmd.ExchangeType, out EcliptixProtocolSystem? system))
         {
-            Option<EcliptixProtocolSystem> systemOpt = GetDataCenterProtocolSystem();
-            if (!systemOpt.HasValue || _state == null)
+            Option<EcliptixProtocolSystem> primaryProtocolSystemOpt = GetPrimaryProtocolSystem();
+            if (!primaryProtocolSystemOpt.HasValue || _state == null)
             {
                 Sender.Tell(
                     Result<(EnvelopeMetadata Header, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(
@@ -1108,7 +973,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                             $"No protocol system found for exchange type {cmd.ExchangeType}")));
                 return;
             }
-            system = systemOpt.Value!;
+            system = primaryProtocolSystemOpt.Value!;
         }
 
         Context.GetLogger().Info("[ENCRYPT_COMPONENTS] Using protocol system for type {0}", cmd.ExchangeType);
@@ -1155,8 +1020,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     {
         if (!_protocolSystems.TryGetValue(cmd.ExchangeType, out EcliptixProtocolSystem? system))
         {
-            Option<EcliptixProtocolSystem> defaultSystemOpt = GetDataCenterProtocolSystem();
-            if (!defaultSystemOpt.HasValue || _state == null)
+            Option<EcliptixProtocolSystem> primaryProtocolSystemOpt = GetPrimaryProtocolSystem();
+            if (!primaryProtocolSystemOpt.HasValue || _state == null)
             {
                 Sender.Tell(
                     Result<byte[], EcliptixProtocolFailure>.Err(
@@ -1164,7 +1029,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                             $"No protocol system found for exchange type {cmd.ExchangeType}")));
                 return;
             }
-            system = defaultSystemOpt.Value!;
+            system = primaryProtocolSystemOpt.Value!;
         }
 
         Context.GetLogger().Info("[DECRYPT_WITH_HEADER] Using protocol system for type {0}", cmd.ExchangeType);
@@ -1230,6 +1095,155 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 connectId, cmd.ExchangeType);
             originalSender.Tell(Result<byte[], EcliptixProtocolFailure>.Ok(decryptionResult.Plaintext));
         }
+    }
+
+    private void HandleAuthenticatedToAnonymousTransition(uint connectId)
+    {
+        Context.GetLogger().Info(
+            "[HANDSHAKE-TRANSITION] Disposing authenticated session for anonymous handshake. ConnectId: {0}",
+            connectId);
+        DisposeAllSystems();
+        _state = null;
+        SaveSnapshot(new EcliptixSessionState());
+    }
+
+    private RestoreSecrecyChannelResponse CreateSessionNotFoundResponse()
+    {
+        return new RestoreSecrecyChannelResponse
+        {
+            Status = RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound,
+            ReceivingChainLength = ActorConstants.Constants.Zero,
+            SendingChainLength = ActorConstants.Constants.Zero
+        };
+    }
+
+    private void HandleDecryptionError(EcliptixProtocolFailure error, uint connectId)
+    {
+        Context.GetLogger().Error(
+            "[SERVER-DECRYPT-ERROR] Decryption failed. ConnectId: {0}, ErrorType: {1}, Message: {2}",
+            connectId, error.FailureType, error.Message);
+
+        bool isHeaderAuthFailure = error.FailureType == EcliptixProtocolFailureType.HeaderAuthenticationFailed;
+
+        if (isHeaderAuthFailure || DecryptionHandler.ShouldClearSession(error))
+        {
+            Context.GetLogger()
+                .Warning(
+                    "[SERVER-STATE-DESYNC] Header authentication failed for ConnectId {0} - protocol state desynchronized. Clearing state to force re-handshake.",
+                    connectId);
+            DisposeAllSystems();
+            _state = null;
+            _currentExchangeType = null;
+
+            SaveSnapshot(new EcliptixSessionState());
+
+            if (isHeaderAuthFailure)
+            {
+                Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.StateMismatch(
+                        "Protocol state desynchronized after server restart - re-handshake required")));
+                return;
+            }
+        }
+
+        Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(error));
+    }
+
+    private static Result<(EcliptixProtocolSystem System, EcliptixSessionState State, PubKeyExchange Reply), EcliptixProtocolFailure>
+        CreateNewAuthenticatedSession(uint connectId, Guid membershipId, PubKeyExchange clientPubKeyExchange,
+            byte[] rootKey, EcliptixSystemIdentityKeys identityKeys)
+    {
+        Context.GetLogger().Info(
+            "[SERVER-AUTH-NEW] Creating new authenticated session. ConnectId: {0}, MembershipId: {1}, ExchangeType: {2}",
+            connectId, membershipId, clientPubKeyExchange.OfType);
+
+        string rootKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(rootKey))[..16];
+        Context.GetLogger().Info(
+            "[SERVER-AUTH-ROOTKEY] Received root key for authenticated session. ConnectId: {0}, MembershipId: {1}, RootKeyHash: {2}",
+            connectId, membershipId, rootKeyHash);
+
+        EcliptixProtocolSystem system = new(identityKeys);
+
+        Context.GetLogger().Info("[PROTOCOL] Processing authenticated pub key exchange for ConnectId {0}", connectId);
+        Result<PubKeyExchange, EcliptixProtocolFailure> replyResult =
+            system.ProcessAuthenticatedPubKeyExchange(connectId, clientPubKeyExchange, rootKey);
+
+        if (replyResult.IsErr)
+        {
+            system.Dispose();
+            return Result<(EcliptixProtocolSystem, EcliptixSessionState, PubKeyExchange), EcliptixProtocolFailure>
+                .Err(replyResult.UnwrapErr());
+        }
+
+        Result<EcliptixSessionState, EcliptixProtocolFailure> stateToPersistResult =
+            EcliptixProtocol.CreateInitialState(connectId, clientPubKeyExchange, system);
+        if (stateToPersistResult.IsErr)
+        {
+            system.Dispose();
+            return Result<(EcliptixProtocolSystem, EcliptixSessionState, PubKeyExchange), EcliptixProtocolFailure>
+                .Err(stateToPersistResult.UnwrapErr());
+        }
+
+        EcliptixSessionState newState = stateToPersistResult.Unwrap();
+        newState.MembershipId = Helpers.GuidToByteString(membershipId);
+
+        PubKeyExchange reply = replyResult.Unwrap();
+
+        return Result<(EcliptixProtocolSystem, EcliptixSessionState, PubKeyExchange), EcliptixProtocolFailure>
+            .Ok((system, newState, reply));
+    }
+
+    private void ConfigureSessionTimeout(PubKeyExchangeType exchangeType, uint connectId)
+    {
+        if (exchangeType == PubKeyExchangeType.DataCenterEphemeralConnect)
+        {
+            _currentExchangeType = exchangeType;
+            Context.SetReceiveTimeout(IdleTimeout);
+            Context.GetLogger().Info("[PROTOCOL] DataCenter - using idle timeout for ConnectId {0}", connectId);
+        }
+        else
+        {
+            _currentExchangeType = exchangeType;
+            Context.SetReceiveTimeout(null);
+            Context.GetLogger().Info("[PROTOCOL] {0} - no timeout (ephemeral) for ConnectId {1}", exchangeType, connectId);
+        }
+    }
+
+    private static Result<(EcliptixProtocolSystem System, EcliptixSessionState State, PubKeyExchange Reply), EcliptixProtocolFailure>
+        CreateNewAnonymousSession(uint connectId, PubKeyExchange pubKeyExchange)
+    {
+        Context.GetLogger().Info(ActorConstants.LogMessages.CreatingNewSession, connectId, pubKeyExchange.OfType);
+
+        EcliptixSystemIdentityKeys identityKeys =
+            EcliptixSystemIdentityKeys.Create(ActorConstants.Constants.IdentityKeySize).Unwrap();
+
+        EcliptixProtocolSystem system = new(identityKeys);
+
+        Context.GetLogger().Info("[PROTOCOL] Created protocol system for exchange type {0}", pubKeyExchange.OfType);
+        Result<PubKeyExchange, EcliptixProtocolFailure> replyResult =
+            system.ProcessAndRespondToPubKeyExchange(connectId, pubKeyExchange);
+
+        if (replyResult.IsErr)
+        {
+            system.Dispose();
+            return Result<(EcliptixProtocolSystem, EcliptixSessionState, PubKeyExchange), EcliptixProtocolFailure>
+                .Err(replyResult.UnwrapErr());
+        }
+
+        Result<EcliptixSessionState, EcliptixProtocolFailure> stateToPersistResult =
+            EcliptixProtocol.CreateInitialState(connectId, pubKeyExchange, system);
+        if (stateToPersistResult.IsErr)
+        {
+            system.Dispose();
+            return Result<(EcliptixProtocolSystem, EcliptixSessionState, PubKeyExchange), EcliptixProtocolFailure>
+                .Err(stateToPersistResult.UnwrapErr());
+        }
+
+        EcliptixSessionState newState = stateToPersistResult.Unwrap();
+        PubKeyExchange reply = replyResult.Unwrap();
+
+        return Result<(EcliptixProtocolSystem, EcliptixSessionState, PubKeyExchange), EcliptixProtocolFailure>
+            .Ok((system, newState, reply));
     }
 
     public static Props Build(uint connectId) => Props.Create(() => new EcliptixProtocolConnectActor(connectId));

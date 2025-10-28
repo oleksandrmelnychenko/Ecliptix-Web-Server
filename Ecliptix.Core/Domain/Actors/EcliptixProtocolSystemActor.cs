@@ -12,14 +12,19 @@ public sealed class EcliptixProtocolSystemActor : ReceiveActor
         Become(Ready);
     }
 
+    protected override SupervisorStrategy SupervisorStrategy()
+    {
+        return new OneForOneStrategy(
+            maxNrOfRetries: ActorConstants.Supervision.MaxRetries,
+            withinTimeRange: TimeSpan.FromMinutes(ActorConstants.Supervision.TimeoutMinutes),
+            decider: Decider.From(ChildFailureDecider));
+    }
+
     private void Ready()
     {
         ReceiveAsync<BeginAppDeviceEphemeralConnectActorEvent>(ProcessNewSessionRequest);
         ReceiveAsync<ForwardToConnectActorEvent>(ProcessForwarding);
-        Receive<Terminated>(t =>
-        {
-
-        });
+        Receive<Terminated>(_ => { });
     }
 
     private async Task ProcessNewSessionRequest(BeginAppDeviceEphemeralConnectActorEvent actorEvent)
@@ -44,7 +49,7 @@ public sealed class EcliptixProtocolSystemActor : ReceiveActor
     private async Task ProcessForwarding(ForwardToConnectActorEvent message)
     {
         uint connectId = message.ConnectId;
-        string actorName = $"{ActorConstants.ActorNamePrefixes.Connect}{connectId}";
+        string actorName = GetConnectActorName(connectId);
         IActorRef connectActor = Context.Child(actorName);
 
         if (connectActor.IsNobody() && message.Payload is not KeepAlive)
@@ -55,6 +60,7 @@ public sealed class EcliptixProtocolSystemActor : ReceiveActor
                 Sender.Tell(Result<object, EcliptixProtocolFailure>.Err(connectActorResult.UnwrapErr()));
                 return;
             }
+
             connectActor = connectActorResult.Unwrap();
         }
 
@@ -71,83 +77,48 @@ public sealed class EcliptixProtocolSystemActor : ReceiveActor
 
     private Result<IActorRef, EcliptixProtocolFailure> GetOrCreateConnectActor(uint connectId)
     {
-        string actorName = $"{ActorConstants.ActorNamePrefixes.Connect}{connectId}";
+        string actorName = GetConnectActorName(connectId);
         IActorRef connectActor = Context.Child(actorName);
 
-        if (connectActor.IsNobody())
+        if (!connectActor.IsNobody())
         {
-            try
-            {
-                connectActor = Context.ActorOf(EcliptixProtocolConnectActor.Build(connectId), actorName);
-                Context.Watch(connectActor);
-                return Result<IActorRef, EcliptixProtocolFailure>.Ok(connectActor);
-            }
-            catch (Exception ex)
-            {
-                return Result<IActorRef, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.ActorNotCreated($"{ActorConstants.ErrorMessages.FailedToCreateActor}{connectId}", ex));
-            }
+            return Result<IActorRef, EcliptixProtocolFailure>.Ok(connectActor);
         }
 
-        return Result<IActorRef, EcliptixProtocolFailure>.Ok(connectActor);
+        try
+        {
+            connectActor = Context.ActorOf(EcliptixProtocolConnectActor.Build(connectId), actorName);
+            Context.Watch(connectActor);
+            return Result<IActorRef, EcliptixProtocolFailure>.Ok(connectActor);
+        }
+        catch (Exception ex)
+        {
+            return Result<IActorRef, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.ActorNotCreated(
+                    $"{ActorConstants.ErrorMessages.FailedToCreateActor}{connectId}", ex));
+        }
     }
 
-    protected override SupervisorStrategy SupervisorStrategy()
-    {
-        return new OneForOneStrategy(
-            maxNrOfRetries: ActorConstants.Supervision.MaxRetries,
-            withinTimeRange: TimeSpan.FromMinutes(ActorConstants.Supervision.TimeoutMinutes),
-            decider: Decider.From(ChildFailureDecider));
-    }
+    private static string GetConnectActorName(uint connectId) =>
+        $"{ActorConstants.ActorNamePrefixes.Connect}{connectId}";
 
     private static Directive ChildFailureDecider(Exception ex)
     {
-        switch (ex)
+        return ex switch
         {
-            case ActorInitializationException initEx:
-
-                return Directive.Stop;
-
-            case TimeoutException timeoutEx:
-
-                return Directive.Restart;
-
-            case UnauthorizedAccessException unauthorizedEx:
-
-                return Directive.Stop;
-
-            case ArgumentException argEx:
-
-                return Directive.Stop;
-
-            case InvalidOperationException invalidOpEx when invalidOpEx.Message.Contains(ActorConstants.ErrorMessages.Cryptographic):
-
-                return Directive.Restart;
-
-            case InvalidOperationException invalidOpEx:
-
-                return Directive.Restart;
-
-            case IOException ioEx:
-
-                return Directive.Restart;
-
-            case System.Net.NetworkInformation.NetworkInformationException netEx:
-
-                return Directive.Restart;
-
-            case OutOfMemoryException memEx:
-
-                return Directive.Escalate;
-
-            case StackOverflowException stackEx:
-
-                return Directive.Escalate;
-
-            default:
-
-                return Directive.Stop;
-        }
+            ActorInitializationException => Directive.Stop,
+            TimeoutException => Directive.Restart,
+            UnauthorizedAccessException => Directive.Stop,
+            ArgumentException => Directive.Stop,
+            InvalidOperationException invalidOpEx when invalidOpEx.Message.Contains(ActorConstants.ErrorMessages
+                .Cryptographic) => Directive.Restart,
+            InvalidOperationException => Directive.Restart,
+            IOException => Directive.Restart,
+            System.Net.NetworkInformation.NetworkInformationException => Directive.Restart,
+            OutOfMemoryException => Directive.Escalate,
+            StackOverflowException => Directive.Escalate,
+            _ => Directive.Stop
+        };
     }
 
     public static Props Build()
