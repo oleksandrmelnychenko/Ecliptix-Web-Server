@@ -282,6 +282,28 @@ public sealed class MembershipActor : ReceivePersistentActor
             return;
         }
 
+        // Step 2.5: Update membership creation status to SecureKeySet
+        Log.Info(
+            "[REGISTRATION-STATUS] Updating CreationStatus to SecureKeySet for MembershipId: {0}",
+            @event.MembershipIdentifier);
+
+        Result<Unit, MembershipFailure> statusUpdateResult =
+            await _membershipPersistor.Ask<Result<Unit, MembershipFailure>>(
+                new UpdateMembershipCreationStatusEvent(
+                    @event.MembershipIdentifier,
+                    MembershipCreationStatus.SecureKeySet,
+                    @event.CancellationToken),
+                @event.CancellationToken);
+
+        if (statusUpdateResult.IsErr)
+        {
+            Log.Error(
+                "[REGISTRATION-STATUS] Failed to update CreationStatus after credential save. " +
+                "MembershipId={MembershipId}, Error={Error}. " +
+                "Credentials ARE saved, so not failing registration. Status will be fixed by migration/cleanup.",
+                @event.MembershipIdentifier, statusUpdateResult.UnwrapErr().Message);
+        }
+
         // Step 3: Split master key into Shamir shares (now account has credentials)
         Log.Info("[REGISTRATION-MASTER-KEY] Splitting master key into Shamir shares for MembershipId: {0}", @event.MembershipIdentifier);
 

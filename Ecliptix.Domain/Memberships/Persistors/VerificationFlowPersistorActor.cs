@@ -732,21 +732,16 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 membershipInfo.HasValidCredentials)
             {
                 Log.Warning(
-                    "[CHECK-AVAILABILITY] Data corruption: CreationStatus=OTP_VERIFIED but credentials exist. MembershipId={MembershipId}, DeviceId={DeviceId}",
-                    membershipInfo.MembershipId, cmd.DeviceId);
+                    "[CHECK-AVAILABILITY-INCONSISTENCY] Status={Status} but credentials exist. " +
+                    "MembershipId={MembershipId}, DeviceId={DeviceId}. " +
+                    "Treating as complete registration (SecureKeySet). Migration will fix status in DB.",
+                    creationStatus, membershipInfo.MembershipId, membershipInfo.DeviceId);
 
-                return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                    new MobileNumberAvailabilityResponse
-                    {
-                        Status = MobileAvailabilityStatus.DataCorruption,
-                        CanRegister = false,
-                        CanContinue = false,
-                        ExistingMembershipId = Helpers.GuidToByteString(membershipInfo.MembershipId),
-                        RegisteredDeviceId = Helpers.GuidToByteString(membershipInfo.DeviceId),
-                        CreationStatus = creationStatus,
-                        ActivityStatus = activityStatus,
-                        LocalizationKey = VerificationFlowMessageKeys.MobileDataCorruption
-                    });
+                // Defensive programming: Treat as if status was correct (in-memory only, no DB write)
+                // This prevents exposing internal state to clients and avoids adding write operations to hot read path
+                creationStatus = Membership.Types.CreationStatus.SecureKeySet;
+
+                // Fall through to normal "already registered" logic below
             }
 
             if (membershipInfo.HasDefaultAccount &&

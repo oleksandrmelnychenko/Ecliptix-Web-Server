@@ -101,6 +101,10 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
         ReceivePersistorCommand<GetMembershipByUniqueIdEvent, MembershipQueryRecord>(
             GetMembershipByUniqueIdAsync,
             "GetMembershipByUniqueId");
+
+        ReceivePersistorCommand<UpdateMembershipCreationStatusEvent, Unit>(
+            UpdateMembershipCreationStatusAsync,
+            "UpdateMembershipCreationStatus");
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
@@ -839,6 +843,44 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
         {
             return Result<MembershipQueryRecord, MembershipFailure>.Err(
                 MembershipFailure.PersistorAccess("Failed to get membership by unique ID", ex));
+        }
+    }
+
+    private static async Task<Result<Unit, MembershipFailure>> UpdateMembershipCreationStatusAsync(
+        EcliptixSchemaContext ctx,
+        UpdateMembershipCreationStatusEvent cmd,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            int rowsAffected = await ctx.Memberships
+                .Where(m => m.UniqueId == cmd.MembershipIdentifier && !m.IsDeleted)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(m => m.CreationStatus, cmd.CreationStatus)
+                    .SetProperty(m => m.UpdatedAt, DateTimeOffset.UtcNow), cancellationToken);
+
+            if (rowsAffected == 0)
+            {
+                Log.Warning(
+                    "[UPDATE-CREATION-STATUS] Membership not found. MembershipId={MembershipId}",
+                    cmd.MembershipIdentifier);
+                return Result<Unit, MembershipFailure>.Err(
+                    MembershipFailure.NotFoundById());
+            }
+
+            Log.Information(
+                "[UPDATE-CREATION-STATUS] Successfully updated membership {MembershipId} to {Status}",
+                cmd.MembershipIdentifier, cmd.CreationStatus);
+
+            return Result<Unit, MembershipFailure>.Ok(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex,
+                "[UPDATE-CREATION-STATUS] Failed to update membership creation status. MembershipId={MembershipId}",
+                cmd.MembershipIdentifier);
+            return Result<Unit, MembershipFailure>.Err(
+                MembershipFailure.PersistorAccess("Failed to update membership creation status", ex));
         }
     }
 
