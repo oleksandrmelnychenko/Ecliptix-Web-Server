@@ -18,6 +18,13 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
     private EcliptixProtocolConnection? _connectSession;
 
+    public static Result<EcliptixProtocolSystem, EcliptixProtocolFailure> CreateFrom(EcliptixSystemIdentityKeys keys,
+        EcliptixProtocolConnection connection)
+    {
+        EcliptixProtocolSystem system = new(keys) { _connectSession = connection };
+        return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Ok(system);
+    }
+
     public void Dispose()
     {
         EcliptixProtocolConnection? connectionToDispose;
@@ -43,23 +50,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         {
             return _connectSession!;
         }
-    }
-
-    private Option<EcliptixProtocolConnection> GetConnectionSafe()
-    {
-        lock (_lock)
-        {
-            return _connectSession is not null
-                ? Option<EcliptixProtocolConnection>.Some(_connectSession)
-                : Option<EcliptixProtocolConnection>.None;
-        }
-    }
-
-    public static Result<EcliptixProtocolSystem, EcliptixProtocolFailure> CreateFrom(EcliptixSystemIdentityKeys keys,
-        EcliptixProtocolConnection connection)
-    {
-        EcliptixProtocolSystem system = new(keys) { _connectSession = connection };
-        return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Ok(system);
     }
 
     public Result<PubKeyExchange, EcliptixProtocolFailure> BeginDataCenterPubKeyExchange(
@@ -982,6 +972,203 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         return ProcessInboundEnvelopeInternal(cipherPayloadProto, connectionOpt.Value!);
     }
 
+    private static Result<RatchetChainKey, EcliptixProtocolFailure> CloneRatchetChainKey(RatchetChainKey key)
+    {
+        byte[]? keyMaterial = null;
+        try
+        {
+            keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
+            Span<byte> keySpan = keyMaterial.AsSpan(0, Constants.AesKeySize);
+            Result<Unit, EcliptixProtocolFailure> readResult = key.ReadKeyMaterial(keySpan);
+            if (readResult.IsErr)
+            {
+                return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
+            }
+
+            return RatchetChainKey.New(key.Index, keySpan);
+        }
+        finally
+        {
+            if (keyMaterial != null)
+            {
+                ArrayPool<byte>.Shared.Return(keyMaterial, clearArray: true);
+            }
+        }
+    }
+
+    private static byte[] CreateAssociatedData(ReadOnlySpan<byte> id1, ReadOnlySpan<byte> id2)
+    {
+        if (id1.Length != Constants.X25519PublicKeySize || id2.Length != Constants.X25519PublicKeySize)
+        {
+            throw new ArgumentException("Invalid identity key lengths for associated data.");
+        }
+
+        Span<byte> ad = stackalloc byte[Constants.X25519PublicKeySize * 2];
+        id1.CopyTo(ad);
+        id2.CopyTo(ad[Constants.X25519PublicKeySize..]);
+        return ad.ToArray();
+    }
+
+    private static Result<byte[], EcliptixProtocolFailure> Encrypt(RatchetChainKey key, byte[] nonce,
+        byte[] plaintext, byte[] ad)
+    {
+        byte[]? keyMaterial = null;
+        byte[]? ciphertext = null;
+        byte[]? tag = null;
+        try
+        {
+            keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
+            Span<byte> keySpan = keyMaterial.AsSpan(0, Constants.AesKeySize);
+            Result<Unit, EcliptixProtocolFailure> readResult = key.ReadKeyMaterial(keySpan);
+            if (readResult.IsErr)
+            {
+                return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
+            }
+
+            ciphertext = new byte[plaintext.Length];
+            tag = new byte[Constants.AesGcmTagSize];
+
+            using (AesGcm aesGcm = new(keySpan, Constants.AesGcmTagSize))
+            {
+                aesGcm.Encrypt(nonce, plaintext, ciphertext, tag, ad);
+            }
+
+            byte[] result = new byte[ciphertext.Length + tag.Length];
+            Buffer.BlockCopy(ciphertext, 0, result, 0, ciphertext.Length);
+            Buffer.BlockCopy(tag, 0, result, ciphertext.Length, tag.Length);
+
+            return Result<byte[], EcliptixProtocolFailure>.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            if (ciphertext != null)
+            {
+                SodiumInterop.SecureWipe(ciphertext);
+            }
+
+            if (tag != null)
+            {
+                SodiumInterop.SecureWipe(tag);
+            }
+
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("AES-GCM encryption failed.", ex));
+        }
+        finally
+        {
+            if (keyMaterial != null)
+            {
+                ArrayPool<byte>.Shared.Return(keyMaterial, clearArray: true);
+            }
+        }
+    }
+
+    private static Result<byte[], EcliptixProtocolFailure> Decrypt(RatchetChainKey key, EnvelopeMetadata metadata,
+        SecureEnvelope payload,
+        byte[] ad)
+    {
+        ReadOnlySpan<byte> fullCipherSpan = payload.EncryptedPayload.Span;
+        const int tagSize = Constants.AesGcmTagSize;
+        int cipherLength = fullCipherSpan.Length - tagSize;
+
+        if (cipherLength < 0)
+        {
+            return Result<byte[], EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.BufferTooSmall(
+                $"Received ciphertext length ({fullCipherSpan.Length}) is smaller than the GCM tag size ({tagSize})."));
+        }
+
+        byte[]? keyMaterial = null;
+        byte[]? plaintext = null;
+        try
+        {
+            keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
+            Span<byte> keySpan = keyMaterial.AsSpan(0, Constants.AesKeySize);
+            Result<Unit, EcliptixProtocolFailure> readResult = key.ReadKeyMaterial(keySpan);
+            if (readResult.IsErr)
+            {
+                return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
+            }
+
+            ReadOnlySpan<byte> ciphertextSpan = fullCipherSpan[..cipherLength];
+            ReadOnlySpan<byte> tagSpan = fullCipherSpan[cipherLength..];
+            ReadOnlySpan<byte> nonceSpan = metadata.Nonce.Span;
+
+            plaintext = new byte[cipherLength];
+            Span<byte> plaintextSpan = plaintext.AsSpan();
+
+            using (AesGcm aesGcm = new(keySpan, Constants.AesGcmTagSize))
+            {
+                aesGcm.Decrypt(nonceSpan, ciphertextSpan, tagSpan, plaintextSpan, ad);
+            }
+
+            return Result<byte[], EcliptixProtocolFailure>.Ok(plaintext);
+        }
+        catch (CryptographicException cryptoEx)
+        {
+            if (plaintext != null)
+            {
+                SodiumInterop.SecureWipe(plaintext);
+            }
+
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("AES-GCM decryption failed (authentication tag mismatch).", cryptoEx));
+        }
+        catch (Exception ex)
+        {
+            if (plaintext != null)
+            {
+                SodiumInterop.SecureWipe(plaintext);
+            }
+
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Unexpected error during AES-GCM decryption.", ex));
+        }
+        finally
+        {
+            if (keyMaterial != null)
+            {
+                ArrayPool<byte>.Shared.Return(keyMaterial, clearArray: true);
+            }
+        }
+    }
+
+    private static Result<RatchetChainKey, EcliptixProtocolFailure> AttemptMessageProcessingWithRecovery(
+        EnvelopeMetadata metadata, byte[]? receivedDhKey, EcliptixProtocolConnection connection)
+    {
+        try
+        {
+            Result<RatchetChainKey, EcliptixProtocolFailure> normalResult =
+                connection.ProcessReceivedMessage(metadata.RatchetIndex);
+            if (normalResult.IsOk || receivedDhKey == null || metadata.RatchetIndex > 5)
+            {
+                return normalResult;
+            }
+
+            Result<Unit, EcliptixProtocolFailure>
+                ratchetResult = connection.PerformReceivingRatchet(receivedDhKey);
+            if (!ratchetResult.IsOk)
+            {
+                return normalResult;
+            }
+
+            Result<RatchetChainKey, EcliptixProtocolFailure> retryResult =
+                connection.ProcessReceivedMessage(metadata.RatchetIndex);
+            return retryResult.IsOk ? retryResult : normalResult;
+        }
+        catch (Exception ex)
+        {
+            return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.Generic("Failed to parse cipher header", ex));
+        }
+    }
+
+    private static uint GenerateRequestId()
+    {
+        Span<byte> buffer = stackalloc byte[4];
+        RandomNumberGenerator.Fill(buffer);
+        return BitConverter.ToUInt32(buffer);
+    }
+
     private Result<byte[], EcliptixProtocolFailure> ProcessInboundEnvelopeInternal(SecureEnvelope cipherPayloadProto,
         EcliptixProtocolConnection connection)
     {
@@ -1146,6 +1333,16 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         }
     }
 
+    private Option<EcliptixProtocolConnection> GetConnectionSafe()
+    {
+        lock (_lock)
+        {
+            return _connectSession is not null
+                ? Option<EcliptixProtocolConnection>.Some(_connectSession)
+                : Option<EcliptixProtocolConnection>.None;
+        }
+    }
+
     private Result<byte[], EcliptixProtocolFailure> GetOptionalSenderDhKey(bool include)
     {
         if (!include)
@@ -1174,166 +1371,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         return Result<byte[], EcliptixProtocolFailure>.Ok(dhKey);
     }
 
-    private static Result<RatchetChainKey, EcliptixProtocolFailure> CloneRatchetChainKey(RatchetChainKey key)
-    {
-        byte[]? keyMaterial = null;
-        try
-        {
-            keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
-            Span<byte> keySpan = keyMaterial.AsSpan(0, Constants.AesKeySize);
-            Result<Unit, EcliptixProtocolFailure> readResult = key.ReadKeyMaterial(keySpan);
-            if (readResult.IsErr)
-            {
-                return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
-            }
-
-            return RatchetChainKey.New(key.Index, keySpan);
-        }
-        finally
-        {
-            if (keyMaterial != null)
-            {
-                ArrayPool<byte>.Shared.Return(keyMaterial, clearArray: true);
-            }
-        }
-    }
-
-    private static byte[] CreateAssociatedData(ReadOnlySpan<byte> id1, ReadOnlySpan<byte> id2)
-    {
-        if (id1.Length != Constants.X25519PublicKeySize || id2.Length != Constants.X25519PublicKeySize)
-        {
-            throw new ArgumentException("Invalid identity key lengths for associated data.");
-        }
-
-        Span<byte> ad = stackalloc byte[Constants.X25519PublicKeySize * 2];
-        id1.CopyTo(ad);
-        id2.CopyTo(ad[Constants.X25519PublicKeySize..]);
-        return ad.ToArray();
-    }
-
-    private static Result<byte[], EcliptixProtocolFailure> Encrypt(RatchetChainKey key, byte[] nonce,
-        byte[] plaintext, byte[] ad)
-    {
-        byte[]? keyMaterial = null;
-        byte[]? ciphertext = null;
-        byte[]? tag = null;
-        try
-        {
-            keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
-            Span<byte> keySpan = keyMaterial.AsSpan(0, Constants.AesKeySize);
-            Result<Unit, EcliptixProtocolFailure> readResult = key.ReadKeyMaterial(keySpan);
-            if (readResult.IsErr)
-            {
-                return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
-            }
-
-            ciphertext = new byte[plaintext.Length];
-            tag = new byte[Constants.AesGcmTagSize];
-
-            using (AesGcm aesGcm = new(keySpan, Constants.AesGcmTagSize))
-            {
-                aesGcm.Encrypt(nonce, plaintext, ciphertext, tag, ad);
-            }
-
-            byte[] result = new byte[ciphertext.Length + tag.Length];
-            Buffer.BlockCopy(ciphertext, 0, result, 0, ciphertext.Length);
-            Buffer.BlockCopy(tag, 0, result, ciphertext.Length, tag.Length);
-
-            return Result<byte[], EcliptixProtocolFailure>.Ok(result);
-        }
-        catch (Exception ex)
-        {
-            if (ciphertext != null)
-            {
-                SodiumInterop.SecureWipe(ciphertext);
-            }
-
-            if (tag != null)
-            {
-                SodiumInterop.SecureWipe(tag);
-            }
-
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("AES-GCM encryption failed.", ex));
-        }
-        finally
-        {
-            if (keyMaterial != null)
-            {
-                ArrayPool<byte>.Shared.Return(keyMaterial, clearArray: true);
-            }
-        }
-    }
-
-    private static Result<byte[], EcliptixProtocolFailure> Decrypt(RatchetChainKey key, EnvelopeMetadata metadata,
-        SecureEnvelope payload,
-        byte[] ad)
-    {
-        ReadOnlySpan<byte> fullCipherSpan = payload.EncryptedPayload.Span;
-        const int tagSize = Constants.AesGcmTagSize;
-        int cipherLength = fullCipherSpan.Length - tagSize;
-
-        if (cipherLength < 0)
-        {
-            return Result<byte[], EcliptixProtocolFailure>.Err(EcliptixProtocolFailure.BufferTooSmall(
-                $"Received ciphertext length ({fullCipherSpan.Length}) is smaller than the GCM tag size ({tagSize})."));
-        }
-
-        byte[]? keyMaterial = null;
-        byte[]? plaintext = null;
-        try
-        {
-            keyMaterial = ArrayPool<byte>.Shared.Rent(Constants.AesKeySize);
-            Span<byte> keySpan = keyMaterial.AsSpan(0, Constants.AesKeySize);
-            Result<Unit, EcliptixProtocolFailure> readResult = key.ReadKeyMaterial(keySpan);
-            if (readResult.IsErr)
-            {
-                return Result<byte[], EcliptixProtocolFailure>.Err(readResult.UnwrapErr());
-            }
-
-            ReadOnlySpan<byte> ciphertextSpan = fullCipherSpan[..cipherLength];
-            ReadOnlySpan<byte> tagSpan = fullCipherSpan[cipherLength..];
-            ReadOnlySpan<byte> nonceSpan = metadata.Nonce.Span;
-
-            plaintext = new byte[cipherLength];
-            Span<byte> plaintextSpan = plaintext.AsSpan();
-
-            using (AesGcm aesGcm = new(keySpan, Constants.AesGcmTagSize))
-            {
-                aesGcm.Decrypt(nonceSpan, ciphertextSpan, tagSpan, plaintextSpan, ad);
-            }
-
-            return Result<byte[], EcliptixProtocolFailure>.Ok(plaintext);
-        }
-        catch (CryptographicException cryptoEx)
-        {
-            if (plaintext != null)
-            {
-                SodiumInterop.SecureWipe(plaintext);
-            }
-
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("AES-GCM decryption failed (authentication tag mismatch).", cryptoEx));
-        }
-        catch (Exception ex)
-        {
-            if (plaintext != null)
-            {
-                SodiumInterop.SecureWipe(plaintext);
-            }
-
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Unexpected error during AES-GCM decryption.", ex));
-        }
-        finally
-        {
-            if (keyMaterial != null)
-            {
-                ArrayPool<byte>.Shared.Return(keyMaterial, clearArray: true);
-            }
-        }
-    }
-
     private Result<Unit, EcliptixProtocolFailure> ValidateIncomingMessage(SecureEnvelope payload,
         EnvelopeMetadata metadata)
     {
@@ -1357,36 +1394,6 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         }
 
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
-    }
-
-    private static Result<RatchetChainKey, EcliptixProtocolFailure> AttemptMessageProcessingWithRecovery(
-        EnvelopeMetadata metadata, byte[]? receivedDhKey, EcliptixProtocolConnection connection)
-    {
-        try
-        {
-            Result<RatchetChainKey, EcliptixProtocolFailure> normalResult =
-                connection.ProcessReceivedMessage(metadata.RatchetIndex);
-            if (normalResult.IsOk || receivedDhKey == null || metadata.RatchetIndex > 5)
-            {
-                return normalResult;
-            }
-
-            Result<Unit, EcliptixProtocolFailure>
-                ratchetResult = connection.PerformReceivingRatchet(receivedDhKey);
-            if (!ratchetResult.IsOk)
-            {
-                return normalResult;
-            }
-
-            Result<RatchetChainKey, EcliptixProtocolFailure> retryResult =
-                connection.ProcessReceivedMessage(metadata.RatchetIndex);
-            return retryResult.IsOk ? retryResult : normalResult;
-        }
-        catch (Exception ex)
-        {
-            return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("Failed to parse cipher header", ex));
-        }
     }
 
     private Result<Unit, EcliptixProtocolFailure> VerifyRecoveredSessionState()
@@ -1505,12 +1512,5 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic($"Client identity check failed: {ex.Message}"));
         }
-    }
-
-    private static uint GenerateRequestId()
-    {
-        Span<byte> buffer = stackalloc byte[4];
-        RandomNumberGenerator.Fill(buffer);
-        return BitConverter.ToUInt32(buffer);
     }
 }

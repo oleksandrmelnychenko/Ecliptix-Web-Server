@@ -81,4 +81,5 @@ public static class VerificationFlowMessageKeys
     public const string MobileDataCorruption = "mobile_data_corruption_contact_support";
     public const string MobileAvailableOnThisDevice = "mobile_available_on_this_device";
     public const string MobileRegistrationExpired = "mobile_registration_window_expired";
+    public const string MobileIncompleteRegistrationDifferentDevice = "mobile_incomplete_registration_different_device";
 }

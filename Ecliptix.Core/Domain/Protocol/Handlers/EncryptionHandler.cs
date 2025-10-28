@@ -7,7 +7,7 @@ namespace Ecliptix.Core.Domain.Protocol.Handlers;
 
 public sealed class EncryptionHandler
 {
-    public Result<EncryptionResult, EcliptixProtocolFailure> EncryptPayload(
+    public static Result<EncryptionResult, EcliptixProtocolFailure> EncryptPayload(
         EcliptixProtocolSystem system,
         EcliptixSessionState? currentState,
         byte[] payload,
@@ -28,8 +28,7 @@ public sealed class EncryptionHandler
             return Result<EncryptionResult, EcliptixProtocolFailure>.Err(newStateResult.UnwrapErr());
         }
 
-        bool shouldPersist = exchangeType != PubKeyExchangeType.ServerStreaming;
-
+        bool shouldPersist = exchangeType == PubKeyExchangeType.DataCenterEphemeralConnect;
         return Result<EncryptionResult, EcliptixProtocolFailure>.Ok(new EncryptionResult(
             newStateResult.Unwrap(),
             encryptionResult.Unwrap(),
@@ -37,7 +36,7 @@ public sealed class EncryptionHandler
         ));
     }
 
-    public Result<EncryptionComponentsResult, EcliptixProtocolFailure> EncryptPayloadComponents(
+    public static Result<EncryptionMaterialsResult, EcliptixProtocolFailure> EncryptPayloadMaterials(
         EcliptixProtocolSystem system,
         EcliptixSessionState? currentState,
         byte[] payload,
@@ -48,7 +47,7 @@ public sealed class EncryptionHandler
 
         if (encryptionResult.IsErr)
         {
-            return Result<EncryptionComponentsResult, EcliptixProtocolFailure>.Err(encryptionResult.UnwrapErr());
+            return Result<EncryptionMaterialsResult, EcliptixProtocolFailure>.Err(encryptionResult.UnwrapErr());
         }
 
         Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
@@ -56,13 +55,13 @@ public sealed class EncryptionHandler
 
         if (newStateResult.IsErr)
         {
-            return Result<EncryptionComponentsResult, EcliptixProtocolFailure>.Err(newStateResult.UnwrapErr());
+            return Result<EncryptionMaterialsResult, EcliptixProtocolFailure>.Err(newStateResult.UnwrapErr());
         }
 
         bool shouldPersist = exchangeType == PubKeyExchangeType.DataCenterEphemeralConnect;
         (EnvelopeMetadata Header, byte[] EncryptedPayload) components = encryptionResult.Unwrap();
 
-        return Result<EncryptionComponentsResult, EcliptixProtocolFailure>.Ok(new EncryptionComponentsResult(
+        return Result<EncryptionMaterialsResult, EcliptixProtocolFailure>.Ok(new EncryptionMaterialsResult(
             newStateResult.Unwrap(),
             components.Header,
             components.EncryptedPayload,
@@ -70,16 +69,3 @@ public sealed class EncryptionHandler
         ));
     }
 }
-
-public sealed record EncryptionResult(
-    EcliptixSessionState NewState,
-    SecureEnvelope Envelope,
-    bool ShouldPersist
-);
-
-public sealed record EncryptionComponentsResult(
-    EcliptixSessionState NewState,
-    EnvelopeMetadata Header,
-    byte[] EncryptedPayload,
-    bool ShouldPersist
-);

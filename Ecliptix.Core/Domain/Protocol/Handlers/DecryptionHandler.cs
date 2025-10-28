@@ -85,10 +85,3 @@ public sealed class DecryptionHandler
         return error.FailureType == EcliptixProtocolFailureType.SessionAuthenticationFailed;
     }
 }
-
-public sealed record DecryptionResult(
-    EcliptixSessionState NewState,
-    byte[] Plaintext,
-    bool ShouldPersist,
-    bool RequiresSessionClear
-);

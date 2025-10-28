@@ -679,7 +679,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             var membershipInfo = await schemeContext.Memberships
                 .Where(m => m.MobileNumberId == cmd.MobileNumberId &&
-                            m.AppDeviceId == cmd.DeviceId &&
                             !m.IsDeleted &&
                             !m.MobileNumber.IsDeleted)
                 .Select(m => new
@@ -704,25 +703,13 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             if (membershipInfo == null)
             {
-                bool existsOnOtherDevice = await schemeContext.Memberships
-                    .AnyAsync(m => m.MobileNumberId == cmd.MobileNumberId &&
-                                   m.AppDeviceId != cmd.DeviceId &&
-                                   !m.IsDeleted &&
-                                   !m.MobileNumber.IsDeleted &&
-                                   !m.AppDevice.IsDeleted,
-                        cancellationToken);
-
-                string localizationKey = existsOnOtherDevice
-                    ? VerificationFlowMessageKeys.MobileAvailableOnThisDevice
-                    : VerificationFlowMessageKeys.MobileAvailableForRegistration;
-
                 return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
                     new MobileNumberAvailabilityResponse
                     {
                         Status = MobileAvailabilityStatus.Available,
                         CanRegister = true,
                         CanContinue = false,
-                        LocalizationKey = localizationKey
+                        LocalizationKey = VerificationFlowMessageKeys.MobileAvailableForRegistration
                     });
             }
 
@@ -812,6 +799,27 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                         });
                 }
 
+                if (membershipInfo.DeviceId != cmd.DeviceId)
+                {
+                    Log.Warning(
+                        "[CHECK-AVAILABILITY] Cross-device registration blocked. MembershipId: {MembershipId}, " +
+                        "RegisteredDevice: {RegisteredDevice}, RequestingDevice: {RequestingDevice}",
+                        membershipInfo.MembershipId, membershipInfo.DeviceId, cmd.DeviceId);
+
+                    return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
+                        new MobileNumberAvailabilityResponse
+                        {
+                            Status = MobileAvailabilityStatus.IncompleteRegistration,
+                            CanRegister = false,
+                            CanContinue = false,
+                            ExistingMembershipId = Helpers.GuidToByteString(membershipInfo.MembershipId),
+                            RegisteredDeviceId = Helpers.GuidToByteString(membershipInfo.DeviceId),
+                            CreationStatus = creationStatus,
+                            ActivityStatus = activityStatus,
+                            LocalizationKey = VerificationFlowMessageKeys.MobileIncompleteRegistrationDifferentDevice
+                        });
+                }
+
                 MobileNumberAvailabilityResponse response = new()
                 {
                     Status = MobileAvailabilityStatus.IncompleteRegistration,
@@ -827,8 +835,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 if (membershipInfo.AccountUniqueId.HasValue)
                 {
                     ByteString accountId = Helpers.GuidToByteString(membershipInfo.AccountUniqueId.Value);
-                    dynamic dynamicResponse = response;
-                    dynamicResponse.AccountUniqueIdentifier = accountId;
+                    response.AccountUniqueIdentifier = accountId;
                 }
 
                 return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(response);

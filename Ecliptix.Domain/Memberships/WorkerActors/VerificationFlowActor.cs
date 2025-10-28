@@ -1419,11 +1419,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             graceful,
             reason);
 
-        if (publishCleanupEvent)
-        {
-            Context.System.EventStream.Publish(new ProtocolCleanupRequiredEvent(_connectId));
-        }
-
         if (graceful)
         {
             Context.Parent.Tell(new FlowCompletedGracefullyActorEvent(Self));

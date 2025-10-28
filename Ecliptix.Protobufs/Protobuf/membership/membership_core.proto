@@ -40,6 +40,7 @@ message MobileNumberAvailabilityResponse {
   optional Membership.CreationStatus creation_status = 6;
   optional Membership.ActivityStatus activity_status = 7;
   string localization_key = 8;
+  optional bytes account_unique_identifier = 9;
 }
 
 enum LogoutScope {

@@ -173,6 +173,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
     private static Result<MembershipQueryRecord, MembershipFailure> BuildMembershipResult(
         Guid membershipId,
+        Guid deviceId,
         Membership.Types.ActivityStatus activityStatus,
         ProtoMembership.Types.CreationStatus creationStatus,
         int credentialsVersion,
@@ -185,6 +186,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             new MembershipQueryRecord
             {
                 UniqueIdentifier = membershipId,
+                DeviceId = deviceId,
                 ActivityStatus = activityStatus,
                 CreationStatus = creationStatus,
                 CredentialsVersion = credentialsVersion,
@@ -416,6 +418,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             return BuildMembershipResult(
                 membership.UniqueId,
+                membership.AppDeviceId,
                 membership.Status switch
                 {
                     MembershipStatus.Active => Membership.Types.ActivityStatus.Active,
@@ -555,6 +558,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
                 return BuildMembershipResult(
                     existingMembership.UniqueId,
+                    existingMembership.AppDeviceId,
                     existingMembership.Status switch
                     {
                         MembershipStatus.Active => Membership.Types.ActivityStatus.Active,
@@ -638,6 +642,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             return BuildMembershipResult(
                 newMembership.UniqueId,
+                newMembership.AppDeviceId,
                 newMembership.Status switch
                 {
                     MembershipStatus.Active => Membership.Types.ActivityStatus.Active,
@@ -765,6 +770,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             return BuildMembershipResult(
                 membership.UniqueId,
+                membership.AppDeviceId,
                 membership.Status switch
                 {
                     MembershipStatus.Active => Membership.Types.ActivityStatus.Active,
@@ -817,6 +823,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             return BuildMembershipResult(
                 membership.UniqueId,
+                membership.AppDeviceId,
                 membership.Status switch
                 {
                     MembershipStatus.Active => Membership.Types.ActivityStatus.Active,

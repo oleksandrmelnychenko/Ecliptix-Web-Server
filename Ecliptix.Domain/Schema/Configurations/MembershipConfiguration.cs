@@ -43,13 +43,10 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
             .IsUnique()
             .HasDatabaseName("UQ_Memberships_UniqueId");
 
-        builder.HasIndex(e => new { e.MobileNumberId, e.AppDeviceId, e.IsDeleted })
-            .IsUnique()
-            .HasDatabaseName("UQ_Memberships_ActiveMembership");
-
         builder.HasIndex(e => e.MobileNumberId)
+            .IsUnique()
             .HasFilter("IsDeleted = 0")
-            .HasDatabaseName("IX_Memberships_MobileNumberId");
+            .HasDatabaseName("UQ_Memberships_ActiveMembership");
 
         builder.HasIndex(e => e.AppDeviceId)
             .HasDatabaseName("IX_Memberships_AppDeviceId");

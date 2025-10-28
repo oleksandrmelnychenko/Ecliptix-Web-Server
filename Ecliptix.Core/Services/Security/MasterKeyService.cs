@@ -18,7 +18,6 @@ using Serilog;
 namespace Ecliptix.Core.Services.Security;
 
 internal sealed class MasterKeyService(
-    IHardenedKeyDerivation hardenedKeyDerivation,
     ISecretSharingService secretSharingService,
     IEcliptixActorRegistry actorRegistry,
     IIdentityKeyDerivationService identityKeyDerivationService)
@@ -56,59 +55,61 @@ internal sealed class MasterKeyService(
     private const string ErrorMessageUnexpectedIdentityKeyDerivationError = "Unexpected error during identity key derivation";
     private const string ErrorMessageSharesCheckFailed = "Unexpected error checking shares";
 
-    public async Task<Result<dynamic, FailureBase>> DeriveMasterKeyAndSplitAsync(
-        dynamic sessionKeyHandle,
-        Guid membershipId)
+    public async Task<Result<dynamic, FailureBase>> GenerateRandomMasterKeyAndSplitAsync(Guid membershipId)
     {
-        SodiumSecureMemoryHandle? enhancedMasterKeyHandle = null;
         SodiumSecureMemoryHandle? masterKeyHandle = null;
-        SodiumSecureMemoryHandle? hmacKeyHandle = null;
 
         try
         {
-            KeyDerivationOptions options = new()
+            Result<bool, FailureBase> sharesExistResult = await CheckSharesExistAsync(membershipId);
+            if (sharesExistResult.IsOk && sharesExistResult.Unwrap())
             {
-                MemorySize = Argon2MemorySize,
-                Iterations = Argon2Iterations,
-                DegreeOfParallelism = Argon2DegreeOfParallelism,
-                UseHardwareEntropy = false,
-                OutputLength = EnhancedKeyOutputLength
-            };
-
-            Result<SodiumSecureMemoryHandle, KeySplittingFailure> enhancedResult =
-                await hardenedKeyDerivation.DeriveEnhancedMasterKeyHandleAsync(
-                    sessionKeyHandle,
-                    KeyDerivationContext,
-                    options);
-
-            if (enhancedResult.IsErr)
-            {
-                KeySplittingFailure error = enhancedResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(error);
-            }
-
-            enhancedMasterKeyHandle = enhancedResult.Unwrap();
-
-            ByteString membershipIdentifier = Helpers.GuidToByteString(membershipId);
-            Result<SodiumSecureMemoryHandle, SodiumFailure> masterKeyResult =
-                MasterKeyDerivation.DeriveMasterKeyHandle(enhancedMasterKeyHandle, membershipIdentifier);
-
-            if (masterKeyResult.IsErr)
-            {
-                SodiumFailure sodiumError = masterKeyResult.UnwrapErr();
                 return Result<dynamic, FailureBase>.Err(
-                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageMasterKeyDerivationFailed}: {sodiumError.Message}"));
+                    KeySplittingFailure.KeySplittingFailed("Master key shares already exist for this membership"));
             }
 
-            masterKeyHandle = masterKeyResult.Unwrap();
+            Result<SodiumSecureMemoryHandle, SodiumFailure> allocateResult =
+                SodiumSecureMemoryHandle.Allocate(MasterKeySize);
 
-            Result<byte[], SodiumFailure> masterKeyBytesResult = masterKeyHandle.ReadBytes(masterKeyHandle.Length);
+            if (allocateResult.IsErr)
+            {
+                SodiumFailure sodiumError = allocateResult.UnwrapErr();
+                return Result<dynamic, FailureBase>.Err(
+                    KeySplittingFailure.KeyDerivationFailed($"Failed to allocate master key handle: {sodiumError.Message}"));
+            }
+
+            masterKeyHandle = allocateResult.Unwrap();
+
+            Result<byte[], SodiumFailure> randomBytesResult = SodiumInterop.GetRandomBytes(MasterKeySize);
+            if (randomBytesResult.IsErr)
+            {
+                SodiumFailure sodiumError = randomBytesResult.UnwrapErr();
+                return Result<dynamic, FailureBase>.Err(
+                    KeySplittingFailure.KeyDerivationFailed($"Failed to generate random bytes: {sodiumError.Message}"));
+            }
+
+            byte[] randomBytes = randomBytesResult.Unwrap();
+            try
+            {
+                Result<Unit, SodiumFailure> writeResult = masterKeyHandle.Write(randomBytes);
+                if (writeResult.IsErr)
+                {
+                    SodiumFailure sodiumError = writeResult.UnwrapErr();
+                    return Result<dynamic, FailureBase>.Err(
+                        KeySplittingFailure.KeyDerivationFailed($"Failed to write random bytes to handle: {sodiumError.Message}"));
+                }
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(randomBytes);
+            }
+
+            Result<byte[], SodiumFailure> masterKeyBytesResult = masterKeyHandle.ReadBytes(MasterKeySize);
             if (masterKeyBytesResult.IsOk)
             {
                 byte[] masterKeyBytes = masterKeyBytesResult.Unwrap();
                 string masterKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(masterKeyBytes);
-                Log.Information("{LogTag} " + LogMessageMasterKeyDerived,
-                    LogTagServerMasterKeyDerive,
+                Log.Information("[SERVER-MASTERKEY-GENERATE] Random master key generated. MembershipId: {0}, MasterKeyFingerprint: {1}",
                     membershipId,
                     masterKeyFingerprint);
                 CryptographicOperations.ZeroMemory(masterKeyBytes);
@@ -137,18 +138,136 @@ internal sealed class MasterKeyService(
                 return Result<dynamic, FailureBase>.Err(error);
             }
 
+            Log.Information("[SERVER-MASTERKEY-GENERATE] Master key shares persisted successfully. MembershipId: {0}", membershipId);
+
             return Result<dynamic, FailureBase>.Ok(keySplitResult);
         }
         catch (Exception ex)
         {
             return Result<dynamic, FailureBase>.Err(
-                KeySplittingFailure.KeyDerivationFailed(ErrorMessageUnexpectedDerivationError, ex));
+                KeySplittingFailure.KeyDerivationFailed($"Unexpected error during master key generation: {ex.Message}", ex));
         }
         finally
         {
-            enhancedMasterKeyHandle?.Dispose();
             masterKeyHandle?.Dispose();
-            hmacKeyHandle?.Dispose();
+        }
+    }
+
+    public async Task<Result<dynamic, FailureBase>> SplitAndStoreMasterKeyAsync(byte[] masterKeyBytes, Guid membershipId, bool allowOverwrite = false)
+    {
+        if (masterKeyBytes == null || masterKeyBytes.Length != MasterKeySize)
+        {
+            return Result<dynamic, FailureBase>.Err(
+                KeySplittingFailure.KeySplittingFailed($"Invalid master key size. Expected {MasterKeySize} bytes"));
+        }
+
+        SodiumSecureMemoryHandle? masterKeyHandle = null;
+
+        try
+        {
+            if (!allowOverwrite)
+            {
+                Result<bool, FailureBase> sharesExistResult = await CheckSharesExistAsync(membershipId);
+                if (sharesExistResult.IsOk && sharesExistResult.Unwrap())
+                {
+                    return Result<dynamic, FailureBase>.Err(
+                        KeySplittingFailure.KeySplittingFailed("Master key shares already exist for this membership"));
+                }
+            }
+
+            Result<SodiumSecureMemoryHandle, SodiumFailure> allocateResult =
+                SodiumSecureMemoryHandle.Allocate(MasterKeySize);
+
+            if (allocateResult.IsErr)
+            {
+                SodiumFailure sodiumError = allocateResult.UnwrapErr();
+                return Result<dynamic, FailureBase>.Err(
+                    KeySplittingFailure.KeyDerivationFailed($"Failed to allocate master key handle: {sodiumError.Message}"));
+            }
+
+            masterKeyHandle = allocateResult.Unwrap();
+
+            Result<Unit, SodiumFailure> writeResult = masterKeyHandle.Write(masterKeyBytes);
+            if (writeResult.IsErr)
+            {
+                SodiumFailure sodiumError = writeResult.UnwrapErr();
+                return Result<dynamic, FailureBase>.Err(
+                    KeySplittingFailure.KeyDerivationFailed($"Failed to write master key to handle: {sodiumError.Message}"));
+            }
+
+            string masterKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(masterKeyBytes);
+            Log.Information("[SERVER-MASTERKEY-SPLIT] Master key received from client. MembershipId: {0}, MasterKeyFingerprint: {1}",
+                membershipId,
+                masterKeyFingerprint);
+
+            Result<KeySplitResult, KeySplittingFailure> splitResult = await secretSharingService.SplitKeyAsync(
+                masterKeyHandle,
+                threshold: DefaultThreshold,
+                totalShares: DefaultTotalShares,
+                hmacKeyHandle: null);
+
+            if (splitResult.IsErr)
+            {
+                KeySplittingFailure error = splitResult.UnwrapErr();
+                return Result<dynamic, FailureBase>.Err(error);
+            }
+
+            KeySplitResult keySplitResult = splitResult.Unwrap();
+
+            Result<InsertMasterKeySharesResult, KeySplittingFailure> persistResult =
+                await PersistSharesAsync(membershipId, keySplitResult);
+
+            if (persistResult.IsErr)
+            {
+                KeySplittingFailure error = persistResult.UnwrapErr();
+                return Result<dynamic, FailureBase>.Err(error);
+            }
+
+            Log.Information("[SERVER-MASTERKEY-SPLIT] Master key shares persisted successfully. MembershipId: {0}", membershipId);
+
+            return Result<dynamic, FailureBase>.Ok(keySplitResult);
+        }
+        catch (Exception ex)
+        {
+            return Result<dynamic, FailureBase>.Err(
+                KeySplittingFailure.KeyDerivationFailed($"Unexpected error during master key splitting: {ex.Message}", ex));
+        }
+        finally
+        {
+            masterKeyHandle?.Dispose();
+        }
+    }
+
+    public async Task<Result<bool, FailureBase>> EnsureMasterKeyExistsAsync(Guid membershipId)
+    {
+        try
+        {
+            Result<bool, FailureBase> sharesExistResult = await CheckSharesExistAsync(membershipId);
+            if (sharesExistResult.IsErr)
+            {
+                return Result<bool, FailureBase>.Err(sharesExistResult.UnwrapErr());
+            }
+
+            if (sharesExistResult.Unwrap())
+            {
+                Log.Debug("[SERVER-MASTERKEY-ENSURE] Master key shares already exist for MembershipId: {0}", membershipId);
+                return Result<bool, FailureBase>.Ok(true);
+            }
+
+            Log.Information("[SERVER-MASTERKEY-ENSURE] No master key shares found, generating new master key for MembershipId: {0}", membershipId);
+            Result<dynamic, FailureBase> generateResult = await GenerateRandomMasterKeyAndSplitAsync(membershipId);
+
+            if (generateResult.IsErr)
+            {
+                return Result<bool, FailureBase>.Err(generateResult.UnwrapErr());
+            }
+
+            return Result<bool, FailureBase>.Ok(true);
+        }
+        catch (Exception ex)
+        {
+            return Result<bool, FailureBase>.Err(
+                KeySplittingFailure.KeyDerivationFailed($"Unexpected error ensuring master key exists: {ex.Message}", ex));
         }
     }
 
@@ -263,176 +382,6 @@ internal sealed class MasterKeyService(
         }
     }
 
-    public async Task<Result<dynamic, FailureBase>> RegenerateMasterKeySharesAsync(
-        dynamic newSessionKey, Guid membershipId)
-    {
-        try
-        {
-            IActorRef masterKeySharePersistor = actorRegistry.Get(ActorIds.MasterKeySharePersistorActor);
-            DeleteMasterKeySharesEvent deleteEvent = new(membershipId);
-
-            Result<Unit, MasterKeyFailure> deleteResult =
-                await masterKeySharePersistor.Ask<Result<Unit, MasterKeyFailure>>(
-                    deleteEvent,
-                    TimeSpan.FromSeconds(AskTimeoutSeconds));
-
-            if (deleteResult.IsErr)
-            {
-                MasterKeyFailure error = deleteResult.UnwrapErr();
-                Log.Warning("Failed to delete old master key shares during regeneration: {Error}", error.Message);
-            }
-
-            return await DeriveMasterKeyAndSplitAsync(newSessionKey, membershipId);
-        }
-        catch (Exception ex)
-        {
-            return Result<dynamic, FailureBase>.Err(
-                KeySplittingFailure.KeyDerivationFailed($"Master key regeneration failed: {ex.Message}", ex));
-        }
-    }
-
-    public async Task<Result<string, FailureBase>> ValidateMasterKeySharesAsync(
-        dynamic sessionKeyHandle, Guid membershipId)
-    {
-        SodiumSecureMemoryHandle? expectedMasterKeyHandle = null;
-        SodiumSecureMemoryHandle? actualMasterKeyHandle = null;
-
-        try
-        {
-            Result<MasterKeyShareQueryRecord[], KeySplittingFailure> sharesResult = await RetrieveSharesAsync(membershipId);
-            if (sharesResult.IsErr)
-            {
-                return Result<string, FailureBase>.Err(sharesResult.UnwrapErr());
-            }
-
-            MasterKeyShareQueryRecord[] shares = sharesResult.Unwrap();
-            if (shares.Length == 0)
-            {
-                return Result<string, FailureBase>.Err(
-                    KeySplittingFailure.KeyReconstructionFailed("No shares found for membership"));
-            }
-
-            IActorRef membershipPersistor = actorRegistry.Get(ActorIds.MembershipPersistorActor);
-            GetMembershipByUniqueIdEvent getMembershipEvent = new(membershipId);
-
-            Result<MembershipQueryRecord, VerificationFlowFailure> membershipResult =
-                await membershipPersistor.Ask<Result<MembershipQueryRecord, VerificationFlowFailure>>(
-                    getMembershipEvent,
-                    TimeSpan.FromSeconds(AskTimeoutSeconds));
-
-            if (membershipResult.IsErr)
-            {
-                return Result<string, FailureBase>.Err(
-                    KeySplittingFailure.KeyReconstructionFailed("Membership not found"));
-            }
-
-            MembershipQueryRecord membership = membershipResult.Unwrap();
-            int currentVersion = membership.CredentialsVersion;
-            int storedVersion = shares[0].CredentialsVersion;
-
-            Log.Information("[CREDENTIALS-VERSION-CHECK] Membership {MembershipId}: Current={Current}, Stored={Stored}",
-                membershipId, currentVersion, storedVersion);
-
-            if (currentVersion != storedVersion)
-            {
-                Log.Warning("[CREDENTIALS-VERSION-MISMATCH] Credentials version mismatch for membership {MembershipId}. Current: {Current}, Stored: {Stored}. Credentials changed since shares were created.",
-                    membershipId, currentVersion, storedVersion);
-                return Result<string, FailureBase>.Ok("mismatch");
-            }
-
-            Log.Information("[CREDENTIALS-VERSION-MATCH] Versions match for membership {MembershipId}. Proceeding with fingerprint validation.",
-                membershipId);
-
-            KeyDerivationOptions options = new()
-            {
-                MemorySize = Argon2MemorySize,
-                Iterations = Argon2Iterations,
-                DegreeOfParallelism = Argon2DegreeOfParallelism,
-                UseHardwareEntropy = false,
-                OutputLength = EnhancedKeyOutputLength
-            };
-
-            Result<SodiumSecureMemoryHandle, KeySplittingFailure> enhancedResult =
-                await hardenedKeyDerivation.DeriveEnhancedMasterKeyHandleAsync(
-                    sessionKeyHandle,
-                    KeyDerivationContext,
-                    options);
-
-            if (enhancedResult.IsErr)
-            {
-                return Result<string, FailureBase>.Err(enhancedResult.UnwrapErr());
-            }
-
-            SodiumSecureMemoryHandle enhancedKeyHandle = enhancedResult.Unwrap();
-
-            try
-            {
-                ByteString membershipIdentifier = Helpers.GuidToByteString(membershipId);
-                Result<SodiumSecureMemoryHandle, SodiumFailure> expectedMasterKeyResult =
-                    MasterKeyDerivation.DeriveMasterKeyHandle(enhancedKeyHandle, membershipIdentifier);
-
-                if (expectedMasterKeyResult.IsErr)
-                {
-                    return Result<string, FailureBase>.Err(
-                        KeySplittingFailure.KeyDerivationFailed($"Failed to derive expected master key: {expectedMasterKeyResult.UnwrapErr().Message}"));
-                }
-
-                expectedMasterKeyHandle = expectedMasterKeyResult.Unwrap();
-            }
-            finally
-            {
-                enhancedKeyHandle?.Dispose();
-            }
-
-            Result<dynamic, FailureBase> actualMasterKeyResult = await ReconstructMasterKeyAsync(membershipId);
-            if (actualMasterKeyResult.IsErr)
-            {
-                return Result<string, FailureBase>.Err(actualMasterKeyResult.UnwrapErr());
-            }
-
-            actualMasterKeyHandle = (SodiumSecureMemoryHandle)actualMasterKeyResult.Unwrap();
-
-            Result<byte[], SodiumFailure> expectedBytesResult = expectedMasterKeyHandle.ReadBytes(MasterKeySize);
-            Result<byte[], SodiumFailure> actualBytesResult = actualMasterKeyHandle.ReadBytes(MasterKeySize);
-
-            if (expectedBytesResult.IsErr || actualBytesResult.IsErr)
-            {
-                return Result<string, FailureBase>.Err(
-                    KeySplittingFailure.KeyDerivationFailed("Failed to read master key bytes for comparison"));
-            }
-
-            byte[] expectedBytes = expectedBytesResult.Unwrap();
-            byte[] actualBytes = actualBytesResult.Unwrap();
-
-            try
-            {
-                string expectedFingerprint = CryptoHelpers.ComputeSha256Fingerprint(expectedBytes);
-                string actualFingerprint = CryptoHelpers.ComputeSha256Fingerprint(actualBytes);
-
-                bool matches = CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes);
-
-                Log.Information("[MASTER-KEY-VALIDATE] Fingerprint comparison for membership {MembershipId}. Expected: {Expected}, Actual: {Actual}, Match: {Match}",
-                    membershipId, expectedFingerprint, actualFingerprint, matches);
-
-                return Result<string, FailureBase>.Ok(matches ? "valid" : "mismatch");
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(expectedBytes);
-                CryptographicOperations.ZeroMemory(actualBytes);
-            }
-        }
-        catch (Exception ex)
-        {
-            return Result<string, FailureBase>.Err(
-                KeySplittingFailure.KeyDerivationFailed($"Master key validation failed: {ex.Message}", ex));
-        }
-        finally
-        {
-            expectedMasterKeyHandle?.Dispose();
-            actualMasterKeyHandle?.Dispose();
-        }
-    }
 
     private async Task<Result<dynamic, FailureBase>> ReconstructMasterKeyAsync(Guid membershipId)
     {
