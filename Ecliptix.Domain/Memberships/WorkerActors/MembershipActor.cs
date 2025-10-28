@@ -776,18 +776,28 @@ public sealed class MembershipActor : ReceivePersistentActor
         (SodiumSecureMemoryHandle sessionKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) =
             opaqueResult.Unwrap();
 
-        Result<byte[], SodiumFailure> sessionKeyBytesResult = sessionKeyHandle.ReadBytes(sessionKeyHandle.Length);
-        if (sessionKeyBytesResult.IsOk)
+        if (sessionKeyHandle != null && !sessionKeyHandle.IsInvalid)
         {
-            byte[] sessionKeyBytes = sessionKeyBytesResult.Unwrap();
-            string sessionKeyFingerprint = Convert.ToHexString(SHA256.HashData(sessionKeyBytes))[..16];
-            Log.Info(
-                "[SERVER-OPAQUE-EXPORTKEY] OPAQUE export_key (session key) derived. MembershipId: {0}, SessionKeyFingerprint: {1}",
-                state.MembershipId, sessionKeyFingerprint);
-            CryptographicOperations.ZeroMemory(sessionKeyBytes);
+            Result<byte[], SodiumFailure> sessionKeyBytesResult = sessionKeyHandle.ReadBytes(sessionKeyHandle.Length);
+            if (sessionKeyBytesResult.IsOk)
+            {
+                byte[] sessionKeyBytes = sessionKeyBytesResult.Unwrap();
+                string sessionKeyFingerprint = Convert.ToHexString(SHA256.HashData(sessionKeyBytes))[..16];
+                Log.Info(
+                    "[SERVER-OPAQUE-EXPORTKEY] OPAQUE export_key (session key) derived. MembershipId: {0}, SessionKeyFingerprint: {1}",
+                    state.MembershipId, sessionKeyFingerprint);
+                CryptographicOperations.ZeroMemory(sessionKeyBytes);
+            }
+        }
+        else
+        {
+            Log.Warning(
+                "[SERVER-OPAQUE-EXPORTKEY] Session key handle is null or invalid. MembershipId: {0}",
+                state.MembershipId);
         }
 
         if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
+            sessionKeyHandle != null &&
             !sessionKeyHandle.IsInvalid)
         {
             await EnsureMasterKeySharesExist(sessionKeyHandle, state.MembershipId);
