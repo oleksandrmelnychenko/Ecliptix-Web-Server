@@ -28,7 +28,7 @@ public static class DeviceIdResolver
             GrpcErrorDescriptor descriptor = new(
                 ErrorCode.ValidationFailed,
                 StatusCode.InvalidArgument,
-                ErrorI18nKeys.Validation);
+                ErrorI18NKeys.Validation);
 
             throw new GrpcFailureException(
                 descriptor.CreateStatus("Missing or invalid d-identifier header"),

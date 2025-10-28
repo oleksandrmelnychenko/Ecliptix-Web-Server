@@ -1,6 +1,6 @@
 using Ecliptix.Security.Opaque.Constants;
-using Ecliptix.Utilities;
 using Ecliptix.Security.Opaque.Failures;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Security.Opaque.Models.RegistrationMessages;
 

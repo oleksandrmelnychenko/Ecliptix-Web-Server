@@ -1,6 +1,6 @@
 using System.Buffers;
-using Ecliptix.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures.Sodium;
 using Google.Protobuf;
 using Serilog;
@@ -11,8 +11,8 @@ namespace Ecliptix.Core.Domain.Protocol;
 public sealed class EcliptixProtocolChainStep : IDisposable
 {
     private const uint DefaultCacheWindowSize = Constants.DefaultCacheWindowSize;
-    internal static readonly byte[] MsgInfo = { 0x01 };
-    internal static readonly byte[] ChainInfo = { 0x02 };
+    private static readonly byte[] MsgInfo = [0x01];
+    private static readonly byte[] ChainInfo = [0x02];
 
     private static readonly Result<Unit, EcliptixProtocolFailure> OkResult =
         Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
@@ -85,13 +85,15 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             Result<RatchetChainKey, EcliptixProtocolFailure> messageKeyResult =
                 RatchetChainKey.New(cachedKey.Index, cachedKey.KeyMaterial.Span);
 
-            if (messageKeyResult.IsOk)
+            if (!messageKeyResult.IsOk)
             {
-                RatchetChainKey messageKey = messageKeyResult.Unwrap();
-                if (!chainStep._messageKeys.TryAdd(cachedKey.Index, messageKey))
-                {
-                    messageKey.Dispose();
-                }
+                continue;
+            }
+
+            RatchetChainKey messageKey = messageKeyResult.Unwrap();
+            if (!chainStep._messageKeys.TryAdd(cachedKey.Index, messageKey))
+            {
+                messageKey.Dispose();
             }
         }
 

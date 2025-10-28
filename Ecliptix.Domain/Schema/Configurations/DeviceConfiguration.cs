@@ -1,6 +1,6 @@
+using Ecliptix.Domain.Schema.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 

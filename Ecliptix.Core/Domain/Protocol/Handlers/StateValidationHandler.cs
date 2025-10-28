@@ -6,7 +6,7 @@ namespace Ecliptix.Core.Domain.Protocol.Handlers;
 
 public sealed class StateValidationHandler
 {
-    public Result<Unit, EcliptixProtocolFailure> ValidateRecoveredState(EcliptixSessionState? state)
+    public static Result<Unit, EcliptixProtocolFailure> ValidateRecoveredState(EcliptixSessionState? state)
     {
         if (state?.RatchetState == null)
         {

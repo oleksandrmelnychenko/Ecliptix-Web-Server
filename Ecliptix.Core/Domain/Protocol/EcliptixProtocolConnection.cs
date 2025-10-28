@@ -1,8 +1,8 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
-using Ecliptix.Utilities;
 using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures.Sodium;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
@@ -12,7 +12,6 @@ namespace Ecliptix.Core.Domain.Protocol;
 public sealed class EcliptixProtocolConnection : IDisposable
 {
     private const int AesGcmNonceSize = 12;
-
     private const int MaxNonceCounter = 10_000_000;
 
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromHours(24);
@@ -23,23 +22,21 @@ public sealed class EcliptixProtocolConnection : IDisposable
     private readonly Lock _lock = new();
     private readonly ReplayProtection _replayProtection = new();
     private readonly RatchetConfig _ratchetConfig;
-    private readonly PerformanceProfiler _profiler = new();
-
     private readonly DateTimeOffset _createdAt;
     private readonly uint _id;
+    private readonly bool _isInitiator;
+    private readonly EcliptixProtocolChainStep _sendingStep;
+    private readonly SodiumSecureMemoryHandle? _initialSendingDhPrivateKeyHandle;
+    private readonly SodiumSecureMemoryHandle? _persistentDhPrivateKeyHandle;
+    private readonly byte[]? _persistentDhPublicKey;
+
     private DateTime _lastRatchetTime = DateTime.UtcNow;
     private bool _isFirstReceivingRatchet;
-    private readonly bool _isInitiator;
-
-    private readonly EcliptixProtocolChainStep _sendingStep;
     private SodiumSecureMemoryHandle? _currentSendingDhPrivateKeyHandle;
     private volatile bool _disposed;
-    private readonly SodiumSecureMemoryHandle? _initialSendingDhPrivateKeyHandle;
     private long _nonceCounter;
     private PublicKeyBundle? _peerBundle;
     private byte[]? _peerDhPublicKey;
-    private readonly SodiumSecureMemoryHandle? _persistentDhPrivateKeyHandle;
-    private readonly byte[]? _persistentDhPublicKey;
     private bool _receivedNewDhKey;
     private EcliptixProtocolChainStep? _receivingStep;
     private SodiumSecureMemoryHandle? _rootKeyHandle;
@@ -87,6 +84,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
             SecureByteStringInterop.SecureCopyWithCleanup(proto.PeerDhPublicKey, out byte[] dhKeyBytes);
             _peerDhPublicKey = dhKeyBytes;
         }
+
         _isFirstReceivingRatchet = proto.IsFirstReceivingRatchet;
         _rootKeyHandle = rootKeyHandle;
         _sendingStep = sendingStep;
@@ -114,45 +112,55 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
         try
         {
-            Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> initialKeysResult = SodiumInterop.GenerateX25519KeyPair("Initial Sending DH");
+            Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> initialKeysResult =
+                SodiumInterop.GenerateX25519KeyPair("Initial Sending DH");
             if (initialKeysResult.IsErr)
             {
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(initialKeysResult.UnwrapErr());
             }
+
             (initialSendingDhPrivateKeyHandle, byte[] initialSendingDhPublicKey) = initialKeysResult.Unwrap();
 
             byte[] tempInitialSk = new byte[Constants.X25519PrivateKeySize];
             initialSendingDhPrivateKeyHandle.Read(tempInitialSk);
 
-            Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> persistentKeysResult = SodiumInterop.GenerateX25519KeyPair("Persistent DH");
+            Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> persistentKeysResult =
+                SodiumInterop.GenerateX25519KeyPair("Persistent DH");
             if (persistentKeysResult.IsErr)
             {
-                return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(persistentKeysResult.UnwrapErr());
+                return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(persistentKeysResult
+                    .UnwrapErr());
             }
+
             (persistentDhPrivateKeyHandle, byte[] persistentDhPublicKey) = persistentKeysResult.Unwrap();
 
             byte[] tempPersistentSk = new byte[Constants.X25519PrivateKeySize];
             persistentDhPrivateKeyHandle.Read(tempPersistentSk);
 
-            Result<byte[], EcliptixProtocolFailure> initialSkResult = initialSendingDhPrivateKeyHandle.ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
+            Result<byte[], EcliptixProtocolFailure> initialSkResult = initialSendingDhPrivateKeyHandle
+                .ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
             if (initialSkResult.IsErr)
             {
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(initialSkResult.UnwrapErr());
             }
+
             byte[] initialSkBytes = initialSkResult.Unwrap();
             byte[] tempChainKey = new byte[Constants.X25519KeySize];
 
-            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> stepResult = EcliptixProtocolChainStep.Create(RatchetChainStepType.Sender, tempChainKey, initialSkBytes,
+            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> stepResult = EcliptixProtocolChainStep.Create(
+                RatchetChainStepType.Sender, tempChainKey, initialSkBytes,
                 initialSendingDhPublicKey);
             Result<Unit, EcliptixProtocolFailure> wipeResult = WipeIfNotNull(initialSkBytes);
             if (wipeResult.IsErr)
             {
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(wipeResult.UnwrapErr());
             }
+
             if (stepResult.IsErr)
             {
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(stepResult.UnwrapErr());
             }
+
             sendingStep = stepResult.Unwrap();
 
             EcliptixProtocolConnection connection = new(connectId, isInitiator, initialSendingDhPrivateKeyHandle,
@@ -192,7 +200,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     return Result<RatchetState, EcliptixProtocolFailure>.Err(sendingStepStateResult.UnwrapErr());
                 }
 
-                Result<ByteString, EcliptixProtocolFailure> rootKeyBytesResult = SecureByteStringInterop.CreateByteStringFromSecureMemorySpan(_rootKeyHandle!, Constants.X25519KeySize).MapSodiumFailure();
+                Result<ByteString, EcliptixProtocolFailure> rootKeyBytesResult = SecureByteStringInterop
+                    .CreateByteStringFromSecureMemorySpan(_rootKeyHandle!, Constants.X25519KeySize).MapSodiumFailure();
                 if (rootKeyBytesResult.IsErr)
                 {
                     return Result<RatchetState, EcliptixProtocolFailure>.Err(rootKeyBytesResult.UnwrapErr());
@@ -204,7 +213,10 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     CreatedAt = Timestamp.FromDateTimeOffset(_createdAt),
                     NonceCounter = (ulong)_nonceCounter,
                     PeerBundle = _peerBundle!.ToProtobufExchange(),
-                    PeerDhPublicKey = _peerDhPublicKey != null ? ByteString.CopyFrom(_peerDhPublicKey.AsSpan()) : ByteString.Empty,
+                    PeerDhPublicKey =
+                        _peerDhPublicKey != null
+                            ? ByteString.CopyFrom(_peerDhPublicKey.AsSpan())
+                            : ByteString.Empty,
                     IsFirstReceivingRatchet = _isFirstReceivingRatchet,
                     RootKey = rootKeyBytesResult.Unwrap(),
                     SendingStep = sendingStepStateResult.Unwrap()
@@ -212,11 +224,13 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
                 if (_receivingStep != null)
                 {
-                    Result<ChainStepState, EcliptixProtocolFailure> receivingStepStateResult = _receivingStep.ToProtoState();
+                    Result<ChainStepState, EcliptixProtocolFailure> receivingStepStateResult =
+                        _receivingStep.ToProtoState();
                     if (receivingStepStateResult.IsErr)
                     {
                         return Result<RatchetState, EcliptixProtocolFailure>.Err(receivingStepStateResult.UnwrapErr());
                     }
+
                     proto.ReceivingStep = receivingStepStateResult.Unwrap();
                 }
 
@@ -239,11 +253,13 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
         try
         {
-            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> sendingStepResult = EcliptixProtocolChainStep.FromProtoState(RatchetChainStepType.Sender, proto.SendingStep);
+            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> sendingStepResult =
+                EcliptixProtocolChainStep.FromProtoState(RatchetChainStepType.Sender, proto.SendingStep);
             if (sendingStepResult.IsErr)
             {
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(sendingStepResult.UnwrapErr());
             }
+
             sendingStep = sendingStepResult.Unwrap();
 
             Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> receivingStepResult =
@@ -252,13 +268,16 @@ public sealed class EcliptixProtocolConnection : IDisposable
             {
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(receivingStepResult.UnwrapErr());
             }
+
             receivingStep = receivingStepResult.Unwrap();
 
-            Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> rootKeyResult = SodiumSecureMemoryHandle.Allocate(proto.RootKey.Length).MapSodiumFailure();
+            Result<SodiumSecureMemoryHandle, EcliptixProtocolFailure> rootKeyResult =
+                SodiumSecureMemoryHandle.Allocate(proto.RootKey.Length).MapSodiumFailure();
             if (rootKeyResult.IsErr)
             {
                 return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(rootKeyResult.UnwrapErr());
             }
+
             rootKeyHandle = rootKeyResult.Unwrap();
             SecureByteStringInterop.SecureCopyWithCleanup(proto.RootKey, out byte[] rootKeyBytes);
             Result<Unit, EcliptixProtocolFailure> writeResult = rootKeyHandle.Write(rootKeyBytes).MapSodiumFailure();
@@ -277,12 +296,9 @@ public sealed class EcliptixProtocolConnection : IDisposable
             rootKeyHandle = null;
 
             Result<Unit, EcliptixProtocolFailure> metadataKeyResult = connection.DeriveMetadataEncryptionKey();
-            if (metadataKeyResult.IsErr)
-            {
-                return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(metadataKeyResult.UnwrapErr());
-            }
-
-            return Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Ok(connection);
+            return metadataKeyResult.IsErr
+                ? Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Err(metadataKeyResult.UnwrapErr())
+                : Result<EcliptixProtocolConnection, EcliptixProtocolFailure>.Ok(connection);
         }
         catch (Exception ex)
         {
@@ -317,6 +333,11 @@ public sealed class EcliptixProtocolConnection : IDisposable
     public void Dispose()
     {
         Dispose(true);
+    }
+
+    ~EcliptixProtocolConnection()
+    {
+        Dispose(false);
     }
 
     internal Result<Unit, EcliptixProtocolFailure> SetPeerBundle(PublicKeyBundle peerBundle)
@@ -361,7 +382,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     return finalizedCheck;
                 }
 
-                Result<Unit, EcliptixProtocolFailure> validationResult = ValidateInitialKeys(initialRootKey, initialPeerDhPublicKey);
+                Result<Unit, EcliptixProtocolFailure> validationResult =
+                    ValidateInitialKeys(initialRootKey, initialPeerDhPublicKey);
                 if (validationResult.IsErr)
                 {
                     tempRootHandle?.Dispose();
@@ -370,18 +392,22 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
                 peerDhPublicCopy = (byte[])initialPeerDhPublicKey.Clone();
 
-                Result<SodiumSecureMemoryHandle, SodiumFailure> allocateResult = SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize);
+                Result<SodiumSecureMemoryHandle, SodiumFailure> allocateResult =
+                    SodiumSecureMemoryHandle.Allocate(Constants.X25519KeySize);
                 if (allocateResult.IsErr)
                 {
                     tempRootHandle?.Dispose();
-                    return Result<Unit, EcliptixProtocolFailure>.Err(allocateResult.UnwrapErr().ToEcliptixProtocolFailure());
+                    return Result<Unit, EcliptixProtocolFailure>.Err(allocateResult.UnwrapErr()
+                        .ToEcliptixProtocolFailure());
                 }
 
-                Result<byte[], SodiumFailure> readResult = _initialSendingDhPrivateKeyHandle!.ReadBytes(Constants.X25519PrivateKeySize);
+                Result<byte[], SodiumFailure> readResult =
+                    _initialSendingDhPrivateKeyHandle!.ReadBytes(Constants.X25519PrivateKeySize);
                 if (readResult.IsErr)
                 {
                     tempRootHandle?.Dispose();
-                    return Result<Unit, EcliptixProtocolFailure>.Err(readResult.UnwrapErr().ToEcliptixProtocolFailure());
+                    return Result<Unit, EcliptixProtocolFailure>.Err(readResult.UnwrapErr()
+                        .ToEcliptixProtocolFailure());
                 }
 
                 persistentPrivKeyBytes = readResult.Unwrap();
@@ -397,7 +423,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     tempRootHandle?.Dispose();
                     WipeIfNotNull(peerDhPublicCopy);
                     return Result<Unit, EcliptixProtocolFailure>.Err(
-                        EcliptixProtocolFailure.DeriveKey("Failed to compute DH shared secret during initial handshake.", ex));
+                        EcliptixProtocolFailure.DeriveKey(
+                            "Failed to compute DH shared secret during initial handshake.", ex));
                 }
 
                 tempRootHandle = allocateResult.Unwrap();
@@ -424,13 +451,15 @@ public sealed class EcliptixProtocolConnection : IDisposable
                         WipeIfNotNull(peerDhPublicCopy);
                         WipeIfNotNull(dhSecret);
                         WipeIfNotNull(newRootKey);
-                        return Result<Unit, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr().ToEcliptixProtocolFailure());
+                        return Result<Unit, EcliptixProtocolFailure>.Err(writeResult.UnwrapErr()
+                            .ToEcliptixProtocolFailure());
                     }
 
                     localSenderCk = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
                     localReceiverCk = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize);
 
-                    Result<Unit, EcliptixProtocolFailure> chainKeysResult = DeriveInitialChainKeys(newRootKey, localSenderCk, localReceiverCk);
+                    Result<Unit, EcliptixProtocolFailure> chainKeysResult =
+                        DeriveInitialChainKeys(newRootKey, localSenderCk, localReceiverCk);
                     if (chainKeysResult.IsErr)
                     {
                         tempRootHandle.Dispose();
@@ -454,12 +483,14 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     {
                         ArrayPool<byte>.Shared.Return(hkdfOutput, clearArray: true);
                     }
+
                     WipeIfNotNull(dhSecret);
                     WipeIfNotNull(newRootKey);
                 }
 
                 byte[] senderKey = localSenderCk.AsSpan(0, Constants.X25519KeySize).ToArray();
-                Result<Unit, EcliptixProtocolFailure> updateSenderResult = _sendingStep.UpdateKeysAfterDhRatchet(senderKey);
+                Result<Unit, EcliptixProtocolFailure> updateSenderResult =
+                    _sendingStep.UpdateKeysAfterDhRatchet(senderKey);
                 if (updateSenderResult.IsErr)
                 {
                     tempRootHandle.Dispose();
@@ -467,8 +498,9 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 }
 
                 byte[] receiverKey = localReceiverCk.AsSpan(0, Constants.X25519KeySize).ToArray();
-                Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> createReceiverResult = EcliptixProtocolChainStep.Create(
-                    RatchetChainStepType.Receiver, receiverKey, persistentPrivKeyBytes, _persistentDhPublicKey);
+                Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> createReceiverResult =
+                    EcliptixProtocolChainStep.Create(
+                        RatchetChainStepType.Receiver, receiverKey, persistentPrivKeyBytes, _persistentDhPublicKey);
                 if (createReceiverResult.IsErr)
                 {
                     tempRootHandle.Dispose();
@@ -496,10 +528,12 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 {
                     ArrayPool<byte>.Shared.Return(localSenderCk, clearArray: true);
                 }
+
                 if (localReceiverCk != null)
                 {
                     ArrayPool<byte>.Shared.Return(localReceiverCk, clearArray: true);
                 }
+
                 WipeIfNotNull(persistentPrivKeyBytes);
                 WipeIfNotNull(peerDhPublicCopy);
             }
@@ -509,7 +543,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
     internal Result<(RatchetChainKey MessageKey, bool IncludeDhKey), EcliptixProtocolFailure>
         PrepareNextSendMessage()
     {
-        using IDisposable profilerScope = _profiler.StartOperation("PrepareNextSendMessage");
         lock (_lock)
         {
             byte[]? keyMaterial = null;
@@ -518,16 +551,19 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 Result<Unit, EcliptixProtocolFailure> disposedCheckResult = CheckDisposed();
                 if (disposedCheckResult.IsErr)
                 {
-                    return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(disposedCheckResult.UnwrapErr());
+                    return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(disposedCheckResult
+                        .UnwrapErr());
                 }
 
                 Result<Unit, EcliptixProtocolFailure> expirationCheckResult = EnsureNotExpired();
                 if (expirationCheckResult.IsErr)
                 {
-                    return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(expirationCheckResult.UnwrapErr());
+                    return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(
+                        expirationCheckResult.UnwrapErr());
                 }
 
-                Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> sendingStepResult = EnsureSendingStepInitialized();
+                Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> sendingStepResult =
+                    EnsureSendingStepInitialized();
                 if (sendingStepResult.IsErr)
                 {
                     return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(sendingStepResult.UnwrapErr());
@@ -551,7 +587,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
                 uint currentIndex = currentIndexResult.Unwrap();
 
-                Result<RatchetChainKey, EcliptixProtocolFailure> derivedKeyResult = sendingStep.GetOrDeriveKeyFor(currentIndex + 1);
+                Result<RatchetChainKey, EcliptixProtocolFailure> derivedKeyResult =
+                    sendingStep.GetOrDeriveKeyFor(currentIndex + 1);
                 if (derivedKeyResult.IsErr)
                 {
                     return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(derivedKeyResult.UnwrapErr());
@@ -569,7 +606,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 Span<byte> keySpan = keyMaterial.AsSpan(0, Constants.AesKeySize);
                 derivedKey.ReadKeyMaterial(keySpan);
 
-                Result<RatchetChainKey, EcliptixProtocolFailure> clonedKeyResult = RatchetChainKey.New(derivedKey.Index, keySpan);
+                Result<RatchetChainKey, EcliptixProtocolFailure> clonedKeyResult =
+                    RatchetChainKey.New(derivedKey.Index, keySpan);
                 if (clonedKeyResult.IsErr)
                 {
                     return Result<(RatchetChainKey, bool), EcliptixProtocolFailure>.Err(clonedKeyResult.UnwrapErr());
@@ -592,7 +630,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
     internal Result<RatchetChainKey, EcliptixProtocolFailure> ProcessReceivedMessage(uint receivedIndex)
     {
-        using IDisposable profilerScope = _profiler.StartOperation("ProcessReceivedMessage");
         lock (_lock)
         {
             Result<Unit, EcliptixProtocolFailure> disposedCheckResult = CheckDisposed();
@@ -607,7 +644,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(expirationCheckResult.UnwrapErr());
             }
 
-            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> receivingStepResult = EnsureReceivingStepInitialized();
+            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> receivingStepResult =
+                EnsureReceivingStepInitialized();
             if (receivingStepResult.IsErr)
             {
                 return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(receivingStepResult.UnwrapErr());
@@ -615,7 +653,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
             _receivingStep!.GetCurrentIndex();
 
-            Result<RatchetChainKey, EcliptixProtocolFailure> derivedKeyResult = _receivingStep!.GetOrDeriveKeyFor(receivedIndex);
+            Result<RatchetChainKey, EcliptixProtocolFailure> derivedKeyResult =
+                _receivingStep!.GetOrDeriveKeyFor(receivedIndex);
             if (derivedKeyResult.IsErr)
             {
                 return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(derivedKeyResult.UnwrapErr());
@@ -637,7 +676,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
     public Result<Unit, EcliptixProtocolFailure> PerformReceivingRatchet(byte[]? receivedDhKey)
     {
-        using IDisposable profilerScope = _profiler.StartOperation("PerformReceivingRatchet");
         lock (_lock)
         {
             if (receivedDhKey == null)
@@ -652,12 +690,14 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     receivedDhKey.AsSpan(), _peerDhPublicKey);
                 keysAreEqual = constantTimeResult.IsOk && constantTimeResult.Unwrap();
             }
+
             if (keysAreEqual)
             {
                 return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
             }
 
-            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> receivingStepResult = EnsureReceivingStepInitialized();
+            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> receivingStepResult =
+                EnsureReceivingStepInitialized();
             if (receivingStepResult.IsErr)
             {
                 return Result<Unit, EcliptixProtocolFailure>.Err(receivingStepResult.UnwrapErr());
@@ -672,7 +712,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
             }
 
             uint currentIndex = currentIndexResult.Unwrap();
-            bool shouldRatchetNow = _isFirstReceivingRatchet || _ratchetConfig.ShouldRatchet(currentIndex + 1, _lastRatchetTime, _receivedNewDhKey);
+            bool shouldRatchetNow = _isFirstReceivingRatchet ||
+                                    _ratchetConfig.ShouldRatchet(currentIndex + 1, _lastRatchetTime, _receivedNewDhKey);
 
             if (shouldRatchetNow)
             {
@@ -720,11 +761,11 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 EcliptixProtocolFailure.ObjectDisposed(nameof(EcliptixProtocolConnection)));
         }
 
-        Result<Unit, EcliptixProtocolFailure> replayCheckResult = _replayProtection.CheckAndRecordMessage(nonce, messageIndex);
+        Result<Unit, EcliptixProtocolFailure> replayCheckResult =
+            _replayProtection.CheckAndRecordMessage(nonce, messageIndex);
         if (replayCheckResult.IsErr)
         {
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic($"Replay protection check failed: {replayCheckResult.UnwrapErr()}"));
+            return replayCheckResult;
         }
 
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
@@ -750,7 +791,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 return Result<byte[]?, EcliptixProtocolFailure>.Err(disposedCheckResult.UnwrapErr());
             }
 
-            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> sendingStepResult = EnsureSendingStepInitialized();
+            Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> sendingStepResult =
+                EnsureSendingStepInitialized();
             if (sendingStepResult.IsErr)
             {
                 return Result<byte[]?, EcliptixProtocolFailure>.Err(sendingStepResult.UnwrapErr());
@@ -769,6 +811,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
             {
                 return;
             }
+
             _disposed = true;
             if (!disposing)
             {
@@ -776,8 +819,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
             }
 
             _replayProtection.Dispose();
-            _profiler.Reset();
-
             _rootKeyHandle?.Dispose();
             _metadataEncryptionKeyHandle?.Dispose();
             _sendingStep.Dispose();
@@ -796,15 +837,32 @@ public sealed class EcliptixProtocolConnection : IDisposable
         }
     }
 
-    ~EcliptixProtocolConnection()
+    private static Result<Unit, EcliptixProtocolFailure> WipeIfNotNull(byte[]? data) =>
+        data == null
+            ? Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value)
+            : SodiumInterop.SecureWipe(data).MapSodiumFailure();
+
+    private static Result<Unit, EcliptixProtocolFailure> ValidateInitialKeys(byte[] rootKey, byte[] peerDhKey)
     {
-        Dispose(false);
+        if (rootKey.Length != Constants.X25519KeySize)
+        {
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput($"Initial root key must be {Constants.X25519KeySize} bytes."));
+        }
+
+        if (peerDhKey.Length != Constants.X25519PublicKeySize)
+        {
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.InvalidInput(
+                    $"Initial peer DH public key must be {Constants.X25519PublicKeySize} bytes."));
+        }
+
+        return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
     private Result<Unit, EcliptixProtocolFailure> PerformDhRatchet(bool isSender,
         byte[]? receivedDhPublicKeyBytes = null)
     {
-        using IDisposable profilerScope = _profiler.StartOperation("PerformDhRatchet");
         byte[]? dhSecret = null, newRootKey = null, newChainKeyForTargetStep = null, newEphemeralPublicKey = null;
         byte[]? localPrivateKeyBytes = null, currentRootKey = null, newDhPrivateKeyBytes = null;
         byte[]? hkdfOutput = null;
@@ -837,21 +895,26 @@ public sealed class EcliptixProtocolConnection : IDisposable
                         SodiumInterop.GenerateX25519KeyPair("Ephemeral DH Ratchet");
                     if (ephResult.IsErr)
                     {
-                        throw new InvalidOperationException($"Failed to generate ephemeral key pair: {ephResult.UnwrapErr().Message}");
+                        throw new InvalidOperationException(
+                            $"Failed to generate ephemeral key pair: {ephResult.UnwrapErr().Message}");
                     }
 
                     (newEphemeralSkHandle, newEphemeralPublicKey) = ephResult.Unwrap();
-                    Result<byte[], EcliptixProtocolFailure> privKeyResult = newEphemeralSkHandle.ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
+                    Result<byte[], EcliptixProtocolFailure> privKeyResult =
+                        newEphemeralSkHandle.ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
                     if (privKeyResult.IsErr)
                     {
-                        throw new InvalidOperationException($"Failed to read ephemeral private key: {privKeyResult.UnwrapErr().Message}");
+                        throw new InvalidOperationException(
+                            $"Failed to read ephemeral private key: {privKeyResult.UnwrapErr().Message}");
                     }
 
                     localPrivateKeyBytes = privKeyResult.Unwrap();
-                    Result<byte[], SodiumFailure> dhSecretResult = SodiumInterop.ScalarMult(localPrivateKeyBytes, _peerDhPublicKey);
+                    Result<byte[], SodiumFailure> dhSecretResult =
+                        SodiumInterop.ScalarMult(localPrivateKeyBytes, _peerDhPublicKey);
                     if (dhSecretResult.IsErr)
                     {
-                        throw new InvalidOperationException($"Failed to compute DH secret (sender): {dhSecretResult.UnwrapErr().Message}");
+                        throw new InvalidOperationException(
+                            $"Failed to compute DH secret (sender): {dhSecretResult.UnwrapErr().Message}");
                     }
 
                     dhSecret = dhSecretResult.Unwrap();
@@ -859,22 +922,26 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 else
                 {
                     if (_receivingStep == null || receivedDhPublicKeyBytes is not
-                        { Length: Constants.X25519PublicKeySize })
+                            { Length: Constants.X25519PublicKeySize })
                     {
                         throw new InvalidOperationException("Receiver ratchet pre-conditions not met.");
                     }
 
-                    Result<byte[], EcliptixProtocolFailure> privKeyResult = _currentSendingDhPrivateKeyHandle!.ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
+                    Result<byte[], EcliptixProtocolFailure> privKeyResult = _currentSendingDhPrivateKeyHandle!
+                        .ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
                     if (privKeyResult.IsErr)
                     {
-                        throw new InvalidOperationException($"Failed to read current DH private key: {privKeyResult.UnwrapErr().Message}");
+                        throw new InvalidOperationException(
+                            $"Failed to read current DH private key: {privKeyResult.UnwrapErr().Message}");
                     }
 
                     localPrivateKeyBytes = privKeyResult.Unwrap();
-                    Result<byte[], SodiumFailure> dhSecretResult = SodiumInterop.ScalarMult(localPrivateKeyBytes, receivedDhPublicKeyBytes);
+                    Result<byte[], SodiumFailure> dhSecretResult =
+                        SodiumInterop.ScalarMult(localPrivateKeyBytes, receivedDhPublicKeyBytes);
                     if (dhSecretResult.IsErr)
                     {
-                        throw new InvalidOperationException($"Failed to compute DH secret (receiver): {dhSecretResult.UnwrapErr().Message}");
+                        throw new InvalidOperationException(
+                            $"Failed to compute DH secret (receiver): {dhSecretResult.UnwrapErr().Message}");
                     }
 
                     dhSecret = dhSecretResult.Unwrap();
@@ -885,7 +952,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 return dhCalculationResult;
             }
 
-            Result<byte[], EcliptixProtocolFailure> rootKeyReadResult = _rootKeyHandle!.ReadBytes(Constants.X25519KeySize).MapSodiumFailure();
+            Result<byte[], EcliptixProtocolFailure> rootKeyReadResult =
+                _rootKeyHandle!.ReadBytes(Constants.X25519KeySize).MapSodiumFailure();
             if (rootKeyReadResult.IsErr)
             {
                 return Result<Unit, EcliptixProtocolFailure>.Err(rootKeyReadResult.UnwrapErr());
@@ -923,7 +991,8 @@ public sealed class EcliptixProtocolConnection : IDisposable
             Result<Unit, EcliptixProtocolFailure> updateResult;
             if (isSender)
             {
-                Result<byte[], EcliptixProtocolFailure> newDhPrivResult = newEphemeralSkHandle!.ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
+                Result<byte[], EcliptixProtocolFailure> newDhPrivResult =
+                    newEphemeralSkHandle!.ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
                 if (newDhPrivResult.IsErr)
                 {
                     return Result<Unit, EcliptixProtocolFailure>.Err(newDhPrivResult.UnwrapErr());
@@ -1061,11 +1130,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
         return _metadataEncryptionKeyHandle.ReadBytes(Constants.AesKeySize).MapSodiumFailure();
     }
 
-    private static Result<Unit, EcliptixProtocolFailure> WipeIfNotNull(byte[]? data) =>
-        data == null
-            ? Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value)
-            : SodiumInterop.SecureWipe(data).MapSodiumFailure();
-
     private Result<Unit, EcliptixProtocolFailure> CheckDisposed()
     {
         return _disposed
@@ -1094,7 +1158,9 @@ public sealed class EcliptixProtocolConnection : IDisposable
     private Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> EnsureSendingStepInitialized()
     {
         Result<Unit, EcliptixProtocolFailure> disposedCheckResult = CheckDisposed();
-        return disposedCheckResult.IsErr ? Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Err(disposedCheckResult.UnwrapErr()) : Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(_sendingStep);
+        return disposedCheckResult.IsErr
+            ? Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Err(disposedCheckResult.UnwrapErr())
+            : Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(_sendingStep);
     }
 
     private Result<EcliptixProtocolChainStep, EcliptixProtocolFailure> EnsureReceivingStepInitialized()
@@ -1131,30 +1197,11 @@ public sealed class EcliptixProtocolConnection : IDisposable
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
-    private static Result<Unit, EcliptixProtocolFailure> ValidateInitialKeys(byte[] rootKey, byte[] peerDhKey)
-    {
-        if (rootKey.Length != Constants.X25519KeySize)
-        {
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput($"Initial root key must be {Constants.X25519KeySize} bytes."));
-        }
-
-        if (peerDhKey.Length != Constants.X25519PublicKeySize)
-        {
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput(
-                    $"Initial peer DH public key must be {Constants.X25519PublicKeySize} bytes."));
-        }
-
-        return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
-    }
-
     private Result<Unit, EcliptixProtocolFailure> DeriveInitialChainKeys(byte[] rootKey, byte[] senderCkDest,
         byte[] receiverCkDest)
     {
         return Result<Unit, EcliptixProtocolFailure>.Try(() =>
         {
-
             Span<byte> sendSpan = stackalloc byte[Constants.X25519KeySize];
             Span<byte> recvSpan = stackalloc byte[Constants.X25519KeySize];
 
@@ -1211,6 +1258,5 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
         _receivedNewDhKey = false;
         return Result<bool, EcliptixProtocolFailure>.Ok(true);
-
     }
 }

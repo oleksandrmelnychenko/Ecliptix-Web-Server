@@ -2,13 +2,15 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Akka.Actor;
-using Ecliptix.Domain.Memberships.ActorEvents;
+using Ecliptix.Domain.Memberships.ActorEvents.Common;
+using Ecliptix.Domain.Memberships.ActorEvents.MobileNumber;
+using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Providers.Twilio;
+using Ecliptix.Protobuf.Membership;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
-using Ecliptix.Protobuf.Membership;
 using Microsoft.Extensions.Options;
 using Serilog;
 
@@ -30,7 +32,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     private readonly IActorRef _membershipActor;
     private readonly IActorRef _persistor;
     private readonly ISmsProvider _smsProvider;
-    private readonly IOptions<SecurityConfiguration> _securityConfig;
+    private readonly IOptionsMonitor<SecurityConfiguration> _securityConfig;
 
     private readonly Dictionary<IActorRef, ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>>
         _flowWriters = new();
@@ -41,7 +43,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         IActorRef membershipActor,
         ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider,
-        IOptions<SecurityConfiguration> securityConfig)
+        IOptionsMonitor<SecurityConfiguration> securityConfig)
     {
         _persistor = persistor;
         _membershipActor = membershipActor;
@@ -81,11 +83,12 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
             {
                 try
                 {
-                    Task<SessionValidityResponse> validityTask = idempotencyActor.Ask<SessionValidityResponse>(
-                        new CheckSessionValidityQuery(),
-                        timeout: TimeSpan.FromSeconds(5));
+                    VerificationFlowActorSettings settings = _securityConfig.CurrentValue.VerificationFlowActor;
+                    Task<FlowValidityResponse> validityTask = idempotencyActor.Ask<FlowValidityResponse>(
+                        new CheckFlowValidityQuery(),
+                        timeout: settings.SessionValidityCheckTimeout);
 
-                    SessionValidityResponse validity = await validityTask;
+                    FlowValidityResponse validity = await validityTask;
 
                     if (validity.IsValid)
                     {
@@ -124,10 +127,11 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                     _idempotencyToActor.Remove(actorEvent.IdempotencyKey.Value!);
                 }
 
+                VerificationFlowActorSettings terminationSettings = _securityConfig.CurrentValue.VerificationFlowActor;
                 TimeSpan terminationTimeout = TimeSpan.FromSeconds(
-                    Math.Max(5,
-                        _securityConfig.Value.VerificationFlow.ChannelWriteTimeoutSeconds +
-                        _securityConfig.Value.VerificationFlow.OtpExpirationSeconds));
+                    Math.Max(terminationSettings.ActorTerminationMinTimeoutSeconds,
+                        _securityConfig.CurrentValue.VerificationFlow.ChannelWriteTimeoutSeconds +
+                        _securityConfig.CurrentValue.VerificationFlow.OtpExpirationSeconds));
 
                 try
                 {
@@ -164,10 +168,11 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                 _flowWriters.Remove(existingActor, out _);
                 Context.Unwatch(existingActor);
 
+                VerificationFlowActorSettings existingTerminationSettings = _securityConfig.CurrentValue.VerificationFlowActor;
                 TimeSpan terminationTimeout = TimeSpan.FromSeconds(
-                    Math.Max(5,
-                        _securityConfig.Value.VerificationFlow.ChannelWriteTimeoutSeconds +
-                        _securityConfig.Value.VerificationFlow.OtpExpirationSeconds));
+                    Math.Max(existingTerminationSettings.ActorTerminationMinTimeoutSeconds,
+                        _securityConfig.CurrentValue.VerificationFlow.ChannelWriteTimeoutSeconds +
+                        _securityConfig.CurrentValue.VerificationFlow.OtpExpirationSeconds));
 
                 try
                 {
@@ -353,9 +358,10 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
 
     protected override SupervisorStrategy SupervisorStrategy()
     {
+        VerificationFlowActorSettings settings = _securityConfig.CurrentValue.VerificationFlowActor;
         return new OneForOneStrategy(
             maxNrOfRetries: 3,
-            withinTimeRange: TimeSpan.FromMinutes(1),
+            withinTimeRange: settings.CircuitBreakerWithinTimeRange,
             decider: Decider.From(ChildFailureDecider));
     }
 
@@ -374,7 +380,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         $"flow-{connectId}";
 
     public static Props Build(IActorRef persistor, IActorRef membershipActor, ISmsProvider smsProvider,
-        ILocalizationProvider localizationProvider, IOptions<SecurityConfiguration> securityConfig)
+        ILocalizationProvider localizationProvider, IOptionsMonitor<SecurityConfiguration> securityConfig)
     {
         return Props.Create(() => new VerificationFlowManagerActor(persistor, membershipActor, smsProvider, localizationProvider, securityConfig));
     }

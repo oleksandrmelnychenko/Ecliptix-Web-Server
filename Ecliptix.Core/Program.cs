@@ -5,16 +5,6 @@ using System.Threading.RateLimiting;
 using Akka;
 using Akka.Actor;
 using Akka.Configuration;
-using Ecliptix.Utilities.Configuration;
-using Microsoft.ApplicationInsights.Extensibility;
-using Microsoft.AspNetCore.Localization;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Microsoft.Extensions.ObjectPool;
-using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Primitives;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
-using Serilog;
 using Ecliptix.Core;
 using Ecliptix.Core.Api.Grpc.Services.Authentication;
 using Ecliptix.Core.Api.Grpc.Services.Device;
@@ -29,16 +19,26 @@ using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
 using Ecliptix.Domain;
-using Ecliptix.Domain.Schema;
-using Microsoft.EntityFrameworkCore;
-using Ecliptix.Security.Opaque.Contracts;
-using Ecliptix.Security.Opaque;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Domain.Providers.Twilio;
+using Ecliptix.Domain.Schema;
 using Ecliptix.Security.Certificate.Pinning.Services;
+using Ecliptix.Security.Opaque;
+using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Services;
 using Ecliptix.Utilities;
+using Ecliptix.Utilities.Configuration;
+using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.AspNetCore.Localization;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.ObjectPool;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using Serilog;
 using AppConstants = Ecliptix.Core.Configuration.ApplicationConstants;
 using HealthStatus = Ecliptix.Core.Json.HealthStatus;
 
@@ -115,7 +115,11 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddDbContextFactory<EcliptixSchemaContext>(options =>
     {
         string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
-        options.UseSqlServer(connectionString)
+        options.UseSqlServer(connectionString, sqlOptions =>
+               {
+                   int commandTimeout = (int)TimeoutConfiguration.Database.CommandTimeout.TotalSeconds;
+                   sqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
+               })
                .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
     });
 
@@ -139,6 +143,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
         builder.Configuration.GetSection(AppConstants.Configuration.SecurityKeys));
     builder.Services.Configure<SecurityConfiguration>(
         builder.Configuration.GetSection(SecurityConfiguration.SectionName));
+    builder.Services.AddSingleton<IValidateOptions<SecurityConfiguration>, SecurityConfigurationValidator>();
     builder.Services.Configure<NetworkConfiguration>(
         builder.Configuration.GetSection(NetworkConfiguration.SectionName));
 
@@ -393,8 +398,12 @@ static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
                     options.RecordException = true;
                     options.Filter = httpContext =>
                     {
-                        var path = httpContext.Request.Path.Value;
-                        if (string.IsNullOrEmpty(path)) return true;
+                        string? path = httpContext.Request.Path.Value;
+                        if (string.IsNullOrEmpty(path))
+                        {
+                            return true;
+                        }
+
                         return !path.Contains("/health") && path != "/";
                     };
                 });
@@ -471,11 +480,7 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
 
         coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeServiceUnbind,
             AppConstants.ActorSystemTasks.StopAcceptingNewConnections,
-            () =>
-            {
-
-                return Task.FromResult(Done.Instance);
-            });
+            () => Task.FromResult(Done.Instance));
 
         coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone,
             AppConstants.ActorSystemTasks.DrainActiveRequests, async () =>
@@ -487,10 +492,6 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
             });
 
         coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate,
-            AppConstants.ActorSystemTasks.CleanupResources, () =>
-            {
-
-                return Task.FromResult(Done.Instance);
-            });
+            AppConstants.ActorSystemTasks.CleanupResources, () => Task.FromResult(Done.Instance));
     }
 }

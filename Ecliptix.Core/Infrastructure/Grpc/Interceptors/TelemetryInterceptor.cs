@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Ecliptix.Core.Infrastructure.Grpc.Constants;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
-using Ecliptix.Core.Infrastructure.Grpc.Constants;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 

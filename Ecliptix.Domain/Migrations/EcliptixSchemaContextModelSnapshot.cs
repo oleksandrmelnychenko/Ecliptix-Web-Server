@@ -313,7 +313,7 @@ namespace Ecliptix.Domain.Migrations
 
                     b.Property<byte[]>("SecureKey")
                         .IsRequired()
-                        .HasColumnType("VARBINARY(176)");
+                        .HasColumnType("VARBINARY(208)");
 
                     b.Property<Guid>("UniqueId")
                         .ValueGeneratedOnAdd()
@@ -1003,6 +1003,7 @@ namespace Ecliptix.Domain.Migrations
                         .HasFilter("IsDeleted = 0");
 
                     b.HasIndex("MobileNumberId")
+                        .IsUnique()
                         .HasDatabaseName("IX_Memberships_Login_Covering")
                         .HasFilter("IsDeleted = 0 AND Status = 'active'");
 
@@ -1022,10 +1023,6 @@ namespace Ecliptix.Domain.Migrations
                         .HasFilter("IsDeleted = 0");
 
                     b.HasIndex("VerificationFlowId");
-
-                    b.HasIndex("MobileNumberId", "AppDeviceId", "IsDeleted")
-                        .IsUnique()
-                        .HasDatabaseName("UQ_Memberships_ActiveMembership");
 
                     b.ToTable("Memberships", null, t =>
                         {

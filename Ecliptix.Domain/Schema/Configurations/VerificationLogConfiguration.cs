@@ -1,6 +1,8 @@
+using Ecliptix.Domain.Memberships;
+using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Domain.Schema.ValueConverters;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
@@ -26,11 +28,13 @@ public class VerificationLogConfiguration : EntityBaseMap<VerificationLogEntity>
 
         builder.Property(e => e.Purpose)
             .IsRequired()
-            .HasMaxLength(50);
+            .HasMaxLength(50)
+            .HasConversion(new EnumToSnakeCaseConverter<VerificationPurpose>());
 
         builder.Property(e => e.Status)
             .IsRequired()
-            .HasMaxLength(20);
+            .HasMaxLength(20)
+            .HasConversion(new EnumToSnakeCaseConverter<VerificationFlowStatus>());
 
         builder.Property(e => e.OtpCount)
             .HasDefaultValue(0);
@@ -42,7 +46,6 @@ public class VerificationLogConfiguration : EntityBaseMap<VerificationLogEntity>
         builder.Property(e => e.ExpiresAt)
             .HasColumnType("DATETIMEOFFSET");
 
-        // Indexes
         builder.HasIndex(e => e.MembershipId)
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_VerificationLogs_Membership");
@@ -56,7 +59,6 @@ public class VerificationLogConfiguration : EntityBaseMap<VerificationLogEntity>
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_VerificationLogs_VerifiedAt");
 
-        // Foreign keys
         builder.HasOne(e => e.Membership)
             .WithMany(m => m.VerificationLogs)
             .HasForeignKey(e => e.MembershipId)

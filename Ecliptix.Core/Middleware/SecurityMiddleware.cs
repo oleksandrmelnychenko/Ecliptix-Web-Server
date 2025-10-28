@@ -1,6 +1,6 @@
+using Ecliptix.Core.Configuration;
 using Grpc.Core;
 using Microsoft.Extensions.Primitives;
-using Ecliptix.Core.Configuration;
 
 namespace Ecliptix.Core.Middleware;
 

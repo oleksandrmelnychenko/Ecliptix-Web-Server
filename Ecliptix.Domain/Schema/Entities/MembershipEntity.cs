@@ -1,3 +1,5 @@
+using Ecliptix.Domain.Memberships;
+
 namespace Ecliptix.Domain.Schema.Entities;
 
 public class MembershipEntity : EntityBase
@@ -6,8 +8,8 @@ public class MembershipEntity : EntityBase
     public Guid AppDeviceId { get; set; }
     public Guid? VerificationFlowId { get; set; }
 
-    public string Status { get; set; } = "inactive";
-    public string? CreationStatus { get; set; }
+    public MembershipStatus Status { get; set; } = MembershipStatus.Inactive;
+    public MembershipCreationStatus? CreationStatus { get; set; }
 
     public virtual MobileNumberEntity MobileNumber { get; set; } = null!;
     public virtual DeviceEntity AppDevice { get; set; } = null!;

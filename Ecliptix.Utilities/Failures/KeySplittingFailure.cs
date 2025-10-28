@@ -92,22 +92,22 @@ public sealed record KeySplittingFailure(KeySplittingFailureType Type, string Me
             KeySplittingFailureType.ShareValidationFailed => new GrpcErrorDescriptor(
                 ErrorCode.ValidationFailed,
                 StatusCode.InvalidArgument,
-                ErrorI18nKeys.Validation),
+                ErrorI18NKeys.Validation),
 
             KeySplittingFailureType.InsufficientShares => new GrpcErrorDescriptor(
                 ErrorCode.PreconditionFailed,
                 StatusCode.FailedPrecondition,
-                ErrorI18nKeys.PreconditionFailed),
+                ErrorI18NKeys.PreconditionFailed),
 
             KeySplittingFailureType.HmacKeyMissing => new GrpcErrorDescriptor(
                 ErrorCode.NotFound,
                 StatusCode.NotFound,
-                ErrorI18nKeys.NotFound),
+                ErrorI18NKeys.NotFound),
 
             KeySplittingFailureType.AllocationFailed => new GrpcErrorDescriptor(
                 ErrorCode.ResourceExhausted,
                 StatusCode.ResourceExhausted,
-                ErrorI18nKeys.ResourceExhausted,
+                ErrorI18NKeys.ResourceExhausted,
                 Retryable: true),
 
             KeySplittingFailureType.HmacKeyStorageFailed or
@@ -120,12 +120,12 @@ public sealed record KeySplittingFailure(KeySplittingFailureType Type, string Me
             KeySplittingFailureType.MemoryWriteFailed => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18nKeys.Internal),
+                ErrorI18NKeys.Internal),
 
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18nKeys.Internal)
+                ErrorI18NKeys.Internal)
         };
 
     public override object ToStructuredLog()

@@ -1,12 +1,12 @@
 using System.Globalization;
 using System.Security.Authentication;
 using Ecliptix.Core.Configuration;
+using Ecliptix.Core.Infrastructure.Grpc.Constants;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Domain;
 using Ecliptix.Utilities;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
-using Ecliptix.Core.Infrastructure.Grpc.Constants;
 using Serilog;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
@@ -84,21 +84,21 @@ public sealed class FailureHandlingInterceptor(ILocalizationProvider localizatio
             OperationCanceledException => new GrpcErrorDescriptor(
                 ErrorCode.Cancelled,
                 StatusCode.Cancelled,
-                ErrorI18nKeys.Cancelled,
+                ErrorI18NKeys.Cancelled,
                 Retryable: true),
             TimeoutException => new GrpcErrorDescriptor(
                 ErrorCode.DeadlineExceeded,
                 StatusCode.DeadlineExceeded,
-                ErrorI18nKeys.DeadlineExceeded,
+                ErrorI18NKeys.DeadlineExceeded,
                 Retryable: true),
             AuthenticationException => new GrpcErrorDescriptor(
                 ErrorCode.Unauthenticated,
                 StatusCode.Unauthenticated,
-                ErrorI18nKeys.Unauthenticated),
+                ErrorI18NKeys.Unauthenticated),
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18nKeys.Internal)
+                ErrorI18NKeys.Internal)
         };
 
     private static GrpcErrorDescriptor MapStatusCode(StatusCode statusCode) =>
@@ -107,54 +107,54 @@ public sealed class FailureHandlingInterceptor(ILocalizationProvider localizatio
             StatusCode.InvalidArgument or StatusCode.OutOfRange => new GrpcErrorDescriptor(
                 ErrorCode.ValidationFailed,
                 StatusCode.InvalidArgument,
-                ErrorI18nKeys.Validation),
+                ErrorI18NKeys.Validation),
             StatusCode.NotFound => new GrpcErrorDescriptor(
                 ErrorCode.NotFound,
                 StatusCode.NotFound,
-                ErrorI18nKeys.NotFound),
+                ErrorI18NKeys.NotFound),
             StatusCode.AlreadyExists => new GrpcErrorDescriptor(
                 ErrorCode.AlreadyExists,
                 StatusCode.AlreadyExists,
-                ErrorI18nKeys.AlreadyExists),
+                ErrorI18NKeys.AlreadyExists),
             StatusCode.Unauthenticated => new GrpcErrorDescriptor(
                 ErrorCode.Unauthenticated,
                 StatusCode.Unauthenticated,
-                ErrorI18nKeys.Unauthenticated),
+                ErrorI18NKeys.Unauthenticated),
             StatusCode.PermissionDenied => new GrpcErrorDescriptor(
                 ErrorCode.PermissionDenied,
                 StatusCode.PermissionDenied,
-                ErrorI18nKeys.PermissionDenied),
+                ErrorI18NKeys.PermissionDenied),
             StatusCode.FailedPrecondition => new GrpcErrorDescriptor(
                 ErrorCode.PreconditionFailed,
                 StatusCode.FailedPrecondition,
-                ErrorI18nKeys.PreconditionFailed),
+                ErrorI18NKeys.PreconditionFailed),
             StatusCode.Aborted => new GrpcErrorDescriptor(
                 ErrorCode.Conflict,
                 StatusCode.Aborted,
-                ErrorI18nKeys.Conflict),
+                ErrorI18NKeys.Conflict),
             StatusCode.ResourceExhausted => new GrpcErrorDescriptor(
                 ErrorCode.ResourceExhausted,
                 StatusCode.ResourceExhausted,
-                ErrorI18nKeys.ResourceExhausted),
+                ErrorI18NKeys.ResourceExhausted),
             StatusCode.Unavailable => new GrpcErrorDescriptor(
                 ErrorCode.ServiceUnavailable,
                 StatusCode.Unavailable,
-                ErrorI18nKeys.ServiceUnavailable,
+                ErrorI18NKeys.ServiceUnavailable,
                 Retryable: true),
             StatusCode.DeadlineExceeded => new GrpcErrorDescriptor(
                 ErrorCode.DeadlineExceeded,
                 StatusCode.DeadlineExceeded,
-                ErrorI18nKeys.DeadlineExceeded,
+                ErrorI18NKeys.DeadlineExceeded,
                 Retryable: true),
             StatusCode.Cancelled => new GrpcErrorDescriptor(
                 ErrorCode.Cancelled,
                 StatusCode.Cancelled,
-                ErrorI18nKeys.Cancelled,
+                ErrorI18NKeys.Cancelled,
                 Retryable: true),
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18nKeys.Internal)
+                ErrorI18NKeys.Internal)
         };
 
     private (string Message, GrpcErrorDescriptor Descriptor) LocalizeMessage(
@@ -177,31 +177,31 @@ public sealed class FailureHandlingInterceptor(ILocalizationProvider localizatio
             }
         }
 
-        string safeMessage = localizationProvider.Localize(ErrorI18nKeys.Internal, locale);
-        return (safeMessage, descriptor with { I18nKey = ErrorI18nKeys.Internal });
+        string safeMessage = localizationProvider.Localize(ErrorI18NKeys.Internal, locale);
+        return (safeMessage, descriptor with { I18nKey = ErrorI18NKeys.Internal });
     }
 
     private static string GetFallbackKey(ErrorCode errorCode) =>
         errorCode switch
         {
-            ErrorCode.ValidationFailed => ErrorI18nKeys.Validation,
-            ErrorCode.MaxAttemptsReached => ErrorI18nKeys.MaxAttempts,
-            ErrorCode.InvalidMobileNumber => ErrorI18nKeys.InvalidMobile,
-            ErrorCode.OtpExpired => ErrorI18nKeys.OtpExpired,
-            ErrorCode.NotFound => ErrorI18nKeys.NotFound,
-            ErrorCode.AlreadyExists => ErrorI18nKeys.AlreadyExists,
-            ErrorCode.Unauthenticated => ErrorI18nKeys.Unauthenticated,
-            ErrorCode.PermissionDenied => ErrorI18nKeys.PermissionDenied,
-            ErrorCode.PreconditionFailed => ErrorI18nKeys.PreconditionFailed,
-            ErrorCode.Conflict => ErrorI18nKeys.Conflict,
-            ErrorCode.ResourceExhausted => ErrorI18nKeys.ResourceExhausted,
-            ErrorCode.ServiceUnavailable => ErrorI18nKeys.ServiceUnavailable,
-            ErrorCode.DependencyUnavailable => ErrorI18nKeys.DependencyUnavailable,
-            ErrorCode.DeadlineExceeded => ErrorI18nKeys.DeadlineExceeded,
-            ErrorCode.Cancelled => ErrorI18nKeys.Cancelled,
-            ErrorCode.InternalError => ErrorI18nKeys.Internal,
-            ErrorCode.DatabaseUnavailable => ErrorI18nKeys.DatabaseUnavailable,
-            _ => ErrorI18nKeys.Internal
+            ErrorCode.ValidationFailed => ErrorI18NKeys.Validation,
+            ErrorCode.MaxAttemptsReached => ErrorI18NKeys.MaxAttempts,
+            ErrorCode.InvalidMobileNumber => ErrorI18NKeys.InvalidMobile,
+            ErrorCode.OtpExpired => ErrorI18NKeys.OtpExpired,
+            ErrorCode.NotFound => ErrorI18NKeys.NotFound,
+            ErrorCode.AlreadyExists => ErrorI18NKeys.AlreadyExists,
+            ErrorCode.Unauthenticated => ErrorI18NKeys.Unauthenticated,
+            ErrorCode.PermissionDenied => ErrorI18NKeys.PermissionDenied,
+            ErrorCode.PreconditionFailed => ErrorI18NKeys.PreconditionFailed,
+            ErrorCode.Conflict => ErrorI18NKeys.Conflict,
+            ErrorCode.ResourceExhausted => ErrorI18NKeys.ResourceExhausted,
+            ErrorCode.ServiceUnavailable => ErrorI18NKeys.ServiceUnavailable,
+            ErrorCode.DependencyUnavailable => ErrorI18NKeys.DependencyUnavailable,
+            ErrorCode.DeadlineExceeded => ErrorI18NKeys.DeadlineExceeded,
+            ErrorCode.Cancelled => ErrorI18NKeys.Cancelled,
+            ErrorCode.InternalError => ErrorI18NKeys.Internal,
+            ErrorCode.DatabaseUnavailable => ErrorI18NKeys.DatabaseUnavailable,
+            _ => ErrorI18NKeys.Internal
         };
 
     private static string ResolveLocale(ServerCallContext context)

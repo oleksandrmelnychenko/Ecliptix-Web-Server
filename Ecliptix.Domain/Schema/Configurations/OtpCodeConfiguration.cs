@@ -1,6 +1,8 @@
+using Ecliptix.Domain.Memberships;
+using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Domain.Schema.ValueConverters;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
@@ -26,7 +28,8 @@ public class OtpCodeConfiguration : EntityBaseMap<OtpCodeEntity>
         builder.Property(e => e.Status)
             .IsRequired()
             .HasMaxLength(20)
-            .HasDefaultValue("active");
+            .HasDefaultValue(OtpStatus.Active)
+            .HasConversion(new EnumToSnakeCaseConverter<OtpStatus>());
 
         builder.Property(e => e.AttemptCount)
             .HasDefaultValue((short)0);

@@ -31,21 +31,21 @@ public sealed record SecureChannelFailure(
             SecureChannelFailureType.InvalidPayload => new GrpcErrorDescriptor(
                 ErrorCode.ValidationFailed,
                 StatusCode.InvalidArgument,
-                ErrorI18nKeys.Validation),
+                ErrorI18NKeys.Validation),
             SecureChannelFailureType.CryptographicError => new GrpcErrorDescriptor(
                 ErrorCode.DependencyUnavailable,
                 StatusCode.Unavailable,
-                ErrorI18nKeys.DependencyUnavailable,
+                ErrorI18NKeys.DependencyUnavailable,
                 Retryable: true),
             SecureChannelFailureType.ActorCommunicationError => new GrpcErrorDescriptor(
                 ErrorCode.ServiceUnavailable,
                 StatusCode.Unavailable,
-                ErrorI18nKeys.ServiceUnavailable,
+                ErrorI18NKeys.ServiceUnavailable,
                 Retryable: true),
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18nKeys.Internal)
+                ErrorI18NKeys.Internal)
         };
 
     public override object ToStructuredLog()

@@ -1,11 +1,11 @@
 using System.Security.Cryptography;
-using Ecliptix.Utilities;
+using Ecliptix.Security.Opaque.Constants;
+using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Models;
 using Ecliptix.Security.Opaque.Models.AuthenticationMessages;
 using Ecliptix.Security.Opaque.Models.RegistrationMessages;
 using Ecliptix.Security.Opaque.Native;
-using Ecliptix.Security.Opaque.Failures;
-using Ecliptix.Security.Opaque.Constants;
+using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures.Sodium;
 
 namespace Ecliptix.Security.Opaque.Services;

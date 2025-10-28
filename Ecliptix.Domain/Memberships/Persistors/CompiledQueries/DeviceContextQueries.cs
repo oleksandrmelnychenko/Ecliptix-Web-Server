@@ -1,7 +1,7 @@
-using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
+using Microsoft.EntityFrameworkCore;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 

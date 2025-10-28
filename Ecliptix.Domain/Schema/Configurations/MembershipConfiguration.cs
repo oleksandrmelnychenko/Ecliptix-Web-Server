@@ -1,6 +1,8 @@
+using Ecliptix.Domain.Memberships;
+using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Domain.Schema.ValueConverters;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
@@ -24,10 +26,12 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
         builder.Property(e => e.Status)
             .IsRequired()
             .HasMaxLength(20)
-            .HasDefaultValue("inactive");
+            .HasDefaultValue(MembershipStatus.Inactive)
+            .HasConversion(new EnumToSnakeCaseConverter<MembershipStatus>());
 
         builder.Property(e => e.CreationStatus)
-            .HasMaxLength(20);
+            .HasMaxLength(20)
+            .HasConversion(new EnumToSnakeCaseConverter<MembershipCreationStatus>());
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_Memberships_Status",
             "Status IN ('active', 'inactive')"));
@@ -39,13 +43,10 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
             .IsUnique()
             .HasDatabaseName("UQ_Memberships_UniqueId");
 
-        builder.HasIndex(e => new { e.MobileNumberId, e.AppDeviceId, e.IsDeleted })
-            .IsUnique()
-            .HasDatabaseName("UQ_Memberships_ActiveMembership");
-
         builder.HasIndex(e => e.MobileNumberId)
+            .IsUnique()
             .HasFilter("IsDeleted = 0")
-            .HasDatabaseName("IX_Memberships_MobileNumberId");
+            .HasDatabaseName("UQ_Memberships_ActiveMembership");
 
         builder.HasIndex(e => e.AppDeviceId)
             .HasDatabaseName("IX_Memberships_AppDeviceId");

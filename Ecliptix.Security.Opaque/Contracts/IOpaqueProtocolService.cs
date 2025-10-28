@@ -1,6 +1,6 @@
-using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Security.Opaque.Models;
+using Ecliptix.Utilities;
 
 namespace Ecliptix.Security.Opaque.Contracts;
 

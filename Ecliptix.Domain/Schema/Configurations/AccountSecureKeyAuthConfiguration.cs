@@ -1,6 +1,6 @@
+using Ecliptix.Domain.Schema.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
@@ -17,7 +17,7 @@ public class AccountSecureKeyAuthConfiguration : EntityBaseMap<AccountSecureKeyA
 
         builder.Property(e => e.SecureKey)
             .IsRequired()
-            .HasColumnType("VARBINARY(176)");
+            .HasColumnType("VARBINARY(208)");
 
         builder.Property(e => e.MaskingKey)
             .IsRequired()
@@ -44,7 +44,6 @@ public class AccountSecureKeyAuthConfiguration : EntityBaseMap<AccountSecureKeyA
         builder.Property(e => e.LockedUntil)
             .HasColumnType("DATETIMEOFFSET");
 
-        // Indexes
         builder.HasIndex(e => new { e.AccountId, e.IsPrimary })
             .IsUnique()
             .HasFilter("IsDeleted = 0 AND IsPrimary = 1")
@@ -60,7 +59,6 @@ public class AccountSecureKeyAuthConfiguration : EntityBaseMap<AccountSecureKeyA
             e => new { e.UniqueId, e.SecureKey, e.MaskingKey, e.CredentialsVersion, e.IsPrimary })
             .HasDatabaseName("IX_AccountSecureKeyAuth_Covering");
 
-        // Foreign key
         builder.HasOne(e => e.Account)
             .WithMany(a => a.SecureKeyAuths)
             .HasForeignKey(e => e.AccountId)

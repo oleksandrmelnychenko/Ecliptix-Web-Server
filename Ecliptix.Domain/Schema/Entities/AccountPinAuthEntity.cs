@@ -5,18 +5,15 @@ public class AccountPinAuthEntity : EntityBase
     public Guid AccountId { get; set; }
     public Guid? DeviceId { get; set; }
 
-    // OPAQUE Protocol credentials (same as password, shorter input)
     public byte[] SecureKey { get; set; } = null!;
     public byte[] MaskingKey { get; set; } = null!;
     public int CredentialsVersion { get; set; } = 1;
 
-    // Configuration
     public bool IsPrimary { get; set; } = false;
     public bool IsEnabled { get; set; } = true;
     public bool IsDeviceSpecific { get; set; } = false;
     public int PinLength { get; set; } = 6;
 
-    // Security tracking
     public DateTimeOffset? LastUsedAt { get; set; }
     public int FailedAttempts { get; set; } = 0;
     public DateTimeOffset? LockedUntil { get; set; }

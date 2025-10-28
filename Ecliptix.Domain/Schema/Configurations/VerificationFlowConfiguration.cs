@@ -1,6 +1,8 @@
+using Ecliptix.Domain.Memberships;
+using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Domain.Schema.ValueConverters;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Ecliptix.Domain.Schema.Entities;
 
 namespace Ecliptix.Domain.Schema.Configurations;
 
@@ -21,12 +23,14 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntit
         builder.Property(e => e.Status)
             .IsRequired()
             .HasMaxLength(20)
-            .HasDefaultValue("pending");
+            .HasDefaultValue(VerificationFlowStatus.Pending)
+            .HasConversion(new EnumToSnakeCaseConverter<VerificationFlowStatus>());
 
         builder.Property(e => e.Purpose)
             .IsRequired()
             .HasMaxLength(30)
-            .HasDefaultValue("unspecified");
+            .HasDefaultValue(VerificationPurpose.Unspecified)
+            .HasConversion(new EnumToSnakeCaseConverter<VerificationPurpose>());
 
         builder.Property(e => e.OtpCount)
             .HasDefaultValue((short)0);

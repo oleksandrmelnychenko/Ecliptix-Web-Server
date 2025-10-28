@@ -1,7 +1,7 @@
-using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
+using Microsoft.EntityFrameworkCore;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
@@ -63,7 +63,6 @@ public static class MembershipQueries
     {
         MembershipEntity? result = await ctx.Memberships
             .Include(m => m.MobileNumber)
-            .Include(m => m.VerificationFlow)
             .Where(m => m.MobileNumber!.UniqueId == mobileUniqueId &&
                         !m.IsDeleted &&
                         !m.MobileNumber.IsDeleted)
@@ -71,14 +70,5 @@ public static class MembershipQueries
             .FirstOrDefaultAsync(cancellationToken);
 
         return result is not null ? Option<MembershipEntity>.Some(result) : Option<MembershipEntity>.None;
-    }
-
-    public static async Task<bool> ExistsByMobileNumberId(
-        EcliptixSchemaContext ctx,
-        Guid mobileNumberId,
-        CancellationToken cancellationToken = default)
-    {
-        return await ctx.Memberships
-            .AnyAsync(m => m.MobileNumberId == mobileNumberId && !m.IsDeleted, cancellationToken);
     }
 }

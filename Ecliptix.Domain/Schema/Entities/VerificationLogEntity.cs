@@ -1,3 +1,5 @@
+using Ecliptix.Domain.Memberships;
+
 namespace Ecliptix.Domain.Schema.Entities;
 
 public class VerificationLogEntity : EntityBase
@@ -7,8 +9,8 @@ public class VerificationLogEntity : EntityBase
     public Guid DeviceId { get; set; }
     public Guid? AccountId { get; set; }
 
-    public string Purpose { get; set; } = string.Empty;
-    public string Status { get; set; } = string.Empty;
+    public VerificationPurpose Purpose { get; set; }
+    public VerificationFlowStatus Status { get; set; }
     public short OtpCount { get; set; } = 0;
 
     public DateTimeOffset VerifiedAt { get; set; }

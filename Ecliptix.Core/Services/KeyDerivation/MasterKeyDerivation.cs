@@ -1,9 +1,9 @@
-using System.Text;
 using System.Security.Cryptography;
-using Google.Protobuf;
+using System.Text;
 using Ecliptix.Utilities;
-using Konscious.Security.Cryptography;
 using Ecliptix.Utilities.Failures.Sodium;
+using Google.Protobuf;
+using Konscious.Security.Cryptography;
 using Serilog;
 
 namespace Ecliptix.Core.Services.KeyDerivation;
@@ -244,14 +244,14 @@ public static class MasterKeyDerivation
     {
         byte[] salt16 = saltBytes.ToArray();
 
-        if (salt16.Length != SharedConstants.Blake2bSaltSize)
+        if (salt16.Length != SharedConstants.Blake2BSaltSize)
         {
-            byte[] adjustedSalt = new byte[SharedConstants.Blake2bSaltSize];
-            int copyLength = Math.Min(salt16.Length, SharedConstants.Blake2bSaltSize);
+            byte[] adjustedSalt = new byte[SharedConstants.Blake2BSaltSize];
+            int copyLength = Math.Min(salt16.Length, SharedConstants.Blake2BSaltSize);
             Array.Copy(salt16, 0, adjustedSalt, 0, copyLength);
             salt16 = adjustedSalt;
             Log.Warning(Blake2BSaltAdjustedWarning, logTag,
-                SharedConstants.Blake2bSaltSize, saltBytes.Length);
+                SharedConstants.Blake2BSaltSize, saltBytes.Length);
         }
 
         return salt16;
@@ -261,10 +261,10 @@ public static class MasterKeyDerivation
     {
         byte[] personal16 = personalBytes.ToArray();
 
-        if (personal16.Length != SharedConstants.Blake2bPersonalSize)
+        if (personal16.Length != SharedConstants.Blake2BPersonalSize)
         {
             throw new InvalidOperationException(string.Format(PersonalParameterSizeMismatchMessage,
-                SharedConstants.Blake2bPersonalSize, personal16.Length));
+                SharedConstants.Blake2BPersonalSize, personal16.Length));
         }
 
         return personal16;
@@ -274,11 +274,11 @@ public static class MasterKeyDerivation
     {
         byte[] personal16 = personalBytes.ToArray();
 
-        if (personal16.Length != SharedConstants.Blake2bPersonalSize)
+        if (personal16.Length != SharedConstants.Blake2BPersonalSize)
         {
             return Result<byte[], SodiumFailure>.Err(
                 SodiumFailure.InvalidOperation(string.Format(PersonalParameterSizeMismatchMessage,
-                    SharedConstants.Blake2bPersonalSize, personal16.Length)));
+                    SharedConstants.Blake2BPersonalSize, personal16.Length)));
         }
 
         return Result<byte[], SodiumFailure>.Ok(personal16);

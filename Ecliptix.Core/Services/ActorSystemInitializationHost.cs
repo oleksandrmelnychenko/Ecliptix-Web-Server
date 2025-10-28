@@ -1,16 +1,16 @@
 using Akka.Actor;
 using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Domain.Actors;
+using Ecliptix.Domain;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.WorkerActors;
-using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Domain.Providers.Twilio;
-using Ecliptix.Domain;
-using Ecliptix.Utilities.Configuration;
-using Ecliptix.Domain.Services.Security;
-using Microsoft.EntityFrameworkCore;
 using Ecliptix.Domain.Schema;
+using Ecliptix.Domain.Services.Security;
+using Ecliptix.Security.Opaque.Contracts;
+using Ecliptix.Utilities.Configuration;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Ecliptix.Core.Services;
@@ -28,7 +28,7 @@ public sealed class ActorSystemInitializationHost(
         ISmsProvider smsProvider = serviceProvider.GetRequiredService<ISmsProvider>();
         ILocalizationProvider localizationProvider = serviceProvider.GetRequiredService<ILocalizationProvider>();
         IMasterKeyService masterKeyService = serviceProvider.GetRequiredService<IMasterKeyService>();
-        IOptions<SecurityConfiguration> securityConfig = serviceProvider.GetRequiredService<IOptions<SecurityConfiguration>>();
+        IOptionsMonitor<SecurityConfiguration> securityConfig = serviceProvider.GetRequiredService<IOptionsMonitor<SecurityConfiguration>>();
 
         IActorRef protocolSystemActor = actorSystem.ActorOf(
             EcliptixProtocolSystemActor.Build(),
@@ -39,7 +39,7 @@ public sealed class ActorSystemInitializationHost(
             ApplicationConstants.ActorNames.AppDevicePersistor);
 
         IActorRef membershipPersistorActor = actorSystem.ActorOf(
-            MembershipPersistorActor.Build(dbContextFactory),
+            MembershipPersistorActor.Build(dbContextFactory, securityConfig),
             ApplicationConstants.ActorNames.MembershipPersistorActor);
 
         IActorRef verificationFlowPersistorActor = actorSystem.ActorOf(
@@ -54,12 +54,23 @@ public sealed class ActorSystemInitializationHost(
             LogoutAuditPersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.LogoutAuditPersistorActor);
 
+        IActorRef accountPersistorActor = actorSystem.ActorOf(
+            AccountPersistorActor.Build(dbContextFactory),
+            ApplicationConstants.ActorNames.AccountPersistorActor);
+
+        IActorRef passwordRecoveryPersistorActor = actorSystem.ActorOf(
+            PasswordRecoveryPersistorActor.Build(dbContextFactory, securityConfig),
+            ApplicationConstants.ActorNames.PasswordRecoveryPersistorActor);
+
         IActorRef membershipActor = actorSystem.ActorOf(
             MembershipActor.Build(
                 membershipPersistorActor,
+                accountPersistorActor,
+                passwordRecoveryPersistorActor,
                 opaqueProtocolService,
                 localizationProvider,
-                masterKeyService),
+                masterKeyService,
+                securityConfig),
             ApplicationConstants.ActorNames.MembershipActor);
 
         IActorRef verificationFlowManagerActor = actorSystem.ActorOf(
@@ -78,6 +89,8 @@ public sealed class ActorSystemInitializationHost(
         registry.Register(ActorIds.MembershipPersistorActor, membershipPersistorActor);
         registry.Register(ActorIds.MasterKeySharePersistorActor, masterKeySharePersistorActor);
         registry.Register(ActorIds.LogoutAuditPersistorActor, logoutAuditPersistorActor);
+        registry.Register(ActorIds.AccountPersistorActor, accountPersistorActor);
+        registry.Register(ActorIds.PasswordRecoveryPersistorActor, passwordRecoveryPersistorActor);
         registry.Register(ActorIds.MembershipActor, membershipActor);
 
         return Task.CompletedTask;

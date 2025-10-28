@@ -14,7 +14,7 @@ public sealed class RatchetConfig
 
     private static uint MaxMessagesWithoutRatchet => Constants.MaxMessagesWithoutRatchetDefault;
 
-    private readonly TimeSpan _maxChainAge  = TimeSpan.FromHours(1);
+    private readonly TimeSpan _maxChainAge = TimeSpan.FromHours(1);
 
     private bool ShouldRatchet(uint messageIndex, DateTime lastRatchetTime, bool receivedNewDhKey, DateTime currentTime)
     {

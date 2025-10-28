@@ -10,7 +10,7 @@ internal sealed record PendingSignInStoredEvent(
     string MobileNumber,
     Membership.Types.ActivityStatus ActivityStatus,
     Membership.Types.CreationStatus CreationStatus,
-    DateTime CreatedAt,
+    DateTimeOffset CreatedAt,
     byte[] ServerMac,
     List<AccountInfo>? AvailableAccounts,
     Guid? ActiveAccountId);
@@ -21,7 +21,7 @@ internal sealed record RegistrationMaskingKeyStoredEvent(Guid MembershipId, byte
 
 internal sealed record RegistrationMaskingKeyRemovedEvent(Guid MembershipId);
 
-internal sealed record RecoverySessionStartedEvent(Guid MembershipId, byte[] MaskingKey, byte[] SessionKey, DateTime StartedAt);
+internal sealed record RecoverySessionStartedEvent(Guid MembershipId, byte[] MaskingKey, byte[] SessionKey, DateTimeOffset StartedAt);
 
 internal sealed record RecoverySessionClearedEvent(Guid MembershipId);
 
@@ -30,4 +30,4 @@ internal sealed record MembershipActorSnapshot(
     List<RegistrationMaskingKeyStoredEvent> PendingMaskingKeys,
     List<RecoverySessionSnapshot> RecoverySessions);
 
-internal sealed record RecoverySessionSnapshot(Guid MembershipId, byte[] SessionKey, DateTime StartedAt);
+internal sealed record RecoverySessionSnapshot(Guid MembershipId, byte[] SessionKey, DateTimeOffset StartedAt);

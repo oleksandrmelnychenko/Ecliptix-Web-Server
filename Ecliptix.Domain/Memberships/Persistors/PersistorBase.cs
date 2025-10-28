@@ -9,17 +9,9 @@ using Serilog;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
-public abstract class PersistorBase<TFailure> : ReceiveActor
+public abstract class PersistorBase<TFailure>(IDbContextFactory<EcliptixSchemaContext> dbContextFactory) : ReceiveActor
     where TFailure : IFailureBase
 {
-    private readonly IDbContextFactory<EcliptixSchemaContext> _dbContextFactory;
-
-    protected PersistorBase(IDbContextFactory<EcliptixSchemaContext> dbContextFactory)
-    {
-        _dbContextFactory = dbContextFactory;
-        GetOperationTimeouts();
-    }
-
     protected async Task<Result<TResult, TFailure>> ExecuteWithContext<TResult>(
         Func<EcliptixSchemaContext, CancellationToken, Task<Result<TResult, TFailure>>> operation,
         string operationName,
@@ -28,15 +20,15 @@ public abstract class PersistorBase<TFailure> : ReceiveActor
         TimeSpan operationTimeout = GetOperationTimeout(operationName);
 
         return await PersistorRetryPolicy.ExecuteWithRetryAsync(
-            async (cancellationToken) =>
+            async token =>
             {
-                await using EcliptixSchemaContext ctx = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-                return await operation(ctx, cancellationToken);
+                await using EcliptixSchemaContext ctx = await dbContextFactory.CreateDbContextAsync(token);
+                return await operation(ctx, token);
             },
             operationName,
             operationTimeout,
             (dbEx, opName) => MapDbException(dbEx),
-            (timeoutEx, opName) => CreateTimeoutFailure(timeoutEx),
+            (timeoutEx, _) => CreateTimeoutFailure(timeoutEx),
             (ex, opName) => CreateGenericFailure(ex),
             cancellationToken);
     }
@@ -71,19 +63,6 @@ public abstract class PersistorBase<TFailure> : ReceiveActor
     protected abstract TFailure MapDbException(DbException ex);
     protected abstract TFailure CreateTimeoutFailure(TimeoutException ex);
     protected abstract TFailure CreateGenericFailure(Exception ex);
-
-    private static Dictionary<string, TimeSpan> GetOperationTimeouts()
-    {
-        return new Dictionary<string, TimeSpan>
-        {
-            ["Create"] = TimeoutConfiguration.Database.CreateTimeout,
-            ["Update"] = TimeoutConfiguration.Database.UpdateTimeout,
-            ["Delete"] = TimeoutConfiguration.Database.DeleteTimeout,
-            ["Get"] = TimeoutConfiguration.Database.GetTimeout,
-            ["Query"] = TimeoutConfiguration.Database.QueryTimeout,
-            ["List"] = TimeoutConfiguration.Database.ListTimeout
-        };
-    }
 
     protected override SupervisorStrategy SupervisorStrategy()
     {

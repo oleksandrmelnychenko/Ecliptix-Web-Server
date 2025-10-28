@@ -28,6 +28,7 @@ message OpaqueRegistrationInitResponse {
 message OpaqueRegistrationCompleteRequest {
   bytes peer_registration_record = 1;
   bytes membership_identifier = 2;
+  bytes master_key = 3;
 }
 
 message OpaqueRegistrationCompleteResponse {
@@ -110,10 +111,39 @@ message OpaqueRecoverySecureKeyInitResponse {
 message OpaqueRecoverySecretKeyCompleteRequest {
   bytes peer_recovery_record = 1;
   bytes membership_identifier = 2;
+  bytes master_key = 3;
 }
 
 message OpaqueRecoverySecretKeyCompleteResponse {
   optional string message = 1;
+}
+
+// Master Key Share Messages
+message GetMasterKeySharesRequest {
+  bytes membership_identifier = 1;
+}
+
+message MasterKeyShare {
+  int32 share_index = 1;
+  bytes share_data = 2;
+  string share_metadata = 3;
+  string storage_location = 4;
+  int32 credentials_version = 5;
+}
+
+message GetMasterKeySharesResponse {
+  repeated MasterKeyShare shares = 1;
+
+  enum ShareFetchResult {
+    SUCCEEDED = 0;
+    MEMBERSHIP_NOT_FOUND = 1;
+    SHARES_NOT_FOUND = 2;
+    INSUFFICIENT_SHARES = 3;
+    UNAUTHORIZED = 4;
+  }
+
+  ShareFetchResult result = 2;
+  optional string message = 3;
 }
 
 // AKE State Messages

@@ -49,6 +49,7 @@ message VerificationCountdownUpdate {
     MAX_ATTEMPTS_REACHED = 4;
     SESSION_EXPIRED = 5;
     RESEND_COOLDOWN = 6;
+    SERVER_UNAVAILABLE = 7;
   }
 
   CountdownUpdateStatus status = 4;
@@ -80,9 +81,18 @@ message ValidateMobileNumberResponse {
 }
 
 message CheckMobileNumberAvailabilityRequest {
-  bytes mobile_number_identifier = 1;
+  bytes mobile_number_id = 1;
+  bytes device_id = 2;
 }
 
 message CheckMobileNumberAvailabilityResponse {
-  string status = 1;
+  MobileAvailabilityStatus status = 1;
+  bool can_register = 2;
+  bool can_continue = 3;
+  optional bytes existing_membership_id = 4;
+  optional bytes registered_device_id = 5;
+  optional Membership.CreationStatus creation_status = 6;
+  optional Membership.ActivityStatus activity_status = 7;
+  string localization_key = 8;
+  optional bytes account_unique_identifier = 9;
 }

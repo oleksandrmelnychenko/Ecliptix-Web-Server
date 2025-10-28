@@ -22,6 +22,27 @@ message Membership {
   optional bytes account_unique_identifier = 5;
 }
 
+enum MobileAvailabilityStatus {
+  AVAILABLE = 0;
+  INCOMPLETE_REGISTRATION = 1;
+  TAKEN_ACTIVE = 2;
+  TAKEN_INACTIVE = 3;
+  DATA_CORRUPTION = 4;
+  REGISTRATION_EXPIRED = 5;
+}
+
+message MobileNumberAvailabilityResponse {
+  MobileAvailabilityStatus status = 1;
+  bool can_register = 2;
+  bool can_continue = 3;
+  optional bytes existing_membership_id = 4;
+  optional bytes registered_device_id = 5;
+  optional Membership.CreationStatus creation_status = 6;
+  optional Membership.ActivityStatus activity_status = 7;
+  string localization_key = 8;
+  optional bytes account_unique_identifier = 9;
+}
+
 enum LogoutScope {
   THIS_DEVICE = 0;
   ALL_DEVICES = 1;

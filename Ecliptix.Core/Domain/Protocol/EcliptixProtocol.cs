@@ -1,6 +1,6 @@
-using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Utilities;
 using Serilog;
 using Serilog.Events;
 
@@ -20,13 +20,13 @@ public static class EcliptixProtocol
 
         Result<EcliptixProtocolConnection, EcliptixProtocolFailure> connResult =
             EcliptixProtocolConnection.FromProtoState(state.ConnectId, state.RatchetState);
-        if (connResult.IsErr)
+        if (!connResult.IsErr)
         {
-            idKeysResult.Unwrap().Dispose();
-            return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Err(connResult.UnwrapErr());
+            return EcliptixProtocolSystem.CreateFrom(idKeysResult.Unwrap(), connResult.Unwrap());
         }
 
-        return EcliptixProtocolSystem.CreateFrom(idKeysResult.Unwrap(), connResult.Unwrap());
+        idKeysResult.Unwrap().Dispose();
+        return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Err(connResult.UnwrapErr());
     }
 
     public static Result<EcliptixSessionState, EcliptixProtocolFailure> CreateStateFromSystem(

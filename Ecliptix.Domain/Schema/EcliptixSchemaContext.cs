@@ -1,8 +1,8 @@
+using Ecliptix.Domain.Schema.Configurations;
+using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Domain.Schema.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
-using Ecliptix.Domain.Schema.Entities;
-using Ecliptix.Domain.Schema.Configurations;
-using Ecliptix.Domain.Schema.Interfaces;
 
 namespace Ecliptix.Domain.Schema;
 
