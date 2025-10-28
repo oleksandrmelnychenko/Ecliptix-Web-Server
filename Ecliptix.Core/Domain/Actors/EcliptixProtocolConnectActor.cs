@@ -329,76 +329,88 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         PubKeyExchangeType exchangeType = cmd.PubKeyExchange.OfType;
         if (_protocolSystems.TryGetValue(exchangeType, out EcliptixProtocolSystem? existingSystem) && _state != null)
         {
-            Context.GetLogger()
-                .Info(ActorConstants.LogMessages.UsingExistingSession, cmd.ConnectId, exchangeType);
-            Result<PubKeyExchange, EcliptixProtocolFailure> existingReplyResult =
-                existingSystem.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.PubKeyExchange);
-
-            bool sessionStillValid = true;
-            try
+            if (IsAuthenticatedSession())
             {
-                existingSystem.GetConnection();
-            }
-            catch (InvalidOperationException)
-            {
-                Context.GetLogger()
-                    .Info(ActorConstants.LogMessages.SystemDetectedFreshHandshake);
+                Context.GetLogger().Info(
+                    "[HANDSHAKE-TRANSITION] Disposing authenticated session for anonymous handshake. ConnectId: {0}",
+                    cmd.ConnectId);
                 DisposeAllSystems();
                 _state = null;
-                sessionStillValid = false;
                 SaveSnapshot(new EcliptixSessionState());
             }
-
-            if (sessionStillValid)
+            else
             {
-                if (existingReplyResult.IsOk)
+                Context.GetLogger()
+                    .Info(ActorConstants.LogMessages.UsingExistingSession, cmd.ConnectId, exchangeType);
+                Result<PubKeyExchange, EcliptixProtocolFailure> existingReplyResult =
+                    existingSystem.ProcessAndRespondToPubKeyExchange(cmd.ConnectId, cmd.PubKeyExchange);
+
+                bool sessionStillValid = true;
+                try
                 {
-                    if (exchangeType == PubKeyExchangeType.DataCenterEphemeralConnect)
-                    {
-                        Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
-                            EcliptixProtocol.CreateStateFromSystem(_state!, existingSystem!);
-                        if (newStateResult.IsOk)
-                        {
-                            _state = newStateResult.Unwrap();
-                            Persist(_state, _ => { });
-                        }
+                    existingSystem.GetConnection();
+                }
+                catch (InvalidOperationException)
+                {
+                    Context.GetLogger()
+                        .Info(ActorConstants.LogMessages.SystemDetectedFreshHandshake);
+                    DisposeAllSystems();
+                    _state = null;
+                    sessionStillValid = false;
+                    SaveSnapshot(new EcliptixSessionState());
+                }
 
-                        _currentExchangeType = exchangeType;
-                        Context.SetReceiveTimeout(IdleTimeout);
-                        Context.GetLogger().Info("[PROTOCOL] DataCenter - using idle timeout for ConnectId {0}",
-                            cmd.ConnectId);
-                    }
-                    else
-                    {
-                        _currentExchangeType = exchangeType;
-                        Context.SetReceiveTimeout(null);
-                        Context.GetLogger()
-                            .Info(
-                                "[PROTOCOL] {0} - no timeout (ephemeral) for ConnectId {1}",
-                                exchangeType, cmd.ConnectId);
-                    }
-
+                if (sessionStillValid)
+                {
                     if (existingReplyResult.IsOk)
                     {
-                        PubKeyExchange pubKeyReply = existingReplyResult.Unwrap();
-                        Sender.Tell(
-                            Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(
-                                new DeriveSharedSecretReply(pubKeyReply)));
+                        if (exchangeType == PubKeyExchangeType.DataCenterEphemeralConnect)
+                        {
+                            Result<EcliptixSessionState, EcliptixProtocolFailure> newStateResult =
+                                EcliptixProtocol.CreateStateFromSystem(_state!, existingSystem!);
+                            if (newStateResult.IsOk)
+                            {
+                                _state = newStateResult.Unwrap();
+                                Persist(_state, _ => { });
+                            }
+
+                            _currentExchangeType = exchangeType;
+                            Context.SetReceiveTimeout(IdleTimeout);
+                            Context.GetLogger().Info("[PROTOCOL] DataCenter - using idle timeout for ConnectId {0}",
+                                cmd.ConnectId);
+                        }
+                        else
+                        {
+                            _currentExchangeType = exchangeType;
+                            Context.SetReceiveTimeout(null);
+                            Context.GetLogger()
+                                .Info(
+                                    "[PROTOCOL] {0} - no timeout (ephemeral) for ConnectId {1}",
+                                    exchangeType, cmd.ConnectId);
+                        }
+
+                        if (existingReplyResult.IsOk)
+                        {
+                            PubKeyExchange pubKeyReply = existingReplyResult.Unwrap();
+                            Sender.Tell(
+                                Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(
+                                    new DeriveSharedSecretReply(pubKeyReply)));
+                        }
+                        else
+                        {
+                            Sender.Tell(
+                                Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(
+                                    existingReplyResult.UnwrapErr()));
+                        }
                     }
                     else
                     {
                         Sender.Tell(
-                            Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(
-                                existingReplyResult.UnwrapErr()));
+                            Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(existingReplyResult.UnwrapErr()));
                     }
-                }
-                else
-                {
-                    Sender.Tell(
-                        Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(existingReplyResult.UnwrapErr()));
-                }
 
-                return;
+                    return;
+                }
             }
         }
 
@@ -893,8 +905,16 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             return;
         }
 
+        if (!IsAuthenticatedSession())
+        {
+            Context.GetLogger()
+                .Info("[SESSION_CLEANUP] Skipping - anonymous session present (post-logout reconnection). ConnectId: {0}",
+                    connectId);
+            return;
+        }
+
         Context.GetLogger()
-            .Info("[SESSION_CLEANUP] Clearing ALL protocol systems and state for ConnectId: {0}", connectId);
+            .Info("[SESSION_CLEANUP] Clearing authenticated session for ConnectId: {0}", connectId);
 
         DisposeAllSystems();
         _currentExchangeType = null;
