@@ -179,6 +179,16 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         Recover<RecoveryCompleted>(_ =>
         {
+            if (_pendingSignIns.Count > 0)
+            {
+                Log.Warning(
+                    "[MEMBERSHIP-RECOVERY] Clearing {0} stale pending sign-ins after restart. " +
+                    "OPAQUE ServerMac is ephemeral and becomes invalid after restart. " +
+                    "Client will automatically reinitiate sign-in flow.",
+                    _pendingSignIns.Count);
+                _pendingSignIns.Clear();
+            }
+
             Log.Info("[MEMBERSHIP-RECOVERY] ✅ Recovery completed successfully. LastSequenceNr: {0}, PendingSignIns: {1}, PendingMaskingKeys: {2}, RecoverySessions: {3}",
                 LastSequenceNr, _pendingSignIns.Count, _pendingMaskingKeys.Count, _pendingRecoveryTimestamps.Count);
         });
