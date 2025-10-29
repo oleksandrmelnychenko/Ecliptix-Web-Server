@@ -354,7 +354,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             if (deviceContext == null)
             {
                 bool deviceExists = await schemaContext.Devices
-                    .Where(d => d.UniqueId == cmd.DeviceId && !d.IsDeleted)
+                    .Where(d => d.DeviceId == cmd.DeviceId && !d.IsDeleted)
                     .AnyAsync(cancellationToken);
 
                 if (deviceExists)

@@ -17,7 +17,7 @@ public class AccountSecureKeyAuthConfiguration : EntityBaseMap<AccountSecureKeyA
 
         builder.Property(e => e.SecureKey)
             .IsRequired()
-            .HasColumnType("VARBINARY(208)");
+            .HasColumnType("VARBINARY(240)");
 
         builder.Property(e => e.MaskingKey)
             .IsRequired()
