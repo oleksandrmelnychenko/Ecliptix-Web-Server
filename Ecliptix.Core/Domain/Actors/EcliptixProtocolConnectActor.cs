@@ -545,12 +545,6 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             system = primaryProtocolSystemOpt.Value!;
         }
 
-        if (_state == null)
-        {
-            Context.GetLogger().Warning("[SERVER-ENCRYPT-BEFORE] _state is NULL before encryption. ConnectId: {0}",
-                connectId);
-        }
-
         Result<EncryptionResult, EcliptixProtocolFailure> result =
             EncryptionHandler.EncryptPayload(system, _state, cmd.Payload, cmd.PubKeyExchangeType);
 

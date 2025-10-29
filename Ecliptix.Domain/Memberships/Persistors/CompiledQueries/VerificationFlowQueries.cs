@@ -71,6 +71,23 @@ public static class VerificationFlowQueries
         return result is not null ? Option<VerificationFlowEntity>.Some(result) : Option<VerificationFlowEntity>.None;
     }
 
+    public static async Task<Option<(VerificationFlowStatus Status, DateTimeOffset ExpiresAt)>> GetFlowStatusByConnectionId(
+        EcliptixSchemaContext ctx,
+        long connectionId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await ctx.VerificationFlows
+            .Where(f => f.ConnectionId == connectionId && !f.IsDeleted)
+            .OrderByDescending(f => f.CreatedAt)
+            .Select(f => new { f.Status, f.ExpiresAt })
+            .AsNoTracking()
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return result is not null
+            ? Option<(VerificationFlowStatus, DateTimeOffset)>.Some((result.Status, result.ExpiresAt))
+            : Option<(VerificationFlowStatus, DateTimeOffset)>.None;
+    }
+
     public static async Task<bool> HasActiveFlow(
         EcliptixSchemaContext ctx,
         Guid mobileUniqueId,

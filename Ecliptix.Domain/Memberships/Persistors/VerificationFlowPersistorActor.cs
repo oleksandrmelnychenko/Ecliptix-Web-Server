@@ -114,6 +114,10 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         ReceivePersistorCommand<GetOtpAttemptCountActorEvent, short>(
             GetOtpAttemptCountAsync,
             "GetOtpAttemptCount");
+
+        ReceivePersistorCommand<QueryFlowStatusByConnectionIdActorEvent, FlowStatusQueryRecord>(
+            QueryFlowStatusByConnectionIdAsync,
+            "QueryFlowStatusByConnectionId");
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
@@ -1252,6 +1256,37 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         }
 
         return VerificationFlowFailure.PersistorAccess("Database operation failed", ex);
+    }
+
+    private async Task<Result<FlowStatusQueryRecord, VerificationFlowFailure>> QueryFlowStatusByConnectionIdAsync(
+        EcliptixSchemaContext schemeContext,
+        QueryFlowStatusByConnectionIdActorEvent cmd,
+        CancellationToken cancellationToken)
+    {
+        Option<(VerificationFlowStatus Status, DateTimeOffset ExpiresAt)> flowStatusOpt =
+            await VerificationFlowQueries.GetFlowStatusByConnectionId(
+                schemeContext,
+                cmd.ConnectionId,
+                cancellationToken);
+
+        if (!flowStatusOpt.IsSome)
+        {
+            FlowStatusQueryRecord notFoundResult = new(
+                IsFound: false,
+                Status: VerificationFlowStatus.Pending,
+                ExpiresAt: DateTimeOffset.MinValue);
+
+            return Result<FlowStatusQueryRecord, VerificationFlowFailure>.Ok(notFoundResult);
+        }
+
+        (VerificationFlowStatus status, DateTimeOffset expiresAt) = flowStatusOpt.Value!;
+
+        FlowStatusQueryRecord result = new(
+            IsFound: true,
+            Status: status,
+            ExpiresAt: expiresAt);
+
+        return Result<FlowStatusQueryRecord, VerificationFlowFailure>.Ok(result);
     }
 
     protected override VerificationFlowFailure CreateTimeoutFailure(TimeoutException ex)

@@ -60,7 +60,7 @@ public sealed class OneTimePassword
                 string otp = GenerateOtpCode();
                 DateTimeOffset expiresAt = _utcNow().Add(_timeToLive);
 
-            (string hash, string salt) = OneTimePasswordHashing.HashOtp(otp);
+                (string hash, string salt) = OneTimePasswordHashing.HashOtp(otp);
                 OtpQueryRecord otpQueryRecord = new()
                 {
                     UniqueIdentifier = _uniqueIdentifier,
@@ -97,7 +97,6 @@ public sealed class OneTimePassword
 
         ConsumeOtp();
         return false;
-
     }
 
     private void ConsumeOtp()

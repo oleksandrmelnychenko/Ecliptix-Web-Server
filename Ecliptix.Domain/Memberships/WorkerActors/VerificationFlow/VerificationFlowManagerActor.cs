@@ -6,7 +6,7 @@ using Ecliptix.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.Domain.Memberships.ActorEvents.MobileNumber;
 using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Domain.Memberships.Persistors.QueryResults;
+using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Providers.Twilio;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Utilities;
@@ -57,7 +57,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     private void Ready()
     {
         ReceiveAsync<InitiateVerificationFlowActorEvent>(HandleInitiateFlowAsync);
-        Receive<VerifyFlowActorEvent>(HandleVerifyFlow);
+        ReceiveAsync<VerifyFlowActorEvent>(HandleVerifyFlowAsync);
         Receive<Terminated>(HandleTerminated);
         Receive<EnsureMobileNumberActorEvent>(actorEvent => _persistor.Forward(actorEvent));
         Receive<VerifyMobileForSecretKeyRecoveryActorEvent>(actorEvent => _persistor.Forward(actorEvent));
@@ -267,7 +267,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         }
     }
 
-    private void HandleVerifyFlow(VerifyFlowActorEvent actorEvent)
+    private async Task HandleVerifyFlowAsync(VerifyFlowActorEvent actorEvent)
     {
         IActorRef? childActor = Context.Child(GetActorName(actorEvent.ConnectId));
 
@@ -277,8 +277,67 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         }
         else
         {
-            Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.NotFound()));
+            QueryFlowStatusByConnectionIdActorEvent queryEvent = new(
+                actorEvent.ConnectId,
+                actorEvent.CancellationToken);
+
+            Result<FlowStatusQueryRecord, VerificationFlowFailure> queryResult =
+                await _persistor.Ask<Result<FlowStatusQueryRecord, VerificationFlowFailure>>(
+                    queryEvent,
+                    TimeoutConfiguration.Actor.AskTimeout,
+                    actorEvent.CancellationToken);
+
+            if (queryResult.IsErr)
+            {
+                Log.Warning(
+                    "[verification.flow.manager.verify-query-failed] ConnectId {ConnectId} - Query failed",
+                    actorEvent.ConnectId);
+
+                Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(queryResult.UnwrapErr()));
+                return;
+            }
+
+            FlowStatusQueryRecord flowStatus = queryResult.Unwrap();
+            VerificationFlowFailure failure;
+
+            if (!flowStatus.IsFound)
+            {
+                failure = VerificationFlowFailure.NotFound();
+
+                Log.Information(
+                    "[verification.flow.manager.verify-not-found] ConnectId {ConnectId} - No flow found",
+                    actorEvent.ConnectId);
+            }
+            else if (flowStatus.Status == VerificationFlowStatus.Expired || flowStatus.ExpiresAt < DateTimeOffset.UtcNow)
+            {
+                failure = new VerificationFlowFailure(
+                    VerificationFlowFailureType.Expired,
+                    VerificationFlowMessageKeys.VerificationFlowExpired);
+
+                Log.Information(
+                    "[verification.flow.manager.verify-expired] ConnectId {ConnectId} - Session expired",
+                    actorEvent.ConnectId);
+            }
+            else if (flowStatus.Status == VerificationFlowStatus.Verified)
+            {
+                failure = new VerificationFlowFailure(
+                    VerificationFlowFailureType.Validation,
+                    "Verification already completed");
+
+                Log.Information(
+                    "[verification.flow.manager.verify-already-completed] ConnectId {ConnectId} - Already verified",
+                    actorEvent.ConnectId);
+            }
+            else
+            {
+                failure = VerificationFlowFailure.NotFound();
+
+                Log.Warning(
+                    "[verification.flow.manager.verify-actor-missing] ConnectId {ConnectId} Status {Status} - Flow exists but actor missing",
+                    actorEvent.ConnectId, flowStatus.Status);
+            }
+
+            Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(failure));
         }
     }
 

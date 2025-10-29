@@ -741,35 +741,6 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             Log.Information("[GET-MEMBERSHIP-BY-FLOW] Membership found: {MembershipId} for flow: {FlowId}",
                 membership.UniqueId, cmd.VerificationFlowId);
 
-            if (verificationFlow.Purpose == VerificationPurpose.PasswordRecovery)
-            {
-                Option<AccountEntity> defaultAccountOpt =
-                    await AccountQueries.GetDefaultAccountByMembershipId(ctx, membership.UniqueId);
-
-                if (!defaultAccountOpt.IsSome)
-                {
-                    Log.Warning(
-                        "[GET-MEMBERSHIP-BY-FLOW] Password recovery blocked - no default account exists for membership: {MembershipId}",
-                        membership.UniqueId);
-                    return Result<MembershipQueryRecord, MembershipFailure>.Err(
-                        MembershipFailure.ValidationFailed(
-                            "No account found for this membership. Please complete registration first."));
-                }
-
-                Option<AccountSecureKeyAuthEntity> authOpt =
-                    await AccountSecureKeyAuthQueries.GetPrimaryForAccount(ctx, defaultAccountOpt.Value.UniqueId);
-
-                if (!authOpt.IsSome)
-                {
-                    Log.Warning(
-                        "[GET-MEMBERSHIP-BY-FLOW] Password recovery blocked - no credentials set for default account: {AccountId}",
-                        defaultAccountOpt.Value.UniqueId);
-                    return Result<MembershipQueryRecord, MembershipFailure>.Err(
-                        MembershipFailure.ValidationFailed(
-                            "No secure key found for this account. Please complete registration first."));
-                }
-            }
-
             ProtoMembership.Types.CreationStatus creationStatus = membership.CreationStatus switch
             {
                 MembershipCreationStatus.OtpVerified => ProtoMembership.Types.CreationStatus.OtpVerified,
