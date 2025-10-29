@@ -13,7 +13,8 @@ using Ecliptix.Domain.Memberships.ActorEvents.Account;
 using Ecliptix.Domain.Memberships.ActorEvents.Logout;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
-using Ecliptix.Domain.Memberships.WorkerActors;
+using Ecliptix.Domain.Memberships.WorkerActors.Membership;
+using Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Domain.Services.Security;
 using Ecliptix.Protobuf.Common;
@@ -420,10 +421,8 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             if (handleResult.IsErr)
             {
                 FailureBase failure = handleResult.UnwrapErr();
-                Log.Error(
-                    "[LOGOUT-PROOF] Failed to retrieve master key handle for MembershipId: {MembershipId}. Error: {Error}",
-                    membershipId, failure.Message);
-                throw new InvalidOperationException("Unable to generate revocation proof without master key handle.");
+                throw new InvalidOperationException(
+                    $"Unable to generate revocation proof without master key handle for MembershipId: {membershipId}. Error: {failure.Message}");
             }
 
             masterKeyHandle = (SodiumSecureMemoryHandle)handleResult.Unwrap();
@@ -434,10 +433,8 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             if (proofKeyResult.IsErr)
             {
                 SodiumFailure failure = proofKeyResult.UnwrapErr();
-                Log.Error(
-                    "[LOGOUT-PROOF] Failed to derive logout proof key for MembershipId: {MembershipId}. Error: {Error}",
-                    membershipId, failure.Message);
-                throw new InvalidOperationException("Unable to derive logout proof key.");
+                throw new InvalidOperationException(
+                    $"Unable to derive logout proof key for MembershipId: {membershipId}. Error: {failure.Message}");
             }
 
             proofKey = proofKeyResult.Unwrap();

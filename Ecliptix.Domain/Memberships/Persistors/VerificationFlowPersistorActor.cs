@@ -27,13 +27,13 @@ namespace Ecliptix.Domain.Memberships.Persistors;
 
 public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFailure>
 {
-    private readonly IActorRef? _membershipPersistorActor;
+    private readonly Option<IActorRef> _membershipPersistorActor;
     private readonly IOptionsMonitor<SecurityConfiguration> _securityConfig;
 
     public VerificationFlowPersistorActor(
         IDbContextFactory<EcliptixSchemaContext> dbContextFactory,
         IOptionsMonitor<SecurityConfiguration> securityConfig,
-        IActorRef? membershipPersistorActor = null)
+        Option<IActorRef> membershipPersistorActor = default)
         : base(dbContextFactory)
     {
         _membershipPersistorActor = membershipPersistorActor;
@@ -42,7 +42,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     }
 
     public static Props Build(IDbContextFactory<EcliptixSchemaContext> dbContextFactory,
-        IOptionsMonitor<SecurityConfiguration> securityConfig, IActorRef? membershipPersistorActor = null)
+        IOptionsMonitor<SecurityConfiguration> securityConfig, Option<IActorRef> membershipPersistorActor = default)
     {
         return Props.Create(() =>
             new VerificationFlowPersistorActor(dbContextFactory, securityConfig, membershipPersistorActor));
@@ -187,7 +187,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 persistorSettings = _securityConfig.CurrentValue.VerificationFlowPersistor;
             Option<MobileNumberEntity> mobileOpt =
                 await MobileNumberQueries.GetByUniqueId(schemeContext, cmd.MobileNumberUniqueId, cancellationToken);
-            if (!mobileOpt.HasValue)
+            if (!mobileOpt.IsSome)
             {
                 Log.Warning("[InitiateFlow] Mobile number not found: {MobileNumberId}", cmd.MobileNumberUniqueId);
                 await transaction.RollbackAsync();
@@ -197,7 +197,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             MobileNumberEntity mobile = mobileOpt.Value!;
 
-            bool deviceExists = await DeviceQueries.ExistsByUniqueId(schemeContext, cmd.AppDeviceId, cancellationToken);
+            bool deviceExists = await DeviceQueries.ExistsByDeviceId(schemeContext, cmd.AppDeviceId, cancellationToken);
             if (!deviceExists)
             {
                 Log.Warning("[InitiateFlow] Device not found: {DeviceId}", cmd.AppDeviceId);
@@ -214,7 +214,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     cmd.Purpose,
                     cancellationToken);
 
-            if (existingActiveFlowOpt.HasValue)
+            if (existingActiveFlowOpt.IsSome)
             {
                 VerificationFlowEntity existingActiveFlow = existingActiveFlowOpt.Value!;
                 DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -364,7 +364,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             Option<VerificationFlowEntity> flowWithOtpOpt =
                 await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(schemeContext, flow.UniqueId,
                     cancellationToken);
-            if (!flowWithOtpOpt.HasValue)
+            if (!flowWithOtpOpt.IsSome)
             {
                 Log.Error("[InitiateFlow] Flow not found after creation: {FlowId}", flow.UniqueId);
                 return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
@@ -392,7 +392,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         {
             Option<VerificationFlowEntity> flowOpt =
                 await VerificationFlowQueries.GetByUniqueId(schemeContext, cmd.FlowUniqueId, cancellationToken);
-            if (!flowOpt.HasValue)
+            if (!flowOpt.IsSome)
             {
                 Log.Warning("[RequestResend] Flow not found: {FlowId}", cmd.FlowUniqueId);
                 return Result<(string, uint), VerificationFlowFailure>.Err(
@@ -494,7 +494,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         {
             Option<MobileNumberEntity> mobileOpt =
                 await MobileNumberQueries.GetByUniqueId(schemeContext, cmd.MobileNumberIdentifier, cancellationToken);
-            if (!mobileOpt.HasValue)
+            if (!mobileOpt.IsSome)
             {
                 return Result<MobileNumberQueryRecord, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.NotFound(VerificationFlowMessageKeys.MobileNotFound));
@@ -557,7 +557,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             await transaction.CommitAsync(cancellationToken);
 
-            if (purpose == VerificationPurpose.PasswordRecovery && newStatus == VerificationFlowStatus.Verified && _membershipPersistorActor != null)
+            if (purpose == VerificationPurpose.PasswordRecovery && newStatus == VerificationFlowStatus.Verified && _membershipPersistorActor.IsSome)
             {
                 Log.Information(
                     "[UPDATE-FLOW-STATUS] Password recovery flow {FlowId} marked as verified. Sending async request to update membership VerificationFlowId",
@@ -569,7 +569,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     newStatus,
                     cancellationToken);
 
-                _membershipPersistorActor.Tell(updateMembershipEvent);
+                _membershipPersistorActor.Value.Tell(updateMembershipEvent);
 
                 Log.Information("[UPDATE-FLOW-STATUS] Membership update request sent for flow {FlowId}",
                     cmd.FlowIdentifier);
@@ -596,7 +596,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             Option<MembershipEntity> membershipOpt =
                 await MembershipQueries.GetByMobileUniqueId(schemeContext, cmd.MobileNumberId, cancellationToken);
 
-            if (!membershipOpt.HasValue)
+            if (!membershipOpt.IsSome)
             {
                 return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(
                     new ExistingMembershipResult { MembershipExists = false });
@@ -628,7 +628,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 UniqueIdentifier = Helpers.GuidToByteString(membership.UniqueId),
                 Status = activityStatus,
                 CreationStatus = creationStatus,
-                AccountUniqueIdentifier = accountOpt.HasValue
+                AccountUniqueIdentifier = accountOpt.IsSome
                     ? Helpers.GuidToByteString(accountOpt.Value.UniqueId)
                     : ByteString.Empty
             };
@@ -899,7 +899,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             Option<VerificationFlowEntity> flowOpt =
                 await VerificationFlowQueries.GetByUniqueId(schemeContext, cmd.OtpRecord.FlowUniqueId,
                     cancellationToken);
-            if (!flowOpt.HasValue || flowOpt.Value!.ExpiresAt <= DateTimeOffset.UtcNow)
+            if (!flowOpt.IsSome || flowOpt.Value!.ExpiresAt <= DateTimeOffset.UtcNow)
             {
                 await transaction.RollbackAsync();
                 return Result<CreateOtpResult, VerificationFlowFailure>.Err(
@@ -1034,7 +1034,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             Option<MobileNumberEntity> existingOpt = await MobileNumberQueries.GetByNumberAndRegion(
                 schemeContext, cmd.MobileNumber, cmd.RegionCode, cancellationToken);
 
-            if (existingOpt.HasValue)
+            if (existingOpt.IsSome)
             {
                 await transaction.CommitAsync(cancellationToken);
                 return Result<Guid, VerificationFlowFailure>.Ok(existingOpt.Value!.UniqueId);
@@ -1075,7 +1075,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             Option<MobileNumberEntity> mobileOpt = await MobileNumberQueries.GetByNumberAndRegion(
                 schemeContext, cmd.MobileNumber, cmd.RegionCode, cancellationToken);
 
-            if (!mobileOpt.HasValue)
+            if (!mobileOpt.IsSome)
             {
                 return Result<Guid, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.FromMobileNumber(MobileNumberFailure.NotFound()));
@@ -1113,12 +1113,14 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             UniqueIdentifier = flow.UniqueId,
             MobileNumberIdentifier = flow.MobileNumber?.UniqueId ?? Guid.Empty,
             AppDeviceIdentifier = flow.AppDeviceId,
-            ConnectId = (uint?)flow.ConnectionId,
+            ConnectId = flow.ConnectionId.HasValue
+                ? Option<uint>.Some((uint)flow.ConnectionId.Value)
+                : Option<uint>.None,
             ExpiresAt = flow.ExpiresAt,
             Status = flow.Status,
             Purpose = flow.Purpose,
             OtpCount = flow.OtpCount,
-            OtpActive = otpActive.HasValue ? otpActive.Value! : null
+            OtpActive = otpActive
         };
 
         return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Ok(flowRecord);

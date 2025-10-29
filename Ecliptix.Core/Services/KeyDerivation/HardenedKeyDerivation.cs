@@ -8,7 +8,6 @@ using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures;
 using Ecliptix.Utilities.Failures.Sodium;
 using Konscious.Security.Cryptography;
-using Serilog.Events;
 
 namespace Ecliptix.Core.Services.KeyDerivation;
 
@@ -23,19 +22,6 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
     private const int CounterIncrement = 1;
     private const int StartingCounter = 1;
     private const int FirstRoundIndex = 0;
-
-    private const string LogTagServerEnhancedArgon2Id = "[SERVER-ENHANCED-ARGON2ID]";
-    private const string LogTagServerEnhancedHkdf = "[SERVER-ENHANCED-HKDF]";
-    private const string LogTagServerEnhancedFinal = "[SERVER-ENHANCED-FINAL]";
-
-    private const string LogMessageArgon2IdCompleted =
-        "{LogTag} Enhanced key Argon2id stretch completed. Context: {Context}, StretchedKeyFingerprint: {StretchedKeyFingerprint}";
-
-    private const string LogMessageHkdfCompleted =
-        "{LogTag} Enhanced key HKDF expansion completed. Context: {Context}, ExpandedKeyFingerprint: {ExpandedKeyFingerprint}";
-
-    private const string LogMessageFinalCompleted =
-        "{LogTag} Enhanced key final (after additional rounds). Context: {Context}, FinalKeyFingerprint: {FinalKeyFingerprint}";
 
     public async Task<Result<SodiumSecureMemoryHandle, KeySplittingFailure>> DeriveEnhancedMasterKeyHandleAsync(
         SodiumSecureMemoryHandle baseKeyHandle,
@@ -130,25 +116,7 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
 
             byte[] stretchedKey = stretchedResult.Unwrap();
 
-            if (Serilog.Log.IsEnabled(LogEventLevel.Debug))
-            {
-                string stretchedKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(stretchedKey);
-                Serilog.Log.Debug(LogMessageArgon2IdCompleted,
-                    LogTagServerEnhancedArgon2Id,
-                    context,
-                    stretchedKeyFingerprint);
-            }
-
             byte[] expandedKey = await ExpandKeyWithHkdfAsync(stretchedKey, context, options.OutputLength);
-
-            if (Serilog.Log.IsEnabled(LogEventLevel.Debug))
-            {
-                string expandedKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(expandedKey);
-                Serilog.Log.Debug(LogMessageHkdfCompleted,
-                    LogTagServerEnhancedHkdf,
-                    context,
-                    expandedKeyFingerprint);
-            }
 
             if (options.UseHardwareEntropy)
             {
@@ -171,15 +139,6 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
             }
 
             byte[] finalKey = await ApplyAdditionalRoundsAsync(expandedKey);
-
-            if (Serilog.Log.IsEnabled(LogEventLevel.Debug))
-            {
-                string finalKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(finalKey);
-                Serilog.Log.Debug(LogMessageFinalCompleted,
-                    LogTagServerEnhancedFinal,
-                    context,
-                    finalKeyFingerprint);
-            }
 
             CryptographicOperations.ZeroMemory(stretchedKey);
             CryptographicOperations.ZeroMemory(expandedKey);

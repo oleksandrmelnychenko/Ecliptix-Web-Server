@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
+public record CredentialsRecord(byte[] SecureKey, byte[] MaskingKey, int Version);
+
 public static class AccountSecureKeyAuthQueries
 {
     private static readonly Func<EcliptixSchemaContext, Guid, Task<AccountSecureKeyAuthEntity?>>
@@ -90,19 +92,22 @@ public static class AccountSecureKeyAuthQueries
             : Option<AccountSecureKeyAuthEntity>.None;
     }
 
-    public static async Task<(byte[] SecureKey, byte[] MaskingKey, int Version)?> GetCredentialsForAccount(
+    public static async Task<Option<CredentialsRecord>> GetCredentialsForAccount(
         EcliptixSchemaContext ctx,
         Guid accountId)
     {
         Option<AccountSecureKeyAuthEntity> authOpt = await GetPrimaryForAccount(ctx, accountId);
 
-        if (!authOpt.HasValue)
+        if (!authOpt.IsSome)
         {
-            return null;
+            return Option<CredentialsRecord>.None;
         }
 
         AccountSecureKeyAuthEntity auth = authOpt.Value;
-        return (auth.SecureKey, auth.MaskingKey, auth.CredentialsVersion);
+        return Option<CredentialsRecord>.Some(new CredentialsRecord(
+            auth.SecureKey,
+            auth.MaskingKey,
+            auth.CredentialsVersion));
     }
 
     private static readonly Func<EcliptixSchemaContext, Guid, Task<AccountSecureKeyAuthEntity?>>
@@ -118,11 +123,16 @@ public static class AccountSecureKeyAuthQueries
                     .AsNoTracking()
                     .FirstOrDefault());
 
-    public static async Task<(byte[] SecureKey, byte[] MaskingKey, int Version)?> GetCredentialsForMembership(
+    public static async Task<Option<CredentialsRecord>> GetCredentialsForMembership(
         EcliptixSchemaContext ctx,
         Guid membershipId)
     {
         AccountSecureKeyAuthEntity? auth = await GetCredentialsForMembershipCompiled(ctx, membershipId);
-        return auth != null ? (auth.SecureKey, auth.MaskingKey, auth.CredentialsVersion) : null;
+        return auth != null
+            ? Option<CredentialsRecord>.Some(new CredentialsRecord(
+                auth.SecureKey,
+                auth.MaskingKey,
+                auth.CredentialsVersion))
+            : Option<CredentialsRecord>.None;
     }
 }

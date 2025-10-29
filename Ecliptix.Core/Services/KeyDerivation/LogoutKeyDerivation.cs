@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures.Sodium;
-using Serilog;
 
 namespace Ecliptix.Core.Services.KeyDerivation;
 
@@ -12,12 +11,6 @@ public static class LogoutKeyDerivation
 
     private const string LogoutHmacKeyInfo = "ecliptix-logout-hmac-v1";
     private const string LogoutProofKeyInfo = "ecliptix-logout-proof-v1";
-
-    private const string LogTagLogoutHmacKey = "[LOGOUT-HMAC-KEY]";
-    private const string LogTagLogoutProofKey = "[LOGOUT-PROOF-KEY]";
-
-    private const string LogMessageHmacKeyDerived = "{LogTag} Logout HMAC key derived. KeyFingerprint: {KeyFingerprint}";
-    private const string LogMessageProofKeyDerived = "{LogTag} Logout proof key derived. KeyFingerprint: {KeyFingerprint}";
 
     private const string ErrorMessageMasterKeyReadFailed = "Failed to read master key bytes";
     private const string ErrorMessageHkdfDerivationFailed = "HKDF key derivation failed";
@@ -48,9 +41,6 @@ public static class LogoutKeyDerivation
                     salt: null,
                     info: System.Text.Encoding.UTF8.GetBytes(LogoutHmacKeyInfo)
                 );
-
-                string keyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(hmacKey);
-                Log.Debug(LogMessageHmacKeyDerived, LogTagLogoutHmacKey, keyFingerprint);
 
                 byte[] result = hmacKey;
                 hmacKey = null;
@@ -102,9 +92,6 @@ public static class LogoutKeyDerivation
                     salt: null,
                     info: System.Text.Encoding.UTF8.GetBytes(LogoutProofKeyInfo)
                 );
-
-                string keyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(proofKey);
-                Log.Debug(LogMessageProofKeyDerived, LogTagLogoutProofKey, keyFingerprint);
 
                 byte[] result = proofKey;
                 proofKey = null;

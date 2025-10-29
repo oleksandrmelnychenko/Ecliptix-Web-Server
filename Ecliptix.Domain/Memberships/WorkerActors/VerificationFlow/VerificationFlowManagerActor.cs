@@ -14,7 +14,7 @@ using Ecliptix.Utilities.Configuration;
 using Microsoft.Extensions.Options;
 using Serilog;
 
-namespace Ecliptix.Domain.Memberships.WorkerActors;
+namespace Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow;
 
 public record FlowCompletedGracefullyActorEvent(IActorRef ActorRef);
 
@@ -73,7 +73,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         if (actorEvent.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
         {
             IActorRef? idempotencyActor = null;
-            if (actorEvent.IdempotencyKey.HasValue &&
+            if (actorEvent.IdempotencyKey.IsSome &&
                 _idempotencyToActor.TryGetValue(actorEvent.IdempotencyKey.Value!, out IActorRef? trackedActor))
             {
                 idempotencyActor = trackedActor;
@@ -122,7 +122,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
 
                 _flowWriters.Remove(idempotencyActor, out _);
                 Context.Unwatch(idempotencyActor);
-                if (actorEvent.IdempotencyKey.HasValue)
+                if (actorEvent.IdempotencyKey.IsSome)
                 {
                     _idempotencyToActor.Remove(actorEvent.IdempotencyKey.Value!);
                 }
@@ -225,7 +225,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
             Context.Watch(newFlowActor);
             _flowWriters[newFlowActor] = actorEvent.ChannelWriter;
 
-            if (actorEvent.IdempotencyKey.HasValue)
+            if (actorEvent.IdempotencyKey.IsSome)
             {
                 _idempotencyToActor[actorEvent.IdempotencyKey.Value!] = newFlowActor;
             }

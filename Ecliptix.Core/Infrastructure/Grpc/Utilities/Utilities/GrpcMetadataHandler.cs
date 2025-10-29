@@ -123,7 +123,7 @@ public static class GrpcMetadataHandler
                     string.Format(MetadataConstants.ErrorMessages.InvalidPubKeyExchangeType, ConnectionContextId)));
         }
 
-        Guid? opContextId = null;
+        Option<Guid> opContextId = Option<Guid>.None;
         Result<string, MetaDataSystemFailure> operationContextResult =
             requestHeaders.GetValueAsResult(OperationContextId);
         if (operationContextResult.IsOk)
@@ -131,7 +131,7 @@ public static class GrpcMetadataHandler
             string opContextIdStr = operationContextResult.Unwrap();
             if (Guid.TryParse(opContextIdStr, out Guid parsedOpContextId))
             {
-                opContextId = parsedOpContextId;
+                opContextId = Option<Guid>.Some(parsedOpContextId);
             }
         }
 
@@ -140,7 +140,7 @@ public static class GrpcMetadataHandler
     }
 
     private static uint ComputeHashFromComponents(Guid appInstanceId, Guid appDeviceId, PubKeyExchangeType contextType,
-        Guid? opContextId)
+        Option<Guid> opContextId)
     {
         byte[] appInstanceIdBytes = appInstanceId.ToByteArray();
         byte[] appDeviceIdBytes = appDeviceId.ToByteArray();
@@ -152,7 +152,7 @@ public static class GrpcMetadataHandler
         }
 
         int totalLength = appInstanceIdBytes.Length + appDeviceIdBytes.Length + contextTypeBytes.Length;
-        if (opContextId.HasValue)
+        if (opContextId.IsSome)
         {
             totalLength += MetadataConstants.ByteLengths.GuidByteLength;
         }
@@ -165,7 +165,7 @@ public static class GrpcMetadataHandler
         offset += appDeviceIdBytes.Length;
         Buffer.BlockCopy(contextTypeBytes, 0, combined, offset, contextTypeBytes.Length);
         offset += contextTypeBytes.Length;
-        if (opContextId.HasValue)
+        if (opContextId.IsSome)
         {
             byte[] opContextBytes = opContextId.Value.ToByteArray();
             Buffer.BlockCopy(opContextBytes, 0, combined, offset, opContextBytes.Length);

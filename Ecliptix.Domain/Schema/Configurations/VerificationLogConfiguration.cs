@@ -54,6 +54,10 @@ public class VerificationLogConfiguration : EntityBaseMap<VerificationLogEntity>
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_VerificationLogs_Membership_Purpose");
 
+        builder.HasIndex(e => e.DeviceId)
+            .HasFilter("IsDeleted = 0")
+            .HasDatabaseName("IX_VerificationLogs_DeviceId");
+
         builder.HasIndex(e => e.VerifiedAt)
             .IsDescending()
             .HasFilter("IsDeleted = 0")
@@ -78,7 +82,7 @@ public class VerificationLogConfiguration : EntityBaseMap<VerificationLogEntity>
         builder.HasOne(e => e.Device)
             .WithMany()
             .HasForeignKey(e => e.DeviceId)
-            .HasPrincipalKey(d => d.UniqueId)
+            .HasPrincipalKey(d => d.DeviceId)
             .OnDelete(DeleteBehavior.NoAction)
             .IsRequired()
             .HasConstraintName("FK_VerificationLogs_Devices");

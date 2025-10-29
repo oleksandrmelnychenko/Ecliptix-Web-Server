@@ -604,7 +604,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
     public Result<SecureEnvelope, EcliptixProtocolFailure> ProduceOutboundMessage(byte[] plainPayload)
     {
         Option<EcliptixProtocolConnection> connectionOpt = GetConnectionSafe();
-        if (!connectionOpt.HasValue)
+        if (!connectionOpt.IsSome)
         {
             return Result<SecureEnvelope, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Protocol connection not initialized"));
@@ -928,7 +928,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         ProduceOutboundEnvelopeMaterials(byte[] plainPayload)
     {
         Option<EcliptixProtocolConnection> connectionOpt = GetConnectionSafe();
-        if (!connectionOpt.HasValue)
+        if (!connectionOpt.IsSome)
         {
             return Result<(EnvelopeMetadata Metadata, byte[] EncryptedPayload), EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Protocol connection not initialized"));
@@ -963,7 +963,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
     public Result<byte[], EcliptixProtocolFailure> ProcessInboundEnvelope(SecureEnvelope cipherPayloadProto)
     {
         Option<EcliptixProtocolConnection> connectionOpt = GetConnectionSafe();
-        if (!connectionOpt.HasValue)
+        if (!connectionOpt.IsSome)
         {
             return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic("Protocol connection not initialized"));

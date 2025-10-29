@@ -71,7 +71,7 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
         builder.HasOne(e => e.AppDevice)
             .WithMany(d => d.Memberships)
             .HasForeignKey(e => e.AppDeviceId)
-            .HasPrincipalKey(d => d.UniqueId)
+            .HasPrincipalKey(d => d.DeviceId)
             .OnDelete(DeleteBehavior.NoAction)
             .HasConstraintName("FK_Memberships_Devices");
 

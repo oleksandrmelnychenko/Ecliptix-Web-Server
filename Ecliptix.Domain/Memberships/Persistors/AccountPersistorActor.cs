@@ -5,7 +5,7 @@ using Ecliptix.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.Domain.Memberships.WorkerActors;
+using Ecliptix.Domain.Memberships.WorkerActors.Membership;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
@@ -75,7 +75,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         {
             Option<MembershipEntity> membershipOpt =
                 await MembershipQueries.GetByUniqueId(ctx, cmd.MembershipIdentifier, cancellationToken);
-            if (!membershipOpt.HasValue)
+            if (!membershipOpt.IsSome)
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return Result<AccountSecureKeyUpdateResult, AccountFailure>.Err(
@@ -88,7 +88,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
             if (cmd.AccountId.HasValue)
             {
                 Option<AccountEntity> accountOpt = await AccountQueries.GetAccountById(ctx, cmd.AccountId.Value);
-                if (!accountOpt.HasValue)
+                if (!accountOpt.IsSome)
                 {
                     await transaction.RollbackAsync(cancellationToken);
                     return Result<AccountSecureKeyUpdateResult, AccountFailure>.Err(
@@ -101,7 +101,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
             {
                 Option<AccountEntity> accountOpt =
                     await AccountQueries.GetDefaultAccountByMembershipId(ctx, membership.UniqueId);
-                if (!accountOpt.HasValue)
+                if (!accountOpt.IsSome)
                 {
                     await transaction.RollbackAsync(cancellationToken);
                     return Result<AccountSecureKeyUpdateResult, AccountFailure>.Err(
@@ -116,7 +116,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
 
             int newCredentialsVersion;
 
-            if (authOpt.HasValue)
+            if (authOpt.IsSome)
             {
                 AccountSecureKeyAuthEntity existingAuth = authOpt.Value;
                 await ctx.AccountSecureKeyAuths
@@ -213,7 +213,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
             Option<AccountEntity> accountOption =
                 await AccountQueries.GetDefaultAccountByMembershipId(ctx, cmd.MembershipId);
 
-            return Result<Option<Guid>, AccountFailure>.Ok(!accountOption.HasValue
+            return Result<Option<Guid>, AccountFailure>.Ok(!accountOption.IsSome
                 ? Option<Guid>.None
                 : Option<Guid>.Some(accountOption.Value!.UniqueId));
         }

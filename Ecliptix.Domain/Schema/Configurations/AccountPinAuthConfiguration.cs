@@ -76,7 +76,7 @@ public class AccountPinAuthConfiguration : EntityBaseMap<AccountPinAuthEntity>
         builder.HasOne(e => e.Device)
             .WithMany()
             .HasForeignKey(e => e.DeviceId)
-            .HasPrincipalKey(d => d.UniqueId)
+            .HasPrincipalKey(d => d.DeviceId)
             .OnDelete(DeleteBehavior.NoAction)
             .IsRequired(false)
             .HasConstraintName("FK_AccountPinAuth_Devices");

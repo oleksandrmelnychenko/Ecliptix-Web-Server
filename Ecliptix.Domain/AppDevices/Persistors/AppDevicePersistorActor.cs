@@ -31,7 +31,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 .PipeTo(Sender));
     }
 
-    private static async Task<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>> RegisterAppDeviceAsync(
+    private static async Task<Result<DeviceRegistrationResponse, AppDeviceFailure>> RegisterAppDeviceAsync(
         EcliptixSchemaContext ctx, AppDevice appDevice, CancellationToken cancellationToken)
     {
         await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
@@ -44,24 +44,21 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
             if (appInstanceId == Guid.Empty || deviceId == Guid.Empty)
             {
                 await transaction.RollbackAsync(CancellationToken.None);
-                return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
+                return Result<DeviceRegistrationResponse, AppDeviceFailure>.Ok(new DeviceRegistrationResponse
                 {
-                    Status = AppDeviceRegisteredStateReply.Types.Status.FailureInvalidRequest,
-                    UniqueId = ByteString.Empty,
+                    Status = DeviceRegistrationResponse.Types.Status.InvalidRequest,
                     ServerPublicKey = ByteString.Empty
                 });
             }
 
             Option<DeviceEntity> existingDeviceOpt = await DeviceQueries.GetByAppInstanceId(ctx, appInstanceId, cancellationToken);
 
-            if (existingDeviceOpt.HasValue)
+            if (existingDeviceOpt.IsSome)
             {
-                DeviceEntity existingDevice = existingDeviceOpt.Value!;
                 await transaction.RollbackAsync(CancellationToken.None);
-                return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
+                return Result<DeviceRegistrationResponse, AppDeviceFailure>.Ok(new DeviceRegistrationResponse
                 {
-                    Status = AppDeviceRegisteredStateReply.Types.Status.SuccessAlreadyExists,
-                    UniqueId = Helpers.GuidToByteString(existingDevice.UniqueId),
+                    Status = DeviceRegistrationResponse.Types.Status.AlreadyExists,
                     ServerPublicKey = ByteString.Empty
                 });
             }
@@ -69,6 +66,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
             DeviceEntity newDevice = new()
             {
                 AppInstanceId = appInstanceId,
+                DeviceId = deviceId,
                 DeviceType = deviceType
             };
 
@@ -76,17 +74,16 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
             await ctx.SaveChangesAsync(cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
-            return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Ok(new AppDeviceRegisteredStateReply
+            return Result<DeviceRegistrationResponse, AppDeviceFailure>.Ok(new DeviceRegistrationResponse
             {
-                Status = AppDeviceRegisteredStateReply.Types.Status.SuccessNewRegistration,
-                UniqueId = Helpers.GuidToByteString(newDevice.UniqueId),
+                Status = DeviceRegistrationResponse.Types.Status.NewRegistration,
                 ServerPublicKey = ByteString.Empty
             });
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync(CancellationToken.None);
-            return Result<AppDeviceRegisteredStateReply, AppDeviceFailure>.Err(
+            return Result<DeviceRegistrationResponse, AppDeviceFailure>.Err(
                 AppDeviceFailure.InfrastructureFailure($"Device registration failed: {ex.Message}"));
         }
     }

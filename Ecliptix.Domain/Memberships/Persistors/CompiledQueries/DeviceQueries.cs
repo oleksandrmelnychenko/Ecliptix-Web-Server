@@ -8,13 +8,13 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class DeviceQueries
 {
-    public static async Task<bool> ExistsByUniqueId(
+    public static async Task<bool> ExistsByDeviceId(
         EcliptixSchemaContext ctx,
-        Guid uniqueId,
+        Guid deviceId,
         CancellationToken cancellationToken = default)
     {
         return await ctx.Devices
-            .Where(d => d.UniqueId == uniqueId && !d.IsDeleted)
+            .Where(d => d.DeviceId == deviceId && !d.IsDeleted)
             .AsNoTracking()
             .AnyAsync(cancellationToken);
     }

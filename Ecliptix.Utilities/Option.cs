@@ -2,13 +2,13 @@ namespace Ecliptix.Utilities;
 
 public readonly record struct Option<T>
 {
-    private Option(bool hasValue, T? value)
+    private Option(bool isSome, T? value)
     {
-        HasValue = hasValue;
+        IsSome = isSome;
         Value = value;
     }
 
-    public bool HasValue { get; }
+    public bool IsSome { get; }
     public T? Value { get; }
 
     public static Option<T> None => new(false, default);
@@ -20,6 +20,6 @@ public readonly record struct Option<T>
 
     public TResult Match<TResult>(Func<T, TResult> onSome, Func<TResult> onNone)
     {
-        return HasValue ? onSome(Value!) : onNone();
+        return IsSome ? onSome(Value!) : onNone();
     }
 }

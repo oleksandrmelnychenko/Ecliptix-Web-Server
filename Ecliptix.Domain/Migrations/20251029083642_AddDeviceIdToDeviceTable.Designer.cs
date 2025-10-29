@@ -4,6 +4,7 @@ using Ecliptix.Domain.Schema;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Ecliptix.Domain.Migrations
 {
     [DbContext(typeof(EcliptixSchemaContext))]
-    partial class EcliptixSchemaContextModelSnapshot : ModelSnapshot
+    [Migration("20251029083642_AddDeviceIdToDeviceTable")]
+    partial class AddDeviceIdToDeviceTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1412,9 +1415,7 @@ namespace Ecliptix.Domain.Migrations
                         .HasDatabaseName("IX_VerificationLogEntity_CreatedAt")
                         .HasFilter("IsDeleted = 0");
 
-                    b.HasIndex("DeviceId")
-                        .HasDatabaseName("IX_VerificationLogs_DeviceId")
-                        .HasFilter("IsDeleted = 0");
+                    b.HasIndex("DeviceId");
 
                     b.HasIndex("MembershipId")
                         .HasDatabaseName("IX_VerificationLogs_Membership")
@@ -1469,7 +1470,7 @@ namespace Ecliptix.Domain.Migrations
                     b.HasOne("Ecliptix.Domain.Schema.Entities.DeviceEntity", "Device")
                         .WithMany()
                         .HasForeignKey("DeviceId")
-                        .HasPrincipalKey("DeviceId")
+                        .HasPrincipalKey("UniqueId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("FK_AccountPinAuth_Devices");
 
@@ -1507,7 +1508,7 @@ namespace Ecliptix.Domain.Migrations
                     b.HasOne("Ecliptix.Domain.Schema.Entities.DeviceEntity", "Device")
                         .WithMany()
                         .HasForeignKey("DeviceId")
-                        .HasPrincipalKey("DeviceId")
+                        .HasPrincipalKey("UniqueId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("FK_DeviceContexts_Devices");
@@ -1551,7 +1552,7 @@ namespace Ecliptix.Domain.Migrations
                     b.HasOne("Ecliptix.Domain.Schema.Entities.DeviceEntity", "Device")
                         .WithMany()
                         .HasForeignKey("DeviceId")
-                        .HasPrincipalKey("DeviceId")
+                        .HasPrincipalKey("UniqueId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("FK_LoginAttempts_Devices");
 
@@ -1609,7 +1610,7 @@ namespace Ecliptix.Domain.Migrations
                     b.HasOne("Ecliptix.Domain.Schema.Entities.DeviceEntity", "AppDevice")
                         .WithMany("Memberships")
                         .HasForeignKey("AppDeviceId")
-                        .HasPrincipalKey("DeviceId")
+                        .HasPrincipalKey("UniqueId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("FK_Memberships_Devices");
@@ -1653,7 +1654,7 @@ namespace Ecliptix.Domain.Migrations
                     b.HasOne("Ecliptix.Domain.Schema.Entities.DeviceEntity", "AppDevice")
                         .WithMany("VerificationFlows")
                         .HasForeignKey("AppDeviceId")
-                        .HasPrincipalKey("DeviceId")
+                        .HasPrincipalKey("UniqueId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("FK_VerificationFlows_Devices");
@@ -1683,7 +1684,7 @@ namespace Ecliptix.Domain.Migrations
                     b.HasOne("Ecliptix.Domain.Schema.Entities.DeviceEntity", "Device")
                         .WithMany()
                         .HasForeignKey("DeviceId")
-                        .HasPrincipalKey("DeviceId")
+                        .HasPrincipalKey("UniqueId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("FK_VerificationLogs_Devices");

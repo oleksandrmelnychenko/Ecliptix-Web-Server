@@ -67,7 +67,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
 
             Option<MembershipEntity> membershipOpt =
                 await MembershipQueries.GetByUniqueId(schemaContext, cmd.MembershipUniqueId, cancellationToken);
-            if (!membershipOpt.HasValue)
+            if (!membershipOpt.IsSome)
             {
                 await transaction.RollbackAsync(CancellationToken.None);
                 return Result<InsertMasterKeySharesResult, MasterKeyFailure>.Err(
@@ -79,25 +79,26 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
             Option<AccountEntity> defaultAccountOpt =
                 await AccountQueries.GetDefaultAccountByMembershipId(schemaContext, membership.UniqueId);
 
-            if (!defaultAccountOpt.HasValue)
+            if (!defaultAccountOpt.IsSome)
             {
                 await transaction.RollbackAsync(CancellationToken.None);
                 return Result<InsertMasterKeySharesResult, MasterKeyFailure>.Err(
                     MasterKeyFailure.DefaultAccountNotFound());
             }
 
-            (byte[] SecureKey, byte[] MaskingKey, int Version)? credentials =
+            Option<CredentialsRecord> credentialsOpt =
                 await AccountSecureKeyAuthQueries.GetCredentialsForAccount(schemaContext,
                     defaultAccountOpt.Value!.UniqueId);
 
-            if (credentials == null)
+            if (!credentialsOpt.IsSome)
             {
                 await transaction.RollbackAsync(CancellationToken.None);
                 return Result<InsertMasterKeySharesResult, MasterKeyFailure>.Err(
                     MasterKeyFailure.CredentialsNotFound());
             }
 
-            int credentialsVersion = credentials.Value.Version;
+            CredentialsRecord credentials = credentialsOpt.Value;
+            int credentialsVersion = credentials.Version;
 
             List<MasterKeyShareEntity> existingShares =
                 await MasterKeyShareQueries.GetByMembershipUniqueId(schemaContext, cmd.MembershipUniqueId,

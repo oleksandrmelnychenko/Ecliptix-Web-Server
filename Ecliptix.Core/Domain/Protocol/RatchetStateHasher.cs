@@ -8,9 +8,6 @@ public static class RatchetStateHasher
 {
     private const string LogTag = "[RATCHET-STATE-HASH]";
 
-    private const string LogMessageStateFingerprinted =
-        "{LogTag} Ratchet state fingerprinted. ConnectId: {ConnectId}, Fingerprint: {Fingerprint}";
-
     private const string LogMessageEmptyState = "{LogTag} Empty or missing ratchet state for ConnectId: {ConnectId}";
 
     public static byte[] ComputeRatchetFingerprint(EcliptixSessionState? state)
@@ -86,10 +83,6 @@ public static class RatchetStateHasher
             byte[] canonicalData = ms.ToArray();
 
             byte[] fingerprint = SHA256.HashData(canonicalData);
-
-            string fingerprintTruncated = Convert.ToHexString(fingerprint).ToLowerInvariant()[..8];
-            Log.Information(LogMessageStateFingerprinted, LogTag, state.ConnectId,
-                fingerprintTruncated + "...[REDACTED]");
 
             return fingerprint;
         }

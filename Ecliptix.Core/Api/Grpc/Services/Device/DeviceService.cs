@@ -57,15 +57,15 @@ internal sealed class DeviceService : Protobuf.Device.DeviceService.DeviceServic
 
     public override async Task<SecureEnvelope> RegisterDevice(SecureEnvelope request, ServerCallContext context)
     {
-        return await _baseService.ExecuteEncryptedOperationAsync<AppDevice, AppDeviceRegisteredStateReply>(
+        return await _baseService.ExecuteEncryptedOperationAsync<AppDevice, DeviceRegistrationResponse>(
             request, context, async (appDevice, _, _, cancellationToken) =>
             {
                 RegisterAppDeviceIfNotExistActorEvent registerEvent = new(appDevice, cancellationToken);
-                Task<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>> registerTask =
-                    _appDevicePersistorActor.Ask<Result<AppDeviceRegisteredStateReply, AppDeviceFailure>>(
+                Task<Result<DeviceRegistrationResponse, AppDeviceFailure>> registerTask =
+                    _appDevicePersistorActor.Ask<Result<DeviceRegistrationResponse, AppDeviceFailure>>(
                         registerEvent,
                         TimeoutConfiguration.Actor.AskTimeout);
-                Result<AppDeviceRegisteredStateReply, AppDeviceFailure> registerResult =
+                Result<DeviceRegistrationResponse, AppDeviceFailure> registerResult =
                     await registerTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 if (registerResult.IsOk)
@@ -73,13 +73,13 @@ internal sealed class DeviceService : Protobuf.Device.DeviceService.DeviceServic
                     Result<byte[], OpaqueServerFailure> serverPublicKey =
                         ((OpaqueProtocolService)_opaqueService).GetServerPublicKey();
 
-                    AppDeviceRegisteredStateReply reply = registerResult.Unwrap();
+                    DeviceRegistrationResponse reply = registerResult.Unwrap();
                     reply.ServerPublicKey = ByteString.CopyFrom(serverPublicKey.Unwrap());
 
-                    return Result<AppDeviceRegisteredStateReply, FailureBase>.Ok(reply);
+                    return Result<DeviceRegistrationResponse, FailureBase>.Ok(reply);
                 }
 
-                return Result<AppDeviceRegisteredStateReply, FailureBase>.Err(registerResult.UnwrapErr());
+                return Result<DeviceRegistrationResponse, FailureBase>.Err(registerResult.UnwrapErr());
             });
     }
 

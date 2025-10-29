@@ -159,7 +159,7 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
                 schemaContext,
                 cmd.MembershipUniqueId);
 
-            if (result.HasValue)
+            if (result.IsSome)
             {
                 Log.Information(
                     "Retrieved most recent logout for MembershipId: {MembershipId}, LoggedOutAt: {LoggedOutAt}",
@@ -192,7 +192,7 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
                 schemaContext,
                 cmd.DeviceId);
 
-            if (result.HasValue)
+            if (result.IsSome)
             {
                 Log.Information(
                     "Retrieved logout for DeviceId: {DeviceId}, LoggedOutAt: {LoggedOutAt}",

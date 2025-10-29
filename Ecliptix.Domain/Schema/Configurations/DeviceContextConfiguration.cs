@@ -80,7 +80,7 @@ public class DeviceContextConfiguration : EntityBaseMap<DeviceContextEntity>
         builder.HasOne(e => e.Device)
             .WithMany()
             .HasForeignKey(e => e.DeviceId)
-            .HasPrincipalKey(d => d.UniqueId)
+            .HasPrincipalKey(d => d.DeviceId)
             .OnDelete(DeleteBehavior.Cascade)
             .IsRequired()
             .HasConstraintName("FK_DeviceContexts_Devices");

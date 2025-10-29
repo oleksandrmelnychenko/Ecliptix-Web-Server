@@ -15,6 +15,9 @@ public class DeviceConfiguration : EntityBaseMap<DeviceEntity>
         builder.Property(e => e.AppInstanceId)
             .IsRequired();
 
+        builder.Property(e => e.DeviceId)
+            .IsRequired();
+
         builder.Property(e => e.DeviceType)
             .HasDefaultValue(1);
 
@@ -22,6 +25,11 @@ public class DeviceConfiguration : EntityBaseMap<DeviceEntity>
             .IsUnique()
             .HasFilter("IsDeleted = 0")
             .HasDatabaseName("IX_Devices_AppInstanceId");
+
+        builder.HasIndex(e => e.DeviceId)
+            .IsUnique()
+            .HasFilter("IsDeleted = 0")
+            .HasDatabaseName("IX_Devices_DeviceId");
 
         builder.HasIndex(e => e.DeviceType)
             .HasFilter("IsDeleted = 0")

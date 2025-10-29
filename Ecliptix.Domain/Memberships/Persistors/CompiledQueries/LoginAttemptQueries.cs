@@ -60,13 +60,13 @@ public static class LoginAttemptQueries
             .CountAsync(cancellationToken);
     }
 
-    public static async Task<DateTimeOffset?> GetEarliestFailedMembershipCreationSince(
+    public static async Task<Option<DateTimeOffset>> GetEarliestFailedMembershipCreationSince(
         EcliptixSchemaContext ctx,
         Guid mobileUniqueId,
         DateTimeOffset since,
         CancellationToken cancellationToken = default)
     {
-        return await ctx.LoginAttempts
+        DateTimeOffset? result = await ctx.LoginAttempts
             .AsNoTracking()
             .Join(ctx.Memberships,
                 la => la.MembershipUniqueId,
@@ -80,5 +80,9 @@ public static class LoginAttemptQueries
                         !x.m.IsDeleted)
             .Select(x => (DateTimeOffset?)x.la.AttemptedAt)
             .MinAsync(cancellationToken);
+
+        return result.HasValue
+            ? Option<DateTimeOffset>.Some(result.Value)
+            : Option<DateTimeOffset>.None;
     }
 }

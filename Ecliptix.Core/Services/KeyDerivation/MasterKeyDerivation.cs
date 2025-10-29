@@ -23,27 +23,8 @@ public static class MasterKeyDerivation
     private const string X25519Context = "X25519";
     private const string SpkX25519Context = "SPK_X25519";
 
-    private const string ServerArgon2IdLogTag = "[SERVER-ARGON2ID]";
-    private const string ServerArgon2IdSaltLogTag = "[SERVER-ARGON2ID-SALT]";
-    private const string ServerArgon2IdHandleLogTag = "[SERVER-ARGON2ID-HANDLE]";
-    private const string ServerBlake2BInputLogTag = "[SERVER-BLAKE2B-INPUT]";
-    private const string ServerBlake2BInputHandleLogTag = "[SERVER-BLAKE2B-INPUT-HANDLE]";
-    private const string ServerBlake2BOutputLogTag = "[SERVER-BLAKE2B-OUTPUT]";
-    private const string ServerBlake2BOutputHandleLogTag = "[SERVER-BLAKE2B-OUTPUT-HANDLE]";
     private const string ServerBlake2BSaltLogTag = "[SERVER-BLAKE2B-SALT]";
     private const string ServerBlake2BSaltHandleLogTag = "[SERVER-BLAKE2B-SALT-HANDLE]";
-
-    private const string Argon2IdLogMessage =
-        "{LogTag} Argon2id stretched key derived. StretchedKeyFingerprint: {StretchedKeyFingerprint}";
-
-    private const string Argon2IdSaltLogMessage =
-        "{LogTag} Argon2id salt created. ArgonSaltHash: {ArgonSaltHash}, MembershipIdLength: {MembershipIdLength}";
-
-    private const string Blake2BInputLogMessage =
-        "{LogTag} Blake2b inputs. SaltLength: {SaltLength}, PersonalLength: {PersonalLength}, SaltPrefix: {SaltPrefix}, PersonalPrefix: {PersonalPrefix}";
-
-    private const string Blake2BOutputLogMessage =
-        "{LogTag} Master key derived from Blake2b. MasterKeyFingerprint: {MasterKeyFingerprint}";
 
     private const string Blake2BSaltAdjustedWarning =
         "{LogTag} Salt adjusted to {RequiredSize} bytes. Original length: {OriginalLength}";
@@ -77,16 +58,8 @@ public static class MasterKeyDerivation
         {
             stretchedKey = DeriveWithArgon2Id(exportKey, argonSalt);
 
-            string stretchedKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(stretchedKey);
-            Log.Information(Argon2IdLogMessage, ServerArgon2IdLogTag, stretchedKeyFingerprint);
-
             byte[] salt16 = AdjustBlake2BSaltParameter(masterSaltBytes, ServerBlake2BSaltLogTag);
             byte[] personal16 = ValidateBlake2BPersonalParameter(membershipBytes);
-
-            string saltHex = CryptoHelpers.ComputeSha256Fingerprint(salt16);
-            string personalHex = CryptoHelpers.ComputeSha256Fingerprint(personal16);
-            Log.Information(Blake2BInputLogMessage, ServerBlake2BInputLogTag,
-                salt16.Length, personal16.Length, saltHex, personalHex);
 
             Result<byte[], SodiumFailure> hashResult = SodiumInterop.Blake2bHashSaltPersonal(
                 message: stretchedKey,
@@ -103,9 +76,6 @@ public static class MasterKeyDerivation
             }
 
             byte[] masterKey = hashResult.Unwrap();
-
-            string masterKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(masterKey);
-            Log.Information(Blake2BOutputLogMessage, ServerBlake2BOutputLogTag, masterKeyFingerprint);
 
             return masterKey;
         }
@@ -156,14 +126,7 @@ public static class MasterKeyDerivation
 
             ReadOnlySpan<byte> masterSaltBytes = Encoding.UTF8.GetBytes(MasterSalt);
 
-            string argonSaltHash = CryptoHelpers.ComputeSha256Fingerprint(argonSalt);
-            Log.Information(Argon2IdSaltLogMessage, ServerArgon2IdSaltLogTag,
-                argonSaltHash, membershipBytes.Length);
-
             stretchedKey = DeriveWithArgon2Id(exportKeyBytes, argonSalt);
-
-            string stretchedKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(stretchedKey);
-            Log.Information(Argon2IdLogMessage, ServerArgon2IdHandleLogTag, stretchedKeyFingerprint);
 
             byte[] salt16 = AdjustBlake2BSaltParameter(masterSaltBytes, ServerBlake2BSaltHandleLogTag);
             Result<byte[], SodiumFailure> personalResult = TryValidateBlake2BPersonalParameter(membershipBytes);
@@ -173,11 +136,6 @@ public static class MasterKeyDerivation
             }
 
             byte[] personal16 = personalResult.Unwrap();
-
-            string saltHex = CryptoHelpers.ComputeSha256Fingerprint(salt16);
-            string personalHex = CryptoHelpers.ComputeSha256Fingerprint(personal16);
-            Log.Information(Blake2BInputLogMessage, ServerBlake2BInputHandleLogTag,
-                salt16.Length, personal16.Length, saltHex, personalHex);
 
             Result<byte[], SodiumFailure> hashResult = SodiumInterop.Blake2bHashSaltPersonal(
                 message: stretchedKey,
@@ -193,9 +151,6 @@ public static class MasterKeyDerivation
             }
 
             byte[] masterKeyBytes = hashResult.Unwrap();
-
-            string masterKeyFingerprint = CryptoHelpers.ComputeSha256Fingerprint(masterKeyBytes);
-            Log.Information(Blake2BOutputLogMessage, ServerBlake2BOutputHandleLogTag, masterKeyFingerprint);
 
             Result<SodiumSecureMemoryHandle, SodiumFailure> allocResult = SodiumSecureMemoryHandle.Allocate(KeySize);
             if (allocResult.IsErr)

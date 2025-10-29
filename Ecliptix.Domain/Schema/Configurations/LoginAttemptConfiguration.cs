@@ -100,7 +100,7 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
         builder.HasOne(e => e.Device)
             .WithMany()
             .HasForeignKey(e => e.DeviceId)
-            .HasPrincipalKey(d => d.UniqueId)
+            .HasPrincipalKey(d => d.DeviceId)
             .OnDelete(DeleteBehavior.NoAction)
             .IsRequired(false)
             .HasConstraintName("FK_LoginAttempts_Devices");

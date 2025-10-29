@@ -24,21 +24,6 @@ message DeviceRegistrationResponse {
   }
 
   Status status = 1;
-  bytes unique_id = 2;
-  bytes server_public_key = 3;
-  string message = 4;
-}
-
-// Legacy compatibility - keep old names
-message AppDeviceRegisteredStateReply {
-  enum Status {
-    SUCCESS_NEW_REGISTRATION = 0;
-    SUCCESS_ALREADY_EXISTS = 1;
-    FAILURE_INVALID_REQUEST = 2;
-    FAILURE_INTERNAL_ERROR = 3;
-  }
-
-  Status status = 1;
-  bytes unique_id = 2;
-  bytes server_public_key = 3;
+  bytes server_public_key = 2;
+  string message = 3;
 }

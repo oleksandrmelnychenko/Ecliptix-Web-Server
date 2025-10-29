@@ -12,6 +12,8 @@ namespace Ecliptix.Domain.Memberships.Persistors;
 public abstract class PersistorBase<TFailure>(IDbContextFactory<EcliptixSchemaContext> dbContextFactory) : ReceiveActor
     where TFailure : IFailureBase
 {
+    protected IDbContextFactory<EcliptixSchemaContext> DbContextFactory { get; } = dbContextFactory;
+
     protected async Task<Result<TResult, TFailure>> ExecuteWithContext<TResult>(
         Func<EcliptixSchemaContext, CancellationToken, Task<Result<TResult, TFailure>>> operation,
         string operationName,

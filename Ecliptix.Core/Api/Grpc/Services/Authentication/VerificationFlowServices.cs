@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
 using System.Globalization;
+using Ecliptix.Core.Infrastructure.Grpc.Utilities;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.Domain.Memberships.ActorEvents.MobileNumber;
@@ -10,12 +11,12 @@ using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Domain.Memberships.Instrumentation;
+using Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow;
 using Ecliptix.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
 using Google.Protobuf;
 using Grpc.Core;
-using Ecliptix.Domain.Memberships.WorkerActors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Serilog;
 using Ecliptix.Utilities.Configuration;
@@ -81,12 +82,14 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
 
                         Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context, linkedCts.Token);
 
+                        Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+
                         Task<Result<Unit, VerificationFlowFailure>> initiationTask =
                             _verificationFlowManagerActor.Ask<Result<Unit, VerificationFlowFailure>>(
                                 new InitiateVerificationFlowActorEvent(
                                     connectId,
                                     Helpers.FromByteStringToGuid(initiateRequest.MobileNumberIdentifier),
-                                    Helpers.FromByteStringToGuid(initiateRequest.AppDeviceIdentifier),
+                                    deviceId,
                                     ConvertProtoPurposeToDomain(initiateRequest.Purpose),
                                     initiateRequest.Type,
                                     channel.Writer,
@@ -151,10 +154,12 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
 
                 if (phoneValidationResult.IsValid)
                 {
+                    Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+
                     EnsureMobileNumberActorEvent ensureMobileNumberEvent = new(
                         phoneValidationResult.ParsedMobileNumberE164.Value!,
                         phoneValidationResult.DetectedRegion.Match(region => region, () => null),
-                        Helpers.FromByteStringToGuid(message.AppDeviceIdentifier),
+                        deviceId,
                         cancellationToken);
 
                     Task<Result<Guid, VerificationFlowFailure>> ensureMobileTask =
@@ -251,9 +256,11 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
             request, context,
             async (message, _, _, cancellationToken) =>
             {
+                Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+
                 CheckMobileNumberAvailabilityActorEvent actorEvent = new(
                     Helpers.FromByteStringToGuid(message.MobileNumberId),
-                    Helpers.FromByteStringToGuid(message.DeviceId),
+                    deviceId,
                     cancellationToken);
 
                 Task<Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>> checkTask =

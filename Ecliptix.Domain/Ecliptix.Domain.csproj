@@ -10,10 +10,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Akka" Version="1.5.54" />
-        <PackageReference Include="Akka.Persistence.Sql" Version="1.5.53" />
+        <PackageReference Include="Akka" Version="1.5.55" />
+        <PackageReference Include="Akka.Persistence.Sql" Version="1.5.55" />
         <PackageReference Include="Grpc.AspNetCore.Server" Version="2.71.0" />
-        <PackageReference Include="libphonenumber-csharp" Version="9.0.16" />
+        <PackageReference Include="libphonenumber-csharp" Version="9.0.17" />
         <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.2" />
         <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.10" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.10">
@@ -27,7 +27,7 @@
         <PackageReference Include="protobuf-net.Grpc" Version="1.2.2" />
         <PackageReference Include="Protobuf.Grpc" Version="1.0.170" />
         <PackageReference Include="Google.Protobuf" Version="3.33.0" />
-        <PackageReference Include="Grpc.Tools" Version="2.72.0">
+        <PackageReference Include="Grpc.Tools" Version="2.76.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
