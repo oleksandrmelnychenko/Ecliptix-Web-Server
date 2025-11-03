@@ -26,7 +26,6 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     private bool _pendingMessageDeletion;
     private bool _pendingSnapshotDeletion;
     private PubKeyExchangeType? _currentExchangeType;
-    private readonly DecryptionHandler _decryptionHandler = new();
 
     public ITimerScheduler Timers { get; set; } = null!;
 
@@ -645,7 +644,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         }
 
         Result<DecryptionResult, EcliptixProtocolFailure> result =
-            _decryptionHandler.DecryptEnvelope(system, _state, actorEvent.SecureEnvelope,
+            DecryptionHandler.DecryptEnvelope(system, _state, actorEvent.SecureEnvelope,
                 actorEvent.PubKeyExchangeType);
 
         if (result.IsErr)
@@ -944,7 +943,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         }
 
         Result<DecryptionResult, EcliptixProtocolFailure> result =
-            _decryptionHandler.DecryptWithHeader(system, _state, cmd.Metadata, cmd.EncryptedPayload, cmd.ExchangeType);
+            DecryptionHandler.DecryptWithHeader(system, _state, cmd.Metadata, cmd.EncryptedPayload, cmd.ExchangeType);
 
         if (result.IsErr)
         {

@@ -4,7 +4,7 @@ using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Domain.Protocol.Handlers;
 
-public sealed class StateValidationHandler
+public static class StateValidationHandler
 {
     public static Result<Unit, EcliptixProtocolFailure> ValidateRecoveredState(EcliptixSessionState? state)
     {

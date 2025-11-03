@@ -5,9 +5,9 @@ using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Domain.Protocol.Handlers;
 
-public sealed class DecryptionHandler
+public static class DecryptionHandler
 {
-    public Result<DecryptionResult, EcliptixProtocolFailure> DecryptEnvelope(
+    public static Result<DecryptionResult, EcliptixProtocolFailure> DecryptEnvelope(
         EcliptixProtocolSystem system,
         EcliptixSessionState? currentState,
         SecureEnvelope envelope,
@@ -39,7 +39,7 @@ public sealed class DecryptionHandler
         ));
     }
 
-    public Result<DecryptionResult, EcliptixProtocolFailure> DecryptWithHeader(
+    public static Result<DecryptionResult, EcliptixProtocolFailure> DecryptWithHeader(
         EcliptixProtocolSystem system,
         EcliptixSessionState? currentState,
         EnvelopeMetadata metadata,
