@@ -10,6 +10,7 @@ using Ecliptix.Core.Api.Grpc.Services.Authentication;
 using Ecliptix.Core.Api.Grpc.Services.Device;
 using Ecliptix.Core.Api.Grpc.Services.Membership;
 using Ecliptix.Core.Configuration;
+using Ecliptix.Core.Configuration.Settings;
 using Ecliptix.Core.Infrastructure.Crypto;
 using Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
@@ -49,7 +50,7 @@ try
     ConfigureLogging(builder);
     ConfigureServices(builder);
     ConfigureOpenTelemetry(builder);
-    ConfigureActorSystem(builder);
+    AkkaConfiguration.ConfigureAkka(builder);    
 
     WebApplication app = builder.Build();
 
@@ -209,28 +210,6 @@ static void ConfigureServices(WebApplicationBuilder builder)
 
     builder.Services.AddHostedService<CertificatePinningServiceHost>();
     builder.Services.AddHostedService<ActorSystemInitializationHost>();
-}
-
-static void ConfigureActorSystem(WebApplicationBuilder builder)
-{
-    const string systemActorName = AppConstants.ActorSystem.SystemName;
-
-    Config fileConfig = ConfigurationFactory.ParseString(
-        File.ReadAllText(AppConstants.ActorSystem.ConfigFileName));
-
-    string runtimeConfig = $@"
-        akka.actor.ask-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Actor.AskTimeout)}
-        akka.persistence.sql-store.journal.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
-        akka.persistence.sql-store.snapshot.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
-    ";
-
-    Config finalConfig = ConfigurationFactory.ParseString(runtimeConfig)
-        .WithFallback(fileConfig);
-
-    ActorSystem actorSystem = ActorSystem.Create(systemActorName, finalConfig);
-
-    builder.Services.AddSingleton(actorSystem);
-    builder.Services.AddHostedService<ActorSystemHostedService>();
 }
 
 static void ConfigureMiddleware(WebApplication app)

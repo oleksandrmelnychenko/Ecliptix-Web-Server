@@ -11,7 +11,7 @@
 
     <ItemGroup>
         <PackageReference Include="Akka.Persistence" Version="1.5.55" />
-        <PackageReference Include="Akka.Persistence.Sql" Version="1.5.55" />
+        <PackageReference Include="Akka.Persistence.Sql" Version="1.5.55.1" />
         <PackageReference Include="Akka.Persistence.TestKit" Version="1.5.55" />
         <PackageReference Include="Akka.Persistence.TestKit.Xunit2" Version="1.5.55" />
         <PackageReference Include="Akka.TestKit" Version="1.5.55" />

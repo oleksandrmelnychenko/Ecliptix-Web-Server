@@ -40,7 +40,9 @@
         <PackageReference Include="Akka.Discovery" Version="1.5.55" />
         <PackageReference Include="Akka.Hosting" Version="1.5.55.1" />
         <PackageReference Include="Akka.Persistence" Version="1.5.55" />
-        <PackageReference Include="Akka.Persistence.Sql" Version="1.5.55" />
+        <PackageReference Include="Akka.Persistence.Hosting" Version="1.5.55.1" />
+        <PackageReference Include="Akka.Persistence.Sql" Version="1.5.55.1" />
+        <PackageReference Include="Akka.Persistence.Sql.Hosting" Version="1.5.55.1" />
         <PackageReference Include="Akka.Remote" Version="1.5.55" />
         <PackageReference Include="Dapper" Version="2.1.66" />
         <PackageReference Include="dbup" Version="5.0.41" />
@@ -119,9 +121,6 @@
     <ItemGroup>
         <Content Include="..\.dockerignore">
           <Link>.dockerignore</Link>
-        </Content>
-        <Content Include="akka.conf">
-            <CopyToPublishDirectory>Always</CopyToPublishDirectory>
         </Content>
         <Content Include="server_private.pem">
             <CopyToPublishDirectory>Always</CopyToPublishDirectory>
