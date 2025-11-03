@@ -140,6 +140,16 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                     $"[{_stepType}] Requested index {targetIndex} is not future (current: {currentIndex}) and not cached."));
         }
 
+        Result<RatchetChainKey, EcliptixProtocolFailure> derivationResult =
+            DeriveKeysAndAdvanceChain(currentIndex, targetIndex);
+
+        return derivationResult;
+    }
+
+    private Result<RatchetChainKey, EcliptixProtocolFailure> DeriveKeysAndAdvanceChain(
+        uint currentIndex,
+        uint targetIndex)
+    {
         byte[]? chainKeyBytes = null;
         try
         {
@@ -157,19 +167,11 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                 {
                     System.Security.Cryptography.HKDF.DeriveKey(
                         System.Security.Cryptography.HashAlgorithmName.SHA256,
-                        ikm: currentChainKey,
-                        output: msgKey,
-                        salt: null,
-                        info: MsgInfo
-                    );
+                        ikm: currentChainKey, output: msgKey, salt: null, info: MsgInfo);
 
                     System.Security.Cryptography.HKDF.DeriveKey(
                         System.Security.Cryptography.HashAlgorithmName.SHA256,
-                        ikm: currentChainKey,
-                        output: nextChainKey,
-                        salt: null,
-                        info: ChainInfo
-                    );
+                        ikm: currentChainKey, output: nextChainKey, salt: null, info: ChainInfo);
                 }
                 catch (Exception ex)
                 {
@@ -184,13 +186,11 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                 }
 
                 RatchetChainKey messageKey = keyResult.Unwrap();
-
                 if (!_messageKeys.TryAdd(idx, messageKey))
                 {
                     messageKey.Dispose();
                     return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(
-                        EcliptixProtocolFailure.Generic(
-                            $"Key for index {idx} unexpectedly appeared during derivation."));
+                        EcliptixProtocolFailure.Generic($"Key for index {idx} unexpectedly appeared."));
                 }
 
                 Result<Unit, EcliptixProtocolFailure> writeResult =
