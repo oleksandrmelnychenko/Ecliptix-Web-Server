@@ -248,9 +248,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             if (cmd.Purpose == VerificationPurpose.PasswordRecovery)
             {
-                Log.Information(
-                    "[INITIATE-PASSWORD-RECOVERY] Password recovery flow initiated for mobile ID {MobileId}",
-                    mobile.UniqueId);
 
                 DateTimeOffset recoveryLookbackTime =
                     DateTimeOffset.UtcNow - persistorSettings.PasswordRecoveryLookback;
@@ -354,8 +351,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             };
 
             schemeContext.VerificationFlows.Add(flow);
-            Log.Information("About to save new verification flow. Purpose: {Purpose}, MobileId: {MobileId}",
-                flow.Purpose, flow.MobileNumberId);
 
             await schemeContext.SaveChangesAsync(cancellationToken);
 
@@ -921,22 +916,19 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             int maxOtpsPerMobile = _securityConfig.CurrentValue.VerificationFlowLimits.MaxOtpSendsPerMobilePerHour;
 
-            if (mobileOtpCount >= maxOtpsPerMobile)
+            if (mobileOtpCount >= maxOtpsPerMobile && lastFlowUpdate.HasValue)
             {
-                if (lastFlowUpdate.HasValue)
-                {
-                    int cooldownMinutes =
-                        _securityConfig.CurrentValue.VerificationFlowLimits.OtpExhaustionCooldownMinutes;
-                    DateTimeOffset cooldownEndsAt = lastFlowUpdate.Value.AddMinutes(cooldownMinutes);
-                    DateTimeOffset currentTime = DateTimeOffset.UtcNow;
+                int cooldownMinutes =
+                    _securityConfig.CurrentValue.VerificationFlowLimits.OtpExhaustionCooldownMinutes;
+                DateTimeOffset cooldownEndsAt = lastFlowUpdate.Value.AddMinutes(cooldownMinutes);
+                DateTimeOffset currentTime = DateTimeOffset.UtcNow;
 
-                    if (currentTime < cooldownEndsAt)
-                    {
-                        uint remainingMinutes = (uint)Math.Ceiling((cooldownEndsAt - currentTime).TotalMinutes);
-                        await transaction.RollbackAsync();
-                        return Result<CreateOtpResult, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.RateLimitExceeded(remainingMinutes.ToString()));
-                    }
+                if (currentTime < cooldownEndsAt)
+                {
+                    uint remainingMinutes = (uint)Math.Ceiling((cooldownEndsAt - currentTime).TotalMinutes);
+                    await transaction.RollbackAsync();
+                    return Result<CreateOtpResult, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.RateLimitExceeded(remainingMinutes.ToString()));
                 }
             }
 
@@ -1258,7 +1250,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         return VerificationFlowFailure.PersistorAccess("Database operation failed", ex);
     }
 
-    private async Task<Result<FlowStatusQueryRecord, VerificationFlowFailure>> QueryFlowStatusByConnectionIdAsync(
+    private static async Task<Result<FlowStatusQueryRecord, VerificationFlowFailure>> QueryFlowStatusByConnectionIdAsync(
         EcliptixSchemaContext schemeContext,
         QueryFlowStatusByConnectionIdActorEvent cmd,
         CancellationToken cancellationToken)

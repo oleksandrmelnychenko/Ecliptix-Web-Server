@@ -9,11 +9,9 @@ namespace Ecliptix.Domain.Providers.Twilio;
 
 public sealed class TwilioSmsProvider : ISmsProvider
 {
-    private readonly TwilioSettings _settings;
 
     public TwilioSmsProvider(TwilioSettings settings)
     {
-        _settings = settings;
         TwilioClient.Init(settings.AccountSid, settings.AuthToken);
     }
 

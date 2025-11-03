@@ -347,19 +347,12 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         _flowWriters.Remove(completedActor,
             out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? _);
 
-        string? keyToRemove = null;
-        foreach (KeyValuePair<string, IActorRef> kvp in _idempotencyToActor)
-        {
-            if (kvp.Value.Equals(completedActor))
-            {
-                keyToRemove = kvp.Key;
-                break;
-            }
-        }
+        KeyValuePair<string, IActorRef> entryToRemove = _idempotencyToActor
+            .FirstOrDefault(kvp => kvp.Value.Equals(completedActor));
 
-        if (keyToRemove != null)
+        if (entryToRemove.Key != null)
         {
-            _idempotencyToActor.Remove(keyToRemove);
+            _idempotencyToActor.Remove(entryToRemove.Key);
         }
     }
 
@@ -367,14 +360,13 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     {
         IActorRef deadActor = terminatedMessage.ActorRef;
 
-        string? keyToRemove = null;
-        foreach (KeyValuePair<string, IActorRef> kvp in _idempotencyToActor)
+        string? keyToRemove = _idempotencyToActor
+            .FirstOrDefault(kvp => kvp.Value.Equals(deadActor))
+            .Key;
+
+        if (keyToRemove != null)
         {
-            if (kvp.Value.Equals(deadActor))
-            {
-                keyToRemove = kvp.Key;
-                break;
-            }
+            _idempotencyToActor.Remove(keyToRemove);
         }
 
         if (keyToRemove != null)

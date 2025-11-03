@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Threading.Channels;
 using Akka.Actor;
+using Akka.Event;
 using Akka.Persistence;
 using Ecliptix.Domain.Memberships.ActorEvents.Account;
 using Ecliptix.Domain.Memberships.ActorEvents.Common;
@@ -1063,7 +1064,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         catch (OperationCanceledException)
         {
             VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
-            Serilog.Log.Debug("SMS retry operation was cancelled for phone number ending in {PhoneNumberSuffix}",
+            Log.Debug("SMS retry operation was cancelled for phone number ending in {PhoneNumberSuffix}",
                 phoneNumberQueryRecord.MobileNumber.Length > 4
                     ? phoneNumberQueryRecord.MobileNumber[^4..]
                     : "****");
@@ -1085,6 +1086,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             }
             catch
             {
+                // Ignore errors updating OTP status in failure scenario
             }
 
             VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
@@ -1561,7 +1563,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         catch (InvalidOperationException)
         {
             VerificationFlowTelemetry.ChannelDrops.Add(1, _metricTags);
-            Serilog.Log.Warning(
+            Log.Warning(
                 "[verification.channel.drop] Channel closed while writing update for ConnectId {ConnectId}",
                 _connectId);
             CompleteWriter();
@@ -1569,7 +1571,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         catch (OperationCanceledException)
         {
             VerificationFlowTelemetry.ChannelDrops.Add(1, _metricTags);
-            Serilog.Log.Warning("[verification.channel.drop] Write cancelled for ConnectId {ConnectId}", _connectId);
+            Log.Warning("[verification.channel.drop] Write cancelled for ConnectId {ConnectId}", _connectId);
             if (!_currentRequestCancellationToken.IsCancellationRequested)
             {
                 CompleteWriter();
@@ -1646,7 +1648,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
         catch (NullReferenceException ex)
         {
-            Serilog.Log.Debug(
+            Log.Debug(ex,
                 "[verification.flow.aroundpoststop.suppress] Suppressed NullReferenceException in AroundPostStop. ConnectId: {ConnectId}, Error: {Error}",
                 _connectId, ex.Message);
 
@@ -1656,14 +1658,14 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             }
             catch (Exception postStopEx)
             {
-                Serilog.Log.Warning(postStopEx,
+                Log.Warning(postStopEx,
                     "[verification.flow.aroundpoststop.poststop-error] Error during PostStop after AroundPostStop exception. ConnectId: {ConnectId}",
                     _connectId);
             }
         }
         catch (Exception ex)
         {
-            Serilog.Log.Warning(ex,
+            Log.Warning(ex,
                 "[verification.flow.aroundpoststop.error] Unexpected error in AroundPostStop. ConnectId: {ConnectId}",
                 _connectId);
 
@@ -1704,13 +1706,13 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             }
             catch (NullReferenceException ex)
             {
-                Serilog.Log.Debug(
+                Log.Debug(
                     "[verification.flow.poststop.suppress] Suppressed Akka.Persistence null reference during shutdown. ConnectId: {ConnectId}, Error: {Error}",
                     _connectId, ex.Message);
             }
             catch (Exception ex)
             {
-                Serilog.Log.Warning(ex,
+                Log.Warning(ex,
                     "[verification.flow.poststop.error] Unexpected error in base.PostStop(). ConnectId: {ConnectId}",
                     _connectId);
             }
