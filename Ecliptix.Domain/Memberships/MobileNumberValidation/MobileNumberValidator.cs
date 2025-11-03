@@ -134,5 +134,5 @@ public class MobileNumberValidator(ILocalizationProvider localizationProvider) :
         };
     }
 
-    private record ParsedNumberDetails(PhoneNumber MobileNumber, string E164Format);
+    private sealed record ParsedNumberDetails(PhoneNumber MobileNumber, string E164Format);
 }

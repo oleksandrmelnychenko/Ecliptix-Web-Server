@@ -118,7 +118,6 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                         catch (OperationCanceledException ex)
                         {
                             Log.Information("[verification.flow.grpc.cancelled] ConnectId {ConnectId}", connectId);
-                            Log.Debug(ex, "[verification.flow.grpc.cancelled.debug] ConnectId {ConnectId} Cancellation requested", connectId);
                             flowActivity?.SetTag("verification.stream.completed", false);
                         }
                         finally
@@ -362,7 +361,6 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
         catch (OperationCanceledException ex)
         {
             Log.Information("[verification.flow.grpc.stream-cancelled] ConnectId {ConnectId}", connectId);
-            Log.Debug(ex, "[verification.flow.grpc.stream-cancelled.debug] ConnectId {ConnectId} Cancellation requested", connectId);
         }
     }
 

@@ -233,6 +233,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         }
         catch
         {
+            // Ignore rollback failures
         }
     }
 
