@@ -355,7 +355,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         }
     }
 
-    private string BuildCanonicalLogoutRequest(LogoutRequest request)
+    private static string BuildCanonicalLogoutRequest(LogoutRequest request)
     {
         return $"logout:v1:{request.MembershipIdentifier.ToBase64()}:" +
                $"{request.Timestamp}:{request.Scope}:{request.LogoutReason}";
