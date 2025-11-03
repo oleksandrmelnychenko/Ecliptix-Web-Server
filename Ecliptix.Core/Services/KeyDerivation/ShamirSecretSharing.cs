@@ -302,29 +302,34 @@ public sealed class ShamirSecretSharing : ISecretSharingService
                 return true;
             }
 
-            {
-                using HMACSHA256 hmac = new(hmacKey);
-                foreach (KeyShare share in shares)
-                {
-                    if (share.Hmac == null || share.Hmac.Length == 0)
-                    {
-                        return false;
-                    }
+            return ValidateShareHmacs(shares, hmacKey);
 
-                    byte[] expectedHmac = hmac.ComputeHash(share.ShareData);
-                    if (!ConstantTimeEquals(expectedHmac, share.Hmac))
-                    {
-                        return false;
-                    }
-                }
-            }
-
-            return true;
         }
         catch
         {
             return false;
         }
+    }
+
+    private static bool ValidateShareHmacs(KeyShare[] shares, byte[] hmacKey)
+    {
+        using HMACSHA256 hmac = new(hmacKey);
+
+        foreach (KeyShare share in shares)
+        {
+            if (share.Hmac == null || share.Hmac.Length == 0)
+            {
+                return false;
+            }
+
+            byte[] expectedHmac = hmac.ComputeHash(share.ShareData);
+            if (!ConstantTimeEquals(expectedHmac, share.Hmac))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private bool ValidateSharesForReconstruction(KeyShare[] shares, byte[]? hmacKey, out string error)
