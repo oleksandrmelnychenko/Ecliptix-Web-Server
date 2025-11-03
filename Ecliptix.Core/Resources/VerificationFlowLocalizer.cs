@@ -7,12 +7,15 @@ namespace Ecliptix.Core.Resources;
 
 public sealed class VerificationFlowLocalizer : ILocalizationProvider
 {
-    private readonly CultureInfo _defaultSystemCultureInfo = CultureInfo.GetCultureInfo("en-US");
+    private const string DefaultCulture = "en-US";
+    private const string UkraineCulture = "uk-UA";
+
+    private readonly CultureInfo _defaultSystemCultureInfo = CultureInfo.GetCultureInfo(DefaultCulture);
 
     private static readonly FrozenDictionary<string, FrozenDictionary<string, string>> Resources =
         new Dictionary<string, FrozenDictionary<string, string>>
         {
-            ["en-US"] = new Dictionary<string, string>
+            [DefaultCulture] = new Dictionary<string, string>
             {
                 [ErrorI18NKeys.Validation] = "Validation failed; please review the fields and try again.",
                 [ErrorI18NKeys.MaxAttempts] = "Maximum attempts reached. Please wait or contact support.",
@@ -136,7 +139,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["mobile_validation_unexpected_error"] = "Unexpected error validating phone number.",
             }.ToFrozenDictionary(),
 
-            ["uk-UA"] = new Dictionary<string, string>
+            [UkraineCulture] = new Dictionary<string, string>
             {
                 [ErrorI18NKeys.Validation] = "Перевірка не пройшла; перевірте дані та повторіть спробу.",
                 [ErrorI18NKeys.MaxAttempts] = "Досягнуто максимальну кількість спроб. Зачекайте або зверніться до підтримки.",
@@ -275,7 +278,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
             return localizedString;
         }
 
-        if (Resources.TryGetValue("en-US", out FrozenDictionary<string, string>? defaultResources) &&
+        if (Resources.TryGetValue(DefaultCulture, out FrozenDictionary<string, string>? defaultResources) &&
             defaultResources.TryGetValue(key, out string? defaultString))
         {
             return defaultString;
@@ -293,9 +296,9 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
     {
         return cultureName.ToLowerInvariant() switch
         {
-            "en" or "en-us" or "english" => "en-US",
-            "uk" or "uk-ua" or "ukrainian" => "uk-UA",
-            _ => "en-US"
+            "en" or "en-us" or "english" => DefaultCulture,
+            "uk" or "uk-ua" or "ukrainian" => UkraineCulture,
+            _ => DefaultCulture
         };
     }
 }

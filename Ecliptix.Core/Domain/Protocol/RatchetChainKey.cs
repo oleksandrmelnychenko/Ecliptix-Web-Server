@@ -40,6 +40,11 @@ public sealed class RatchetChainKey : IDisposable, IEquatable<RatchetChainKey>
             other._disposed;
     }
 
+    public override bool Equals(object? obj)
+    {
+        return obj is RatchetChainKey other && Equals(other);
+    }
+
     public Result<Unit, EcliptixProtocolFailure> ReadKeyMaterial(Span<byte> destination)
     {
         if (_disposed)
@@ -88,10 +93,6 @@ public sealed class RatchetChainKey : IDisposable, IEquatable<RatchetChainKey>
         return Result<RatchetChainKey, EcliptixProtocolFailure>.Ok(messageKey);
     }
 
-    public override bool Equals(object? obj)
-    {
-        return obj is RatchetChainKey other && Equals(other);
-    }
 
     public override int GetHashCode()
     {

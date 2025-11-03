@@ -288,7 +288,7 @@ public sealed class FailureHandlingInterceptor(ILocalizationProvider localizatio
         }
     }
 
-    private class SafeStreamWriter<TResponse>(
+    private sealed class SafeStreamWriter<TResponse>(
         IServerStreamWriter<TResponse> innerWriter,
         ServerCallContext context,
         FailureHandlingInterceptor interceptor)

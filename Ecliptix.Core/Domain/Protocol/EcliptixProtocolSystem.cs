@@ -18,6 +18,8 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
     private EcliptixProtocolConnection? _connectSession;
 
+    private const string DhPublicKeyNullMessage = "DH public key is null";
+
     public static Result<EcliptixProtocolSystem, EcliptixProtocolFailure> CreateFrom(EcliptixSystemIdentityKeys keys,
         EcliptixProtocolConnection connection)
     {
@@ -90,7 +92,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         if (dhPublicKey == null)
         {
             return Result<PubKeyExchange, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic("DH public key is null"));
+                EcliptixProtocolFailure.Generic(DhPublicKeyNullMessage));
         }
 
         return Result<PubKeyExchange, EcliptixProtocolFailure>.Ok(new PubKeyExchange
@@ -141,7 +143,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
                 }
 
                 byte[] dhPublicKey = dhKeyResult.Unwrap() ??
-                                     throw new InvalidOperationException("DH public key is null");
+                                     throw new InvalidOperationException(DhPublicKeyNullMessage);
 
                 return Result<PubKeyExchange, EcliptixProtocolFailure>.Ok(new PubKeyExchange
                 {
@@ -304,7 +306,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             if (dhPublicKey == null)
             {
                 return Result<PubKeyExchange, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic("DH public key is null"));
+                    EcliptixProtocolFailure.Generic(DhPublicKeyNullMessage));
             }
 
             return Result<PubKeyExchange, EcliptixProtocolFailure>.Ok(new PubKeyExchange
@@ -443,7 +445,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
             if (dhPublicKey == null)
             {
                 return Result<PubKeyExchange, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.Generic("DH public key is null"));
+                    EcliptixProtocolFailure.Generic(DhPublicKeyNullMessage));
             }
 
             return Result<PubKeyExchange, EcliptixProtocolFailure>.Ok(new PubKeyExchange
@@ -1371,7 +1373,7 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
         return Result<byte[], EcliptixProtocolFailure>.Ok(dhKey);
     }
 
-    private Result<Unit, EcliptixProtocolFailure> ValidateIncomingMessage(SecureEnvelope payload,
+    private static Result<Unit, EcliptixProtocolFailure> ValidateIncomingMessage(SecureEnvelope payload,
         EnvelopeMetadata metadata)
     {
         if (payload.MetaData.IsEmpty || payload.EncryptedPayload.IsEmpty)

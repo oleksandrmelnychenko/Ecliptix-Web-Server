@@ -6,7 +6,7 @@ using Grpc.Core.Interceptors;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 
-public class TelemetryInterceptor : Interceptor, IDisposable
+public sealed class TelemetryInterceptor : Interceptor, IDisposable
 {
     private static readonly ActivitySource ActivitySource = new(InterceptorConstants.Telemetry.GrpcInterceptorsActivitySource);
     private static readonly Meter TelemetryMeter = new(InterceptorConstants.Telemetry.GrpcTelemetryMeter);
@@ -172,6 +172,8 @@ public class TelemetryInterceptor : Interceptor, IDisposable
 
     public void Dispose()
     {
+        ActivitySource.Dispose();
+        TelemetryMeter.Dispose();
     }
 }
 
