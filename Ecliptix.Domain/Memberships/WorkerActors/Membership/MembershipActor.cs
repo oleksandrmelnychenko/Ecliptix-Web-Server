@@ -805,7 +805,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             sessionKeyHandle != null &&
             !sessionKeyHandle.IsInvalid)
         {
-            await EnsureMasterKeySharesExist(sessionKeyHandle, state.MembershipId);
+            await EnsureMasterKeySharesExist(state.MembershipId);
         }
 
         RemovePendingSignIn(@event.ConnectId);
@@ -1216,7 +1216,7 @@ public sealed class MembershipActor : ReceivePersistentActor
         _pendingRecoveryTimestamps.Clear();
     }
 
-    private async Task EnsureMasterKeySharesExist(SodiumSecureMemoryHandle sessionKeyHandle, Guid membershipId)
+    private async Task EnsureMasterKeySharesExist(Guid membershipId)
     {
         Result<bool, FailureBase> ensureResult = await _masterKeyService.EnsureMasterKeyExistsAsync(membershipId);
 
