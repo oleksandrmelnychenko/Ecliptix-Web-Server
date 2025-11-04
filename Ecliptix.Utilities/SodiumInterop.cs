@@ -18,13 +18,11 @@ public static class SodiumInterop
     private const int crypto_sign_SEEDBYTES = 32;
     private const int crypto_sign_BYTES = 64;
 
-    private static readonly Result<Unit, SodiumFailure> InitializationResult;
+    private const string SodiumNotInitializedMessage = "Sodium not initialized";
+    private const string MessageCannotBeNullOrEmpty = "Message cannot be null or empty";
 
-    static SodiumInterop()
-    {
-        InitializationResult = InitializeSodium();
-    }
 
+    private static readonly Result<Unit, SodiumFailure> InitializationResult = InitializeSodium();
     public static bool IsInitialized => InitializationResult.IsOk;
 
     [DllImport(LibSodium, CallingConvention = CallingConvention.Cdecl, SetLastError = false, ExactSpelling = true)]
@@ -88,7 +86,7 @@ public static class SodiumInterop
         if (!IsInitialized)
         {
             return Result<Unit, SodiumFailure>.Err(
-                SodiumFailure.InitializationFailed("Sodium not initialized"));
+                SodiumFailure.InitializationFailed(SodiumNotInitializedMessage));
         }
 
         return Result<byte[], SodiumFailure>
@@ -146,13 +144,13 @@ public static class SodiumInterop
         if (!IsInitialized)
         {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InitializationFailed("Sodium not initialized"));
+                SodiumFailure.InitializationFailed(SodiumNotInitializedMessage));
         }
 
         if (message.Length == 0)
         {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter("Message cannot be null or empty"));
+                SodiumFailure.InvalidParameter(MessageCannotBeNullOrEmpty));
         }
 
         if (outputSize is <= 0 or > 64)
@@ -188,13 +186,13 @@ public static class SodiumInterop
         if (!IsInitialized)
         {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InitializationFailed("Sodium not initialized"));
+                SodiumFailure.InitializationFailed(SodiumNotInitializedMessage));
         }
 
         if (message.Length == 0)
         {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter("Message cannot be null or empty"));
+                SodiumFailure.InvalidParameter(MessageCannotBeNullOrEmpty));
         }
 
         if (salt.Length != crypto_generichash_SALTBYTES)
@@ -242,7 +240,7 @@ public static class SodiumInterop
         if (!IsInitialized)
         {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InitializationFailed("Sodium not initialized"));
+                SodiumFailure.InitializationFailed(SodiumNotInitializedMessage));
         }
 
         if (count <= 0)
@@ -266,7 +264,7 @@ public static class SodiumInterop
         if (!IsInitialized)
         {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InitializationFailed("Sodium not initialized"));
+                SodiumFailure.InitializationFailed(SodiumNotInitializedMessage));
         }
 
         if (secretKey.Length != crypto_scalarmult_SCALARBYTES)
@@ -297,7 +295,7 @@ public static class SodiumInterop
         if (!IsInitialized)
         {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InitializationFailed("Sodium not initialized"));
+                SodiumFailure.InitializationFailed(SodiumNotInitializedMessage));
         }
 
         if (secretKey.Length != crypto_scalarmult_SCALARBYTES)
@@ -332,7 +330,7 @@ public static class SodiumInterop
         if (!IsInitialized)
         {
             return Result<(byte[], byte[]), SodiumFailure>.Err(
-                SodiumFailure.InitializationFailed("Sodium not initialized"));
+                SodiumFailure.InitializationFailed(SodiumNotInitializedMessage));
         }
 
         return Result<(byte[], byte[]), SodiumFailure>.Try(
@@ -356,7 +354,7 @@ public static class SodiumInterop
         if (!IsInitialized)
         {
             return Result<(byte[], byte[]), SodiumFailure>.Err(
-                SodiumFailure.InitializationFailed("Sodium not initialized"));
+                SodiumFailure.InitializationFailed(SodiumNotInitializedMessage));
         }
 
         if (seed.Length != crypto_sign_SEEDBYTES)
@@ -387,13 +385,13 @@ public static class SodiumInterop
         if (!IsInitialized)
         {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InitializationFailed("Sodium not initialized"));
+                SodiumFailure.InitializationFailed(SodiumNotInitializedMessage));
         }
 
         if (message.Length == 0)
         {
             return Result<byte[], SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter("Message cannot be null or empty"));
+                SodiumFailure.InvalidParameter(MessageCannotBeNullOrEmpty));
         }
 
         if (secretKey.Length != crypto_sign_SECRETKEYBYTES)
@@ -425,7 +423,7 @@ public static class SodiumInterop
         if (!IsInitialized)
         {
             return Result<bool, SodiumFailure>.Err(
-                SodiumFailure.InitializationFailed("Sodium not initialized"));
+                SodiumFailure.InitializationFailed(SodiumNotInitializedMessage));
         }
 
         if (signature.Length != crypto_sign_BYTES)
@@ -438,7 +436,7 @@ public static class SodiumInterop
         if (message.Length == 0)
         {
             return Result<bool, SodiumFailure>.Err(
-                SodiumFailure.InvalidParameter("Message cannot be null or empty"));
+                SodiumFailure.InvalidParameter(MessageCannotBeNullOrEmpty));
         }
 
         if (publicKey.Length != crypto_sign_PUBLICKEYBYTES)

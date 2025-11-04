@@ -490,6 +490,7 @@ public sealed class CertificatePinningService : IDisposable
             }
             catch (Exception)
             {
+                // Swallow exceptions during dispose to avoid throwing from Dispose method
             }
             finally
             {
