@@ -58,7 +58,6 @@ public class RsaSecureChannelEstablisher(
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                //TODO if this okay?
                 throw;
             }
             catch (Exception ex)

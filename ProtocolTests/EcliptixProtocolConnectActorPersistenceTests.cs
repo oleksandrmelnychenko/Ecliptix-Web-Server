@@ -47,7 +47,7 @@ public class EcliptixProtocolConnectActorPersistenceTests(ITestOutputHelper outp
         }
     }
 
-    private (EcliptixProtocolSystem client, PubKeyExchange clientInitialMsg) CreateClientAndInitialMessage(
+    private static (EcliptixProtocolSystem client, PubKeyExchange clientInitialMsg) CreateClientAndInitialMessage(
         uint sessionId)
     {
         EcliptixSystemIdentityKeys clientKeys = EcliptixSystemIdentityKeys.Create(1).Unwrap();

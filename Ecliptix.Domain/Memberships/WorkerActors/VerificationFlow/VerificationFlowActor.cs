@@ -1639,7 +1639,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             }
             else
             {
-                Serilog.Log.Debug(
+                Log.Debug(
                     "[verification.flow.aroundpoststop] Stash is null during shutdown. Skipping unstash operations. ConnectId: {ConnectId}",
                     _connectId);
 

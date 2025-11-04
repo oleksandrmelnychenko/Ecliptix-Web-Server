@@ -10,9 +10,11 @@ using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Services.Security;
 using Ecliptix.Utilities;
+using Ecliptix.Utilities.Configuration;
 using Ecliptix.Utilities.Failures;
 using Ecliptix.Utilities.Failures.Sodium;
 using Google.Protobuf;
+using Microsoft.Extensions.Options;
 using Serilog;
 
 namespace Ecliptix.Core.Services.Security;
@@ -20,23 +22,18 @@ namespace Ecliptix.Core.Services.Security;
 internal sealed class MasterKeyService(
     ISecretSharingService secretSharingService,
     IEcliptixActorRegistry actorRegistry,
-    IIdentityKeyDerivationService identityKeyDerivationService)
+    IIdentityKeyDerivationService identityKeyDerivationService,
+    IOptionsMonitor<SecurityConfiguration> securityConfig)
     : IMasterKeyService
 {
-    private const int Argon2MemorySize = 262144;
-    private const int Argon2Iterations = 4;
-    private const int Argon2DegreeOfParallelism = 4;
-    private const int EnhancedKeyOutputLength = 64;
-    private const int MasterKeySize = 32;
-    private const int DefaultThreshold = 3;
-    private const int DefaultTotalShares = 5;
-    private const int AskTimeoutSeconds = 30;
+    private readonly int _masterKeySize = securityConfig.CurrentValue.Cryptography.MasterKeySize;
+    private readonly int _defaultThreshold = securityConfig.CurrentValue.Cryptography.DefaultThreshold;
+    private readonly int _defaultTotalShares = securityConfig.CurrentValue.Cryptography.DefaultTotalShares;
+    private readonly int _askTimeoutSeconds = securityConfig.CurrentValue.Cryptography.AskTimeoutSeconds;
 
-    private const string KeyDerivationContext = "ecliptix-signin-session";
+
     private const string RootKeyInfo = "ecliptix-protocol-root-key";
 
-    private const string ErrorMessageMasterKeyDerivationFailed = "Master key derivation failed";
-    private const string ErrorMessageUnexpectedDerivationError = "Unexpected error during master key derivation";
     private const string ErrorMessageInsufficientShares = "Insufficient shares: found {0}, need at least 3";
     private const string ErrorMessageMetadataDeserializationFailed = "Failed to deserialize share metadata";
 
@@ -68,7 +65,7 @@ internal sealed class MasterKeyService(
             }
 
             Result<SodiumSecureMemoryHandle, SodiumFailure> allocateResult =
-                SodiumSecureMemoryHandle.Allocate(MasterKeySize);
+                SodiumSecureMemoryHandle.Allocate(_masterKeySize);
 
             if (allocateResult.IsErr)
             {
@@ -80,7 +77,7 @@ internal sealed class MasterKeyService(
 
             masterKeyHandle = allocateResult.Unwrap();
 
-            Result<byte[], SodiumFailure> randomBytesResult = SodiumInterop.GetRandomBytes(MasterKeySize);
+            Result<byte[], SodiumFailure> randomBytesResult = SodiumInterop.GetRandomBytes(_masterKeySize);
             if (randomBytesResult.IsErr)
             {
                 SodiumFailure sodiumError = randomBytesResult.UnwrapErr();
@@ -107,8 +104,8 @@ internal sealed class MasterKeyService(
 
             Result<KeySplitResult, KeySplittingFailure> splitResult = await secretSharingService.SplitKeyAsync(
                 masterKeyHandle,
-                threshold: DefaultThreshold,
-                totalShares: DefaultTotalShares,
+                threshold: _defaultThreshold,
+                totalShares: _defaultTotalShares,
                 hmacKeyHandle: null);
 
             if (splitResult.IsErr)
@@ -148,10 +145,10 @@ internal sealed class MasterKeyService(
     public async Task<Result<dynamic, FailureBase>> SplitAndStoreMasterKeyAsync(byte[] masterKeyBytes,
         Guid membershipId, bool allowOverwrite = false)
     {
-        if (masterKeyBytes.Length != MasterKeySize)
+        if (masterKeyBytes.Length != _masterKeySize)
         {
             return Result<dynamic, FailureBase>.Err(
-                KeySplittingFailure.KeySplittingFailed($"Invalid master key size. Expected {MasterKeySize} bytes"));
+                KeySplittingFailure.KeySplittingFailed($"Invalid master key size. Expected {_masterKeySize} bytes"));
         }
 
         SodiumSecureMemoryHandle? masterKeyHandle = null;
@@ -187,7 +184,7 @@ internal sealed class MasterKeyService(
             }
 
             Result<SodiumSecureMemoryHandle, SodiumFailure> allocateResult =
-                SodiumSecureMemoryHandle.Allocate(MasterKeySize);
+                SodiumSecureMemoryHandle.Allocate(_masterKeySize);
 
             if (allocateResult.IsErr)
             {
@@ -210,8 +207,8 @@ internal sealed class MasterKeyService(
 
             Result<KeySplitResult, KeySplittingFailure> splitResult = await secretSharingService.SplitKeyAsync(
                 masterKeyHandle,
-                threshold: DefaultThreshold,
-                totalShares: DefaultTotalShares,
+                threshold: _defaultThreshold,
+                totalShares: _defaultTotalShares,
                 hmacKeyHandle: null);
 
             if (splitResult.IsErr)
@@ -298,7 +295,7 @@ internal sealed class MasterKeyService(
 
             masterKeyHandle = (SodiumSecureMemoryHandle)reconstructResult.Unwrap();
 
-            Result<byte[], SodiumFailure> masterKeyReadResult = masterKeyHandle.ReadBytes(MasterKeySize);
+            Result<byte[], SodiumFailure> masterKeyReadResult = masterKeyHandle.ReadBytes(_masterKeySize);
             if (masterKeyReadResult.IsErr)
             {
                 SodiumFailure error = masterKeyReadResult.UnwrapErr();
@@ -309,7 +306,7 @@ internal sealed class MasterKeyService(
             byte[] masterKeyBytes = masterKeyReadResult.Unwrap();
             try
             {
-                rootKeyBytes = new byte[MasterKeySize];
+                rootKeyBytes = new byte[_masterKeySize];
                 HKDF.DeriveKey(
                     HashAlgorithmName.SHA256,
                     ikm: masterKeyBytes,
@@ -398,7 +395,7 @@ internal sealed class MasterKeyService(
 
             MasterKeyShareQueryRecord[] shareRecords = sharesResult.Unwrap();
 
-            if (shareRecords.Length < DefaultThreshold)
+            if (shareRecords.Length < _defaultThreshold)
             {
                 return Result<dynamic, FailureBase>.Err(
                     KeySplittingFailure.KeyReconstructionFailed(string.Format(ErrorMessageInsufficientShares,
@@ -480,7 +477,7 @@ internal sealed class MasterKeyService(
             Result<InsertMasterKeySharesResult, MasterKeyFailure> result =
                 await masterKeySharePersistor.Ask<Result<InsertMasterKeySharesResult, MasterKeyFailure>>(
                     insertEvent,
-                    TimeSpan.FromSeconds(AskTimeoutSeconds));
+                    TimeSpan.FromSeconds(_askTimeoutSeconds));
 
             return result.Match(
                 ok => Result<InsertMasterKeySharesResult, KeySplittingFailure>.Ok(ok),
@@ -510,7 +507,7 @@ internal sealed class MasterKeyService(
             Result<MasterKeyShareQueryRecord[], MasterKeyFailure> result =
                 await masterKeySharePersistor.Ask<Result<MasterKeyShareQueryRecord[], MasterKeyFailure>>(
                     getEvent,
-                    TimeSpan.FromSeconds(AskTimeoutSeconds));
+                    TimeSpan.FromSeconds(_defaultTotalShares));
 
             return result.Match(
                 ok => Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Ok(ok),
@@ -540,7 +537,7 @@ internal sealed class MasterKeyService(
             Result<Unit, MasterKeyFailure> result =
                 await masterKeySharePersistor.Ask<Result<Unit, MasterKeyFailure>>(
                     deleteEvent,
-                    TimeSpan.FromSeconds(AskTimeoutSeconds));
+                    TimeSpan.FromSeconds(_defaultTotalShares));
 
             return result.Match(
                 ok => Result<Unit, KeySplittingFailure>.Ok(ok),

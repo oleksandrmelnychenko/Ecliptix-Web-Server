@@ -107,9 +107,9 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                         "[verification.flow.manager.expired] ConnectId {ConnectId} IdempotencyKey {IdempotencyKey} - Session expired, creating new flow",
                         actorEvent.ConnectId, actorEvent.IdempotencyKey);
                 }
-                catch (AskTimeoutException)
+                catch (AskTimeoutException ex)
                 {
-                    Log.Warning(
+                    Log.Warning(ex,
                         "[verification.flow.manager.timeout] ConnectId {ConnectId} IdempotencyKey {IdempotencyKey} - Actor not responding",
                         actorEvent.ConnectId, actorEvent.IdempotencyKey);
                 }
@@ -148,9 +148,12 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                         await gracefulStop;
                     }
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException ex)
                 {
-                    Log.Warning(
+                    Log.Information(
+                        "[verification.flow.manager.force-stop] Cancellation while waiting for termination of ConnectId {ConnectId}",
+                        actorEvent.ConnectId);
+                    Log.Debug(ex,
                         "[verification.flow.manager.force-stop] Cancellation while waiting for termination of ConnectId {ConnectId}",
                         actorEvent.ConnectId);
                     Context.Stop(idempotencyActor);
@@ -189,9 +192,12 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                         await gracefulStop;
                     }
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException ex)
                 {
-                    Log.Warning(
+                    Log.Information(
+                        "[verification.flow.manager.force-stop] Cancellation while waiting for termination of ConnectId {ConnectId}",
+                        actorEvent.ConnectId);
+                    Log.Debug(ex,
                         "[verification.flow.manager.force-stop] Cancellation while waiting for termination of ConnectId {ConnectId}",
                         actorEvent.ConnectId);
                     Context.Stop(existingActor);
