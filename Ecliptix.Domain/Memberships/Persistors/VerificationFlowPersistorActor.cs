@@ -187,199 +187,290 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            VerificationFlowPersistorSettings
-                persistorSettings = _securityConfig.CurrentValue.VerificationFlowPersistor;
-            Option<MobileNumberEntity> mobileOpt =
-                await MobileNumberQueries.GetByUniqueId(schemeContext, cmd.MobileNumberUniqueId, cancellationToken);
-            if (!mobileOpt.IsSome)
+            VerificationFlowPersistorSettings persistorSettings = _securityConfig.CurrentValue.VerificationFlowPersistor;
+
+            Result<MobileNumberEntity, VerificationFlowFailure> validationResult = await ValidateInputsAsync(schemeContext, cmd, cancellationToken);
+            if (validationResult.IsErr)
             {
-                Log.Warning("[InitiateFlow] Mobile number not found: {MobileNumberId}", cmd.MobileNumberUniqueId);
                 await transaction.RollbackAsync();
-                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.FromMobileNumber(MobileNumberFailure.NotFound()));
+                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(validationResult.UnwrapErr());
             }
+            MobileNumberEntity mobile = validationResult.Unwrap();
 
-            MobileNumberEntity mobile = mobileOpt.Value!;
-
-            bool deviceExists = await DeviceQueries.ExistsByDeviceId(schemeContext, cmd.AppDeviceId, cancellationToken);
-            if (!deviceExists)
-            {
-                Log.Warning("[InitiateFlow] Device not found: {DeviceId}", cmd.AppDeviceId);
-                await transaction.RollbackAsync();
-                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.Validation("Device not found"));
-            }
-
-            Option<VerificationFlowEntity> existingActiveFlowOpt =
-                await VerificationFlowQueries.GetActiveFlowForRecovery(
-                    schemeContext,
-                    cmd.MobileNumberUniqueId,
-                    cmd.AppDeviceId,
-                    cmd.Purpose,
-                    cancellationToken);
-
-            if (existingActiveFlowOpt.IsSome)
-            {
-                VerificationFlowEntity existingActiveFlow = existingActiveFlowOpt.Value!;
-                DateTimeOffset now = DateTimeOffset.UtcNow;
-
-                await schemeContext.VerificationFlows
-                    .Where(vf => vf.Id == existingActiveFlow.Id)
-                    .ExecuteUpdateAsync(setters => setters
-                            .SetProperty(vf => vf.Status, VerificationFlowStatus.Expired)
-                            .SetProperty(vf => vf.ConnectionId, (long?)null)
-                            .SetProperty(vf => vf.ExpiresAt, now)
-                            .SetProperty(vf => vf.UpdatedAt, now),
-                        cancellationToken);
-
-                await schemeContext.OtpCodes
-                    .Where(o => o.VerificationFlowId == existingActiveFlow.Id &&
-                                o.Status == OtpStatus.Active &&
-                                !o.IsDeleted)
-                    .ExecuteUpdateAsync(setters => setters
-                            .SetProperty(o => o.Status, OtpStatus.Expired)
-                            .SetProperty(o => o.UpdatedAt, now),
-                        cancellationToken);
-
-                Log.Information(
-                    "[verification.flow.recovered] Expired lingering flow {FlowId} before creating a new one",
-                    existingActiveFlow.UniqueId);
-            }
+            await HandleLingeringActiveFlowAsync(schemeContext, cmd, cancellationToken);
 
             if (cmd.Purpose == VerificationPurpose.PasswordRecovery)
             {
+                Option<VerificationFlowFailure> recoveryRuleResult = await HandlePasswordRecoveryRulesAsync(
+                    schemeContext, cmd, mobile.UniqueId, persistorSettings, cancellationToken);
 
-                DateTimeOffset recoveryLookbackTime =
-                    DateTimeOffset.UtcNow - persistorSettings.PasswordRecoveryLookback;
-
-                int recoveryCountByMobile = await VerificationFlowQueries.CountRecentPasswordRecovery(
-                    schemeContext, mobile.UniqueId, recoveryLookbackTime, cancellationToken);
-
-                int recoveryCountByDevice = await schemeContext.VerificationFlows
-                    .Where(f => f.AppDeviceId == cmd.AppDeviceId &&
-                                f.Purpose == VerificationPurpose.PasswordRecovery &&
-                                f.CreatedAt >= recoveryLookbackTime &&
-                                !f.IsDeleted)
-                    .AsNoTracking()
-                    .CountAsync(cancellationToken);
-
-                Log.Information(
-                    "[INITIATE-PASSWORD-RECOVERY] Recent password recovery counts - Mobile: {MobileCount}, Device: {DeviceCount} for mobile ID {MobileId}",
-                    recoveryCountByMobile, recoveryCountByDevice, mobile.UniqueId);
-
-                int maxAttemptsByMobile = _securityConfig.CurrentValue.VerificationFlowLimits
-                    .PasswordRecoveryAttemptsPerHourPerMobile;
-                int maxAttemptsByDevice = _securityConfig.CurrentValue.VerificationFlowLimits
-                    .PasswordRecoveryAttemptsPerHourPerDevice;
-
-                if (recoveryCountByMobile >= maxAttemptsByMobile || recoveryCountByDevice >= maxAttemptsByDevice)
+                if (recoveryRuleResult.IsSome)
                 {
-                    Log.Warning(
-                        "[InitiateFlow] Password recovery rate limit exceeded. Mobile: {MobileCount}/{MaxMobile}, Device: {DeviceCount}/{MaxDevice}",
-                        recoveryCountByMobile, maxAttemptsByMobile, recoveryCountByDevice, maxAttemptsByDevice);
                     await transaction.RollbackAsync();
-                    return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.RateLimitExceeded());
-                }
-
-                List<VerificationFlowEntity> oldActiveFlows = await schemeContext.VerificationFlows
-                    .Where(vf => vf.MobileNumberId == mobile.UniqueId &&
-                                 vf.Purpose == VerificationPurpose.PasswordRecovery &&
-                                 (vf.Status == VerificationFlowStatus.Pending || vf.Status == VerificationFlowStatus.Verified) &&
-                                 !vf.IsDeleted)
-                    .ToListAsync(cancellationToken);
-
-                Log.Information(
-                    "[INITIATE-PASSWORD-RECOVERY] Found {Count} old password recovery flows (pending + verified) to expire for mobile ID {MobileId}",
-                    oldActiveFlows.Count, mobile.UniqueId);
-
-                if (oldActiveFlows.Count > 0)
-                {
-                    foreach (VerificationFlowEntity oldFlow in oldActiveFlows)
-                    {
-                        VerificationFlowStatus oldStatus = oldFlow.Status;
-                        oldFlow.Status = VerificationFlowStatus.Expired;
-                        oldFlow.UpdatedAt = DateTimeOffset.UtcNow;
-                        Log.Information(
-                            "[INITIATE-PASSWORD-RECOVERY] Expiring flow {FlowId} with status '{OldStatus}' for mobile ID {MobileId}",
-                            oldFlow.UniqueId, oldStatus, mobile.UniqueId);
-                    }
-
-                    Log.Information(
-                        "[INITIATE-PASSWORD-RECOVERY] Successfully expired {Count} old password recovery flows",
-                        oldActiveFlows.Count);
+                    return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(recoveryRuleResult.Value!);
                 }
             }
 
-            DateTimeOffset rateLimitLookback = DateTimeOffset.UtcNow - persistorSettings.RateLimitLookback;
+            Option<VerificationFlowFailure> rateLimitResult = await CheckGeneralRateLimitsAsync(
+                schemeContext, cmd, mobile.UniqueId, persistorSettings, cancellationToken);
 
-            int mobileFlowCount = await VerificationFlowQueries.CountRecentByMobileId(
-                schemeContext, mobile.UniqueId, rateLimitLookback, cancellationToken);
-            if (mobileFlowCount >= persistorSettings.MaxFlowsPerHourPerMobile)
+            if (rateLimitResult.IsSome)
             {
-                Log.Warning("[InitiateFlow] Mobile rate limit exceeded. Count: {Count}, Max: {Max}, Mobile: {MobileId}",
-                    mobileFlowCount, persistorSettings.MaxFlowsPerHourPerMobile, mobile.UniqueId);
                 await transaction.RollbackAsync();
-                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.RateLimitExceeded());
+                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(rateLimitResult.Value!);
             }
 
-            int deviceFlowCount = await VerificationFlowQueries.CountRecentByDevice(
-                schemeContext, cmd.AppDeviceId, rateLimitLookback, cancellationToken);
-            if (deviceFlowCount >= persistorSettings.MaxFlowsPerHourPerDevice)
-            {
-                Log.Warning("[InitiateFlow] Device rate limit exceeded. Count: {Count}, Max: {Max}, Device: {DeviceId}",
-                    deviceFlowCount, persistorSettings.MaxFlowsPerHourPerDevice, cmd.AppDeviceId);
-                await transaction.RollbackAsync();
-                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.DeviceRateLimitExceeded());
-            }
-
-            VerificationFlowEntity flow = new()
-            {
-                UniqueId = Guid.NewGuid(),
-                MobileNumberId = mobile.UniqueId,
-                AppDeviceId = cmd.AppDeviceId,
-                Purpose = cmd.Purpose,
-                Status = VerificationFlowStatus.Pending,
-                ExpiresAt = DateTimeOffset.UtcNow + persistorSettings.FlowExpiration,
-                ConnectionId = cmd.ConnectId,
-                OtpCount = 0,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
-                IsDeleted = false
-            };
-
+            VerificationFlowEntity flow = CreateNewVerificationFlow(cmd, mobile.UniqueId, persistorSettings);
             schemeContext.VerificationFlows.Add(flow);
 
             await schemeContext.SaveChangesAsync(cancellationToken);
-
             Log.Information("Successfully saved verification flow. FlowId: {FlowId}", flow.UniqueId);
 
             await transaction.CommitAsync(cancellationToken);
-
             Log.Information("Transaction committed successfully for flow {FlowId}", flow.UniqueId);
 
-            Option<VerificationFlowEntity> flowWithOtpOpt =
-                await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(schemeContext, flow.UniqueId,
-                    cancellationToken);
-            if (!flowWithOtpOpt.IsSome)
-            {
-                Log.Error("[InitiateFlow] Flow not found after creation: {FlowId}", flow.UniqueId);
-                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.FlowNotFoundAfterCreation());
-            }
-
-            return MapToVerificationFlowRecord(flowWithOtpOpt.Value!);
+            return await GetFinalFlowRecordAsync(schemeContext, flow.UniqueId, cancellationToken);
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "[InitiateFlow] Operation failed. Purpose: {Purpose}",
-                cmd.Purpose);
+            Log.Error(ex, "[InitiateFlow] Operation failed. Purpose: {Purpose}", cmd.Purpose);
             await transaction.RollbackAsync();
             return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.InitiateFlowFailed(ex));
         }
+    }
+
+    private static async Task<Result<VerificationFlowQueryRecord, VerificationFlowFailure>> GetFinalFlowRecordAsync(
+        EcliptixSchemaContext schemeContext,
+        Guid flowUniqueId,
+        CancellationToken cancellationToken)
+    {
+        Option<VerificationFlowEntity> flowWithOtpOpt =
+            await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(schemeContext, flowUniqueId,
+                cancellationToken);
+        if (!flowWithOtpOpt.IsSome)
+        {
+            Log.Error("[InitiateFlow] Flow not found after creation: {FlowId}", flowUniqueId);
+            return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.FlowNotFoundAfterCreation());
+        }
+
+        return MapToVerificationFlowRecord(flowWithOtpOpt.Value!);
+    }
+
+    private VerificationFlowEntity CreateNewVerificationFlow(
+        InitiateFlowAndReturnStateActorEvent cmd,
+        Guid mobileUniqueId,
+        VerificationFlowPersistorSettings persistorSettings)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        return new()
+        {
+            UniqueId = Guid.NewGuid(),
+            MobileNumberId = mobileUniqueId,
+            AppDeviceId = cmd.AppDeviceId,
+            Purpose = cmd.Purpose,
+            Status = VerificationFlowStatus.Pending,
+            ExpiresAt = now + persistorSettings.FlowExpiration,
+            ConnectionId = cmd.ConnectId,
+            OtpCount = 0,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsDeleted = false
+        };
+    }
+
+    private static async Task<Option<VerificationFlowFailure>> CheckGeneralRateLimitsAsync(
+        EcliptixSchemaContext schemeContext,
+        InitiateFlowAndReturnStateActorEvent cmd,
+        Guid mobileUniqueId,
+        VerificationFlowPersistorSettings persistorSettings,
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset rateLimitLookback = DateTimeOffset.UtcNow - persistorSettings.RateLimitLookback;
+
+        int mobileFlowCount = await VerificationFlowQueries.CountRecentByMobileId(
+            schemeContext, mobileUniqueId, rateLimitLookback, cancellationToken);
+        if (mobileFlowCount >= persistorSettings.MaxFlowsPerHourPerMobile)
+        {
+            Log.Warning("[InitiateFlow] Mobile rate limit exceeded. Count: {Count}, Max: {Max}, Mobile: {MobileId}",
+                mobileFlowCount, persistorSettings.MaxFlowsPerHourPerMobile, mobileUniqueId);
+            return Option<VerificationFlowFailure>.Some(VerificationFlowFailure.RateLimitExceeded());
+        }
+
+        int deviceFlowCount = await VerificationFlowQueries.CountRecentByDevice(
+            schemeContext, cmd.AppDeviceId, rateLimitLookback, cancellationToken);
+        if (deviceFlowCount >= persistorSettings.MaxFlowsPerHourPerDevice)
+        {
+            Log.Warning("[InitiateFlow] Device rate limit exceeded. Count: {Count}, Max: {Max}, Device: {DeviceId}",
+                deviceFlowCount, persistorSettings.MaxFlowsPerHourPerDevice, cmd.AppDeviceId);
+            return Option<VerificationFlowFailure>.Some(VerificationFlowFailure.DeviceRateLimitExceeded());
+        }
+
+        return Option<VerificationFlowFailure>.None;
+    }
+
+    private static async Task<Result<MobileNumberEntity, VerificationFlowFailure>> ValidateInputsAsync(
+        EcliptixSchemaContext schemeContext,
+        InitiateFlowAndReturnStateActorEvent cmd,
+        CancellationToken cancellationToken)
+    {
+        Option<MobileNumberEntity> mobileOpt =
+            await MobileNumberQueries.GetByUniqueId(schemeContext, cmd.MobileNumberUniqueId, cancellationToken);
+        if (!mobileOpt.IsSome)
+        {
+            Log.Warning("[InitiateFlow] Mobile number not found: {MobileNumberId}", cmd.MobileNumberUniqueId);
+            return Result<MobileNumberEntity, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.FromMobileNumber(MobileNumberFailure.NotFound()));
+        }
+
+        bool deviceExists = await DeviceQueries.ExistsByDeviceId(schemeContext, cmd.AppDeviceId, cancellationToken);
+        if (!deviceExists)
+        {
+            Log.Warning("[InitiateFlow] Device not found: {DeviceId}", cmd.AppDeviceId);
+            return Result<MobileNumberEntity, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.Validation("Device not found"));
+        }
+
+        return Result<MobileNumberEntity, VerificationFlowFailure>.Ok(mobileOpt.Value!);
+    }
+
+    private static async Task HandleLingeringActiveFlowAsync(
+        EcliptixSchemaContext schemeContext,
+        InitiateFlowAndReturnStateActorEvent cmd,
+        CancellationToken cancellationToken)
+    {
+        Option<VerificationFlowEntity> existingActiveFlowOpt =
+            await VerificationFlowQueries.GetActiveFlowForRecovery(
+                schemeContext,
+                cmd.MobileNumberUniqueId,
+                cmd.AppDeviceId,
+                cmd.Purpose,
+                cancellationToken);
+
+        if (existingActiveFlowOpt.IsSome)
+        {
+            VerificationFlowEntity existingActiveFlow = existingActiveFlowOpt.Value!;
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+
+            await schemeContext.VerificationFlows
+                .Where(vf => vf.Id == existingActiveFlow.Id)
+                .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(vf => vf.Status, VerificationFlowStatus.Expired)
+                        .SetProperty(vf => vf.ConnectionId, (long?)null)
+                        .SetProperty(vf => vf.ExpiresAt, now)
+                        .SetProperty(vf => vf.UpdatedAt, now),
+                    cancellationToken);
+
+            await schemeContext.OtpCodes
+                .Where(o => o.VerificationFlowId == existingActiveFlow.Id &&
+                            o.Status == OtpStatus.Active &&
+                            !o.IsDeleted)
+                .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(o => o.Status, OtpStatus.Expired)
+                        .SetProperty(o => o.UpdatedAt, now),
+                    cancellationToken);
+
+            Log.Information(
+                "[verification.flow.recovered] Expired lingering flow {FlowId} before creating a new one",
+                existingActiveFlow.UniqueId);
+        }
+    }
+
+    private async Task<Option<VerificationFlowFailure>> HandlePasswordRecoveryRulesAsync(
+        EcliptixSchemaContext schemeContext,
+        InitiateFlowAndReturnStateActorEvent cmd,
+        Guid mobileUniqueId,
+        VerificationFlowPersistorSettings persistorSettings,
+        CancellationToken cancellationToken)
+    {
+        Option<VerificationFlowFailure> rateLimitFailure = await CheckPasswordRecoveryRateLimitsAsync(
+            schemeContext, cmd, mobileUniqueId, persistorSettings, cancellationToken);
+
+        if (rateLimitFailure.IsSome)
+        {
+            return rateLimitFailure;
+        }
+
+        await ExpireOldPasswordRecoveryFlowsAsync(schemeContext, mobileUniqueId, cancellationToken);
+
+        return Option<VerificationFlowFailure>.None;
+    }
+
+    private static async Task ExpireOldPasswordRecoveryFlowsAsync(
+        EcliptixSchemaContext schemeContext,
+        Guid mobileUniqueId,
+        CancellationToken cancellationToken)
+    {
+        List<VerificationFlowEntity> oldActiveFlows = await schemeContext.VerificationFlows
+            .Where(vf => vf.MobileNumberId == mobileUniqueId &&
+                         vf.Purpose == VerificationPurpose.PasswordRecovery &&
+                         (vf.Status == VerificationFlowStatus.Pending || vf.Status == VerificationFlowStatus.Verified) &&
+                         !vf.IsDeleted)
+            .ToListAsync(cancellationToken);
+
+        if (oldActiveFlows.Count > 0)
+        {
+            Log.Information(
+                "[INITIATE-PASSWORD-RECOVERY] Found {Count} old password recovery flows (pending + verified) to expire for mobile ID {MobileId}",
+                oldActiveFlows.Count, mobileUniqueId);
+
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            foreach (VerificationFlowEntity oldFlow in oldActiveFlows)
+            {
+                Log.Information(
+                    "[INITIATE-PASSWORD-RECOVERY] Expiring flow {FlowId} with status '{OldStatus}' for mobile ID {MobileId}",
+                    oldFlow.UniqueId, oldFlow.Status, mobileUniqueId);
+
+                oldFlow.Status = VerificationFlowStatus.Expired;
+                oldFlow.UpdatedAt = now;
+            }
+
+            Log.Information(
+                "[INITIATE-PASSWORD-RECOVERY] Successfully marked {Count} old password recovery flows for expiration",
+                oldActiveFlows.Count);
+        }
+    }
+
+    private async Task<Option<VerificationFlowFailure>> CheckPasswordRecoveryRateLimitsAsync(
+        EcliptixSchemaContext schemeContext,
+        InitiateFlowAndReturnStateActorEvent cmd,
+        Guid mobileUniqueId,
+        VerificationFlowPersistorSettings persistorSettings,
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset recoveryLookbackTime =
+            DateTimeOffset.UtcNow - persistorSettings.PasswordRecoveryLookback;
+
+        int recoveryCountByMobile = await VerificationFlowQueries.CountRecentPasswordRecovery(
+            schemeContext, mobileUniqueId, recoveryLookbackTime, cancellationToken);
+
+        int recoveryCountByDevice = await schemeContext.VerificationFlows
+            .Where(f => f.AppDeviceId == cmd.AppDeviceId &&
+                        f.Purpose == VerificationPurpose.PasswordRecovery &&
+                        f.CreatedAt >= recoveryLookbackTime &&
+                        !f.IsDeleted)
+            .AsNoTracking()
+            .CountAsync(cancellationToken);
+
+        Log.Information(
+            "[INITIATE-PASSWORD-RECOVERY] Recent password recovery counts - Mobile: {MobileCount}, Device: {DeviceCount} for mobile ID {MobileId}",
+            recoveryCountByMobile, recoveryCountByDevice, mobileUniqueId);
+
+        int maxAttemptsByMobile = _securityConfig.CurrentValue.VerificationFlowLimits
+            .PasswordRecoveryAttemptsPerHourPerMobile;
+        int maxAttemptsByDevice = _securityConfig.CurrentValue.VerificationFlowLimits
+            .PasswordRecoveryAttemptsPerHourPerDevice;
+
+        if (recoveryCountByMobile >= maxAttemptsByMobile || recoveryCountByDevice >= maxAttemptsByDevice)
+        {
+            Log.Warning(
+                "[InitiateFlow] Password recovery rate limit exceeded. Mobile: {MobileCount}/{MaxMobile}, Device: {DeviceCount}/{MaxDevice}",
+                recoveryCountByMobile, maxAttemptsByMobile, recoveryCountByDevice, maxAttemptsByDevice);
+            return Option<VerificationFlowFailure>.Some(VerificationFlowFailure.RateLimitExceeded());
+        }
+
+        return Option<VerificationFlowFailure>.None;
     }
 
     private async Task<Result<(string Outcome, uint RemainingSeconds), VerificationFlowFailure>> RequestResendOtpAsync(
@@ -608,14 +699,12 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 MembershipCreationStatus.OtpVerified => ProtoMembership.Types.CreationStatus.OtpVerified,
                 MembershipCreationStatus.SecureKeySet => ProtoMembership.Types.CreationStatus.SecureKeySet,
                 MembershipCreationStatus.PassphraseSet => ProtoMembership.Types.CreationStatus.PassphraseSet,
-                null => ProtoMembership.Types.CreationStatus.OtpVerified,
                 _ => ProtoMembership.Types.CreationStatus.OtpVerified
             };
 
             ProtoMembership.Types.ActivityStatus activityStatus = membership.Status switch
             {
                 MembershipStatus.Inactive => ProtoMembership.Types.ActivityStatus.Inactive,
-                MembershipStatus.Active => ProtoMembership.Types.ActivityStatus.Active,
                 _ => ProtoMembership.Types.ActivityStatus.Active
             };
 
@@ -638,7 +727,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         catch (Exception ex)
         {
             bool isTimeout = ex is TimeoutException ||
-                           ex is System.Threading.ThreadAbortException ||
+                           ex is ThreadAbortException ||
                            (ex is TaskCanceledException tce && tce.CancellationToken.IsCancellationRequested);
 
             Log.Error(ex,
@@ -717,13 +806,11 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 MembershipCreationStatus.OtpVerified => Membership.Types.CreationStatus.OtpVerified,
                 MembershipCreationStatus.SecureKeySet => Membership.Types.CreationStatus.SecureKeySet,
                 MembershipCreationStatus.PassphraseSet => Membership.Types.CreationStatus.PassphraseSet,
-                null => Membership.Types.CreationStatus.OtpVerified,
                 _ => Membership.Types.CreationStatus.OtpVerified
             };
             Membership.Types.ActivityStatus activityStatus = membershipInfo.Status switch
             {
                 MembershipStatus.Inactive => Membership.Types.ActivityStatus.Inactive,
-                MembershipStatus.Active => Membership.Types.ActivityStatus.Active,
                 _ => Membership.Types.ActivityStatus.Active
             };
 
@@ -836,7 +923,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 Membership.Types.ActivityStatus membershipActivityStatus = membershipInfo.Status switch
                 {
                     MembershipStatus.Inactive => Membership.Types.ActivityStatus.Inactive,
-                    MembershipStatus.Active => Membership.Types.ActivityStatus.Active,
                     _ => Membership.Types.ActivityStatus.Active
                 };
                 bool isActive = membershipActivityStatus == Membership.Types.ActivityStatus.Active;
