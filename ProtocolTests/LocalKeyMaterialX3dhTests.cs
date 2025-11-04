@@ -1,11 +1,10 @@
-using System.Collections.Concurrent;
 using System.Text;
 using Ecliptix.Core.Domain.Protocol;
-using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Utilities;
-using Google.Protobuf.WellKnownTypes;
+
+namespace ProtocolTests;
 
 [TestClass]
 public class ShieldProDoubleRatchetTests

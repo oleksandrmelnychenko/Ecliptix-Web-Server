@@ -18,6 +18,8 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
     private EcliptixProtocolConnection? _connectSession;
 
+    private bool _disposed;
+
     private const string DhPublicKeyNullMessage = "DH public key is null";
 
     public static Result<EcliptixProtocolSystem, EcliptixProtocolFailure> CreateFrom(EcliptixSystemIdentityKeys keys,
@@ -29,16 +31,32 @@ public class EcliptixProtocolSystem(EcliptixSystemIdentityKeys ecliptixSystemIde
 
     public void Dispose()
     {
-        EcliptixProtocolConnection? connectionToDispose;
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
 
-        lock (_lock)
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
         {
-            connectionToDispose = _connectSession;
-            _connectSession = null;
+            return;
         }
 
-        connectionToDispose?.Dispose();
-        ecliptixSystemIdentityKeys.Dispose();
+        if (disposing)
+        {
+            EcliptixProtocolConnection? connectionToDispose;
+
+            lock (_lock)
+            {
+                connectionToDispose = _connectSession;
+                _connectSession = null;
+            }
+
+            connectionToDispose?.Dispose();
+            ecliptixSystemIdentityKeys.Dispose();
+        }
+
+        _disposed = true;
     }
 
     public EcliptixSystemIdentityKeys GetIdentityKeys()

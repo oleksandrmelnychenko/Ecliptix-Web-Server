@@ -456,7 +456,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             }
 
             ClearActiveOtpState();
-            await TerminateActor(graceful: true, publishCleanupEvent: true, reason: "password_recovery_verified");
+            await TerminateActor(graceful: true, reason: "password_recovery_verified");
             return;
         }
 
@@ -490,14 +490,14 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(failure));
             ClearActiveOtpState();
-            await TerminateActor(graceful: true, publishCleanupEvent: true, reason: "membership_creation_failed");
+            await TerminateActor(graceful: true, reason: "membership_creation_failed");
             return;
         }
 
         _activity?.AddEvent(new ActivityEvent("verification.otp.verified"));
 
         ClearActiveOtpState();
-        await TerminateActor(graceful: true, publishCleanupEvent: true, reason: "otp_verified_new_membership");
+        await TerminateActor(graceful: true, reason: "otp_verified_new_membership");
     }
 
     private async Task HandleFailedVerification(string cultureName)
@@ -1159,7 +1159,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
                 Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(failure));
                 ClearActiveOtpState();
-                await TerminateActor(graceful: true, publishCleanupEvent: true, reason: "existing_membership_error");
+                await TerminateActor(graceful: true, reason: "existing_membership_error");
                 return true;
             }
 
@@ -1173,7 +1173,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 }));
 
                 ClearActiveOtpState();
-                await TerminateActor(graceful: true, publishCleanupEvent: true,
+                await TerminateActor(graceful: true,
                     reason: "otp_verified_existing_membership");
                 return true;
             }
@@ -1199,7 +1199,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
             Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(failure));
             ClearActiveOtpState();
-            await TerminateActor(graceful: true, publishCleanupEvent: true, reason: "existing_membership_check_failed");
+            await TerminateActor(graceful: true, reason: "existing_membership_check_failed");
             return true;
         }
 
@@ -1274,7 +1274,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 }));
         }
 
-        await TerminateActor(graceful: false, publishCleanupEvent: false);
+        await TerminateActor(graceful: false);
     }
 
     private void HandleRecoveryCompleted()
@@ -1386,7 +1386,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         bool graceful = true,
         bool updateFlowToExpired = false,
         Exception? error = null,
-        bool publishCleanupEvent = true,
         string reason = "unspecified")
     {
         if (_cleanupCompleted)
@@ -1449,7 +1448,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         await TerminateActor(
             graceful: isGraceful,
             error: failure.InnerException,
-            publishCleanupEvent: false,
             reason: $"failure_{failure.FailureType}");
     }
 

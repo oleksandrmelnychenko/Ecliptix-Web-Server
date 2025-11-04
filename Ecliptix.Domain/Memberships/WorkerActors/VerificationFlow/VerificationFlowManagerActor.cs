@@ -150,9 +150,6 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                 }
                 catch (OperationCanceledException ex)
                 {
-                    Log.Information(
-                        "[verification.flow.manager.force-stop] Cancellation while waiting for termination of ConnectId {ConnectId}",
-                        actorEvent.ConnectId);
                     Log.Debug(ex,
                         "[verification.flow.manager.force-stop] Cancellation while waiting for termination of ConnectId {ConnectId}",
                         actorEvent.ConnectId);

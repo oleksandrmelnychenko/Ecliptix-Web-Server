@@ -464,7 +464,7 @@ internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedServic
         }
         catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
         {
-            Log.Information("Actor system shutdown cancelled, forcing termination");
+            Log.Debug(ex, "Actor system shutdown cancelled, forcing termination");
             await actorSystem.Terminate();
         }
         catch (Exception ex)
