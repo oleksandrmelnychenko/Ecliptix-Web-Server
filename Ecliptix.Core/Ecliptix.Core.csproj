@@ -140,6 +140,10 @@
       <Folder Include="logs\" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Compile Remove="Configuration\AkkaConfiguration_Draft.cs" />
+    </ItemGroup>
+
     <!-- Commented out: Using AOT-safe hardcoded FrozenDictionary instead of ResourceManager
     <ItemGroup>
         <EmbeddedResource Update="Resources\VerificationFlowRes.resx">
