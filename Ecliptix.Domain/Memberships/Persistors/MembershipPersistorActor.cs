@@ -867,17 +867,6 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
         }
     }
 
-    private static Option<ProtoMembership.Types.ActivityStatus> MapActivityStatus(string? statusStr)
-    {
-        if (string.IsNullOrEmpty(statusStr) ||
-            !MembershipStatusMap.TryGetValue(statusStr, out ProtoMembership.Types.ActivityStatus status))
-        {
-            return Option<ProtoMembership.Types.ActivityStatus>.None;
-        }
-
-        return Option<ProtoMembership.Types.ActivityStatus>.Some(status);
-    }
-
     private static async Task<Result<Unit, MembershipFailure>> UpdateMembershipVerificationFlowAsync(
         EcliptixSchemaContext ctx, UpdateMembershipVerificationFlowEvent cmd, CancellationToken cancellationToken)
     {

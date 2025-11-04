@@ -213,7 +213,7 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
         return Result<DerivedServerKeys, OpaqueServerFailure>.Ok(keys);
     }
 
-    private class DerivedServerKeys
+    private sealed class DerivedServerKeys
     {
         public byte[] PrivateKey { get; set; } = new byte[OpaqueConstants.PRIVATE_KEY_LENGTH];
         public byte[] PublicKey { get; set; } = new byte[OpaqueConstants.PUBLIC_KEY_LENGTH];
