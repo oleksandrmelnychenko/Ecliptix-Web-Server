@@ -30,6 +30,18 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     private readonly Option<IActorRef> _membershipPersistorActor;
     private readonly IOptionsMonitor<SecurityConfiguration> _securityConfig;
 
+    private sealed record MembershipCheckInfo
+    {
+        public Guid MembershipId { get; init; }
+        public MembershipStatus? Status { get; init; }
+        public MembershipCreationStatus? CreationStatus { get; init; }
+        public Guid DeviceId { get; init; }
+        public DateTimeOffset CreatedAt { get; init; }
+        public bool HasDefaultAccount { get; init; }
+        public Guid? AccountUniqueId { get; init; }
+        public bool HasValidCredentials { get; init; }
+    }
+
     public VerificationFlowPersistorActor(
         IDbContextFactory<EcliptixSchemaContext> dbContextFactory,
         IOptionsMonitor<SecurityConfiguration> securityConfig,
@@ -756,20 +768,14 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             if (!mobileNumberExists)
             {
                 return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                    new MobileNumberAvailabilityResponse
-                    {
-                        Status = MobileAvailabilityStatus.Available,
-                        CanRegister = true,
-                        CanContinue = false,
-                        LocalizationKey = VerificationFlowMessageKeys.MobileAvailableForRegistration
-                    });
+                    BuildAvailableResponse());
             }
 
-            var membershipInfo = await schemeContext.Memberships
+            MembershipCheckInfo? membershipInfo = await schemeContext.Memberships
                 .Where(m => m.MobileNumberId == cmd.MobileNumberId &&
                             !m.IsDeleted &&
                             !m.MobileNumber.IsDeleted)
-                .Select(m => new
+                .Select(m => new MembershipCheckInfo
                 {
                     MembershipId = m.UniqueId,
                     Status = m.Status,
@@ -792,173 +798,12 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             if (membershipInfo == null)
             {
                 return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                    new MobileNumberAvailabilityResponse
-                    {
-                        Status = MobileAvailabilityStatus.Available,
-                        CanRegister = true,
-                        CanContinue = false,
-                        LocalizationKey = VerificationFlowMessageKeys.MobileAvailableForRegistration
-                    });
+                    BuildAvailableResponse());
             }
 
-            Membership.Types.CreationStatus creationStatus = membershipInfo.CreationStatus switch
-            {
-                MembershipCreationStatus.OtpVerified => Membership.Types.CreationStatus.OtpVerified,
-                MembershipCreationStatus.SecureKeySet => Membership.Types.CreationStatus.SecureKeySet,
-                MembershipCreationStatus.PassphraseSet => Membership.Types.CreationStatus.PassphraseSet,
-                _ => Membership.Types.CreationStatus.OtpVerified
-            };
-            Membership.Types.ActivityStatus activityStatus = membershipInfo.Status switch
-            {
-                MembershipStatus.Inactive => Membership.Types.ActivityStatus.Inactive,
-                _ => Membership.Types.ActivityStatus.Active
-            };
+            MobileNumberAvailabilityResponse response = HandleExistingMembership(membershipInfo, cmd.DeviceId);
 
-            if (creationStatus == Membership.Types.CreationStatus.OtpVerified &&
-                membershipInfo.HasValidCredentials)
-            {
-                Log.Warning(
-                    "[CHECK-AVAILABILITY-INCONSISTENCY] Status={Status} but credentials exist. " +
-                    "MembershipId={MembershipId}, DeviceId={DeviceId}. " +
-                    "Treating as complete registration (SecureKeySet). Migration will fix status in DB.",
-                    creationStatus, membershipInfo.MembershipId, membershipInfo.DeviceId);
-
-                creationStatus = Membership.Types.CreationStatus.SecureKeySet;
-            }
-
-            if (membershipInfo.HasDefaultAccount &&
-                !membershipInfo.HasValidCredentials &&
-                creationStatus != Membership.Types.CreationStatus.OtpVerified)
-            {
-                Log.Warning(
-                    "[CHECK-AVAILABILITY] Data corruption: Account exists without credentials. MembershipId={MembershipId}, DeviceId={DeviceId}, CreationStatus={CreationStatus}",
-                    membershipInfo.MembershipId, cmd.DeviceId, creationStatus);
-
-                return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                    new MobileNumberAvailabilityResponse
-                    {
-                        Status = MobileAvailabilityStatus.DataCorruption,
-                        CanRegister = false,
-                        CanContinue = false,
-                        ExistingMembershipId = Helpers.GuidToByteString(membershipInfo.MembershipId),
-                        RegisteredDeviceId = Helpers.GuidToByteString(membershipInfo.DeviceId),
-                        CreationStatus = creationStatus,
-                        ActivityStatus = activityStatus,
-                        LocalizationKey = VerificationFlowMessageKeys.MobileDataCorruption
-                    });
-            }
-
-            if (creationStatus is Membership.Types.CreationStatus.OtpVerified
-                    or Membership.Types.CreationStatus.PassphraseSet &&
-                !membershipInfo.HasValidCredentials)
-            {
-                DateTimeOffset now = DateTimeOffset.UtcNow;
-                TimeSpan timeSinceCreation = now - membershipInfo.CreatedAt;
-                TimeSpan completionWindow = _securityConfig.CurrentValue.MembershipPersistor.MembershipCreationWindow;
-
-                if (timeSinceCreation > completionWindow)
-                {
-                    Log.Warning(
-                        "[CHECK-AVAILABILITY] Registration window expired. MembershipId={MembershipId}, " +
-                        "CreatedAt={CreatedAt}, WindowHours={WindowHours}, ElapsedHours={ElapsedHours}",
-                        membershipInfo.MembershipId,
-                        membershipInfo.CreatedAt,
-                        completionWindow.TotalHours,
-                        timeSinceCreation.TotalHours);
-
-                    return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                        new MobileNumberAvailabilityResponse
-                        {
-                            Status = MobileAvailabilityStatus.RegistrationExpired,
-                            CanRegister = true,
-                            CanContinue = false,
-                            LocalizationKey = VerificationFlowMessageKeys.MobileRegistrationExpired
-                        });
-                }
-
-                if (membershipInfo.DeviceId != cmd.DeviceId)
-                {
-                    Log.Warning(
-                        "[CHECK-AVAILABILITY] Cross-device registration blocked. MembershipId: {MembershipId}, " +
-                        "RegisteredDevice: {RegisteredDevice}, RequestingDevice: {RequestingDevice}",
-                        membershipInfo.MembershipId, membershipInfo.DeviceId, cmd.DeviceId);
-
-                    return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                        new MobileNumberAvailabilityResponse
-                        {
-                            Status = MobileAvailabilityStatus.IncompleteRegistration,
-                            CanRegister = false,
-                            CanContinue = false,
-                            ExistingMembershipId = Helpers.GuidToByteString(membershipInfo.MembershipId),
-                            RegisteredDeviceId = Helpers.GuidToByteString(membershipInfo.DeviceId),
-                            CreationStatus = creationStatus,
-                            ActivityStatus = activityStatus,
-                            LocalizationKey = VerificationFlowMessageKeys.MobileIncompleteRegistrationDifferentDevice
-                        });
-                }
-
-                MobileNumberAvailabilityResponse response = new()
-                {
-                    Status = MobileAvailabilityStatus.IncompleteRegistration,
-                    CanRegister = false,
-                    CanContinue = true,
-                    ExistingMembershipId = Helpers.GuidToByteString(membershipInfo.MembershipId),
-                    RegisteredDeviceId = Helpers.GuidToByteString(membershipInfo.DeviceId),
-                    CreationStatus = creationStatus,
-                    ActivityStatus = activityStatus,
-                    LocalizationKey = VerificationFlowMessageKeys.MobileIncompleteRegistration
-                };
-
-                if (membershipInfo.AccountUniqueId.HasValue)
-                {
-                    ByteString accountId = Helpers.GuidToByteString(membershipInfo.AccountUniqueId.Value);
-                    response.AccountUniqueIdentifier = accountId;
-                }
-
-                return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(response);
-            }
-
-            if (membershipInfo.HasValidCredentials)
-            {
-                Membership.Types.ActivityStatus membershipActivityStatus = membershipInfo.Status switch
-                {
-                    MembershipStatus.Inactive => Membership.Types.ActivityStatus.Inactive,
-                    _ => Membership.Types.ActivityStatus.Active
-                };
-                bool isActive = membershipActivityStatus == Membership.Types.ActivityStatus.Active;
-                MobileAvailabilityStatus status = isActive
-                    ? MobileAvailabilityStatus.TakenActive
-                    : MobileAvailabilityStatus.TakenInactive;
-                string localizationKey = isActive
-                    ? VerificationFlowMessageKeys.MobileTakenActiveAccount
-                    : VerificationFlowMessageKeys.MobileTakenInactiveAccount;
-
-                return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                    new MobileNumberAvailabilityResponse
-                    {
-                        Status = status,
-                        CanRegister = false,
-                        CanContinue = false,
-                        RegisteredDeviceId = Helpers.GuidToByteString(membershipInfo.DeviceId),
-                        CreationStatus = creationStatus,
-                        ActivityStatus = activityStatus,
-                        LocalizationKey = localizationKey
-                    });
-            }
-
-            Log.Warning(
-                "[CHECK-AVAILABILITY] Unexpected state. MembershipId={MembershipId}, CreationStatus={CreationStatus}, HasAccount={HasAccount}, HasCredentials={HasCredentials}",
-                membershipInfo.MembershipId, creationStatus, membershipInfo.HasDefaultAccount,
-                membershipInfo.HasValidCredentials);
-
-            return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                new MobileNumberAvailabilityResponse
-                {
-                    Status = MobileAvailabilityStatus.Available,
-                    CanRegister = true,
-                    CanContinue = false,
-                    LocalizationKey = VerificationFlowMessageKeys.MobileAvailableForRegistration
-                });
+            return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(response);
         }
         catch (Exception ex)
         {
@@ -969,6 +814,201 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.CheckMobileAvailabilityFailed(ex));
         }
+    }
+
+    private MobileNumberAvailabilityResponse HandleExistingMembership(
+        MembershipCheckInfo info, Guid requestingDeviceId)
+    {
+        (Membership.Types.CreationStatus creationStatus, Membership.Types.ActivityStatus activityStatus) = GetCorrectedMembershipStatus(info);
+
+        Option<MobileNumberAvailabilityResponse> corruptionResponse = CheckForDataCorruption(info, creationStatus, activityStatus, requestingDeviceId);
+        if (corruptionResponse.IsSome)
+        {
+            return corruptionResponse.Value!;
+        }
+
+        if (creationStatus is Membership.Types.CreationStatus.OtpVerified
+                or Membership.Types.CreationStatus.PassphraseSet &&
+            !info.HasValidCredentials)
+        {
+            return HandleIncompleteRegistration(info, creationStatus, activityStatus, requestingDeviceId);
+        }
+
+        if (info.HasValidCredentials)
+        {
+            return HandleTakenRegistration(info, creationStatus, activityStatus);
+        }
+
+        Log.Warning(
+            "[CHECK-AVAILABILITY] Unexpected state. MembershipId={MembershipId}, CreationStatus={CreationStatus}, HasAccount={HasAccount}, HasCredentials={HasCredentials}",
+            info.MembershipId, creationStatus, info.HasDefaultAccount, info.HasValidCredentials);
+
+        return BuildAvailableResponse();
+    }
+
+    private MobileNumberAvailabilityResponse HandleIncompleteRegistration(
+        MembershipCheckInfo info,
+        Membership.Types.CreationStatus creationStatus,
+        Membership.Types.ActivityStatus activityStatus,
+        Guid requestingDeviceId)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        TimeSpan timeSinceCreation = now - info.CreatedAt;
+        TimeSpan completionWindow = _securityConfig.CurrentValue.MembershipPersistor.MembershipCreationWindow;
+
+        if (timeSinceCreation > completionWindow)
+        {
+            Log.Warning(
+                "[CHECK-AVAILABILITY] Registration window expired. MembershipId={MembershipId}, " +
+                "CreatedAt={CreatedAt}, WindowHours={WindowHours}, ElapsedHours={ElapsedHours}",
+                info.MembershipId, info.CreatedAt, completionWindow.TotalHours, timeSinceCreation.TotalHours);
+
+            return new MobileNumberAvailabilityResponse
+            {
+                Status = MobileAvailabilityStatus.RegistrationExpired,
+                CanRegister = true,
+                CanContinue = false,
+                LocalizationKey = VerificationFlowMessageKeys.MobileRegistrationExpired
+            };
+        }
+
+        if (info.DeviceId != requestingDeviceId)
+        {
+            Log.Warning(
+                "[CHECK-AVAILABILITY] Cross-device registration blocked. MembershipId: {MembershipId}, " +
+                "RegisteredDevice: {RegisteredDevice}, RequestingDevice: {RequestingDevice}",
+                info.MembershipId, info.DeviceId, requestingDeviceId);
+
+            return new MobileNumberAvailabilityResponse
+            {
+                Status = MobileAvailabilityStatus.IncompleteRegistration,
+                CanRegister = false,
+                CanContinue = false,
+                ExistingMembershipId = Helpers.GuidToByteString(info.MembershipId),
+                RegisteredDeviceId = Helpers.GuidToByteString(info.DeviceId),
+                CreationStatus = creationStatus,
+                ActivityStatus = activityStatus,
+                LocalizationKey = VerificationFlowMessageKeys.MobileIncompleteRegistrationDifferentDevice
+            };
+        }
+
+        MobileNumberAvailabilityResponse response = new MobileNumberAvailabilityResponse
+        {
+            Status = MobileAvailabilityStatus.IncompleteRegistration,
+            CanRegister = false,
+            CanContinue = true,
+            ExistingMembershipId = Helpers.GuidToByteString(info.MembershipId),
+            RegisteredDeviceId = Helpers.GuidToByteString(info.DeviceId),
+            CreationStatus = creationStatus,
+            ActivityStatus = activityStatus,
+            LocalizationKey = VerificationFlowMessageKeys.MobileIncompleteRegistration
+        };
+
+        if (info.AccountUniqueId.HasValue)
+        {
+            response.AccountUniqueIdentifier = Helpers.GuidToByteString(info.AccountUniqueId.Value);
+        }
+
+        return response;
+    }
+
+    private static Option<MobileNumberAvailabilityResponse> CheckForDataCorruption(
+        MembershipCheckInfo info,
+        Membership.Types.CreationStatus creationStatus,
+        Membership.Types.ActivityStatus activityStatus,
+        Guid requestingDeviceId)
+    {
+        if (info.HasDefaultAccount &&
+            !info.HasValidCredentials &&
+            creationStatus != Membership.Types.CreationStatus.OtpVerified)
+        {
+            Log.Warning(
+                "[CHECK-AVAILABILITY] Data corruption: Account exists without credentials. MembershipId={MembershipId}, DeviceId={DeviceId}, CreationStatus={CreationStatus}",
+                info.MembershipId, requestingDeviceId, creationStatus);
+
+            return Option<MobileNumberAvailabilityResponse>.Some(
+                new MobileNumberAvailabilityResponse
+                {
+                    Status = MobileAvailabilityStatus.DataCorruption,
+                    CanRegister = false,
+                    CanContinue = false,
+                    ExistingMembershipId = Helpers.GuidToByteString(info.MembershipId),
+                    RegisteredDeviceId = Helpers.GuidToByteString(info.DeviceId),
+                    CreationStatus = creationStatus,
+                    ActivityStatus = activityStatus,
+                    LocalizationKey = VerificationFlowMessageKeys.MobileDataCorruption
+                });
+        }
+
+        return Option<MobileNumberAvailabilityResponse>.None;
+    }
+
+    private static MobileNumberAvailabilityResponse HandleTakenRegistration(
+        MembershipCheckInfo info,
+        Membership.Types.CreationStatus creationStatus,
+        Membership.Types.ActivityStatus activityStatus)
+    {
+        bool isActive = activityStatus == Membership.Types.ActivityStatus.Active;
+        MobileAvailabilityStatus status = isActive
+            ? MobileAvailabilityStatus.TakenActive
+            : MobileAvailabilityStatus.TakenInactive;
+        string localizationKey = isActive
+            ? VerificationFlowMessageKeys.MobileTakenActiveAccount
+            : VerificationFlowMessageKeys.MobileTakenInactiveAccount;
+
+        return new MobileNumberAvailabilityResponse
+        {
+            Status = status,
+            CanRegister = false,
+            CanContinue = false,
+            RegisteredDeviceId = Helpers.GuidToByteString(info.DeviceId),
+            CreationStatus = creationStatus,
+            ActivityStatus = activityStatus,
+            LocalizationKey = localizationKey
+        };
+    }
+
+    private static (Membership.Types.CreationStatus Creation, Membership.Types.ActivityStatus Activity)
+        GetCorrectedMembershipStatus(MembershipCheckInfo info)
+    {
+        Membership.Types.CreationStatus creationStatus = info.CreationStatus switch
+        {
+            MembershipCreationStatus.OtpVerified => Membership.Types.CreationStatus.OtpVerified,
+            MembershipCreationStatus.SecureKeySet => Membership.Types.CreationStatus.SecureKeySet,
+            MembershipCreationStatus.PassphraseSet => Membership.Types.CreationStatus.PassphraseSet,
+            _ => Membership.Types.CreationStatus.OtpVerified
+        };
+
+        Membership.Types.ActivityStatus activityStatus = info.Status switch
+        {
+            MembershipStatus.Inactive => Membership.Types.ActivityStatus.Inactive,
+            _ => Membership.Types.ActivityStatus.Active
+        };
+
+        if (creationStatus == Membership.Types.CreationStatus.OtpVerified &&
+            info.HasValidCredentials)
+        {
+            Log.Warning(
+                "[CHECK-AVAILABILITY-INCONSISTENCY] Status={Status} but credentials exist. " +
+                "MembershipId={MembershipId}, DeviceId={DeviceId}. " +
+                "Treating as complete registration (SecureKeySet). Migration will fix status in DB.",
+                creationStatus, info.MembershipId, info.DeviceId);
+
+            creationStatus = Membership.Types.CreationStatus.SecureKeySet;
+        }
+
+        return (creationStatus, activityStatus);
+    }
+
+    private static MobileNumberAvailabilityResponse BuildAvailableResponse()
+    {
+        return new MobileNumberAvailabilityResponse
+        {
+            Status = MobileAvailabilityStatus.Available,
+            CanRegister = true,
+            CanContinue = false,
+            LocalizationKey = VerificationFlowMessageKeys.MobileAvailableForRegistration
+        };
     }
 
     private async Task<Result<CreateOtpResult, VerificationFlowFailure>> CreateOtpAsync(
