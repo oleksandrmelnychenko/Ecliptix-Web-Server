@@ -11,7 +11,7 @@
 
     <ItemGroup>
         <PackageReference Include="Akka" Version="1.5.55" />
-        <PackageReference Include="Akka.Persistence.Sql" Version="1.5.55" />
+        <PackageReference Include="Akka.Persistence.Sql" Version="1.5.55.1" />
         <PackageReference Include="Grpc.AspNetCore.Server" Version="2.71.0" />
         <PackageReference Include="libphonenumber-csharp" Version="9.0.17" />
         <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.2" />

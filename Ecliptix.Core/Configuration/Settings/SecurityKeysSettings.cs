@@ -1,4 +1,4 @@
-namespace Ecliptix.Core.Configuration;
+namespace Ecliptix.Core.Configuration.Settings;
 
 internal sealed class SecurityKeysSettings
 {
