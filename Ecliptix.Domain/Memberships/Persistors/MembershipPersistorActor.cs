@@ -25,13 +25,6 @@ namespace Ecliptix.Domain.Memberships.Persistors;
 
 public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 {
-    private static readonly FrozenDictionary<string, ProtoMembership.Types.ActivityStatus> MembershipStatusMap =
-        new Dictionary<string, ProtoMembership.Types.ActivityStatus>
-        {
-            ["active"] = ProtoMembership.Types.ActivityStatus.Active,
-            ["inactive"] = ProtoMembership.Types.ActivityStatus.Inactive
-        }.ToFrozenDictionary();
-
     private readonly IOptionsMonitor<SecurityConfiguration> _securityConfig;
 
     private readonly string DefaultOutcome = "membership_creation";
