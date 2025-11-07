@@ -1,10 +1,8 @@
-// File: Ecliptix.Core/Configuration/Settings/AkkaSettings.cs
-using System;
-
 namespace Ecliptix.Core.Configuration.Settings
 {
     internal sealed class AkkaSettings
     {
+        public string ClusterMode { get; set; } = "None"; // "None", "Config", or "Kubernetes"
         public RemotingSettings Remoting { get; set; } = new();
         public ClusterSettings Cluster { get; set; } = new();
         public AkkaManagementSettings AkkaManagement { get; set; } = new();

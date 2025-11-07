@@ -1,8 +1,11 @@
+
+
 using Akka.Cluster.Hosting;
+using Akka.Discovery.Config.Hosting;
+using Akka.Discovery.KubernetesApi;
 using Akka.Hosting;
 using Akka.Management;
 using Akka.Management.Cluster.Bootstrap;
-using Akka.Discovery.KubernetesApi;
 using Akka.Persistence.Hosting;
 using Akka.Persistence.Sql.Hosting;
 using Akka.Remote.Hosting;
@@ -23,13 +26,11 @@ internal static class AkkaConfiguration
 
         string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
 
-        
         string hostname = Environment.GetEnvironmentVariable("POD_IP") ?? akkaSettings.Remoting.Hostname;
         int port = int.Parse(Environment.GetEnvironmentVariable("AKKA_PORT") ?? akkaSettings.Remoting.Port.ToString());
 
         const string systemActorName = ApplicationConstants.ActorSystem.SystemName;
 
-        
         builder.Services.AddAkka(systemActorName, configurationBuilder =>
         {
             configurationBuilder
@@ -61,42 +62,59 @@ internal static class AkkaConfiguration
                             .WithHealthCheck(name: "Akka.Persistence.Sql.SnapshotStore[default]")
                             .WithConnectivityCheck();
                     }
-                )
-                .WithRemoting(hostname, port)
-                .WithClustering(new ClusterOptions
-                {
-                    Roles = akkaSettings.Cluster.Roles,
-                    SeedNodes = akkaSettings.Cluster.SeedNodes
-                })
-                .WithAkkaManagement(setup =>
-                {
-                    setup.Http.HostName = akkaSettings.AkkaManagement.HostName;
-                    setup.Http.Port = akkaSettings.AkkaManagement.Port;
-                    setup.Http.BindHostName = akkaSettings.AkkaManagement.BindHostName;
-                    setup.Http.BindPort = akkaSettings.AkkaManagement.BindPort;
-                })
-                .WithClusterBootstrap(setup =>
-                {
-                    setup.ContactPointDiscovery.ServiceName = akkaSettings.ClusterBootstrap.ServiceName;
-                    setup.ContactPointDiscovery.PortName = akkaSettings.ClusterBootstrap.PortName;
-                    setup.ContactPointDiscovery.RequiredContactPointsNr = akkaSettings.ClusterBootstrap.RequiredContactPointsNr;
-                }, autoStart: akkaSettings.ClusterBootstrap.AutoStart)
-                .WithKubernetesDiscovery(setup =>
-                {
-                    setup.PodLabelSelector = akkaSettings.KubernetesDiscovery.PodLabelSelector;
-                })
-                .WithActors((system, registry) =>
-                {
+                );
 
-                })
+            // Apply clustering based on ClusterMode
+            if (!akkaSettings.ClusterMode.Equals("None", StringComparison.OrdinalIgnoreCase))
+            {
+                configurationBuilder
+                    .WithRemoting(hostname, port)
+                    .WithClustering(new ClusterOptions
+                    {
+                        Roles = akkaSettings.Cluster.Roles,
+                        SeedNodes = akkaSettings.ClusterMode.Equals("Config", StringComparison.OrdinalIgnoreCase)
+                            ? akkaSettings.Cluster.SeedNodes
+                            : Array.Empty<string>()
+                    })
+                    .WithAkkaManagement(setup =>
+                    {
+                        setup.Http.HostName = akkaSettings.AkkaManagement.HostName;
+                        setup.Http.Port = akkaSettings.AkkaManagement.Port;
+                        setup.Http.BindHostName = akkaSettings.AkkaManagement.BindHostName;
+                        setup.Http.BindPort = akkaSettings.AkkaManagement.BindPort;
+                    });
+
+                if (akkaSettings.ClusterMode.Equals("Kubernetes", StringComparison.OrdinalIgnoreCase))
+                {
+                    configurationBuilder
+                        .WithClusterBootstrap(setup =>
+                        {
+                            setup.ContactPointDiscovery.ServiceName = akkaSettings.ClusterBootstrap.ServiceName;
+                            setup.ContactPointDiscovery.PortName = akkaSettings.ClusterBootstrap.PortName;
+                            setup.ContactPointDiscovery.RequiredContactPointsNr = akkaSettings.ClusterBootstrap.RequiredContactPointsNr;
+                        }, autoStart: akkaSettings.ClusterBootstrap.AutoStart)
+                        .WithKubernetesDiscovery(setup =>
+                        {
+                            setup.PodLabelSelector = akkaSettings.KubernetesDiscovery.PodLabelSelector;
+                        });
+                }
+                else if (akkaSettings.ClusterMode.Equals("Config", StringComparison.OrdinalIgnoreCase))
+                {
+                    configurationBuilder
+                        .WithConfigDiscovery(setup => { });
+                }
+            }
+
+            configurationBuilder
+                .WithActors((system, registry) => { })
                 .AddHocon($@"
                     akka {{
                         akka.actor.ask-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Actor.AskTimeout)}
                         akka.persistence.sql-store.journal.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
                         akka.persistence.sql-store.snapshot.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
-                       
+
                          stdout-loglevel = INFO
-                        
+
                         persistence {{
                             sql-store {{
                                 journal.circuit-breaker {{
@@ -119,7 +137,7 @@ internal static class AkkaConfiguration
                                 }}
                             }}
                         }}
-                        
+
                         actor {{
                             default-dispatcher {{
                                 type = Dispatcher
@@ -155,7 +173,7 @@ internal static class AkkaConfiguration
                     }}
                 ", HoconAddMode.Prepend);
         });
+
         builder.Services.AddHostedService<ActorSystemInitializationHost>();
     }
 }
-
