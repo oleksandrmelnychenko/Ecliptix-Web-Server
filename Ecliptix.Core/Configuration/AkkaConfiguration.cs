@@ -1,7 +1,13 @@
+using Akka.Cluster.Hosting;
 using Akka.Hosting;
+using Akka.Management;
+using Akka.Management.Cluster.Bootstrap;
+using Akka.Discovery.KubernetesApi;
 using Akka.Persistence.Hosting;
 using Akka.Persistence.Sql.Hosting;
+using Akka.Remote.Hosting;
 using Ecliptix.Core.Configuration.Settings;
+using Ecliptix.Core.Services;
 using Ecliptix.Utilities.Configuration;
 using LinqToDB;
 
@@ -11,14 +17,22 @@ internal static class AkkaConfiguration
 {
     public static void ConfigureAkka(WebApplicationBuilder builder)
     {
-        AkkaSettings akkaSettings = BindAkkaSettings(builder.Services, builder.Configuration);
+        var akkaSettings = new AkkaSettings();
+        builder.Configuration.GetSection(nameof(AkkaSettings)).Bind(akkaSettings);
+        builder.Services.AddSingleton(akkaSettings);
+
         string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
-        if (connectionString == null)
-            throw new Exception("No EcliptixMemberships connection string configured");
+
         
-        builder.Services.AddAkka(ApplicationConstants.ActorSystem.SystemName, akkaConfigurationBuilder =>
+        string hostname = Environment.GetEnvironmentVariable("POD_IP") ?? akkaSettings.Remoting.Hostname;
+        int port = int.Parse(Environment.GetEnvironmentVariable("AKKA_PORT") ?? akkaSettings.Remoting.Port.ToString());
+
+        const string systemActorName = ApplicationConstants.ActorSystem.SystemName;
+
+        
+        builder.Services.AddAkka(systemActorName, configurationBuilder =>
         {
-            akkaConfigurationBuilder
+            configurationBuilder
                 .ConfigureLoggers(setup =>
                 {
                     setup.LogLevel = Akka.Event.LogLevel.InfoLevel;
@@ -48,13 +62,40 @@ internal static class AkkaConfiguration
                             .WithConnectivityCheck();
                     }
                 )
-                .AddHocon($@"
-                    akka.actor.ask-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Actor.AskTimeout)}
-                    akka.persistence.sql-store.journal.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
-                    akka.persistence.sql-store.snapshot.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
+                .WithRemoting(hostname, port)
+                .WithClustering(new ClusterOptions
+                {
+                    Roles = akkaSettings.Cluster.Roles,
+                    SeedNodes = akkaSettings.Cluster.SeedNodes
+                })
+                .WithAkkaManagement(setup =>
+                {
+                    setup.Http.HostName = akkaSettings.AkkaManagement.HostName;
+                    setup.Http.Port = akkaSettings.AkkaManagement.Port;
+                    setup.Http.BindHostName = akkaSettings.AkkaManagement.BindHostName;
+                    setup.Http.BindPort = akkaSettings.AkkaManagement.BindPort;
+                })
+                .WithClusterBootstrap(setup =>
+                {
+                    setup.ContactPointDiscovery.ServiceName = akkaSettings.ClusterBootstrap.ServiceName;
+                    setup.ContactPointDiscovery.PortName = akkaSettings.ClusterBootstrap.PortName;
+                    setup.ContactPointDiscovery.RequiredContactPointsNr = akkaSettings.ClusterBootstrap.RequiredContactPointsNr;
+                }, autoStart: akkaSettings.ClusterBootstrap.AutoStart)
+                .WithKubernetesDiscovery(setup =>
+                {
+                    setup.PodLabelSelector = akkaSettings.KubernetesDiscovery.PodLabelSelector;
+                })
+                .WithActors((system, registry) =>
+                {
 
+                })
+                .AddHocon($@"
                     akka {{
-                        stdout-loglevel = INFO
+                        akka.actor.ask-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Actor.AskTimeout)}
+                        akka.persistence.sql-store.journal.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
+                        akka.persistence.sql-store.snapshot.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
+                       
+                         stdout-loglevel = INFO
                         
                         persistence {{
                             sql-store {{
@@ -114,16 +155,7 @@ internal static class AkkaConfiguration
                     }}
                 ", HoconAddMode.Prepend);
         });
-        
-        builder.Services.AddHostedService<ActorSystemHostedService>();
-    }
-
-    private static AkkaSettings BindAkkaSettings(IServiceCollection services, IConfiguration configuration)
-    {
-        AkkaSettings akkaSettings = new();
-        configuration.GetSection(nameof(AkkaSettings)).Bind(akkaSettings);
-        services.AddSingleton(akkaSettings);
-
-        return akkaSettings;
+        builder.Services.AddHostedService<ActorSystemInitializationHost>();
     }
 }
+
