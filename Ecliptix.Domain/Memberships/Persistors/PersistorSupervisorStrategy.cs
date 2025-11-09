@@ -78,11 +78,13 @@ public static class PersistorSupervisorStrategy
 
     private static Directive HandlePermanentFailure(string reason, Directive directive)
     {
+        Log.Error("Permanent failure: {Reason}. Directive: {Directive}", reason, directive);
         return directive;
     }
 
     private static Directive HandleTransientFailure(Type actorType, string reason, Directive directive)
     {
+        Log.Warning("Transient failure for {ExceptionType}: {Reason}. Directive: {Directive}", actorType.Name, reason, directive);
         if (ShouldThrottleRestart(actorType))
         {
             return Directive.Stop;
@@ -94,11 +96,13 @@ public static class PersistorSupervisorStrategy
 
     private static Directive HandleApplicationError(string reason, Directive directive)
     {
+        Log.Error("Application error: {Reason}. Directive: {Directive}", reason, directive);
         return directive;
     }
 
     private static Directive HandleSystemError(string reason, Directive directive)
     {
+        Log.Fatal("System error: {Reason}. Directive: {Directive}", reason, directive);
         return directive;
     }
 
@@ -109,6 +113,8 @@ public static class PersistorSupervisorStrategy
 
     private static Directive HandleGenericException(Type actorType, Exception exception)
     {
+        Log.Error(exception, "Unhandled exception {ExceptionType}. Attempting restart.", actorType.Name);
+
         if (ShouldThrottleRestart(actorType))
         {
             return Directive.Stop;

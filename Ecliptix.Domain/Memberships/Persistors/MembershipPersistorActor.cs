@@ -25,14 +25,9 @@ namespace Ecliptix.Domain.Memberships.Persistors;
 
 public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 {
-    private static readonly FrozenDictionary<string, ProtoMembership.Types.ActivityStatus> MembershipStatusMap =
-        new Dictionary<string, ProtoMembership.Types.ActivityStatus>
-        {
-            ["active"] = ProtoMembership.Types.ActivityStatus.Active,
-            ["inactive"] = ProtoMembership.Types.ActivityStatus.Inactive
-        }.ToFrozenDictionary();
-
     private readonly IOptionsMonitor<SecurityConfiguration> _securityConfig;
+
+    private readonly string DefaultOutcome = "membership_creation";
 
     public MembershipPersistorActor(
         IDbContextFactory<EcliptixSchemaContext> dbContextFactory,
@@ -401,9 +396,9 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                                                  dbEx.InnerException is SqlException sqlEx &&
                                                  sqlEx.Number == 547)
             {
-                Log.Warning(
-                    "[SIGN-IN] Foreign key constraint violation creating device context. Device {DeviceId} may have been deleted. Membership: {MembershipId}. Error: {Error}",
-                    cmd.DeviceId, membership.UniqueId, sqlEx.Message);
+                Log.Warning(dbEx,
+                    "[SIGN-IN] Foreign key constraint violation (SQL-547) creating device context. Device {DeviceId} may have been deleted. Membership: {MembershipId}.",
+                    cmd.DeviceId, membership.UniqueId);
 
                 schemaContext.Entry(pendingDeviceContext).State = EntityState.Detached;
                 deviceContext = null;
@@ -519,7 +514,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                     {
                         MembershipUniqueId = mobileUniqueId,
                         MobileNumber = mobileNumber,
-                        Outcome = "membership_creation",
+                        Outcome = DefaultOutcome,
                         IsSuccess = false,
                         ErrorMessage = "rate_limit_exceeded",
                         AttemptedAt = DateTimeOffset.UtcNow,
@@ -546,7 +541,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 {
                     MembershipUniqueId = existingMembership.UniqueId,
                     MobileNumber = mobileNumber,
-                    Outcome = "membership_creation",
+                    Outcome = DefaultOutcome,
                     IsSuccess = false,
                     ErrorMessage = "membership_already_exists",
                     AttemptedAt = DateTimeOffset.UtcNow,
@@ -612,7 +607,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             {
                 MembershipUniqueId = newMembership.UniqueId,
                 MobileNumber = mobileNumber,
-                Outcome = "membership_creation",
+                Outcome = DefaultOutcome,
                 IsSuccess = true,
                 ErrorMessage = "created",
                 AttemptedAt = DateTimeOffset.UtcNow,
@@ -629,7 +624,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                     m => m.UniqueId,
                     (la, m) => new LoginAttemptMembershipQueryRecord { LoginAttempt = la, Membership = m })
                 .Where(x => x.Membership.MobileNumberId == mobileUniqueId &&
-                            x.LoginAttempt.Outcome == "membership_creation" &&
+                            x.LoginAttempt.Outcome == DefaultOutcome &&
                             !x.LoginAttempt.IsSuccess &&
                             !x.LoginAttempt.IsDeleted &&
                             !x.Membership.IsDeleted)
@@ -685,7 +680,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
         }
     }
 
-    private async Task<Result<MembershipQueryRecord, MembershipFailure>> GetMembershipByVerificationFlowAsync(
+    private static async Task<Result<MembershipQueryRecord, MembershipFailure>> GetMembershipByVerificationFlowAsync(
         EcliptixSchemaContext ctx,
         GetMembershipByVerificationFlowEvent cmd,
         CancellationToken cancellationToken)
@@ -776,7 +771,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
         }
     }
 
-    private async Task<Result<MembershipQueryRecord, MembershipFailure>> GetMembershipByUniqueIdAsync(
+    private static async Task<Result<MembershipQueryRecord, MembershipFailure>> GetMembershipByUniqueIdAsync(
         EcliptixSchemaContext ctx,
         GetMembershipByUniqueIdEvent cmd,
         CancellationToken cancellationToken)
@@ -865,18 +860,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
         }
     }
 
-    private static Option<ProtoMembership.Types.ActivityStatus> MapActivityStatus(string? statusStr)
-    {
-        if (string.IsNullOrEmpty(statusStr) ||
-            !MembershipStatusMap.TryGetValue(statusStr, out ProtoMembership.Types.ActivityStatus status))
-        {
-            return Option<ProtoMembership.Types.ActivityStatus>.None;
-        }
-
-        return Option<ProtoMembership.Types.ActivityStatus>.Some(status);
-    }
-
-    private async Task<Result<Unit, MembershipFailure>> UpdateMembershipVerificationFlowAsync(
+    private static async Task<Result<Unit, MembershipFailure>> UpdateMembershipVerificationFlowAsync(
         EcliptixSchemaContext ctx, UpdateMembershipVerificationFlowEvent cmd, CancellationToken cancellationToken)
     {
         await using IDbContextTransaction transaction =

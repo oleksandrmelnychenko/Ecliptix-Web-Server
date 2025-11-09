@@ -79,7 +79,6 @@ public static class PersistorRetryPolicy
         }
         catch (OperationCanceledException)
         {
-            Log.Debug("Persistor operation '{OperationName}' was cancelled", operationName);
             throw;
         }
         catch (TimeoutException timeoutEx)

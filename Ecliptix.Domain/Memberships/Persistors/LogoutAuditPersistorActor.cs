@@ -149,7 +149,7 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
         }
     }
 
-    private async Task<Result<Option<LogoutAuditEntity>, LogoutFailure>> GetMostRecentLogoutAsync(
+    private static async Task<Result<Option<LogoutAuditEntity>, LogoutFailure>> GetMostRecentLogoutAsync(
         EcliptixSchemaContext schemaContext,
         GetMostRecentLogoutEvent cmd)
     {
@@ -182,7 +182,7 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
         }
     }
 
-    private async Task<Result<Option<LogoutAuditEntity>, LogoutFailure>> GetLogoutByDeviceAsync(
+    private static async Task<Result<Option<LogoutAuditEntity>, LogoutFailure>> GetLogoutByDeviceAsync(
         EcliptixSchemaContext schemaContext,
         GetLogoutByDeviceEvent cmd)
     {

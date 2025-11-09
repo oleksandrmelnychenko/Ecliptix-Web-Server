@@ -3,8 +3,6 @@ using Ecliptix.Protobuf.ProtocolState;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures.Sodium;
 using Google.Protobuf;
-using Serilog;
-using Serilog.Events;
 
 namespace Ecliptix.Core.Domain.Protocol;
 
@@ -140,6 +138,16 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                     $"[{_stepType}] Requested index {targetIndex} is not future (current: {currentIndex}) and not cached."));
         }
 
+        Result<RatchetChainKey, EcliptixProtocolFailure> derivationResult =
+            DeriveKeysAndAdvanceChain(currentIndex, targetIndex);
+
+        return derivationResult;
+    }
+
+    private Result<RatchetChainKey, EcliptixProtocolFailure> DeriveKeysAndAdvanceChain(
+        uint currentIndex,
+        uint targetIndex)
+    {
         byte[]? chainKeyBytes = null;
         try
         {
@@ -157,19 +165,11 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                 {
                     System.Security.Cryptography.HKDF.DeriveKey(
                         System.Security.Cryptography.HashAlgorithmName.SHA256,
-                        ikm: currentChainKey,
-                        output: msgKey,
-                        salt: null,
-                        info: MsgInfo
-                    );
+                        ikm: currentChainKey, output: msgKey, salt: null, info: MsgInfo);
 
                     System.Security.Cryptography.HKDF.DeriveKey(
                         System.Security.Cryptography.HashAlgorithmName.SHA256,
-                        ikm: currentChainKey,
-                        output: nextChainKey,
-                        salt: null,
-                        info: ChainInfo
-                    );
+                        ikm: currentChainKey, output: nextChainKey, salt: null, info: ChainInfo);
                 }
                 catch (Exception ex)
                 {
@@ -184,13 +184,11 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                 }
 
                 RatchetChainKey messageKey = keyResult.Unwrap();
-
                 if (!_messageKeys.TryAdd(idx, messageKey))
                 {
                     messageKey.Dispose();
                     return Result<RatchetChainKey, EcliptixProtocolFailure>.Err(
-                        EcliptixProtocolFailure.Generic(
-                            $"Key for index {idx} unexpectedly appeared during derivation."));
+                        EcliptixProtocolFailure.Generic($"Key for index {idx} unexpectedly appeared."));
                 }
 
                 Result<Unit, EcliptixProtocolFailure> writeResult =
@@ -359,7 +357,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                 EcliptixProtocolFailure.InvalidInput("Initial chain key has incorrect size."));
         }
 
-        if (initialDhPrivateKey == null != (initialDhPublicKey == null))
+        if ((initialDhPrivateKey == null) != (initialDhPublicKey == null))
         {
             return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput(
@@ -386,15 +384,11 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             chainKeyHandle = SodiumSecureMemoryHandle.Allocate(initialChainKey.Length).Unwrap();
             chainKeyHandle.Write(initialChainKey).Unwrap();
 
-            if (initialDhPrivateKey == null)
+            if (initialDhPrivateKey != null)
             {
-                return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(
-                    new EcliptixProtocolChainStep(stepType, chainKeyHandle, dhPrivateKeyHandle,
-                        (byte[]?)initialDhPublicKey?.Clone(), cacheWindowSize));
+                dhPrivateKeyHandle = SodiumSecureMemoryHandle.Allocate(initialDhPrivateKey.Length).Unwrap();
+                dhPrivateKeyHandle.Write(initialDhPrivateKey).Unwrap();
             }
-
-            dhPrivateKeyHandle = SodiumSecureMemoryHandle.Allocate(initialDhPrivateKey.Length).Unwrap();
-            dhPrivateKeyHandle.Write(initialDhPrivateKey).Unwrap();
 
             return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(
                 new EcliptixProtocolChainStep(stepType, chainKeyHandle, dhPrivateKeyHandle,

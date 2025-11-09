@@ -205,6 +205,7 @@ public class PasswordRecoveryPersistorActor : PersistorBase<PasswordRecoveryFail
         }
         catch
         {
+            // Ignore rollback exceptions
         }
     }
 

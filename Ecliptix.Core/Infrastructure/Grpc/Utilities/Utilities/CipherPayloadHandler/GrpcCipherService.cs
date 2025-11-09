@@ -59,14 +59,14 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
         }
     }
 
-    public async Task<Result<byte[], FailureBase>> DecryptEnvelop(SecureEnvelope request, uint connectId,
+    public async Task<Result<byte[], FailureBase>> DecryptEnvelop(SecureEnvelope secureEnvelope, uint connectId,
         ServerCallContext context)
     {
         try
         {
             PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
 
-            DecryptSecureEnvelopeActorEvent decryptCommand = new(exchangeType, request);
+            DecryptSecureEnvelopeActorEvent decryptCommand = new(exchangeType, secureEnvelope);
             ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptCommand);
 
             Task<Result<byte[], EcliptixProtocolFailure>> decryptTask =

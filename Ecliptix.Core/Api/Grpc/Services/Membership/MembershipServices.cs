@@ -339,10 +339,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             }
             finally
             {
-                if (canonicalBytes != null)
-                {
-                    ArrayPool<byte>.Shared.Return(canonicalBytes);
-                }
+                ArrayPool<byte>.Shared.Return(canonicalBytes);
             }
         }
         finally
@@ -355,7 +352,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         }
     }
 
-    private string BuildCanonicalLogoutRequest(LogoutRequest request)
+    private static string BuildCanonicalLogoutRequest(LogoutRequest request)
     {
         return $"logout:v1:{request.MembershipIdentifier.ToBase64()}:" +
                $"{request.Timestamp}:{request.Scope}:{request.LogoutReason}";
@@ -491,6 +488,126 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         }
     }
 
+    private async Task<Result<LogoutResponse, FailureBase>> ProcessLogoutAsync(
+        LogoutRequest message,
+        uint connectId,
+        ServerCallContext context,
+        CancellationToken cancellationToken)
+    {
+        Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
+        long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        Result<Unit, LogoutResponse> validationResult =
+            await PerformValidationChecksAsync(message, membershipId, serverTimestamp);
+
+        if (validationResult.IsErr)
+        {
+            return Result<LogoutResponse, FailureBase>.Ok(validationResult.UnwrapErr());
+        }
+
+        LogoutReason reason = ParseLogoutReason(message.LogoutReason);
+        Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+        Guid? accountId = message.AccountIdentifier != null && message.AccountIdentifier.Length > 0
+            ? Helpers.FromByteStringToGuid(message.AccountIdentifier)
+            : null;
+
+        await RecordLogoutAuditAsync(membershipId, accountId, deviceId, reason, cancellationToken);
+
+        byte[] ratchetFingerprint = await CaptureRatchetFingerprintAsync(connectId);
+        byte[] revocationProof = await GenerateHmacRevocationProofAsync(
+            membershipId, connectId, serverTimestamp, ratchetFingerprint);
+
+        ScheduleProtocolCleanup(connectId);
+
+        Log.Information("Logout completed for ConnectId: {ConnectId}. Protocol cleanup scheduled", connectId);
+
+        return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
+        {
+            Result = LogoutResponse.Types.Result.Succeeded,
+            ServerTimestamp = serverTimestamp,
+            RevocationProof = Google.Protobuf.ByteString.CopyFrom(revocationProof)
+        });
+    }
+
+    private async Task<Result<Unit, LogoutResponse>> PerformValidationChecksAsync(
+        LogoutRequest message, Guid membershipId, long serverTimestamp)
+    {
+        long timestampDrift = Math.Abs(serverTimestamp - message.Timestamp);
+        long maxDrift = (long)_securityConfig.GrpcSecurity.MaxTimestampDrift.TotalSeconds;
+
+        if (timestampDrift > maxDrift)
+        {
+            return Result<Unit, LogoutResponse>.Err(new LogoutResponse
+            {
+                Result = LogoutResponse.Types.Result.InvalidTimestamp, ServerTimestamp = serverTimestamp
+            });
+        }
+
+        Result<bool, FailureBase> sharesExistResult =
+            await _masterKeyService.CheckSharesExistAsync(membershipId);
+
+        if (sharesExistResult.IsErr || !sharesExistResult.Unwrap())
+        {
+            return Result<Unit, LogoutResponse>.Err(new LogoutResponse
+            {
+                Result = LogoutResponse.Types.Result.SessionNotFound, ServerTimestamp = serverTimestamp
+            });
+        }
+
+        Result<Unit, FailureBase> hmacValidation = await ValidateLogoutHmacAsync(message, membershipId);
+        if (hmacValidation.IsErr)
+        {
+            return Result<Unit, LogoutResponse>.Err(new LogoutResponse
+            {
+                Result = LogoutResponse.Types.Result.InvalidHmac, ServerTimestamp = serverTimestamp
+            });
+        }
+
+        return Result<Unit, LogoutResponse>.Ok(Unit.Value);
+    }
+
+    private static LogoutReason ParseLogoutReason(string protoReason)
+    {
+        if (!string.IsNullOrEmpty(protoReason) && Enum.TryParse(protoReason, true, out LogoutReason reason))
+        {
+            return reason;
+        }
+
+        return LogoutReason.UserInitiated;
+    }
+
+    private async Task RecordLogoutAuditAsync(Guid membershipId, Guid? accountId, Guid deviceId, LogoutReason reason,
+        CancellationToken cancellationToken)
+    {
+        RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason,
+            "", "", cancellationToken);
+
+        Task<Result<Unit, LogoutFailure>> auditTask =
+            _logoutAuditPersistor.Ask<Result<Unit, LogoutFailure>>(
+                logoutEvent,
+                TimeoutConfiguration.Actor.AskTimeout);
+
+        Result<Unit, LogoutFailure> auditResult =
+            await auditTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        if (auditResult.IsErr)
+        {
+            Log.Warning("Failed to record logout audit, but continuing with logout: {Error}",
+                auditResult.UnwrapErr().Message);
+        }
+    }
+
+    private void ScheduleProtocolCleanup(uint connectId)
+    {
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(2000);
+            _actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
+            Log.Information("Protocol cleanup event published for ConnectId: {ConnectId}", connectId);
+        });
+    }
+
+
     public override async Task<SecureEnvelope> Logout(SecureEnvelope request, ServerCallContext context)
     {
         SecureEnvelope response = await _service.ExecuteEncryptedOperationAsync<LogoutRequest, LogoutResponse>(
@@ -499,117 +616,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             {
                 try
                 {
-                    Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
-                    long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-
-                    long timestampDrift = Math.Abs(serverTimestamp - message.Timestamp);
-                    long maxDrift = (long)_securityConfig.GrpcSecurity.MaxTimestampDrift.TotalSeconds;
-
-                    if (timestampDrift > maxDrift)
-                    {
-                        Log.Warning("[LOGOUT-SECURITY] Timestamp drift exceeded for MembershipId: {MembershipId}. " +
-                                    "ClientTimestamp: {ClientTimestamp}, ServerTimestamp: {ServerTimestamp}, Drift: {Drift}s, MaxDrift: {MaxDrift}s",
-                            membershipId, message.Timestamp, serverTimestamp, timestampDrift, maxDrift);
-                        return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
-                        {
-                            Result = LogoutResponse.Types.Result.InvalidTimestamp, ServerTimestamp = serverTimestamp
-                        });
-                    }
-
-                    Result<bool, FailureBase> sharesExistResult =
-                        await _masterKeyService.CheckSharesExistAsync(membershipId);
-
-                    if (sharesExistResult.IsErr)
-                    {
-                        Log.Error(
-                            "[LOGOUT-SECURITY] Failed to check master key shares existence for MembershipId: {MembershipId}. Error: {Error}",
-                            membershipId, sharesExistResult.UnwrapErr().Message);
-                        return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
-                        {
-                            Result = LogoutResponse.Types.Result.SessionNotFound, ServerTimestamp = serverTimestamp
-                        });
-                    }
-
-                    bool sharesExist = sharesExistResult.Unwrap();
-                    if (!sharesExist)
-                    {
-                        Log.Warning("[LOGOUT-SECURITY] No master key shares found for MembershipId: {MembershipId}. " +
-                                    "Session was restored but shares don't exist in database. User must sign in again.",
-                            membershipId);
-                        return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
-                        {
-                            Result = LogoutResponse.Types.Result.SessionNotFound, ServerTimestamp = serverTimestamp
-                        });
-                    }
-
-                    Log.Debug("[LOGOUT-SECURITY] Master key shares verified for MembershipId: {MembershipId}",
-                        membershipId);
-
-                    Result<Unit, FailureBase> hmacValidation = await ValidateLogoutHmacAsync(message, membershipId);
-                    if (hmacValidation.IsErr)
-                    {
-                        Log.Warning("[LOGOUT-SECURITY] HMAC validation failed for MembershipId: {MembershipId}",
-                            membershipId);
-                        return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
-                        {
-                            Result = LogoutResponse.Types.Result.InvalidHmac, ServerTimestamp = serverTimestamp
-                        });
-                    }
-
-                    LogoutReason reason = LogoutReason.UserInitiated;
-                    if (!string.IsNullOrEmpty(message.LogoutReason))
-                    {
-                        if (!Enum.TryParse(message.LogoutReason, true, out reason))
-                        {
-                            reason = LogoutReason.UserInitiated;
-                        }
-                    }
-
-                    Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
-                    Guid? accountId = message.AccountIdentifier != null && message.AccountIdentifier.Length > 0
-                        ? Helpers.FromByteStringToGuid(message.AccountIdentifier)
-                        : null;
-
-                    Log.Information(
-                        "Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
-                        membershipId, connectId, deviceId, accountId, reason, message.Scope);
-
-                    RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason,
-                        "", "", cancellationToken);
-                    Task<Result<Unit, LogoutFailure>> auditTask =
-                        _logoutAuditPersistor.Ask<Result<Unit, LogoutFailure>>(
-                            logoutEvent,
-                            TimeoutConfiguration.Actor.AskTimeout);
-                    Result<Unit, LogoutFailure> auditResult =
-                        await auditTask.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                    if (auditResult.IsErr)
-                    {
-                        Log.Warning("Failed to record logout audit, but continuing with logout: {Error}",
-                            auditResult.UnwrapErr().Message);
-                    }
-
-                    byte[] ratchetFingerprint = await CaptureRatchetFingerprintAsync(connectId);
-
-                    byte[] revocationProof = await GenerateHmacRevocationProofAsync(
-                        membershipId, connectId, serverTimestamp, ratchetFingerprint);
-
-                    _ = Task.Run(async () =>
-                    {
-                        await Task.Delay(2000);
-                        _actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
-                        Log.Information("Protocol cleanup event published for ConnectId: {ConnectId}", connectId);
-                    });
-
-                    Log.Information("Logout completed for ConnectId: {ConnectId}. Protocol cleanup scheduled.",
-                        connectId);
-
-                    return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
-                    {
-                        Result = LogoutResponse.Types.Result.Succeeded,
-                        ServerTimestamp = serverTimestamp,
-                        RevocationProof = Google.Protobuf.ByteString.CopyFrom(revocationProof)
-                    });
+                    return await ProcessLogoutAsync(message, connectId, context, cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -618,7 +625,6 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                 catch (Exception ex)
                 {
                     Log.Error(ex, "Error during logout for ConnectId: {ConnectId}", connectId);
-
                     return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
                     {
                         Result = LogoutResponse.Types.Result.Failed,
@@ -715,10 +721,124 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         }
     }
 
-    private string BuildCanonicalAnonymousLogoutRequest(AnonymousLogoutRequest request)
+    private static string BuildCanonicalAnonymousLogoutRequest(AnonymousLogoutRequest request)
     {
         return $"logout:v1:{request.MembershipIdentifier.ToBase64()}:" +
                $"{request.Timestamp}:{request.Scope}:{request.LogoutReason}";
+    }
+
+    private async Task<Result<AnonymousLogoutResponse, FailureBase>> ProcessAnonymousLogoutAsync(
+        AnonymousLogoutRequest message,
+        uint connectId,
+        ServerCallContext context,
+        CancellationToken cancellationToken)
+    {
+        Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
+        long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        Result<Unit, AnonymousLogoutResponse> validationResult =
+            await PerformAnonymousValidationChecksAsync(message, membershipId, serverTimestamp);
+
+        if (validationResult.IsErr)
+        {
+            return Result<AnonymousLogoutResponse, FailureBase>.Ok(validationResult.UnwrapErr());
+        }
+
+        LogoutReason reason = ParseLogoutReason(message.LogoutReason);
+        Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+        Guid? accountId = message.AccountIdentifier != null && message.AccountIdentifier.Length > 0
+            ? Helpers.FromByteStringToGuid(message.AccountIdentifier)
+            : null;
+
+        Log.Information(
+            "[LOGOUT-ANONYMOUS] Processing anonymous logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
+            membershipId, connectId, deviceId, accountId, reason, message.Scope);
+
+        await RecordLogoutAuditAsync(membershipId, accountId, deviceId, reason, cancellationToken);
+
+        ScheduleProtocolCleanup(connectId);
+
+        Log.Information(
+            "[LOGOUT-ANONYMOUS] Anonymous logout completed for ConnectId: {ConnectId}. Protocol cleanup scheduled.",
+            connectId);
+
+        return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
+        {
+            Result = AnonymousLogoutResponse.Types.Result.Succeeded,
+            ServerTimestamp = serverTimestamp,
+            Message = "Logout successful"
+        });
+    }
+
+    private async Task<Result<Unit, AnonymousLogoutResponse>> PerformAnonymousValidationChecksAsync(
+        AnonymousLogoutRequest message, Guid membershipId, long serverTimestamp)
+    {
+        long timestampDrift = Math.Abs(serverTimestamp - message.Timestamp);
+        const long maxWindowSeconds = 72 * 3600;
+
+        if (timestampDrift > maxWindowSeconds)
+        {
+            Log.Warning(
+                "[LOGOUT-ANONYMOUS] Timestamp outside 72-hour window for MembershipId: {MembershipId}. Drift: {Drift}s",
+                membershipId, timestampDrift);
+
+            return Result<Unit, AnonymousLogoutResponse>.Err(new AnonymousLogoutResponse
+            {
+                Result = AnonymousLogoutResponse.Types.Result.TimestampTooOld,
+                ServerTimestamp = serverTimestamp,
+                Message = "Logout request older than 72 hours"
+            });
+        }
+
+        Result<bool, FailureBase> sharesExistResult =
+            await _masterKeyService.CheckSharesExistAsync(membershipId);
+
+        if (sharesExistResult.IsErr)
+        {
+            Log.Error(
+                "[LOGOUT-ANONYMOUS] Failed to check shares for MembershipId: {MembershipId}. Error: {Error}",
+                membershipId, sharesExistResult.UnwrapErr().Message);
+
+            return Result<Unit, AnonymousLogoutResponse>.Err(new AnonymousLogoutResponse
+            {
+                Result = AnonymousLogoutResponse.Types.Result.SessionNotFound,
+                ServerTimestamp = serverTimestamp,
+                Message = "Session not found"
+            });
+        }
+
+        if (!sharesExistResult.Unwrap())
+        {
+            Log.Warning(
+                "[LOGOUT-ANONYMOUS] No master key shares found for MembershipId: {MembershipId}. Treating as already logged out.",
+                membershipId);
+
+            return Result<Unit, AnonymousLogoutResponse>.Err(new AnonymousLogoutResponse
+            {
+                Result = AnonymousLogoutResponse.Types.Result.AlreadyLoggedOut,
+                ServerTimestamp = serverTimestamp,
+                Message = "Already logged out"
+            });
+        }
+
+        Log.Debug("[LOGOUT-ANONYMOUS] Master key shares verified for MembershipId: {MembershipId}", membershipId);
+
+        Result<Unit, FailureBase> hmacValidation =
+            await ValidateAnonymousLogoutHmacAsync(message, membershipId);
+        if (hmacValidation.IsErr)
+        {
+            Log.Warning("[LOGOUT-ANONYMOUS] HMAC validation failed for MembershipId: {MembershipId}",
+                membershipId);
+
+            return Result<Unit, AnonymousLogoutResponse>.Err(new AnonymousLogoutResponse
+            {
+                Result = AnonymousLogoutResponse.Types.Result.InvalidHmac,
+                ServerTimestamp = serverTimestamp,
+                Message = "Invalid HMAC proof"
+            });
+        }
+
+        return Result<Unit, AnonymousLogoutResponse>.Ok(Unit.Value);
     }
 
     public override async Task<SecureEnvelope> AnonymousLogout(SecureEnvelope request, ServerCallContext context)
@@ -730,126 +850,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                 {
                     try
                     {
-                        Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
-                        long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-
-                        long timestampDrift = Math.Abs(serverTimestamp - message.Timestamp);
-                        const long maxWindowSeconds = 72 * 3600;
-
-                        if (timestampDrift > maxWindowSeconds)
-                        {
-                            Log.Warning(
-                                "[LOGOUT-ANONYMOUS] Timestamp outside 72-hour window for MembershipId: {MembershipId}. " +
-                                "ClientTimestamp: {ClientTimestamp}, ServerTimestamp: {ServerTimestamp}, Drift: {Drift}s, MaxWindow: {MaxWindow}s",
-                                membershipId, message.Timestamp, serverTimestamp, timestampDrift, maxWindowSeconds);
-                            return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
-                            {
-                                Result = AnonymousLogoutResponse.Types.Result.TimestampTooOld,
-                                ServerTimestamp = serverTimestamp,
-                                Message = "Logout request older than 72 hours"
-                            });
-                        }
-
-                        Result<bool, FailureBase> sharesExistResult =
-                            await _masterKeyService.CheckSharesExistAsync(membershipId);
-
-                        if (sharesExistResult.IsErr)
-                        {
-                            Log.Error(
-                                "[LOGOUT-ANONYMOUS] Failed to check master key shares existence for MembershipId: {MembershipId}. Error: {Error}",
-                                membershipId, sharesExistResult.UnwrapErr().Message);
-                            return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
-                            {
-                                Result = AnonymousLogoutResponse.Types.Result.SessionNotFound,
-                                ServerTimestamp = serverTimestamp,
-                                Message = "Session not found"
-                            });
-                        }
-
-                        bool sharesExist = sharesExistResult.Unwrap();
-                        if (!sharesExist)
-                        {
-                            Log.Warning(
-                                "[LOGOUT-ANONYMOUS] No master key shares found for MembershipId: {MembershipId}. Treating as already logged out.",
-                                membershipId);
-                            return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
-                            {
-                                Result = AnonymousLogoutResponse.Types.Result.AlreadyLoggedOut,
-                                ServerTimestamp = serverTimestamp,
-                                Message = "Already logged out"
-                            });
-                        }
-
-                        Log.Debug("[LOGOUT-ANONYMOUS] Master key shares verified for MembershipId: {MembershipId}",
-                            membershipId);
-
-                        Result<Unit, FailureBase> hmacValidation =
-                            await ValidateAnonymousLogoutHmacAsync(message, membershipId);
-                        if (hmacValidation.IsErr)
-                        {
-                            Log.Warning("[LOGOUT-ANONYMOUS] HMAC validation failed for MembershipId: {MembershipId}",
-                                membershipId);
-                            return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
-                            {
-                                Result = AnonymousLogoutResponse.Types.Result.InvalidHmac,
-                                ServerTimestamp = serverTimestamp,
-                                Message = "Invalid HMAC proof"
-                            });
-                        }
-
-                        LogoutReason reason = LogoutReason.UserInitiated;
-                        if (!string.IsNullOrEmpty(message.LogoutReason))
-                        {
-                            if (!Enum.TryParse(message.LogoutReason, true, out reason))
-                            {
-                                reason = LogoutReason.UserInitiated;
-                            }
-                        }
-
-                        Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
-                        Guid? accountId = message.AccountIdentifier != null && message.AccountIdentifier.Length > 0
-                            ? Helpers.FromByteStringToGuid(message.AccountIdentifier)
-                            : null;
-
-                        Log.Information(
-                            "[LOGOUT-ANONYMOUS] Processing anonymous logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
-                            membershipId, connectId, deviceId, accountId, reason, message.Scope);
-
-                        RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason,
-                            "", "", cancellationToken);
-                        Task<Result<Unit, LogoutFailure>> auditTask =
-                            _logoutAuditPersistor.Ask<Result<Unit, LogoutFailure>>(
-                                logoutEvent,
-                                TimeoutConfiguration.Actor.AskTimeout);
-                        Result<Unit, LogoutFailure> auditResult =
-                            await auditTask.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                        if (auditResult.IsErr)
-                        {
-                            Log.Warning(
-                                "[LOGOUT-ANONYMOUS] Failed to record logout audit, but continuing with logout: {Error}",
-                                auditResult.UnwrapErr().Message);
-                        }
-
-                        _ = Task.Run(async () =>
-                        {
-                            await Task.Delay(2000);
-                            _actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
-                            Log.Information(
-                                "[LOGOUT-ANONYMOUS] Protocol cleanup event published for ConnectId: {ConnectId}",
-                                connectId);
-                        });
-
-                        Log.Information(
-                            "[LOGOUT-ANONYMOUS] Anonymous logout completed for ConnectId: {ConnectId}. Protocol cleanup scheduled.",
-                            connectId);
-
-                        return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
-                        {
-                            Result = AnonymousLogoutResponse.Types.Result.Succeeded,
-                            ServerTimestamp = serverTimestamp,
-                            Message = "Logout successful"
-                        });
+                        return await ProcessAnonymousLogoutAsync(message, connectId, context, cancellationToken);
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                     {
@@ -859,7 +860,6 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                     {
                         Log.Error(ex, "[LOGOUT-ANONYMOUS] Error during anonymous logout for ConnectId: {ConnectId}",
                             connectId);
-
                         return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
                         {
                             Result = AnonymousLogoutResponse.Types.Result.Failed,

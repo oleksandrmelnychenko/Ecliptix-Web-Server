@@ -47,7 +47,7 @@ public class EcliptixProtocolConnectActorPersistenceTests(ITestOutputHelper outp
         }
     }
 
-    private (EcliptixProtocolSystem client, PubKeyExchange clientInitialMsg) CreateClientAndInitialMessage(
+    private static (EcliptixProtocolSystem client, PubKeyExchange clientInitialMsg) CreateClientAndInitialMessage(
         uint sessionId)
     {
         EcliptixSystemIdentityKeys clientKeys = EcliptixSystemIdentityKeys.Create(1).Unwrap();
@@ -71,7 +71,7 @@ public class EcliptixProtocolConnectActorPersistenceTests(ITestOutputHelper outp
         IReadOnlyList<EcliptixSessionState> persisted = ReadAllEvents<EcliptixSessionState>(persistenceId);
 
         persisted.Should().HaveCount(1);
-        EcliptixSessionState persistedState = persisted.First();
+        EcliptixSessionState persistedState = persisted[0];
         persistedState.ConnectId.Should().Be(sessionId);
         persistedState.PeerHandshakeMessage.Should().BeEquivalentTo(clientInitialMsg);
     }

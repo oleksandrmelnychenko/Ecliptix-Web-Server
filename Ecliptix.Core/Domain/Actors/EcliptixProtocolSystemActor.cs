@@ -75,7 +75,7 @@ public sealed class EcliptixProtocolSystemActor : ReceiveActor
         }
     }
 
-    private Result<IActorRef, EcliptixProtocolFailure> GetOrCreateConnectActor(uint connectId)
+    private static Result<IActorRef, EcliptixProtocolFailure> GetOrCreateConnectActor(uint connectId)
     {
         string actorName = GetConnectActorName(connectId);
         IActorRef connectActor = Context.Child(actorName);

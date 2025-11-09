@@ -6,6 +6,7 @@ namespace Ecliptix.Domain.Schema.Configurations;
 
 public class DeviceContextConfiguration : EntityBaseMap<DeviceContextEntity>
 {
+    private readonly string IsNotDeletedAndActiveFilter = "IsDeleted = 0 AND IsActive = 1";
     public override void Map(EntityTypeBuilder<DeviceContextEntity> builder)
     {
         base.Map(builder);
@@ -33,7 +34,7 @@ public class DeviceContextConfiguration : EntityBaseMap<DeviceContextEntity>
 
         builder.HasIndex(e => new { e.MembershipId, e.DeviceId, e.IsActive })
             .IsUnique()
-            .HasFilter("IsDeleted = 0 AND IsActive = 1")
+            .HasFilter(IsNotDeletedAndActiveFilter)
             .HasDatabaseName("UX_DeviceContexts_Membership_Device_Active");
 
         builder.HasIndex(e => new { e.MembershipId, e.IsActive })
@@ -41,20 +42,20 @@ public class DeviceContextConfiguration : EntityBaseMap<DeviceContextEntity>
             .HasDatabaseName("IX_DeviceContexts_Membership_IsActive");
 
         builder.HasIndex(e => e.DeviceId)
-            .HasFilter("IsDeleted = 0 AND IsActive = 1")
+            .HasFilter(IsNotDeletedAndActiveFilter)
             .HasDatabaseName("IX_DeviceContexts_DeviceId_Active");
 
         builder.HasIndex(e => e.ContextExpiresAt)
-            .HasFilter("IsDeleted = 0 AND IsActive = 1")
+            .HasFilter(IsNotDeletedAndActiveFilter)
             .HasDatabaseName("IX_DeviceContexts_ExpiresAt");
 
         builder.HasIndex(e => new { e.ContextExpiresAt, e.IsActive })
-            .HasFilter("IsDeleted = 0 AND IsActive = 1")
+            .HasFilter(IsNotDeletedAndActiveFilter)
             .HasDatabaseName("IX_DeviceContexts_ExpiresAt_Cleanup");
 
         builder.HasIndex(e => new { e.MembershipId, e.LastActivityAt })
             .IsDescending(false, true)
-            .HasFilter("IsDeleted = 0 AND IsActive = 1")
+            .HasFilter(IsNotDeletedAndActiveFilter)
             .HasDatabaseName("IX_DeviceContexts_MembershipActivity");
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_DeviceContexts_Expiry_Future",

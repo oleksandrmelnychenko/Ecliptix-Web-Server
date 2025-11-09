@@ -30,6 +30,18 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     private readonly Option<IActorRef> _membershipPersistorActor;
     private readonly IOptionsMonitor<SecurityConfiguration> _securityConfig;
 
+    private sealed record MembershipCheckInfo
+    {
+        public Guid MembershipId { get; init; }
+        public MembershipStatus? Status { get; init; }
+        public MembershipCreationStatus? CreationStatus { get; init; }
+        public Guid DeviceId { get; init; }
+        public DateTimeOffset CreatedAt { get; init; }
+        public bool HasDefaultAccount { get; init; }
+        public Guid? AccountUniqueId { get; init; }
+        public bool HasValidCredentials { get; init; }
+    }
+
     public VerificationFlowPersistorActor(
         IDbContextFactory<EcliptixSchemaContext> dbContextFactory,
         IOptionsMonitor<SecurityConfiguration> securityConfig,
@@ -187,204 +199,290 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         try
         {
-            VerificationFlowPersistorSettings
-                persistorSettings = _securityConfig.CurrentValue.VerificationFlowPersistor;
-            Option<MobileNumberEntity> mobileOpt =
-                await MobileNumberQueries.GetByUniqueId(schemeContext, cmd.MobileNumberUniqueId, cancellationToken);
-            if (!mobileOpt.IsSome)
+            VerificationFlowPersistorSettings persistorSettings = _securityConfig.CurrentValue.VerificationFlowPersistor;
+
+            Result<MobileNumberEntity, VerificationFlowFailure> validationResult = await ValidateInputsAsync(schemeContext, cmd, cancellationToken);
+            if (validationResult.IsErr)
             {
-                Log.Warning("[InitiateFlow] Mobile number not found: {MobileNumberId}", cmd.MobileNumberUniqueId);
                 await transaction.RollbackAsync();
-                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.FromMobileNumber(MobileNumberFailure.NotFound()));
+                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(validationResult.UnwrapErr());
             }
+            MobileNumberEntity mobile = validationResult.Unwrap();
 
-            MobileNumberEntity mobile = mobileOpt.Value!;
-
-            bool deviceExists = await DeviceQueries.ExistsByDeviceId(schemeContext, cmd.AppDeviceId, cancellationToken);
-            if (!deviceExists)
-            {
-                Log.Warning("[InitiateFlow] Device not found: {DeviceId}", cmd.AppDeviceId);
-                await transaction.RollbackAsync();
-                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.Validation("Device not found"));
-            }
-
-            Option<VerificationFlowEntity> existingActiveFlowOpt =
-                await VerificationFlowQueries.GetActiveFlowForRecovery(
-                    schemeContext,
-                    cmd.MobileNumberUniqueId,
-                    cmd.AppDeviceId,
-                    cmd.Purpose,
-                    cancellationToken);
-
-            if (existingActiveFlowOpt.IsSome)
-            {
-                VerificationFlowEntity existingActiveFlow = existingActiveFlowOpt.Value!;
-                DateTimeOffset now = DateTimeOffset.UtcNow;
-
-                await schemeContext.VerificationFlows
-                    .Where(vf => vf.Id == existingActiveFlow.Id)
-                    .ExecuteUpdateAsync(setters => setters
-                            .SetProperty(vf => vf.Status, VerificationFlowStatus.Expired)
-                            .SetProperty(vf => vf.ConnectionId, (long?)null)
-                            .SetProperty(vf => vf.ExpiresAt, now)
-                            .SetProperty(vf => vf.UpdatedAt, now),
-                        cancellationToken);
-
-                await schemeContext.OtpCodes
-                    .Where(o => o.VerificationFlowId == existingActiveFlow.Id &&
-                                o.Status == OtpStatus.Active &&
-                                !o.IsDeleted)
-                    .ExecuteUpdateAsync(setters => setters
-                            .SetProperty(o => o.Status, OtpStatus.Expired)
-                            .SetProperty(o => o.UpdatedAt, now),
-                        cancellationToken);
-
-                Log.Information(
-                    "[verification.flow.recovered] Expired lingering flow {FlowId} before creating a new one",
-                    existingActiveFlow.UniqueId);
-            }
+            await HandleLingeringActiveFlowAsync(schemeContext, cmd, cancellationToken);
 
             if (cmd.Purpose == VerificationPurpose.PasswordRecovery)
             {
-                Log.Information(
-                    "[INITIATE-PASSWORD-RECOVERY] Password recovery flow initiated for mobile ID {MobileId}",
-                    mobile.UniqueId);
+                Option<VerificationFlowFailure> recoveryRuleResult = await HandlePasswordRecoveryRulesAsync(
+                    schemeContext, cmd, mobile.UniqueId, persistorSettings, cancellationToken);
 
-                DateTimeOffset recoveryLookbackTime =
-                    DateTimeOffset.UtcNow - persistorSettings.PasswordRecoveryLookback;
-
-                int recoveryCountByMobile = await VerificationFlowQueries.CountRecentPasswordRecovery(
-                    schemeContext, mobile.UniqueId, recoveryLookbackTime, cancellationToken);
-
-                int recoveryCountByDevice = await schemeContext.VerificationFlows
-                    .Where(f => f.AppDeviceId == cmd.AppDeviceId &&
-                                f.Purpose == VerificationPurpose.PasswordRecovery &&
-                                f.CreatedAt >= recoveryLookbackTime &&
-                                !f.IsDeleted)
-                    .AsNoTracking()
-                    .CountAsync(cancellationToken);
-
-                Log.Information(
-                    "[INITIATE-PASSWORD-RECOVERY] Recent password recovery counts - Mobile: {MobileCount}, Device: {DeviceCount} for mobile ID {MobileId}",
-                    recoveryCountByMobile, recoveryCountByDevice, mobile.UniqueId);
-
-                int maxAttemptsByMobile = _securityConfig.CurrentValue.VerificationFlowLimits
-                    .PasswordRecoveryAttemptsPerHourPerMobile;
-                int maxAttemptsByDevice = _securityConfig.CurrentValue.VerificationFlowLimits
-                    .PasswordRecoveryAttemptsPerHourPerDevice;
-
-                if (recoveryCountByMobile >= maxAttemptsByMobile || recoveryCountByDevice >= maxAttemptsByDevice)
+                if (recoveryRuleResult.IsSome)
                 {
-                    Log.Warning(
-                        "[InitiateFlow] Password recovery rate limit exceeded. Mobile: {MobileCount}/{MaxMobile}, Device: {DeviceCount}/{MaxDevice}",
-                        recoveryCountByMobile, maxAttemptsByMobile, recoveryCountByDevice, maxAttemptsByDevice);
                     await transaction.RollbackAsync();
-                    return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.RateLimitExceeded());
-                }
-
-                List<VerificationFlowEntity> oldActiveFlows = await schemeContext.VerificationFlows
-                    .Where(vf => vf.MobileNumberId == mobile.UniqueId &&
-                                 vf.Purpose == VerificationPurpose.PasswordRecovery &&
-                                 (vf.Status == VerificationFlowStatus.Pending || vf.Status == VerificationFlowStatus.Verified) &&
-                                 !vf.IsDeleted)
-                    .ToListAsync(cancellationToken);
-
-                Log.Information(
-                    "[INITIATE-PASSWORD-RECOVERY] Found {Count} old password recovery flows (pending + verified) to expire for mobile ID {MobileId}",
-                    oldActiveFlows.Count, mobile.UniqueId);
-
-                if (oldActiveFlows.Count > 0)
-                {
-                    foreach (VerificationFlowEntity oldFlow in oldActiveFlows)
-                    {
-                        VerificationFlowStatus oldStatus = oldFlow.Status;
-                        oldFlow.Status = VerificationFlowStatus.Expired;
-                        oldFlow.UpdatedAt = DateTimeOffset.UtcNow;
-                        Log.Information(
-                            "[INITIATE-PASSWORD-RECOVERY] Expiring flow {FlowId} with status '{OldStatus}' for mobile ID {MobileId}",
-                            oldFlow.UniqueId, oldStatus, mobile.UniqueId);
-                    }
-
-                    Log.Information(
-                        "[INITIATE-PASSWORD-RECOVERY] Successfully expired {Count} old password recovery flows",
-                        oldActiveFlows.Count);
+                    return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(recoveryRuleResult.Value!);
                 }
             }
 
-            DateTimeOffset rateLimitLookback = DateTimeOffset.UtcNow - persistorSettings.RateLimitLookback;
+            Option<VerificationFlowFailure> rateLimitResult = await CheckGeneralRateLimitsAsync(
+                schemeContext, cmd, mobile.UniqueId, persistorSettings, cancellationToken);
 
-            int mobileFlowCount = await VerificationFlowQueries.CountRecentByMobileId(
-                schemeContext, mobile.UniqueId, rateLimitLookback, cancellationToken);
-            if (mobileFlowCount >= persistorSettings.MaxFlowsPerHourPerMobile)
+            if (rateLimitResult.IsSome)
             {
-                Log.Warning("[InitiateFlow] Mobile rate limit exceeded. Count: {Count}, Max: {Max}, Mobile: {MobileId}",
-                    mobileFlowCount, persistorSettings.MaxFlowsPerHourPerMobile, mobile.UniqueId);
                 await transaction.RollbackAsync();
-                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.RateLimitExceeded());
+                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(rateLimitResult.Value!);
             }
 
-            int deviceFlowCount = await VerificationFlowQueries.CountRecentByDevice(
-                schemeContext, cmd.AppDeviceId, rateLimitLookback, cancellationToken);
-            if (deviceFlowCount >= persistorSettings.MaxFlowsPerHourPerDevice)
-            {
-                Log.Warning("[InitiateFlow] Device rate limit exceeded. Count: {Count}, Max: {Max}, Device: {DeviceId}",
-                    deviceFlowCount, persistorSettings.MaxFlowsPerHourPerDevice, cmd.AppDeviceId);
-                await transaction.RollbackAsync();
-                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.DeviceRateLimitExceeded());
-            }
-
-            VerificationFlowEntity flow = new()
-            {
-                UniqueId = Guid.NewGuid(),
-                MobileNumberId = mobile.UniqueId,
-                AppDeviceId = cmd.AppDeviceId,
-                Purpose = cmd.Purpose,
-                Status = VerificationFlowStatus.Pending,
-                ExpiresAt = DateTimeOffset.UtcNow + persistorSettings.FlowExpiration,
-                ConnectionId = cmd.ConnectId,
-                OtpCount = 0,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
-                IsDeleted = false
-            };
-
+            VerificationFlowEntity flow = CreateNewVerificationFlow(cmd, mobile.UniqueId, persistorSettings);
             schemeContext.VerificationFlows.Add(flow);
-            Log.Information("About to save new verification flow. Purpose: {Purpose}, MobileId: {MobileId}",
-                flow.Purpose, flow.MobileNumberId);
 
             await schemeContext.SaveChangesAsync(cancellationToken);
-
             Log.Information("Successfully saved verification flow. FlowId: {FlowId}", flow.UniqueId);
 
             await transaction.CommitAsync(cancellationToken);
-
             Log.Information("Transaction committed successfully for flow {FlowId}", flow.UniqueId);
 
-            Option<VerificationFlowEntity> flowWithOtpOpt =
-                await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(schemeContext, flow.UniqueId,
-                    cancellationToken);
-            if (!flowWithOtpOpt.IsSome)
-            {
-                Log.Error("[InitiateFlow] Flow not found after creation: {FlowId}", flow.UniqueId);
-                return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.FlowNotFoundAfterCreation());
-            }
-
-            return MapToVerificationFlowRecord(flowWithOtpOpt.Value!);
+            return await GetFinalFlowRecordAsync(schemeContext, flow.UniqueId, cancellationToken);
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "[InitiateFlow] Operation failed. Purpose: {Purpose}",
-                cmd.Purpose);
+            Log.Error(ex, "[InitiateFlow] Operation failed. Purpose: {Purpose}", cmd.Purpose);
             await transaction.RollbackAsync();
             return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.InitiateFlowFailed(ex));
         }
+    }
+
+    private static async Task<Result<VerificationFlowQueryRecord, VerificationFlowFailure>> GetFinalFlowRecordAsync(
+        EcliptixSchemaContext schemeContext,
+        Guid flowUniqueId,
+        CancellationToken cancellationToken)
+    {
+        Option<VerificationFlowEntity> flowWithOtpOpt =
+            await VerificationFlowQueries.GetByUniqueIdWithActiveOtp(schemeContext, flowUniqueId,
+                cancellationToken);
+        if (!flowWithOtpOpt.IsSome)
+        {
+            Log.Error("[InitiateFlow] Flow not found after creation: {FlowId}", flowUniqueId);
+            return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.FlowNotFoundAfterCreation());
+        }
+
+        return MapToVerificationFlowRecord(flowWithOtpOpt.Value!);
+    }
+
+    private VerificationFlowEntity CreateNewVerificationFlow(
+        InitiateFlowAndReturnStateActorEvent cmd,
+        Guid mobileUniqueId,
+        VerificationFlowPersistorSettings persistorSettings)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        return new()
+        {
+            UniqueId = Guid.NewGuid(),
+            MobileNumberId = mobileUniqueId,
+            AppDeviceId = cmd.AppDeviceId,
+            Purpose = cmd.Purpose,
+            Status = VerificationFlowStatus.Pending,
+            ExpiresAt = now + persistorSettings.FlowExpiration,
+            ConnectionId = cmd.ConnectId,
+            OtpCount = 0,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsDeleted = false
+        };
+    }
+
+    private static async Task<Option<VerificationFlowFailure>> CheckGeneralRateLimitsAsync(
+        EcliptixSchemaContext schemeContext,
+        InitiateFlowAndReturnStateActorEvent cmd,
+        Guid mobileUniqueId,
+        VerificationFlowPersistorSettings persistorSettings,
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset rateLimitLookback = DateTimeOffset.UtcNow - persistorSettings.RateLimitLookback;
+
+        int mobileFlowCount = await VerificationFlowQueries.CountRecentByMobileId(
+            schemeContext, mobileUniqueId, rateLimitLookback, cancellationToken);
+        if (mobileFlowCount >= persistorSettings.MaxFlowsPerHourPerMobile)
+        {
+            Log.Warning("[InitiateFlow] Mobile rate limit exceeded. Count: {Count}, Max: {Max}, Mobile: {MobileId}",
+                mobileFlowCount, persistorSettings.MaxFlowsPerHourPerMobile, mobileUniqueId);
+            return Option<VerificationFlowFailure>.Some(VerificationFlowFailure.RateLimitExceeded());
+        }
+
+        int deviceFlowCount = await VerificationFlowQueries.CountRecentByDevice(
+            schemeContext, cmd.AppDeviceId, rateLimitLookback, cancellationToken);
+        if (deviceFlowCount >= persistorSettings.MaxFlowsPerHourPerDevice)
+        {
+            Log.Warning("[InitiateFlow] Device rate limit exceeded. Count: {Count}, Max: {Max}, Device: {DeviceId}",
+                deviceFlowCount, persistorSettings.MaxFlowsPerHourPerDevice, cmd.AppDeviceId);
+            return Option<VerificationFlowFailure>.Some(VerificationFlowFailure.DeviceRateLimitExceeded());
+        }
+
+        return Option<VerificationFlowFailure>.None;
+    }
+
+    private static async Task<Result<MobileNumberEntity, VerificationFlowFailure>> ValidateInputsAsync(
+        EcliptixSchemaContext schemeContext,
+        InitiateFlowAndReturnStateActorEvent cmd,
+        CancellationToken cancellationToken)
+    {
+        Option<MobileNumberEntity> mobileOpt =
+            await MobileNumberQueries.GetByUniqueId(schemeContext, cmd.MobileNumberUniqueId, cancellationToken);
+        if (!mobileOpt.IsSome)
+        {
+            Log.Warning("[InitiateFlow] Mobile number not found: {MobileNumberId}", cmd.MobileNumberUniqueId);
+            return Result<MobileNumberEntity, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.FromMobileNumber(MobileNumberFailure.NotFound()));
+        }
+
+        bool deviceExists = await DeviceQueries.ExistsByDeviceId(schemeContext, cmd.AppDeviceId, cancellationToken);
+        if (!deviceExists)
+        {
+            Log.Warning("[InitiateFlow] Device not found: {DeviceId}", cmd.AppDeviceId);
+            return Result<MobileNumberEntity, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.Validation("Device not found"));
+        }
+
+        return Result<MobileNumberEntity, VerificationFlowFailure>.Ok(mobileOpt.Value!);
+    }
+
+    private static async Task HandleLingeringActiveFlowAsync(
+        EcliptixSchemaContext schemeContext,
+        InitiateFlowAndReturnStateActorEvent cmd,
+        CancellationToken cancellationToken)
+    {
+        Option<VerificationFlowEntity> existingActiveFlowOpt =
+            await VerificationFlowQueries.GetActiveFlowForRecovery(
+                schemeContext,
+                cmd.MobileNumberUniqueId,
+                cmd.AppDeviceId,
+                cmd.Purpose,
+                cancellationToken);
+
+        if (existingActiveFlowOpt.IsSome)
+        {
+            VerificationFlowEntity existingActiveFlow = existingActiveFlowOpt.Value!;
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+
+            await schemeContext.VerificationFlows
+                .Where(vf => vf.Id == existingActiveFlow.Id)
+                .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(vf => vf.Status, VerificationFlowStatus.Expired)
+                        .SetProperty(vf => vf.ConnectionId, (long?)null)
+                        .SetProperty(vf => vf.ExpiresAt, now)
+                        .SetProperty(vf => vf.UpdatedAt, now),
+                    cancellationToken);
+
+            await schemeContext.OtpCodes
+                .Where(o => o.VerificationFlowId == existingActiveFlow.Id &&
+                            o.Status == OtpStatus.Active &&
+                            !o.IsDeleted)
+                .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(o => o.Status, OtpStatus.Expired)
+                        .SetProperty(o => o.UpdatedAt, now),
+                    cancellationToken);
+
+            Log.Information(
+                "[verification.flow.recovered] Expired lingering flow {FlowId} before creating a new one",
+                existingActiveFlow.UniqueId);
+        }
+    }
+
+    private async Task<Option<VerificationFlowFailure>> HandlePasswordRecoveryRulesAsync(
+        EcliptixSchemaContext schemeContext,
+        InitiateFlowAndReturnStateActorEvent cmd,
+        Guid mobileUniqueId,
+        VerificationFlowPersistorSettings persistorSettings,
+        CancellationToken cancellationToken)
+    {
+        Option<VerificationFlowFailure> rateLimitFailure = await CheckPasswordRecoveryRateLimitsAsync(
+            schemeContext, cmd, mobileUniqueId, persistorSettings, cancellationToken);
+
+        if (rateLimitFailure.IsSome)
+        {
+            return rateLimitFailure;
+        }
+
+        await ExpireOldPasswordRecoveryFlowsAsync(schemeContext, mobileUniqueId, cancellationToken);
+
+        return Option<VerificationFlowFailure>.None;
+    }
+
+    private static async Task ExpireOldPasswordRecoveryFlowsAsync(
+        EcliptixSchemaContext schemeContext,
+        Guid mobileUniqueId,
+        CancellationToken cancellationToken)
+    {
+        List<VerificationFlowEntity> oldActiveFlows = await schemeContext.VerificationFlows
+            .Where(vf => vf.MobileNumberId == mobileUniqueId &&
+                         vf.Purpose == VerificationPurpose.PasswordRecovery &&
+                         (vf.Status == VerificationFlowStatus.Pending || vf.Status == VerificationFlowStatus.Verified) &&
+                         !vf.IsDeleted)
+            .ToListAsync(cancellationToken);
+
+        if (oldActiveFlows.Count > 0)
+        {
+            Log.Information(
+                "[INITIATE-PASSWORD-RECOVERY] Found {Count} old password recovery flows (pending + verified) to expire for mobile ID {MobileId}",
+                oldActiveFlows.Count, mobileUniqueId);
+
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            foreach (VerificationFlowEntity oldFlow in oldActiveFlows)
+            {
+                Log.Information(
+                    "[INITIATE-PASSWORD-RECOVERY] Expiring flow {FlowId} with status '{OldStatus}' for mobile ID {MobileId}",
+                    oldFlow.UniqueId, oldFlow.Status, mobileUniqueId);
+
+                oldFlow.Status = VerificationFlowStatus.Expired;
+                oldFlow.UpdatedAt = now;
+            }
+
+            Log.Information(
+                "[INITIATE-PASSWORD-RECOVERY] Successfully marked {Count} old password recovery flows for expiration",
+                oldActiveFlows.Count);
+        }
+    }
+
+    private async Task<Option<VerificationFlowFailure>> CheckPasswordRecoveryRateLimitsAsync(
+        EcliptixSchemaContext schemeContext,
+        InitiateFlowAndReturnStateActorEvent cmd,
+        Guid mobileUniqueId,
+        VerificationFlowPersistorSettings persistorSettings,
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset recoveryLookbackTime =
+            DateTimeOffset.UtcNow - persistorSettings.PasswordRecoveryLookback;
+
+        int recoveryCountByMobile = await VerificationFlowQueries.CountRecentPasswordRecovery(
+            schemeContext, mobileUniqueId, recoveryLookbackTime, cancellationToken);
+
+        int recoveryCountByDevice = await schemeContext.VerificationFlows
+            .Where(f => f.AppDeviceId == cmd.AppDeviceId &&
+                        f.Purpose == VerificationPurpose.PasswordRecovery &&
+                        f.CreatedAt >= recoveryLookbackTime &&
+                        !f.IsDeleted)
+            .AsNoTracking()
+            .CountAsync(cancellationToken);
+
+        Log.Information(
+            "[INITIATE-PASSWORD-RECOVERY] Recent password recovery counts - Mobile: {MobileCount}, Device: {DeviceCount} for mobile ID {MobileId}",
+            recoveryCountByMobile, recoveryCountByDevice, mobileUniqueId);
+
+        int maxAttemptsByMobile = _securityConfig.CurrentValue.VerificationFlowLimits
+            .PasswordRecoveryAttemptsPerHourPerMobile;
+        int maxAttemptsByDevice = _securityConfig.CurrentValue.VerificationFlowLimits
+            .PasswordRecoveryAttemptsPerHourPerDevice;
+
+        if (recoveryCountByMobile >= maxAttemptsByMobile || recoveryCountByDevice >= maxAttemptsByDevice)
+        {
+            Log.Warning(
+                "[InitiateFlow] Password recovery rate limit exceeded. Mobile: {MobileCount}/{MaxMobile}, Device: {DeviceCount}/{MaxDevice}",
+                recoveryCountByMobile, maxAttemptsByMobile, recoveryCountByDevice, maxAttemptsByDevice);
+            return Option<VerificationFlowFailure>.Some(VerificationFlowFailure.RateLimitExceeded());
+        }
+
+        return Option<VerificationFlowFailure>.None;
     }
 
     private async Task<Result<(string Outcome, uint RemainingSeconds), VerificationFlowFailure>> RequestResendOtpAsync(
@@ -613,14 +711,12 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 MembershipCreationStatus.OtpVerified => ProtoMembership.Types.CreationStatus.OtpVerified,
                 MembershipCreationStatus.SecureKeySet => ProtoMembership.Types.CreationStatus.SecureKeySet,
                 MembershipCreationStatus.PassphraseSet => ProtoMembership.Types.CreationStatus.PassphraseSet,
-                null => ProtoMembership.Types.CreationStatus.OtpVerified,
                 _ => ProtoMembership.Types.CreationStatus.OtpVerified
             };
 
             ProtoMembership.Types.ActivityStatus activityStatus = membership.Status switch
             {
                 MembershipStatus.Inactive => ProtoMembership.Types.ActivityStatus.Inactive,
-                MembershipStatus.Active => ProtoMembership.Types.ActivityStatus.Active,
                 _ => ProtoMembership.Types.ActivityStatus.Active
             };
 
@@ -643,7 +739,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         catch (Exception ex)
         {
             bool isTimeout = ex is TimeoutException ||
-                           ex is System.Threading.ThreadAbortException ||
+                           ex is ThreadAbortException ||
                            (ex is TaskCanceledException tce && tce.CancellationToken.IsCancellationRequested);
 
             Log.Error(ex,
@@ -672,20 +768,14 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             if (!mobileNumberExists)
             {
                 return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                    new MobileNumberAvailabilityResponse
-                    {
-                        Status = MobileAvailabilityStatus.Available,
-                        CanRegister = true,
-                        CanContinue = false,
-                        LocalizationKey = VerificationFlowMessageKeys.MobileAvailableForRegistration
-                    });
+                    BuildAvailableResponse());
             }
 
-            var membershipInfo = await schemeContext.Memberships
+            MembershipCheckInfo? membershipInfo = await schemeContext.Memberships
                 .Where(m => m.MobileNumberId == cmd.MobileNumberId &&
                             !m.IsDeleted &&
                             !m.MobileNumber.IsDeleted)
-                .Select(m => new
+                .Select(m => new MembershipCheckInfo
                 {
                     MembershipId = m.UniqueId,
                     Status = m.Status,
@@ -708,176 +798,12 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             if (membershipInfo == null)
             {
                 return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                    new MobileNumberAvailabilityResponse
-                    {
-                        Status = MobileAvailabilityStatus.Available,
-                        CanRegister = true,
-                        CanContinue = false,
-                        LocalizationKey = VerificationFlowMessageKeys.MobileAvailableForRegistration
-                    });
+                    BuildAvailableResponse());
             }
 
-            Membership.Types.CreationStatus creationStatus = membershipInfo.CreationStatus switch
-            {
-                MembershipCreationStatus.OtpVerified => Membership.Types.CreationStatus.OtpVerified,
-                MembershipCreationStatus.SecureKeySet => Membership.Types.CreationStatus.SecureKeySet,
-                MembershipCreationStatus.PassphraseSet => Membership.Types.CreationStatus.PassphraseSet,
-                null => Membership.Types.CreationStatus.OtpVerified,
-                _ => Membership.Types.CreationStatus.OtpVerified
-            };
-            Membership.Types.ActivityStatus activityStatus = membershipInfo.Status switch
-            {
-                MembershipStatus.Inactive => Membership.Types.ActivityStatus.Inactive,
-                MembershipStatus.Active => Membership.Types.ActivityStatus.Active,
-                _ => Membership.Types.ActivityStatus.Active
-            };
+            MobileNumberAvailabilityResponse response = HandleExistingMembership(membershipInfo, cmd.DeviceId);
 
-            if (creationStatus == Membership.Types.CreationStatus.OtpVerified &&
-                membershipInfo.HasValidCredentials)
-            {
-                Log.Warning(
-                    "[CHECK-AVAILABILITY-INCONSISTENCY] Status={Status} but credentials exist. " +
-                    "MembershipId={MembershipId}, DeviceId={DeviceId}. " +
-                    "Treating as complete registration (SecureKeySet). Migration will fix status in DB.",
-                    creationStatus, membershipInfo.MembershipId, membershipInfo.DeviceId);
-
-                creationStatus = Membership.Types.CreationStatus.SecureKeySet;
-            }
-
-            if (membershipInfo.HasDefaultAccount &&
-                !membershipInfo.HasValidCredentials &&
-                creationStatus != Membership.Types.CreationStatus.OtpVerified)
-            {
-                Log.Warning(
-                    "[CHECK-AVAILABILITY] Data corruption: Account exists without credentials. MembershipId={MembershipId}, DeviceId={DeviceId}, CreationStatus={CreationStatus}",
-                    membershipInfo.MembershipId, cmd.DeviceId, creationStatus);
-
-                return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                    new MobileNumberAvailabilityResponse
-                    {
-                        Status = MobileAvailabilityStatus.DataCorruption,
-                        CanRegister = false,
-                        CanContinue = false,
-                        ExistingMembershipId = Helpers.GuidToByteString(membershipInfo.MembershipId),
-                        RegisteredDeviceId = Helpers.GuidToByteString(membershipInfo.DeviceId),
-                        CreationStatus = creationStatus,
-                        ActivityStatus = activityStatus,
-                        LocalizationKey = VerificationFlowMessageKeys.MobileDataCorruption
-                    });
-            }
-
-            if (creationStatus is Membership.Types.CreationStatus.OtpVerified
-                    or Membership.Types.CreationStatus.PassphraseSet &&
-                !membershipInfo.HasValidCredentials)
-            {
-                DateTimeOffset now = DateTimeOffset.UtcNow;
-                TimeSpan timeSinceCreation = now - membershipInfo.CreatedAt;
-                TimeSpan completionWindow = _securityConfig.CurrentValue.MembershipPersistor.MembershipCreationWindow;
-
-                if (timeSinceCreation > completionWindow)
-                {
-                    Log.Warning(
-                        "[CHECK-AVAILABILITY] Registration window expired. MembershipId={MembershipId}, " +
-                        "CreatedAt={CreatedAt}, WindowHours={WindowHours}, ElapsedHours={ElapsedHours}",
-                        membershipInfo.MembershipId,
-                        membershipInfo.CreatedAt,
-                        completionWindow.TotalHours,
-                        timeSinceCreation.TotalHours);
-
-                    return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                        new MobileNumberAvailabilityResponse
-                        {
-                            Status = MobileAvailabilityStatus.RegistrationExpired,
-                            CanRegister = true,
-                            CanContinue = false,
-                            LocalizationKey = VerificationFlowMessageKeys.MobileRegistrationExpired
-                        });
-                }
-
-                if (membershipInfo.DeviceId != cmd.DeviceId)
-                {
-                    Log.Warning(
-                        "[CHECK-AVAILABILITY] Cross-device registration blocked. MembershipId: {MembershipId}, " +
-                        "RegisteredDevice: {RegisteredDevice}, RequestingDevice: {RequestingDevice}",
-                        membershipInfo.MembershipId, membershipInfo.DeviceId, cmd.DeviceId);
-
-                    return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                        new MobileNumberAvailabilityResponse
-                        {
-                            Status = MobileAvailabilityStatus.IncompleteRegistration,
-                            CanRegister = false,
-                            CanContinue = false,
-                            ExistingMembershipId = Helpers.GuidToByteString(membershipInfo.MembershipId),
-                            RegisteredDeviceId = Helpers.GuidToByteString(membershipInfo.DeviceId),
-                            CreationStatus = creationStatus,
-                            ActivityStatus = activityStatus,
-                            LocalizationKey = VerificationFlowMessageKeys.MobileIncompleteRegistrationDifferentDevice
-                        });
-                }
-
-                MobileNumberAvailabilityResponse response = new()
-                {
-                    Status = MobileAvailabilityStatus.IncompleteRegistration,
-                    CanRegister = false,
-                    CanContinue = true,
-                    ExistingMembershipId = Helpers.GuidToByteString(membershipInfo.MembershipId),
-                    RegisteredDeviceId = Helpers.GuidToByteString(membershipInfo.DeviceId),
-                    CreationStatus = creationStatus,
-                    ActivityStatus = activityStatus,
-                    LocalizationKey = VerificationFlowMessageKeys.MobileIncompleteRegistration
-                };
-
-                if (membershipInfo.AccountUniqueId.HasValue)
-                {
-                    ByteString accountId = Helpers.GuidToByteString(membershipInfo.AccountUniqueId.Value);
-                    response.AccountUniqueIdentifier = accountId;
-                }
-
-                return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(response);
-            }
-
-            if (membershipInfo.HasValidCredentials)
-            {
-                Membership.Types.ActivityStatus membershipActivityStatus = membershipInfo.Status switch
-                {
-                    MembershipStatus.Inactive => Membership.Types.ActivityStatus.Inactive,
-                    MembershipStatus.Active => Membership.Types.ActivityStatus.Active,
-                    _ => Membership.Types.ActivityStatus.Active
-                };
-                bool isActive = membershipActivityStatus == Membership.Types.ActivityStatus.Active;
-                MobileAvailabilityStatus status = isActive
-                    ? MobileAvailabilityStatus.TakenActive
-                    : MobileAvailabilityStatus.TakenInactive;
-                string localizationKey = isActive
-                    ? VerificationFlowMessageKeys.MobileTakenActiveAccount
-                    : VerificationFlowMessageKeys.MobileTakenInactiveAccount;
-
-                return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                    new MobileNumberAvailabilityResponse
-                    {
-                        Status = status,
-                        CanRegister = false,
-                        CanContinue = false,
-                        RegisteredDeviceId = Helpers.GuidToByteString(membershipInfo.DeviceId),
-                        CreationStatus = creationStatus,
-                        ActivityStatus = activityStatus,
-                        LocalizationKey = localizationKey
-                    });
-            }
-
-            Log.Warning(
-                "[CHECK-AVAILABILITY] Unexpected state. MembershipId={MembershipId}, CreationStatus={CreationStatus}, HasAccount={HasAccount}, HasCredentials={HasCredentials}",
-                membershipInfo.MembershipId, creationStatus, membershipInfo.HasDefaultAccount,
-                membershipInfo.HasValidCredentials);
-
-            return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(
-                new MobileNumberAvailabilityResponse
-                {
-                    Status = MobileAvailabilityStatus.Available,
-                    CanRegister = true,
-                    CanContinue = false,
-                    LocalizationKey = VerificationFlowMessageKeys.MobileAvailableForRegistration
-                });
+            return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Ok(response);
         }
         catch (Exception ex)
         {
@@ -888,6 +814,201 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             return Result<MobileNumberAvailabilityResponse, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.CheckMobileAvailabilityFailed(ex));
         }
+    }
+
+    private MobileNumberAvailabilityResponse HandleExistingMembership(
+        MembershipCheckInfo info, Guid requestingDeviceId)
+    {
+        (Membership.Types.CreationStatus creationStatus, Membership.Types.ActivityStatus activityStatus) = GetCorrectedMembershipStatus(info);
+
+        Option<MobileNumberAvailabilityResponse> corruptionResponse = CheckForDataCorruption(info, creationStatus, activityStatus, requestingDeviceId);
+        if (corruptionResponse.IsSome)
+        {
+            return corruptionResponse.Value!;
+        }
+
+        if (creationStatus is Membership.Types.CreationStatus.OtpVerified
+                or Membership.Types.CreationStatus.PassphraseSet &&
+            !info.HasValidCredentials)
+        {
+            return HandleIncompleteRegistration(info, creationStatus, activityStatus, requestingDeviceId);
+        }
+
+        if (info.HasValidCredentials)
+        {
+            return HandleTakenRegistration(info, creationStatus, activityStatus);
+        }
+
+        Log.Warning(
+            "[CHECK-AVAILABILITY] Unexpected state. MembershipId={MembershipId}, CreationStatus={CreationStatus}, HasAccount={HasAccount}, HasCredentials={HasCredentials}",
+            info.MembershipId, creationStatus, info.HasDefaultAccount, info.HasValidCredentials);
+
+        return BuildAvailableResponse();
+    }
+
+    private MobileNumberAvailabilityResponse HandleIncompleteRegistration(
+        MembershipCheckInfo info,
+        Membership.Types.CreationStatus creationStatus,
+        Membership.Types.ActivityStatus activityStatus,
+        Guid requestingDeviceId)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        TimeSpan timeSinceCreation = now - info.CreatedAt;
+        TimeSpan completionWindow = _securityConfig.CurrentValue.MembershipPersistor.MembershipCreationWindow;
+
+        if (timeSinceCreation > completionWindow)
+        {
+            Log.Warning(
+                "[CHECK-AVAILABILITY] Registration window expired. MembershipId={MembershipId}, " +
+                "CreatedAt={CreatedAt}, WindowHours={WindowHours}, ElapsedHours={ElapsedHours}",
+                info.MembershipId, info.CreatedAt, completionWindow.TotalHours, timeSinceCreation.TotalHours);
+
+            return new MobileNumberAvailabilityResponse
+            {
+                Status = MobileAvailabilityStatus.RegistrationExpired,
+                CanRegister = true,
+                CanContinue = false,
+                LocalizationKey = VerificationFlowMessageKeys.MobileRegistrationExpired
+            };
+        }
+
+        if (info.DeviceId != requestingDeviceId)
+        {
+            Log.Warning(
+                "[CHECK-AVAILABILITY] Cross-device registration blocked. MembershipId: {MembershipId}, " +
+                "RegisteredDevice: {RegisteredDevice}, RequestingDevice: {RequestingDevice}",
+                info.MembershipId, info.DeviceId, requestingDeviceId);
+
+            return new MobileNumberAvailabilityResponse
+            {
+                Status = MobileAvailabilityStatus.IncompleteRegistration,
+                CanRegister = false,
+                CanContinue = false,
+                ExistingMembershipId = Helpers.GuidToByteString(info.MembershipId),
+                RegisteredDeviceId = Helpers.GuidToByteString(info.DeviceId),
+                CreationStatus = creationStatus,
+                ActivityStatus = activityStatus,
+                LocalizationKey = VerificationFlowMessageKeys.MobileIncompleteRegistrationDifferentDevice
+            };
+        }
+
+        MobileNumberAvailabilityResponse response = new MobileNumberAvailabilityResponse
+        {
+            Status = MobileAvailabilityStatus.IncompleteRegistration,
+            CanRegister = false,
+            CanContinue = true,
+            ExistingMembershipId = Helpers.GuidToByteString(info.MembershipId),
+            RegisteredDeviceId = Helpers.GuidToByteString(info.DeviceId),
+            CreationStatus = creationStatus,
+            ActivityStatus = activityStatus,
+            LocalizationKey = VerificationFlowMessageKeys.MobileIncompleteRegistration
+        };
+
+        if (info.AccountUniqueId.HasValue)
+        {
+            response.AccountUniqueIdentifier = Helpers.GuidToByteString(info.AccountUniqueId.Value);
+        }
+
+        return response;
+    }
+
+    private static Option<MobileNumberAvailabilityResponse> CheckForDataCorruption(
+        MembershipCheckInfo info,
+        Membership.Types.CreationStatus creationStatus,
+        Membership.Types.ActivityStatus activityStatus,
+        Guid requestingDeviceId)
+    {
+        if (info.HasDefaultAccount &&
+            !info.HasValidCredentials &&
+            creationStatus != Membership.Types.CreationStatus.OtpVerified)
+        {
+            Log.Warning(
+                "[CHECK-AVAILABILITY] Data corruption: Account exists without credentials. MembershipId={MembershipId}, DeviceId={DeviceId}, CreationStatus={CreationStatus}",
+                info.MembershipId, requestingDeviceId, creationStatus);
+
+            return Option<MobileNumberAvailabilityResponse>.Some(
+                new MobileNumberAvailabilityResponse
+                {
+                    Status = MobileAvailabilityStatus.DataCorruption,
+                    CanRegister = false,
+                    CanContinue = false,
+                    ExistingMembershipId = Helpers.GuidToByteString(info.MembershipId),
+                    RegisteredDeviceId = Helpers.GuidToByteString(info.DeviceId),
+                    CreationStatus = creationStatus,
+                    ActivityStatus = activityStatus,
+                    LocalizationKey = VerificationFlowMessageKeys.MobileDataCorruption
+                });
+        }
+
+        return Option<MobileNumberAvailabilityResponse>.None;
+    }
+
+    private static MobileNumberAvailabilityResponse HandleTakenRegistration(
+        MembershipCheckInfo info,
+        Membership.Types.CreationStatus creationStatus,
+        Membership.Types.ActivityStatus activityStatus)
+    {
+        bool isActive = activityStatus == Membership.Types.ActivityStatus.Active;
+        MobileAvailabilityStatus status = isActive
+            ? MobileAvailabilityStatus.TakenActive
+            : MobileAvailabilityStatus.TakenInactive;
+        string localizationKey = isActive
+            ? VerificationFlowMessageKeys.MobileTakenActiveAccount
+            : VerificationFlowMessageKeys.MobileTakenInactiveAccount;
+
+        return new MobileNumberAvailabilityResponse
+        {
+            Status = status,
+            CanRegister = false,
+            CanContinue = false,
+            RegisteredDeviceId = Helpers.GuidToByteString(info.DeviceId),
+            CreationStatus = creationStatus,
+            ActivityStatus = activityStatus,
+            LocalizationKey = localizationKey
+        };
+    }
+
+    private static (Membership.Types.CreationStatus Creation, Membership.Types.ActivityStatus Activity)
+        GetCorrectedMembershipStatus(MembershipCheckInfo info)
+    {
+        Membership.Types.CreationStatus creationStatus = info.CreationStatus switch
+        {
+            MembershipCreationStatus.OtpVerified => Membership.Types.CreationStatus.OtpVerified,
+            MembershipCreationStatus.SecureKeySet => Membership.Types.CreationStatus.SecureKeySet,
+            MembershipCreationStatus.PassphraseSet => Membership.Types.CreationStatus.PassphraseSet,
+            _ => Membership.Types.CreationStatus.OtpVerified
+        };
+
+        Membership.Types.ActivityStatus activityStatus = info.Status switch
+        {
+            MembershipStatus.Inactive => Membership.Types.ActivityStatus.Inactive,
+            _ => Membership.Types.ActivityStatus.Active
+        };
+
+        if (creationStatus == Membership.Types.CreationStatus.OtpVerified &&
+            info.HasValidCredentials)
+        {
+            Log.Warning(
+                "[CHECK-AVAILABILITY-INCONSISTENCY] Status={Status} but credentials exist. " +
+                "MembershipId={MembershipId}, DeviceId={DeviceId}. " +
+                "Treating as complete registration (SecureKeySet). Migration will fix status in DB.",
+                creationStatus, info.MembershipId, info.DeviceId);
+
+            creationStatus = Membership.Types.CreationStatus.SecureKeySet;
+        }
+
+        return (creationStatus, activityStatus);
+    }
+
+    private static MobileNumberAvailabilityResponse BuildAvailableResponse()
+    {
+        return new MobileNumberAvailabilityResponse
+        {
+            Status = MobileAvailabilityStatus.Available,
+            CanRegister = true,
+            CanContinue = false,
+            LocalizationKey = VerificationFlowMessageKeys.MobileAvailableForRegistration
+        };
     }
 
     private async Task<Result<CreateOtpResult, VerificationFlowFailure>> CreateOtpAsync(
@@ -921,22 +1042,19 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             int maxOtpsPerMobile = _securityConfig.CurrentValue.VerificationFlowLimits.MaxOtpSendsPerMobilePerHour;
 
-            if (mobileOtpCount >= maxOtpsPerMobile)
+            if (mobileOtpCount >= maxOtpsPerMobile && lastFlowUpdate.HasValue)
             {
-                if (lastFlowUpdate.HasValue)
-                {
-                    int cooldownMinutes =
-                        _securityConfig.CurrentValue.VerificationFlowLimits.OtpExhaustionCooldownMinutes;
-                    DateTimeOffset cooldownEndsAt = lastFlowUpdate.Value.AddMinutes(cooldownMinutes);
-                    DateTimeOffset currentTime = DateTimeOffset.UtcNow;
+                int cooldownMinutes =
+                    _securityConfig.CurrentValue.VerificationFlowLimits.OtpExhaustionCooldownMinutes;
+                DateTimeOffset cooldownEndsAt = lastFlowUpdate.Value.AddMinutes(cooldownMinutes);
+                DateTimeOffset currentTime = DateTimeOffset.UtcNow;
 
-                    if (currentTime < cooldownEndsAt)
-                    {
-                        uint remainingMinutes = (uint)Math.Ceiling((cooldownEndsAt - currentTime).TotalMinutes);
-                        await transaction.RollbackAsync();
-                        return Result<CreateOtpResult, VerificationFlowFailure>.Err(
-                            VerificationFlowFailure.RateLimitExceeded(remainingMinutes.ToString()));
-                    }
+                if (currentTime < cooldownEndsAt)
+                {
+                    uint remainingMinutes = (uint)Math.Ceiling((cooldownEndsAt - currentTime).TotalMinutes);
+                    await transaction.RollbackAsync();
+                    return Result<CreateOtpResult, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.RateLimitExceeded(remainingMinutes.ToString()));
                 }
             }
 
@@ -1258,7 +1376,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         return VerificationFlowFailure.PersistorAccess("Database operation failed", ex);
     }
 
-    private async Task<Result<FlowStatusQueryRecord, VerificationFlowFailure>> QueryFlowStatusByConnectionIdAsync(
+    private static async Task<Result<FlowStatusQueryRecord, VerificationFlowFailure>> QueryFlowStatusByConnectionIdAsync(
         EcliptixSchemaContext schemeContext,
         QueryFlowStatusByConnectionIdActorEvent cmd,
         CancellationToken cancellationToken)

@@ -882,154 +882,42 @@ public sealed class EcliptixProtocolConnection : IDisposable
                     EcliptixProtocolFailure.Generic("Root key handle not initialized."));
             }
 
-            Result<Unit, EcliptixProtocolFailure> dhCalculationResult = Result<Unit, EcliptixProtocolFailure>.Try(() =>
-            {
-                if (isSender)
-                {
-                    if (_sendingStep == null || _peerDhPublicKey == null)
-                    {
-                        throw new InvalidOperationException("Sender ratchet pre-conditions not met.");
-                    }
-
-                    Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> ephResult =
-                        SodiumInterop.GenerateX25519KeyPair("Ephemeral DH Ratchet");
-                    if (ephResult.IsErr)
-                    {
-                        throw new InvalidOperationException(
-                            $"Failed to generate ephemeral key pair: {ephResult.UnwrapErr().Message}");
-                    }
-
-                    (newEphemeralSkHandle, newEphemeralPublicKey) = ephResult.Unwrap();
-                    Result<byte[], EcliptixProtocolFailure> privKeyResult =
-                        newEphemeralSkHandle.ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
-                    if (privKeyResult.IsErr)
-                    {
-                        throw new InvalidOperationException(
-                            $"Failed to read ephemeral private key: {privKeyResult.UnwrapErr().Message}");
-                    }
-
-                    localPrivateKeyBytes = privKeyResult.Unwrap();
-                    Result<byte[], SodiumFailure> dhSecretResult =
-                        SodiumInterop.ScalarMult(localPrivateKeyBytes, _peerDhPublicKey);
-                    if (dhSecretResult.IsErr)
-                    {
-                        throw new InvalidOperationException(
-                            $"Failed to compute DH secret (sender): {dhSecretResult.UnwrapErr().Message}");
-                    }
-
-                    dhSecret = dhSecretResult.Unwrap();
-                }
-                else
-                {
-                    if (_receivingStep == null || receivedDhPublicKeyBytes is not
-                            { Length: Constants.X25519PublicKeySize })
-                    {
-                        throw new InvalidOperationException("Receiver ratchet pre-conditions not met.");
-                    }
-
-                    Result<byte[], EcliptixProtocolFailure> privKeyResult = _currentSendingDhPrivateKeyHandle!
-                        .ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
-                    if (privKeyResult.IsErr)
-                    {
-                        throw new InvalidOperationException(
-                            $"Failed to read current DH private key: {privKeyResult.UnwrapErr().Message}");
-                    }
-
-                    localPrivateKeyBytes = privKeyResult.Unwrap();
-                    Result<byte[], SodiumFailure> dhSecretResult =
-                        SodiumInterop.ScalarMult(localPrivateKeyBytes, receivedDhPublicKeyBytes);
-                    if (dhSecretResult.IsErr)
-                    {
-                        throw new InvalidOperationException(
-                            $"Failed to compute DH secret (receiver): {dhSecretResult.UnwrapErr().Message}");
-                    }
-
-                    dhSecret = dhSecretResult.Unwrap();
-                }
-            }, ex => EcliptixProtocolFailure.DeriveKey("DH calculation failed during ratchet.", ex));
-            if (dhCalculationResult.IsErr)
-            {
-                return dhCalculationResult;
-            }
-
-            Result<byte[], EcliptixProtocolFailure> rootKeyReadResult =
-                _rootKeyHandle!.ReadBytes(Constants.X25519KeySize).MapSodiumFailure();
-            if (rootKeyReadResult.IsErr)
-            {
-                return Result<Unit, EcliptixProtocolFailure>.Err(rootKeyReadResult.UnwrapErr());
-            }
-
-            currentRootKey = rootKeyReadResult.Unwrap();
-            hkdfOutput = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize * 2);
-            try
-            {
-                HKDF.DeriveKey(
-                    HashAlgorithmName.SHA256,
-                    ikm: dhSecret!,
-                    output: hkdfOutput.AsSpan(0, Constants.X25519KeySize * 2),
-                    salt: currentRootKey,
-                    info: DhRatchetInfo
-                );
-            }
-            catch (Exception ex)
-            {
-                ArrayPool<byte>.Shared.Return(hkdfOutput);
-                hkdfOutput = null;
-                return Result<Unit, EcliptixProtocolFailure>.Err(
-                    EcliptixProtocolFailure.DeriveKey("HKDF failed during DH ratchet.", ex));
-            }
-
-            newRootKey = hkdfOutput.AsSpan(0, Constants.X25519KeySize).ToArray();
-            newChainKeyForTargetStep = hkdfOutput.AsSpan(Constants.X25519KeySize).ToArray();
-
-            Result<Unit, EcliptixProtocolFailure> writeResult = _rootKeyHandle.Write(newRootKey).MapSodiumFailure();
-            if (writeResult.IsErr)
-            {
-                return writeResult.MapErr(f => f);
-            }
-
-            Result<Unit, EcliptixProtocolFailure> updateResult;
             if (isSender)
             {
-                Result<byte[], EcliptixProtocolFailure> newDhPrivResult =
-                    newEphemeralSkHandle!.ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
-                if (newDhPrivResult.IsErr)
+                Result<(byte[] DhSecret, SodiumSecureMemoryHandle SkHandle, byte[] Pk), EcliptixProtocolFailure> senderResult = PerformSenderDhRatchet(out localPrivateKeyBytes);
+                if (senderResult.IsErr)
                 {
-                    return Result<Unit, EcliptixProtocolFailure>.Err(newDhPrivResult.UnwrapErr());
+                    return Result<Unit, EcliptixProtocolFailure>.Err(senderResult.UnwrapErr());
                 }
-
-                newDhPrivateKeyBytes = newDhPrivResult.Unwrap();
-                _currentSendingDhPrivateKeyHandle?.Dispose();
-                _currentSendingDhPrivateKeyHandle = newEphemeralSkHandle;
-                newEphemeralSkHandle = null;
-                updateResult = _sendingStep.UpdateKeysAfterDhRatchet(newChainKeyForTargetStep, newDhPrivateKeyBytes,
-                    newEphemeralPublicKey);
+                (dhSecret, newEphemeralSkHandle, newEphemeralPublicKey) = senderResult.Unwrap();
             }
             else
             {
-                updateResult = _receivingStep!.UpdateKeysAfterDhRatchet(newChainKeyForTargetStep);
-                if (updateResult.IsOk)
+                Result<byte[], EcliptixProtocolFailure> receiverResult = PerformReceiverDhRatchet(receivedDhPublicKeyBytes, out localPrivateKeyBytes);
+                if (receiverResult.IsErr)
                 {
-                    WipeIfNotNull(_peerDhPublicKey);
-                    _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes!.Clone();
+                    return Result<Unit, EcliptixProtocolFailure>.Err(receiverResult.UnwrapErr());
                 }
+                dhSecret = receiverResult.Unwrap();
             }
+
+            Result<(byte[] NewRootKey, byte[] NewChainKey), EcliptixProtocolFailure> deriveResult = DeriveRatchetKeysFromHkdf(dhSecret, out currentRootKey, out hkdfOutput);
+            if (deriveResult.IsErr)
+            {
+                return Result<Unit, EcliptixProtocolFailure>.Err(deriveResult.UnwrapErr());
+            }
+            (newRootKey, newChainKeyForTargetStep) = deriveResult.Unwrap();
+
+            Result<Unit, EcliptixProtocolFailure> updateResult = UpdateProtocolStateAfterRatchet(
+                isSender, newRootKey, newChainKeyForTargetStep,
+                newEphemeralSkHandle, newEphemeralPublicKey, receivedDhPublicKeyBytes,
+                out newDhPrivateKeyBytes);
 
             if (updateResult.IsErr)
             {
                 return updateResult;
             }
-
-            _replayProtection.OnRatchetRotation();
-
-            _receivedNewDhKey = false;
-            _lastRatchetTime = DateTime.UtcNow;
-
-            Result<Unit, EcliptixProtocolFailure> metadataKeyResult = DeriveMetadataEncryptionKey();
-            if (metadataKeyResult.IsErr)
-            {
-                return metadataKeyResult;
-            }
+            newEphemeralSkHandle = null;
 
             return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
         }
@@ -1046,9 +934,190 @@ public sealed class EcliptixProtocolConnection : IDisposable
             {
                 ArrayPool<byte>.Shared.Return(hkdfOutput, clearArray: true);
             }
-
             newEphemeralSkHandle?.Dispose();
         }
+    }
+
+    private Result<(byte[] DhSecret, SodiumSecureMemoryHandle SkHandle, byte[] Pk), EcliptixProtocolFailure>
+        PerformSenderDhRatchet(out byte[]? localPrivateKeyBytes)
+    {
+        localPrivateKeyBytes = null;
+        try
+        {
+            if (_sendingStep == null || _peerDhPublicKey == null)
+            {
+                throw new InvalidOperationException("Sender ratchet pre-conditions not met.");
+            }
+
+            Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> ephResult =
+                SodiumInterop.GenerateX25519KeyPair("Ephemeral DH Ratchet");
+            if (ephResult.IsErr)
+            {
+                throw new InvalidOperationException($"Failed to generate ephemeral key pair: {ephResult.UnwrapErr().Message}");
+            }
+            (SodiumSecureMemoryHandle newEphemeralSkHandle, byte[] newEphemeralPublicKey) = ephResult.Unwrap();
+
+            Result<byte[], EcliptixProtocolFailure> privKeyResult =
+                newEphemeralSkHandle.ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
+            if (privKeyResult.IsErr)
+            {
+                newEphemeralSkHandle.Dispose();
+                throw new InvalidOperationException($"Failed to read ephemeral private key: {privKeyResult.UnwrapErr().Message}");
+            }
+
+            byte[] localPrivKey = privKeyResult.Unwrap();
+            localPrivateKeyBytes = localPrivKey;
+
+            Result<byte[], SodiumFailure> dhSecretResult =
+                SodiumInterop.ScalarMult(localPrivKey, _peerDhPublicKey);
+            if (dhSecretResult.IsErr)
+            {
+                newEphemeralSkHandle.Dispose();
+                throw new InvalidOperationException($"Failed to compute DH secret (sender): {dhSecretResult.UnwrapErr().Message}");
+            }
+
+            return Result<(byte[], SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Ok(
+                (dhSecretResult.Unwrap(), newEphemeralSkHandle, newEphemeralPublicKey));
+        }
+        catch (Exception ex)
+        {
+            return Result<(byte[], SodiumSecureMemoryHandle, byte[]), EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.DeriveKey("DH calculation failed during sender ratchet.", ex));
+        }
+    }
+
+    private Result<byte[], EcliptixProtocolFailure> PerformReceiverDhRatchet(
+        byte[]? receivedDhPublicKeyBytes, out byte[]? localPrivateKeyBytes)
+    {
+        localPrivateKeyBytes = null; // Initialize out param
+        try // <-- Replaced Result.Try
+        {
+            if (_receivingStep == null || receivedDhPublicKeyBytes is not { Length: Constants.X25519PublicKeySize })
+            {
+                throw new InvalidOperationException("Receiver ratchet pre-conditions not met.");
+            }
+
+            // 1. Read private key
+            Result<byte[], EcliptixProtocolFailure> privKeyResult = _currentSendingDhPrivateKeyHandle!
+                .ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
+            if (privKeyResult.IsErr)
+            {
+                throw new InvalidOperationException($"Failed to read current DH private key: {privKeyResult.UnwrapErr().Message}");
+            }
+
+            byte[] localPrivKey = privKeyResult.Unwrap();
+            localPrivateKeyBytes = localPrivKey; // <-- This is now legal
+
+            // 2. Compute secret
+            Result<byte[], SodiumFailure> dhSecretResult =
+                SodiumInterop.ScalarMult(localPrivKey, receivedDhPublicKeyBytes);
+            if (dhSecretResult.IsErr)
+            {
+                throw new InvalidOperationException($"Failed to compute DH secret (receiver): {dhSecretResult.UnwrapErr().Message}");
+            }
+
+            // Return the Ok result
+            return Result<byte[], EcliptixProtocolFailure>.Ok(dhSecretResult.Unwrap());
+        }
+        catch (Exception ex) // <-- Manually catch the exception
+        {
+            // Replicate the original failure-wrapping behavior
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.DeriveKey("DH calculation failed during receiver ratchet.", ex));
+        }
+    }
+
+    private Result<(byte[] NewRootKey, byte[] NewChainKey), EcliptixProtocolFailure>
+        DeriveRatchetKeysFromHkdf(byte[] dhSecret, out byte[]? currentRootKey, out byte[]? hkdfOutput)
+    {
+        currentRootKey = null; // Initialize out param
+        hkdfOutput = null;     // Initialize out param
+
+        Result<byte[], EcliptixProtocolFailure> rootKeyReadResult =
+            _rootKeyHandle!.ReadBytes(Constants.X25519KeySize).MapSodiumFailure();
+        if (rootKeyReadResult.IsErr)
+        {
+            return Result<(byte[], byte[]), EcliptixProtocolFailure>.Err(rootKeyReadResult.UnwrapErr());
+        }
+
+        currentRootKey = rootKeyReadResult.Unwrap();
+        hkdfOutput = ArrayPool<byte>.Shared.Rent(Constants.X25519KeySize * 2);
+
+        try
+        {
+            HKDF.DeriveKey(
+                HashAlgorithmName.SHA256,
+                ikm: dhSecret,
+                output: hkdfOutput.AsSpan(0, Constants.X25519KeySize * 2),
+                salt: currentRootKey,
+                info: DhRatchetInfo
+            );
+        }
+        catch (Exception ex)
+        {
+            // Don't return hkdfOutput here, let the top-level finally block handle it
+            return Result<(byte[], byte[]), EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.DeriveKey("HKDF failed during DH ratchet.", ex));
+        }
+
+        byte[] newRootKey = hkdfOutput.AsSpan(0, Constants.X25519KeySize).ToArray();
+        byte[] newChainKey = hkdfOutput.AsSpan(Constants.X25519KeySize).ToArray();
+
+        return Result<(byte[], byte[]), EcliptixProtocolFailure>.Ok((newRootKey, newChainKey));
+    }
+
+    private Result<Unit, EcliptixProtocolFailure> UpdateProtocolStateAfterRatchet(
+        bool isSender,
+        byte[] newRootKey,
+        byte[] newChainKeyForTargetStep,
+        SodiumSecureMemoryHandle? newEphemeralSkHandle,
+        byte[]? newEphemeralPublicKey,
+        byte[]? receivedDhPublicKeyBytes,
+        out byte[]? newDhPrivateKeyBytes)
+    {
+        newDhPrivateKeyBytes = null;
+
+        Result<Unit, EcliptixProtocolFailure> writeResult = _rootKeyHandle!.Write(newRootKey).MapSodiumFailure();
+        if (writeResult.IsErr)
+        {
+            return writeResult;
+        }
+
+        Result<Unit, EcliptixProtocolFailure> updateResult;
+        if (isSender)
+        {
+            Result<byte[], EcliptixProtocolFailure> newDhPrivResult =
+                newEphemeralSkHandle!.ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
+            if (newDhPrivResult.IsErr)
+            {
+                return Result<Unit, EcliptixProtocolFailure>.Err(newDhPrivResult.UnwrapErr());
+            }
+
+            newDhPrivateKeyBytes = newDhPrivResult.Unwrap();
+            _currentSendingDhPrivateKeyHandle?.Dispose();
+            _currentSendingDhPrivateKeyHandle = newEphemeralSkHandle;
+            updateResult = _sendingStep!.UpdateKeysAfterDhRatchet(newChainKeyForTargetStep, newDhPrivateKeyBytes, newEphemeralPublicKey);
+        }
+        else
+        {
+            updateResult = _receivingStep!.UpdateKeysAfterDhRatchet(newChainKeyForTargetStep);
+            if (updateResult.IsOk)
+            {
+                WipeIfNotNull(_peerDhPublicKey);
+                _peerDhPublicKey = (byte[])receivedDhPublicKeyBytes!.Clone();
+            }
+        }
+
+        if (updateResult.IsErr)
+        {
+            return updateResult;
+        }
+
+        _replayProtection.OnRatchetRotation();
+        _receivedNewDhKey = false;
+        _lastRatchetTime = DateTime.UtcNow;
+
+        return DeriveMetadataEncryptionKey();
     }
 
     private Result<Unit, EcliptixProtocolFailure> DeriveMetadataEncryptionKey()

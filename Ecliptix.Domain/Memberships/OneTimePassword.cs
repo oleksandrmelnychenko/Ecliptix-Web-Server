@@ -1,4 +1,3 @@
-using System;
 using System.Globalization;
 using System.Security.Cryptography;
 using Ecliptix.Domain.Memberships.Failures;
@@ -17,7 +16,7 @@ public sealed class OneTimePassword
     private Guid _uniqueIdentifier;
     private Option<OtpQueryRecord> _otpQueryRecord = Option<OtpQueryRecord>.None;
 
-    public OneTimePassword()
+    private OneTimePassword()
         : this(DefaultTimeToLive, static () => DateTimeOffset.UtcNow)
     {
     }
@@ -75,6 +74,7 @@ public sealed class OneTimePassword
 
                 ExpiresAt = expiresAt;
                 IsActive = true;
+
                 _otpQueryRecord = Option<OtpQueryRecord>.Some(otpQueryRecord);
 
                 return (otpQueryRecord, otp);

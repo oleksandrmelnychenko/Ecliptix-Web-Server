@@ -64,6 +64,7 @@ internal static unsafe class CertificatePinningNativeLibrary
             }
             catch
             {
+                // Ignore logging failures
             }
         }
 

@@ -97,7 +97,7 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
             (x25519SkHandle, byte[] x25519Pk) = x25519Result.Unwrap();
 
             Result<(uint id, SodiumSecureMemoryHandle sk, byte[] pk, byte[] sig), EcliptixProtocolFailure> spkResult =
-                GenerateSignedPreKey(ed25519SkHandle, ed25519Pk, masterKeyBytes, membershipIdString);
+                GenerateSignedPreKey(ed25519SkHandle, masterKeyBytes, membershipIdString);
             if (spkResult.IsErr)
             {
                 EcliptixProtocolFailure error = spkResult.UnwrapErr();
@@ -277,7 +277,6 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
 
     private static Result<(uint id, SodiumSecureMemoryHandle sk, byte[] pk, byte[] sig), EcliptixProtocolFailure> GenerateSignedPreKey(
         SodiumSecureMemoryHandle ed25519SkHandle,
-        byte[] identityPublicKey,
         byte[] masterKey,
         string membershipId)
     {

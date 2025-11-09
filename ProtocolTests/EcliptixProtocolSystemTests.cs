@@ -12,8 +12,6 @@ public class EcliptixProtocolSystemTests : IDisposable
 {
     private readonly EcliptixSystemIdentityKeys _aliceKeys;
     private readonly EcliptixSystemIdentityKeys _bobKeys;
-    private readonly EcliptixProtocolSystem _aliceEcliptixProtocolSystem;
-    private readonly EcliptixProtocolSystem _bobEcliptixProtocolSystem;
 
     static EcliptixProtocolSystemTests()
     {
@@ -33,8 +31,6 @@ public class EcliptixProtocolSystemTests : IDisposable
         TestContext = testContext;
         _aliceKeys = EcliptixSystemIdentityKeys.Create(5).Unwrap();
         _bobKeys = EcliptixSystemIdentityKeys.Create(5).Unwrap();
-        _aliceEcliptixProtocolSystem = new EcliptixProtocolSystem(_aliceKeys);
-        _bobEcliptixProtocolSystem = new EcliptixProtocolSystem(_bobKeys);
     }
 
     public TestContext TestContext { get; set; }
@@ -103,16 +99,6 @@ public class EcliptixProtocolSystemTests : IDisposable
         return equal;
     }
 
-    private static byte[] GenerateData(int size)
-    {
-        return size switch
-        {
-            < 0 => throw new ArgumentOutOfRangeException(nameof(size)),
-            0 => [],
-            _ => RandomNumberGenerator.GetBytes(size)
-        };
-    }
-
     [TestMethod]
     public void CompleteExchange_Success_Should_FinalizeSessionAndReturnRootKey()
     {
@@ -158,7 +144,6 @@ public class EcliptixProtocolSystemTests : IDisposable
                 OfType = exchangeType,
                 Payload = alicePublicBundleProto.ToProtobufExchange().ToByteString(),
             };
-            uint? opkIdUsedByAlice = bobBundleInternal.OneTimePreKeys.FirstOrDefault()?.PreKeyId;
 
             Ecliptix.Protobuf.Protocol.PublicKeyBundle receivedAliceBundleProto =
                 Helpers.ParseFromBytes<Ecliptix.Protobuf.Protocol.PublicKeyBundle>(initialMessageToBob.Payload.ToByteArray());

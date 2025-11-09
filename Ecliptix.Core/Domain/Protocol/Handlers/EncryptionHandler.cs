@@ -5,7 +5,7 @@ using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Domain.Protocol.Handlers;
 
-public sealed class EncryptionHandler
+public static class EncryptionHandler
 {
     public static Result<EncryptionResult, EcliptixProtocolFailure> EncryptPayload(
         EcliptixProtocolSystem system,

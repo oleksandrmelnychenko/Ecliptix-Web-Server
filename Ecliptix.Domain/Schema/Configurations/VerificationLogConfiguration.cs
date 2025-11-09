@@ -8,6 +8,7 @@ namespace Ecliptix.Domain.Schema.Configurations;
 
 public class VerificationLogConfiguration : EntityBaseMap<VerificationLogEntity>
 {
+    private readonly string IsNotDeletedFilter = "IsDeleted = 0";
     public override void Map(EntityTypeBuilder<VerificationLogEntity> builder)
     {
         base.Map(builder);
@@ -47,20 +48,20 @@ public class VerificationLogConfiguration : EntityBaseMap<VerificationLogEntity>
             .HasColumnType("DATETIMEOFFSET");
 
         builder.HasIndex(e => e.MembershipId)
-            .HasFilter("IsDeleted = 0")
+            .HasFilter(IsNotDeletedFilter)
             .HasDatabaseName("IX_VerificationLogs_Membership");
 
         builder.HasIndex(e => new { e.MembershipId, e.Purpose })
-            .HasFilter("IsDeleted = 0")
+            .HasFilter(IsNotDeletedFilter)
             .HasDatabaseName("IX_VerificationLogs_Membership_Purpose");
 
         builder.HasIndex(e => e.DeviceId)
-            .HasFilter("IsDeleted = 0")
+            .HasFilter(IsNotDeletedFilter)
             .HasDatabaseName("IX_VerificationLogs_DeviceId");
 
         builder.HasIndex(e => e.VerifiedAt)
             .IsDescending()
-            .HasFilter("IsDeleted = 0")
+            .HasFilter(IsNotDeletedFilter)
             .HasDatabaseName("IX_VerificationLogs_VerifiedAt");
 
         builder.HasOne(e => e.Membership)

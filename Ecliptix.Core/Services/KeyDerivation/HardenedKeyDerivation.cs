@@ -67,17 +67,9 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
                 SodiumSecureMemoryHandle handle = allocateResult.Unwrap();
 
                 Result<Unit, SodiumFailure> writeResult = handle.Write(derivedKey);
-                if (!writeResult.IsErr)
-                {
-                    return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Ok(handle);
-                }
-
-                {
-                    handle.Dispose();
-                    SodiumFailure error = writeResult.UnwrapErr();
-                    return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
-                        KeySplittingFailure.MemoryWriteFailed(error.Message));
-                }
+                return !writeResult.IsErr
+                    ? Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Ok(handle)
+                    : HandleSecureWriteFailure(handle, writeResult);
             }
             finally
             {
@@ -98,7 +90,19 @@ public sealed class HardenedKeyDerivation : IHardenedKeyDerivation
         }
     }
 
-    private async Task<Result<byte[], KeySplittingFailure>> DeriveEnhancedKeyAsync(
+    private static Result<SodiumSecureMemoryHandle, KeySplittingFailure> HandleSecureWriteFailure(
+        SodiumSecureMemoryHandle handleToDispose,
+        Result<Unit, SodiumFailure> failedWriteResult)
+    {
+        handleToDispose.Dispose();
+
+        SodiumFailure error = failedWriteResult.UnwrapErr();
+
+        return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
+            KeySplittingFailure.MemoryWriteFailed(error.Message));
+    }
+
+    private static async Task<Result<byte[], KeySplittingFailure>> DeriveEnhancedKeyAsync(
         byte[] baseKey,
         string context,
         KeyDerivationOptions options)
