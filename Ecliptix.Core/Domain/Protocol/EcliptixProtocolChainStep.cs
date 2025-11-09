@@ -3,8 +3,6 @@ using Ecliptix.Protobuf.ProtocolState;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures.Sodium;
 using Google.Protobuf;
-using Serilog;
-using Serilog.Events;
 
 namespace Ecliptix.Core.Domain.Protocol;
 
@@ -359,7 +357,7 @@ public sealed class EcliptixProtocolChainStep : IDisposable
                 EcliptixProtocolFailure.InvalidInput("Initial chain key has incorrect size."));
         }
 
-        if (initialDhPrivateKey == null != (initialDhPublicKey == null))
+        if ((initialDhPrivateKey == null) != (initialDhPublicKey == null))
         {
             return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput(
@@ -386,15 +384,11 @@ public sealed class EcliptixProtocolChainStep : IDisposable
             chainKeyHandle = SodiumSecureMemoryHandle.Allocate(initialChainKey.Length).Unwrap();
             chainKeyHandle.Write(initialChainKey).Unwrap();
 
-            if (initialDhPrivateKey == null)
+            if (initialDhPrivateKey != null)
             {
-                return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(
-                    new EcliptixProtocolChainStep(stepType, chainKeyHandle, dhPrivateKeyHandle,
-                        (byte[]?)initialDhPublicKey?.Clone(), cacheWindowSize));
+                dhPrivateKeyHandle = SodiumSecureMemoryHandle.Allocate(initialDhPrivateKey.Length).Unwrap();
+                dhPrivateKeyHandle.Write(initialDhPrivateKey).Unwrap();
             }
-
-            dhPrivateKeyHandle = SodiumSecureMemoryHandle.Allocate(initialDhPrivateKey.Length).Unwrap();
-            dhPrivateKeyHandle.Write(initialDhPrivateKey).Unwrap();
 
             return Result<EcliptixProtocolChainStep, EcliptixProtocolFailure>.Ok(
                 new EcliptixProtocolChainStep(stepType, chainKeyHandle, dhPrivateKeyHandle,

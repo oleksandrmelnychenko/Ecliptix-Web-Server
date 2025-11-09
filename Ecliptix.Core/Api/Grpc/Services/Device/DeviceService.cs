@@ -24,36 +24,20 @@ using Microsoft.Extensions.Options;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Device;
 
-internal sealed class DeviceService : Protobuf.Device.DeviceService.DeviceServiceBase
+internal sealed class DeviceService(
+    IGrpcCipherService cipherService,
+    IEcliptixActorRegistry actorRegistry,
+    ISecureChannelEstablisher secureChannelEstablisher,
+    INativeOpaqueProtocolService opaqueService,
+    IMasterKeyService masterKeyService,
+    IRsaChunkProcessor rsaChunkProcessor,
+    CertificatePinningService certificatePinningService,
+    IOptions<SecurityConfiguration> securityConfig)
+    : Protobuf.Device.DeviceService.DeviceServiceBase
 {
-    private readonly GrpcSecurityService _baseService;
-    private readonly IActorRef _protocolActor;
-    private readonly IActorRef _appDevicePersistorActor;
-    private readonly ISecureChannelEstablisher _secureChannelEstablisher;
-    private readonly INativeOpaqueProtocolService _opaqueService;
-    private readonly IMasterKeyService _masterKeyService;
-    private readonly IRsaChunkProcessor _rsaChunkProcessor;
-    private readonly CertificatePinningService _certificatePinningService;
-
-    public DeviceService(
-        IGrpcCipherService cipherService,
-        IEcliptixActorRegistry actorRegistry,
-        ISecureChannelEstablisher secureChannelEstablisher,
-        INativeOpaqueProtocolService opaqueService,
-        IMasterKeyService masterKeyService,
-        IRsaChunkProcessor rsaChunkProcessor,
-        CertificatePinningService certificatePinningService,
-        IOptions<SecurityConfiguration> securityConfig)
-    {
-        _baseService = new GrpcSecurityService(cipherService, securityConfig);
-        _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
-        _appDevicePersistorActor = actorRegistry.Get(ActorIds.AppDevicePersistorActor);
-        _secureChannelEstablisher = secureChannelEstablisher;
-        _opaqueService = opaqueService;
-        _masterKeyService = masterKeyService;
-        _rsaChunkProcessor = rsaChunkProcessor;
-        _certificatePinningService = certificatePinningService;
-    }
+    private readonly GrpcSecurityService _baseService = new(cipherService, securityConfig);
+    private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
+    private readonly IActorRef _appDevicePersistorActor = actorRegistry.Get(ActorIds.AppDevicePersistorActor);
 
     public override async Task<SecureEnvelope> RegisterDevice(SecureEnvelope request, ServerCallContext context)
     {
@@ -71,7 +55,7 @@ internal sealed class DeviceService : Protobuf.Device.DeviceService.DeviceServic
                 if (registerResult.IsOk)
                 {
                     Result<byte[], OpaqueServerFailure> serverPublicKey =
-                        ((OpaqueProtocolService)_opaqueService).GetServerPublicKey();
+                        ((OpaqueProtocolService)opaqueService).GetServerPublicKey();
 
                     DeviceRegistrationResponse reply = registerResult.Unwrap();
                     reply.ServerPublicKey = ByteString.CopyFrom(serverPublicKey.Unwrap());
@@ -87,7 +71,7 @@ internal sealed class DeviceService : Protobuf.Device.DeviceService.DeviceServic
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
 
-        Result<SecureEnvelope, SecureChannelFailure> result = await _secureChannelEstablisher.EstablishAsync(
+        Result<SecureEnvelope, SecureChannelFailure> result = await secureChannelEstablisher.EstablishAsync(
             request,
             connectId,
             context.CancellationToken);
@@ -117,10 +101,7 @@ internal sealed class DeviceService : Protobuf.Device.DeviceService.DeviceServic
             RestoreSecrecyChannelResponse protocolResponse = result.Unwrap();
             if (protocolResponse.Status == RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound)
             {
-                return new RestoreChannelResponse
-                {
-                    Status = RestoreChannelResponse.Types.Status.SessionNotFound,
-                };
+                return new RestoreChannelResponse { Status = RestoreChannelResponse.Types.Status.SessionNotFound, };
             }
 
             return new RestoreChannelResponse
@@ -137,10 +118,7 @@ internal sealed class DeviceService : Protobuf.Device.DeviceService.DeviceServic
             failure.FailureType == EcliptixProtocolFailureType.StateMissing ||
             _protocolActor.IsNobody())
         {
-            return new RestoreChannelResponse
-            {
-                Status = RestoreChannelResponse.Types.Status.SessionNotFound
-            };
+            return new RestoreChannelResponse { Status = RestoreChannelResponse.Types.Status.SessionNotFound };
         }
 
         throw GrpcFailureException.FromDomainFailure(failure);
@@ -157,7 +135,7 @@ internal sealed class DeviceService : Protobuf.Device.DeviceService.DeviceServic
             Guid membershipId = Helpers.FromByteStringToGuid(request.MembershipUniqueId);
 
             Result<(dynamic IdentityKeys, byte[] RootKey), FailureBase> deriveKeysResult =
-                await _masterKeyService.DeriveIdentityKeysAsync(membershipId);
+                await masterKeyService.DeriveIdentityKeysAsync(membershipId);
 
             if (deriveKeysResult.IsErr)
             {
@@ -197,7 +175,7 @@ internal sealed class DeviceService : Protobuf.Device.DeviceService.DeviceServic
             byte[] serverExchangeBytes = reply.ServerPubKeyExchange.ToByteArray();
 
             Result<byte[], CertificatePinningFailure> encryptResult =
-                await _rsaChunkProcessor.EncryptChunkedAsync(serverExchangeBytes, context.CancellationToken);
+                await rsaChunkProcessor.EncryptChunkedAsync(serverExchangeBytes, context.CancellationToken);
 
             if (encryptResult.IsErr)
             {
@@ -209,7 +187,7 @@ internal sealed class DeviceService : Protobuf.Device.DeviceService.DeviceServic
             byte[] encryptedPayload = encryptResult.Unwrap();
 
             Result<byte[], CertificatePinningFailure> signResult =
-                _certificatePinningService.Sign(encryptedPayload.AsMemory());
+                certificatePinningService.Sign(encryptedPayload.AsMemory());
 
             if (signResult.IsErr)
             {

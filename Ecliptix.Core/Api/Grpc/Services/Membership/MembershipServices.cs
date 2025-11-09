@@ -339,10 +339,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             }
             finally
             {
-                if (canonicalBytes != null)
-                {
-                    ArrayPool<byte>.Shared.Return(canonicalBytes);
-                }
+                ArrayPool<byte>.Shared.Return(canonicalBytes);
             }
         }
         finally
@@ -492,10 +489,10 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
     }
 
     private async Task<Result<LogoutResponse, FailureBase>> ProcessLogoutAsync(
-    LogoutRequest message,
-    uint connectId,
-    ServerCallContext context,
-    CancellationToken cancellationToken)
+        LogoutRequest message,
+        uint connectId,
+        ServerCallContext context,
+        CancellationToken cancellationToken)
     {
         Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
         long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -514,10 +511,6 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             ? Helpers.FromByteStringToGuid(message.AccountIdentifier)
             : null;
 
-        Log.Information(
-            "Processing logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
-            membershipId, connectId, deviceId, accountId, reason, message.Scope);
-
         await RecordLogoutAuditAsync(membershipId, accountId, deviceId, reason, cancellationToken);
 
         byte[] ratchetFingerprint = await CaptureRatchetFingerprintAsync(connectId);
@@ -526,8 +519,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
         ScheduleProtocolCleanup(connectId);
 
-        Log.Information("Logout completed for ConnectId: {ConnectId}. Protocol cleanup scheduled.",
-            connectId);
+        Log.Information("Logout completed for ConnectId: {ConnectId}. Protocol cleanup scheduled", connectId);
 
         return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
         {
@@ -545,10 +537,6 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
         if (timestampDrift > maxDrift)
         {
-            Log.Warning("[LOGOUT-SECURITY] Timestamp drift exceeded for MembershipId: {MembershipId}. " +
-                        "Drift: {Drift}s, MaxDrift: {MaxDrift}s",
-                membershipId, timestampDrift, maxDrift);
-
             return Result<Unit, LogoutResponse>.Err(new LogoutResponse
             {
                 Result = LogoutResponse.Types.Result.InvalidTimestamp, ServerTimestamp = serverTimestamp
@@ -560,29 +548,15 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
         if (sharesExistResult.IsErr || !sharesExistResult.Unwrap())
         {
-            if(sharesExistResult.IsErr)
-            {
-                Log.Error("[LOGOUT-SECURITY] Failed to check shares for MembershipId: {MembershipId}. Error: {Error}",
-                    membershipId, sharesExistResult.UnwrapErr().Message);
-            }
-            else
-            {
-                Log.Warning("[LOGOUT-SECURITY] No master key shares found for MembershipId: {MembershipId}.",
-                    membershipId);
-            }
-
             return Result<Unit, LogoutResponse>.Err(new LogoutResponse
             {
                 Result = LogoutResponse.Types.Result.SessionNotFound, ServerTimestamp = serverTimestamp
             });
         }
 
-        Log.Debug("[LOGOUT-SECURITY] Master key shares verified for MembershipId: {MembershipId}", membershipId);
-
         Result<Unit, FailureBase> hmacValidation = await ValidateLogoutHmacAsync(message, membershipId);
         if (hmacValidation.IsErr)
         {
-            Log.Warning("[LOGOUT-SECURITY] HMAC validation failed for MembershipId: {MembershipId}", membershipId);
             return Result<Unit, LogoutResponse>.Err(new LogoutResponse
             {
                 Result = LogoutResponse.Types.Result.InvalidHmac, ServerTimestamp = serverTimestamp
@@ -598,10 +572,12 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         {
             return reason;
         }
+
         return LogoutReason.UserInitiated;
     }
 
-    private async Task RecordLogoutAuditAsync(Guid membershipId, Guid? accountId, Guid deviceId, LogoutReason reason, CancellationToken cancellationToken)
+    private async Task RecordLogoutAuditAsync(Guid membershipId, Guid? accountId, Guid deviceId, LogoutReason reason,
+        CancellationToken cancellationToken)
     {
         RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason,
             "", "", cancellationToken);
@@ -882,7 +858,8 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                     }
                     catch (Exception ex)
                     {
-                        Log.Error(ex, "[LOGOUT-ANONYMOUS] Error during anonymous logout for ConnectId: {ConnectId}", connectId);
+                        Log.Error(ex, "[LOGOUT-ANONYMOUS] Error during anonymous logout for ConnectId: {ConnectId}",
+                            connectId);
                         return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
                         {
                             Result = AnonymousLogoutResponse.Types.Result.Failed,
