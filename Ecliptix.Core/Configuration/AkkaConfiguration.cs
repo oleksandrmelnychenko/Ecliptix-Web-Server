@@ -1,5 +1,3 @@
-
-
 using Akka.Cluster.Hosting;
 using Akka.Discovery.Config.Hosting;
 using Akka.Discovery.KubernetesApi;
@@ -20,7 +18,7 @@ internal static class AkkaConfiguration
 {
     public static void ConfigureAkka(WebApplicationBuilder builder)
     {
-        var akkaSettings = new AkkaSettings();
+        AkkaSettings akkaSettings = new();
         builder.Configuration.GetSection(nameof(AkkaSettings)).Bind(akkaSettings);
         builder.Services.AddSingleton(akkaSettings);
 
@@ -37,11 +35,7 @@ internal static class AkkaConfiguration
                 .ConfigureLoggers(setup =>
                 {
                     setup.LogLevel = Akka.Event.LogLevel.InfoLevel;
-                    setup.DeadLetterOptions = new DeadLetterOptions
-                    {
-                        LogCount = 10,
-                        LogDuringShutdown = false,
-                    };
+                    setup.DeadLetterOptions = new DeadLetterOptions { LogCount = 10, LogDuringShutdown = false, };
                 })
                 .WithSqlPersistence(
                     connectionString: connectionString,
@@ -64,7 +58,6 @@ internal static class AkkaConfiguration
                     }
                 );
 
-            // Apply clustering based on ClusterMode
             if (!akkaSettings.ClusterMode.Equals("None", StringComparison.OrdinalIgnoreCase))
             {
                 configurationBuilder
@@ -74,7 +67,7 @@ internal static class AkkaConfiguration
                         Roles = akkaSettings.Cluster.Roles,
                         SeedNodes = akkaSettings.ClusterMode.Equals("Config", StringComparison.OrdinalIgnoreCase)
                             ? akkaSettings.Cluster.SeedNodes
-                            : Array.Empty<string>()
+                            : []
                     })
                     .WithAkkaManagement(setup =>
                     {
@@ -91,7 +84,8 @@ internal static class AkkaConfiguration
                         {
                             setup.ContactPointDiscovery.ServiceName = akkaSettings.ClusterBootstrap.ServiceName;
                             setup.ContactPointDiscovery.PortName = akkaSettings.ClusterBootstrap.PortName;
-                            setup.ContactPointDiscovery.RequiredContactPointsNr = akkaSettings.ClusterBootstrap.RequiredContactPointsNr;
+                            setup.ContactPointDiscovery.RequiredContactPointsNr =
+                                akkaSettings.ClusterBootstrap.RequiredContactPointsNr;
                         }, autoStart: akkaSettings.ClusterBootstrap.AutoStart)
                         .WithKubernetesDiscovery(setup =>
                         {
@@ -106,7 +100,7 @@ internal static class AkkaConfiguration
             }
 
             configurationBuilder
-                .WithActors((system, registry) => { })
+                .WithActors((_, _) => { })
                 .AddHocon($@"
                     akka {{
                         akka.actor.ask-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Actor.AskTimeout)}
