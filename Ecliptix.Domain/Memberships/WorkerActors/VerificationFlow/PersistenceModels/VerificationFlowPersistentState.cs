@@ -1,6 +1,6 @@
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 
-namespace Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow;
+namespace Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow.PersistenceModels;
 
 internal sealed record VerificationFlowPersistentState(
     VerificationFlowQueryRecord? VerificationFlow,
@@ -11,7 +11,3 @@ internal sealed record VerificationFlowPersistentState(
     bool CleanupCompleted,
     bool IsCompleting,
     bool TimersStarted);
-
-internal sealed record VerificationFlowStatePersistedEvent(VerificationFlowPersistentState State);
-
-internal sealed record VerificationFlowActorSnapshot(VerificationFlowPersistentState State);

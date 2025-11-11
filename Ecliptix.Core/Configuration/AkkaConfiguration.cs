@@ -38,7 +38,7 @@ internal static class AkkaConfiguration
                     setup.DeadLetterOptions = new DeadLetterOptions { LogCount = 10, LogDuringShutdown = false, };
                 })
                 .WithSqlPersistence(
-                    connectionString: connectionString,
+                    connectionString: connectionString!,
                     providerName: ProviderName.SqlServer2022,
                     databaseMapping: DatabaseMapping.SqlServer,
                     mode: PersistenceMode.Both,

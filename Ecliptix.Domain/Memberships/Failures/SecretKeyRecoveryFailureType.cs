@@ -1,6 +1,6 @@
 namespace Ecliptix.Domain.Memberships.Failures;
 
-public enum PasswordRecoveryFailureType : short
+public enum SecretKeyRecoveryFailureType : short
 {
     TokenNotFound,
     TokenExpired,

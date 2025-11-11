@@ -701,7 +701,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             MembershipEntity? membership;
 
-            if (verificationFlow.Purpose == VerificationPurpose.PasswordRecovery)
+            if (verificationFlow.Purpose == VerificationPurpose.SecureKeyRecovery)
             {
                 membership = await ctx.Memberships
                     .Where(m => m.MobileNumberId == verificationFlow.MobileNumber.UniqueId &&
@@ -867,7 +867,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             await ctx.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
         try
         {
-            if (cmd.Purpose != VerificationPurpose.PasswordRecovery ||
+            if (cmd.Purpose != VerificationPurpose.SecureKeyRecovery ||
                 cmd.FlowStatus != VerificationFlowStatus.Verified)
             {
                 await RollbackSilentlyAsync(transaction);

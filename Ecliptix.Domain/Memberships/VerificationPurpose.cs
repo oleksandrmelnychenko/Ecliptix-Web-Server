@@ -5,5 +5,5 @@ public enum VerificationPurpose
     Unspecified,
     Registration,
     Login,
-    PasswordRecovery
+    SecureKeyRecovery
 }

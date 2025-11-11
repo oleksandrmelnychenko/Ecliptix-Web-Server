@@ -9,7 +9,3 @@ public record AccountInfo(
     string Name,
     bool IsDefault,
     AccountStatus Status);
-
-public record AccountCreationResult(
-    List<AccountInfo> Accounts,
-    AccountInfo ActiveAccount);

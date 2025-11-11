@@ -1,5 +1,5 @@
 using Ecliptix.Domain.Memberships.ActorEvents.Common;
-using Ecliptix.Protobuf.Membership;
+using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
 
 namespace Ecliptix.Domain.Memberships.ActorEvents.Account;
 
@@ -7,6 +7,6 @@ public record CreateMembershipActorEvent(
     uint ConnectId,
     Guid VerificationFlowIdentifier,
     Guid OtpIdentifier,
-    Membership.Types.CreationStatus CreationStatus,
+    ProtoMembership.Types.CreationStatus CreationStatus,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;

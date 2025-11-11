@@ -158,7 +158,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
 
                     EnsureMobileNumberActorEvent ensureMobileNumberEvent = new(
                         phoneValidationResult.ParsedMobileNumberE164.Value!,
-                        phoneValidationResult.DetectedRegion.Match(region => region, () => null),
+                        phoneValidationResult.DetectedRegion.Match(region => region, () => string.Empty),
                         deviceId,
                         cancellationToken);
 
@@ -214,7 +214,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                 {
                     VerifyMobileForSecretKeyRecoveryActorEvent verifyMobileEvent = new(
                         phoneValidationResult.ParsedMobileNumberE164.Value!,
-                        phoneValidationResult.DetectedRegion.Match(region => region, () => null),
+                        phoneValidationResult.DetectedRegion.Match(region => region, () => string.Empty),
                         cancellationToken);
 
                     Task<Result<Guid, VerificationFlowFailure>> verifyMobileTask =
@@ -373,7 +373,7 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
         {
             VerificationPurpose.Registration => Ecliptix.Domain.Memberships.VerificationPurpose.Registration,
             VerificationPurpose.Login => Ecliptix.Domain.Memberships.VerificationPurpose.Login,
-            VerificationPurpose.PasswordRecovery => Ecliptix.Domain.Memberships.VerificationPurpose.PasswordRecovery,
+            VerificationPurpose.PasswordRecovery => Ecliptix.Domain.Memberships.VerificationPurpose.SecureKeyRecovery,
             _ => Ecliptix.Domain.Memberships.VerificationPurpose.Unspecified
         };
     }

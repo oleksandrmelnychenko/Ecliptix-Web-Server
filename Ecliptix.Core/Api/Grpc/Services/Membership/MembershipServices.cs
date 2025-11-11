@@ -11,6 +11,8 @@ using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler
 using Ecliptix.Core.Services.KeyDerivation;
 using Ecliptix.Domain.Memberships.ActorEvents.Account;
 using Ecliptix.Domain.Memberships.ActorEvents.Logout;
+using Ecliptix.Domain.Memberships.ActorEvents.Membership;
+using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Domain.Memberships.WorkerActors.Membership;
@@ -134,7 +136,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         return await _service
             .ExecuteEncryptedOperationAsync<OpaqueSignInFinalizeRequest, OpaqueSignInFinalizeResponse>(
                 request, context,
-                async (message, connectId, idempotencyKey, cancellationToken) =>
+                async (message, connectId, _, cancellationToken) =>
                 {
                     Task<Result<OpaqueSignInFinalizeResponse, MembershipFailure>> finalizeSignInTask =
                         _membershipActor.Ask<Result<OpaqueSignInFinalizeResponse, MembershipFailure>>(
@@ -195,14 +197,14 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                         Helpers.ReadMemoryToRetrieveBytes(message.MasterKey.Memory),
                         cancellationToken);
 
-                    Task<Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>>
+                    Task<Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>>
                         completeRecoverySecretKeyTask =
                             _membershipActor
-                                .Ask<Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>>(
+                                .Ask<Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>>(
                                     @event,
                                     TimeoutConfiguration.Actor.AskTimeout);
 
-                    Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>
+                    Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>
                         completeRecoverySecretKeyResult =
                             await completeRecoverySecretKeyTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -255,12 +257,12 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                         _cultureName,
                         cancellationToken);
 
-                    Task<Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure>> recoveryInitTask =
-                        _membershipActor.Ask<Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure>>(
+                    Task<Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>> recoveryInitTask =
+                        _membershipActor.Ask<Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>>(
                             @event,
                             TimeoutConfiguration.Actor.AskTimeout);
 
-                    Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure> result =
+                    Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure> result =
                         await recoveryInitTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     return result.Match(

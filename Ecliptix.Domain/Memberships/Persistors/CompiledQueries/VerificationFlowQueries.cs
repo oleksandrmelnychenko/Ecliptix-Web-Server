@@ -161,7 +161,7 @@ public static class VerificationFlowQueries
     {
         return await ctx.VerificationFlows
             .Where(f => f.MobileNumberId == mobileUniqueId &&
-                        f.Purpose == VerificationPurpose.PasswordRecovery &&
+                        f.Purpose == VerificationPurpose.SecureKeyRecovery &&
                         f.CreatedAt >= since &&
                         !f.IsDeleted)
             .AsNoTracking()

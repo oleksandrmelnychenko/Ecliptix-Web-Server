@@ -1,0 +1,3 @@
+namespace Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow.PersistenceModels;
+
+internal sealed record VerificationFlowStatePersistedEvent(VerificationFlowPersistentState State);

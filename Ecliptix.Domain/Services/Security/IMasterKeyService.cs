@@ -5,8 +5,6 @@ namespace Ecliptix.Domain.Services.Security;
 
 public interface IMasterKeyService
 {
-    Task<Result<dynamic, FailureBase>> GenerateRandomMasterKeyAndSplitAsync(Guid membershipId);
-
     Task<Result<dynamic, FailureBase>> SplitAndStoreMasterKeyAsync(byte[] masterKeyBytes, Guid membershipId, bool allowOverwrite = false);
 
     Task<Result<bool, FailureBase>> EnsureMasterKeyExistsAsync(Guid membershipId);

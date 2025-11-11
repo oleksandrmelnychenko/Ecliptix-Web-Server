@@ -335,63 +335,63 @@ public sealed record VerificationFlowFailure(
         };
     }
 
-    public static VerificationFlowFailure FromPasswordRecovery(PasswordRecoveryFailure passwordRecoveryFailure)
+    public static VerificationFlowFailure FromPasswordRecovery(SecretKeyRecoveryFailure secretKeyRecoveryFailure)
     {
-        return passwordRecoveryFailure.FailureType switch
+        return secretKeyRecoveryFailure.FailureType switch
         {
-            PasswordRecoveryFailureType.TokenNotFound => new VerificationFlowFailure(
+            SecretKeyRecoveryFailureType.TokenNotFound => new VerificationFlowFailure(
                 VerificationFlowFailureType.NotFound,
-                passwordRecoveryFailure.Message,
-                SourceFailure: passwordRecoveryFailure,
-                passwordRecoveryFailure.InnerException),
+                secretKeyRecoveryFailure.Message,
+                SourceFailure: secretKeyRecoveryFailure,
+                secretKeyRecoveryFailure.InnerException),
 
-            PasswordRecoveryFailureType.TokenExpired => new VerificationFlowFailure(
+            SecretKeyRecoveryFailureType.TokenExpired => new VerificationFlowFailure(
                 VerificationFlowFailureType.Expired,
-                passwordRecoveryFailure.Message,
-                SourceFailure: passwordRecoveryFailure,
-                passwordRecoveryFailure.InnerException),
+                secretKeyRecoveryFailure.Message,
+                SourceFailure: secretKeyRecoveryFailure,
+                secretKeyRecoveryFailure.InnerException),
 
-            PasswordRecoveryFailureType.TokenInvalid => new VerificationFlowFailure(
+            SecretKeyRecoveryFailureType.TokenInvalid => new VerificationFlowFailure(
                 VerificationFlowFailureType.Unauthorized,
-                passwordRecoveryFailure.Message,
-                SourceFailure: passwordRecoveryFailure,
-                passwordRecoveryFailure.InnerException),
+                secretKeyRecoveryFailure.Message,
+                SourceFailure: secretKeyRecoveryFailure,
+                secretKeyRecoveryFailure.InnerException),
 
-            PasswordRecoveryFailureType.TokenAlreadyUsed => new VerificationFlowFailure(
+            SecretKeyRecoveryFailureType.TokenAlreadyUsed => new VerificationFlowFailure(
                 VerificationFlowFailureType.Validation,
-                passwordRecoveryFailure.Message,
-                SourceFailure: passwordRecoveryFailure,
-                passwordRecoveryFailure.InnerException),
+                secretKeyRecoveryFailure.Message,
+                SourceFailure: secretKeyRecoveryFailure,
+                secretKeyRecoveryFailure.InnerException),
 
-            PasswordRecoveryFailureType.InitiationFailed => new VerificationFlowFailure(
+            SecretKeyRecoveryFailureType.InitiationFailed => new VerificationFlowFailure(
                 VerificationFlowFailureType.SmsSendFailed,
-                passwordRecoveryFailure.Message,
-                SourceFailure: passwordRecoveryFailure,
-                passwordRecoveryFailure.InnerException),
+                secretKeyRecoveryFailure.Message,
+                SourceFailure: secretKeyRecoveryFailure,
+                secretKeyRecoveryFailure.InnerException),
 
-            PasswordRecoveryFailureType.ResetFailed => new VerificationFlowFailure(
+            SecretKeyRecoveryFailureType.ResetFailed => new VerificationFlowFailure(
                 VerificationFlowFailureType.PersistorAccess,
-                passwordRecoveryFailure.Message,
-                SourceFailure: passwordRecoveryFailure,
-                passwordRecoveryFailure.InnerException),
+                secretKeyRecoveryFailure.Message,
+                SourceFailure: secretKeyRecoveryFailure,
+                secretKeyRecoveryFailure.InnerException),
 
-            PasswordRecoveryFailureType.ValidationFailed => new VerificationFlowFailure(
+            SecretKeyRecoveryFailureType.ValidationFailed => new VerificationFlowFailure(
                 VerificationFlowFailureType.Validation,
-                passwordRecoveryFailure.Message,
-                SourceFailure: passwordRecoveryFailure,
-                passwordRecoveryFailure.InnerException),
+                secretKeyRecoveryFailure.Message,
+                SourceFailure: secretKeyRecoveryFailure,
+                secretKeyRecoveryFailure.InnerException),
 
-            PasswordRecoveryFailureType.PersistorAccess => new VerificationFlowFailure(
+            SecretKeyRecoveryFailureType.PersistorAccess => new VerificationFlowFailure(
                 VerificationFlowFailureType.PersistorAccess,
-                passwordRecoveryFailure.Message,
-                SourceFailure: passwordRecoveryFailure,
-                passwordRecoveryFailure.InnerException),
+                secretKeyRecoveryFailure.Message,
+                SourceFailure: secretKeyRecoveryFailure,
+                secretKeyRecoveryFailure.InnerException),
 
             _ => new VerificationFlowFailure(
                 VerificationFlowFailureType.Generic,
-                passwordRecoveryFailure.Message,
-                SourceFailure: passwordRecoveryFailure,
-                passwordRecoveryFailure.InnerException)
+                secretKeyRecoveryFailure.Message,
+                SourceFailure: secretKeyRecoveryFailure,
+                secretKeyRecoveryFailure.InnerException)
         };
     }
 

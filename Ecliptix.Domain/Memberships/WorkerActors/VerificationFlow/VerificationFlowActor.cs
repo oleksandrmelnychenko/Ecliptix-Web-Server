@@ -9,6 +9,7 @@ using Ecliptix.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.Domain.Memberships.ActorEvents.MobileNumber;
 using Ecliptix.Domain.Memberships.ActorEvents.Otp;
 using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
+using Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow.PersistenceModels;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Instrumentation;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
@@ -22,12 +23,6 @@ using Google.Protobuf;
 using Microsoft.Extensions.Options;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow;
-
-public record ProtocolCleanupRequiredEvent(uint ConnectId);
-
-public record SessionExpiredMessageDeliveredEvent(uint ConnectId);
-
-public record FallbackCleanupEvent;
 
 public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 {
@@ -426,7 +421,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             return;
         }
 
-        if (_verificationFlow.Value!.Purpose == VerificationPurpose.PasswordRecovery)
+        if (_verificationFlow.Value!.Purpose == VerificationPurpose.SecureKeyRecovery)
         {
             try
             {

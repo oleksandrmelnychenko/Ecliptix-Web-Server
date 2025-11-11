@@ -211,7 +211,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             await HandleLingeringActiveFlowAsync(schemeContext, cmd, cancellationToken);
 
-            if (cmd.Purpose == VerificationPurpose.PasswordRecovery)
+            if (cmd.Purpose == VerificationPurpose.SecureKeyRecovery)
             {
                 Option<VerificationFlowFailure> recoveryRuleResult = await HandlePasswordRecoveryRulesAsync(
                     schemeContext, cmd, mobile.UniqueId, persistorSettings, cancellationToken);
@@ -416,7 +416,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         List<VerificationFlowEntity> oldActiveFlows = await schemeContext.VerificationFlows
             .Where(vf => vf.MobileNumberId == mobileUniqueId &&
-                         vf.Purpose == VerificationPurpose.PasswordRecovery &&
+                         vf.Purpose == VerificationPurpose.SecureKeyRecovery &&
                          (vf.Status == VerificationFlowStatus.Pending || vf.Status == VerificationFlowStatus.Verified) &&
                          !vf.IsDeleted)
             .ToListAsync(cancellationToken);
@@ -459,7 +459,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         int recoveryCountByDevice = await schemeContext.VerificationFlows
             .Where(f => f.AppDeviceId == cmd.AppDeviceId &&
-                        f.Purpose == VerificationPurpose.PasswordRecovery &&
+                        f.Purpose == VerificationPurpose.SecureKeyRecovery &&
                         f.CreatedAt >= recoveryLookbackTime &&
                         !f.IsDeleted)
             .AsNoTracking()
@@ -659,7 +659,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             await transaction.CommitAsync(cancellationToken);
 
-            if (purpose == VerificationPurpose.PasswordRecovery && newStatus == VerificationFlowStatus.Verified && _membershipPersistorActor.IsSome)
+            if (purpose == VerificationPurpose.SecureKeyRecovery && newStatus == VerificationFlowStatus.Verified && _membershipPersistorActor.IsSome)
             {
                 Log.Information(
                     "[UPDATE-FLOW-STATUS] Password recovery flow {FlowId} marked as verified. Sending async request to update membership VerificationFlowId",

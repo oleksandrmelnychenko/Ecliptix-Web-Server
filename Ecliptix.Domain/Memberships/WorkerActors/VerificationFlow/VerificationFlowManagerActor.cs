@@ -14,16 +14,6 @@ using Serilog;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow;
 
-public record FlowCompletedGracefullyActorEvent(IActorRef ActorRef);
-
-public sealed class FlowTerminationAcknowledged
-{
-    public static readonly FlowTerminationAcknowledged Instance = new();
-    private FlowTerminationAcknowledged()
-    {
-    }
-}
-
 public sealed class VerificationFlowManagerActor : ReceiveActor
 {
     private readonly ILocalizationProvider _localizationProvider;

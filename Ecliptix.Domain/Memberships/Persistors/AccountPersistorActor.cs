@@ -5,7 +5,9 @@ using Ecliptix.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Memberships.WorkerActors.Membership;
+using Ecliptix.Domain.Memberships.ActorEvents.Membership;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
@@ -271,10 +273,3 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         return PersistorSupervisorStrategy.CreateStrategy();
     }
 }
-
-public record AccountSecureKeyUpdateResult(
-    Guid AccountId,
-    Guid MembershipId,
-    int CredentialsVersion,
-    byte[] SecureKey,
-    byte[] MaskingKey);

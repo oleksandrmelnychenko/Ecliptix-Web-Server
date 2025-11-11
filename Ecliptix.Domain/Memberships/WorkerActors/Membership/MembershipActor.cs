@@ -6,10 +6,13 @@ using Ecliptix.Domain.Memberships.ActorEvents.Account;
 using Ecliptix.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.Domain.Memberships.ActorEvents.Logout;
 using Ecliptix.Domain.Memberships.ActorEvents.MasterKeyShares;
+using Ecliptix.Domain.Memberships.ActorEvents.Membership;
 using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
+using Ecliptix.Domain.Memberships.WorkerActors.Membership.PersistenceModels;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Services.Security;
 using Ecliptix.Protobuf.Membership;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
@@ -370,8 +373,8 @@ public sealed class MembershipActor : ReceivePersistentActor
         {
             Log.Warning("[PASSWORD-RECOVERY-COMPLETE] No recovery session found for membership {0}",
                 @event.MembershipIdentifier);
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Err(
-                PasswordRecoveryFailure.TokenInvalid(
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Err(
+                SecretKeyRecoveryFailure.TokenInvalid(
                     "No password recovery session found. Please restart the password recovery process.")));
             return;
         }
@@ -383,8 +386,8 @@ public sealed class MembershipActor : ReceivePersistentActor
                 "[PASSWORD-RECOVERY-COMPLETE] Password recovery timeout exceeded for membership {0}. Elapsed: {1}, Max: {2}",
                 @event.MembershipIdentifier, elapsed, PendingPasswordRecoveryTimeout);
             ClearPendingRecoverySession(@event.MembershipIdentifier);
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Err(
-                PasswordRecoveryFailure.TokenExpired(
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Err(
+                SecretKeyRecoveryFailure.TokenExpired(
                     "Password recovery session expired. Please restart the password recovery process.")));
             return;
         }
@@ -395,8 +398,8 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         if (!_pendingMaskingKeys.TryGetValue(@event.MembershipIdentifier, out byte[]? maskingKey))
         {
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Err(
-                PasswordRecoveryFailure.TokenInvalid(
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Err(
+                SecretKeyRecoveryFailure.TokenInvalid(
                     "No masking key found for membership during recovery completion")));
             return;
         }
@@ -415,8 +418,8 @@ public sealed class MembershipActor : ReceivePersistentActor
             ClearPendingRecoverySession(@event.MembershipIdentifier);
             Log.Error("[PASSWORD-RECOVERY-MASTER-KEY] Failed to split master key for MembershipId: {0}, Error: {1}",
                 @event.MembershipIdentifier, splitResult.UnwrapErr().Message);
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Err(
-                PasswordRecoveryFailure.TokenInvalid($"Failed to store master key: {splitResult.UnwrapErr().Message}")));
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Err(
+                SecretKeyRecoveryFailure.TokenInvalid($"Failed to store master key: {splitResult.UnwrapErr().Message}")));
             return;
         }
 
@@ -424,8 +427,8 @@ public sealed class MembershipActor : ReceivePersistentActor
                 out SodiumSecureMemoryHandle? sessionKeyHandle))
         {
             ClearPendingRecoverySession(@event.MembershipIdentifier);
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Err(
-                PasswordRecoveryFailure.TokenInvalid(
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Err(
+                SecretKeyRecoveryFailure.TokenInvalid(
                     "No session key found for membership during recovery completion")));
             return;
         }
@@ -433,8 +436,8 @@ public sealed class MembershipActor : ReceivePersistentActor
         if (sessionKeyHandle.IsInvalid)
         {
             ClearPendingRecoverySession(@event.MembershipIdentifier);
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Err(
-                PasswordRecoveryFailure.TokenInvalid("Session key handle is invalid")));
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Err(
+                SecretKeyRecoveryFailure.TokenInvalid("Session key handle is invalid")));
             return;
         }
 
@@ -463,15 +466,15 @@ public sealed class MembershipActor : ReceivePersistentActor
                 "CRITICAL: Master keys regenerated but password update failed for membership {0}: {1}. User may be locked out!",
                 @event.MembershipIdentifier, persistorResult.UnwrapErr().Message);
             replyTo.Tell(
-                Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>
-                    .Err(PasswordRecoveryFailure.FromAccount(persistorResult.UnwrapErr())));
+                Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>
+                    .Err(SecretKeyRecoveryFailure.FromAccount(persistorResult.UnwrapErr())));
             return;
         }
 
         ClearPendingRecoverySession(@event.MembershipIdentifier);
 
-        Result<Unit, PasswordRecoveryFailure> expireResult =
-            await _passwordRecoveryPersistor.Ask<Result<Unit, PasswordRecoveryFailure>>(
+        Result<Unit, SecretKeyRecoveryFailure> expireResult =
+            await _passwordRecoveryPersistor.Ask<Result<Unit, SecretKeyRecoveryFailure>>(
                 new ExpirePasswordRecoveryFlowsEvent(@event.MembershipIdentifier, @event.CancellationToken),
                 @event.CancellationToken);
 
@@ -481,7 +484,7 @@ public sealed class MembershipActor : ReceivePersistentActor
                 @event.MembershipIdentifier, expireResult.UnwrapErr().Message);
         }
 
-        replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, PasswordRecoveryFailure>.Ok(
+        replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Ok(
             new OprfRecoverySecretKeyCompleteResponse { Message = "Recovery secret key completed successfully." }));
     }
 
@@ -492,8 +495,8 @@ public sealed class MembershipActor : ReceivePersistentActor
             "[PASSWORD-RECOVERY-INIT] Starting password recovery init for membership {0}",
             @event.MembershipIdentifier);
 
-        Result<PasswordRecoveryFlowValidation, PasswordRecoveryFailure> flowValidation =
-            await _passwordRecoveryPersistor.Ask<Result<PasswordRecoveryFlowValidation, PasswordRecoveryFailure>>(
+        Result<PasswordRecoveryFlowValidation, SecretKeyRecoveryFailure> flowValidation =
+            await _passwordRecoveryPersistor.Ask<Result<PasswordRecoveryFlowValidation, SecretKeyRecoveryFailure>>(
                 new ValidatePasswordRecoveryFlowEvent(@event.MembershipIdentifier, @event.CancellationToken),
                 @event.CancellationToken);
 
@@ -502,7 +505,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             Log.Error("[PASSWORD-RECOVERY-INIT] Flow validation failed for membership {0}: {1}",
                 @event.MembershipIdentifier, flowValidation.UnwrapErr().Message);
             replyTo.Tell(
-                Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure>.Err(
+                Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>.Err(
                     flowValidation.UnwrapErr()));
             return;
         }
@@ -518,8 +521,8 @@ public sealed class MembershipActor : ReceivePersistentActor
                 VerificationFlowMessageKeys.PasswordRecoveryOtpRequired,
                 @event.CultureName);
 
-            replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure>.Err(
-                PasswordRecoveryFailure.ValidationFailed(errorMessage)));
+            replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>.Err(
+                SecretKeyRecoveryFailure.ValidationFailed(errorMessage)));
             return;
         }
 
@@ -536,8 +539,8 @@ public sealed class MembershipActor : ReceivePersistentActor
                 Log.Warning(
                     "Password recovery already in progress for membership {0}. Time remaining: {1}s",
                     @event.MembershipIdentifier, remainingSeconds);
-                replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure>.Err(
-                    PasswordRecoveryFailure.InternalError(
+                replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>.Err(
+                    SecretKeyRecoveryFailure.InternalError(
                         $"A password reset is already in progress. Please wait {remainingSeconds} seconds before trying again.")));
                 return;
             }
@@ -559,8 +562,8 @@ public sealed class MembershipActor : ReceivePersistentActor
         {
             CryptographicOperations.ZeroMemory(maskingKey);
             CryptographicOperations.ZeroMemory(sessionKey);
-            replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure>.Err(
-                PasswordRecoveryFailure.InternalError("Failed to process session key securely")));
+            replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>.Err(
+                SecretKeyRecoveryFailure.InternalError("Failed to process session key securely")));
             return;
         }
 
@@ -606,7 +609,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             {
                 Apply(evt);
                 MaybeSaveSnapshot();
-                replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, PasswordRecoveryFailure>.Ok(response));
+                replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>.Ok(response));
             });
     }
 
@@ -1233,39 +1236,3 @@ public sealed class MembershipActor : ReceivePersistentActor
     }
 
 }
-
-public record UpdateAccountSecureKeyEvent(
-    Guid MembershipIdentifier,
-    byte[] SecureKey,
-    byte[] MaskingKey,
-    Guid? AccountId = null,
-    CancellationToken CancellationToken = default) : ICancellableActorEvent;
-
-public record GenerateMembershipOprfRegistrationRequestEvent(
-    Guid MembershipIdentifier,
-    byte[] OprfRequest,
-    CancellationToken CancellationToken = default) : ICancellableActorEvent;
-
-public record CompleteRegistrationRecordActorEvent(
-    Guid MembershipIdentifier,
-    byte[] PeerRegistrationRecord,
-    byte[] MasterKey,
-    CancellationToken CancellationToken = default) : ICancellableActorEvent;
-
-public record OprfInitRecoverySecureKeyEvent(
-    Guid MembershipIdentifier,
-    byte[] OprfRequest,
-    string CultureName,
-    CancellationToken CancellationToken = default) : ICancellableActorEvent;
-
-public record OprfCompleteRecoverySecureKeyEvent(
-    Guid MembershipIdentifier,
-    byte[] PeerRecoveryRecord,
-    byte[] MasterKey,
-    CancellationToken CancellationToken = default) : ICancellableActorEvent;
-
-public record SignInCompleteEvent(uint ConnectId, OpaqueSignInFinalizeRequest Request);
-
-internal record CleanupExpiredPendingSignIns;
-
-internal record CleanupExpiredPasswordRecovery;
