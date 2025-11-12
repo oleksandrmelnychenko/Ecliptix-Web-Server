@@ -1,11 +1,9 @@
 using System.Data.Common;
-using System.Threading;
 using Akka.Actor;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Microsoft.EntityFrameworkCore;
-using Serilog;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
@@ -24,7 +22,7 @@ public abstract class PersistorBase<TFailure>(IDbContextFactory<EcliptixSchemaCo
         return await PersistorRetryPolicy.ExecuteWithRetryAsync(
             async token =>
             {
-                await using EcliptixSchemaContext ctx = await dbContextFactory.CreateDbContextAsync(token);
+                await using EcliptixSchemaContext ctx = await DbContextFactory.CreateDbContextAsync(token);
                 return await operation(ctx, token);
             },
             operationName,

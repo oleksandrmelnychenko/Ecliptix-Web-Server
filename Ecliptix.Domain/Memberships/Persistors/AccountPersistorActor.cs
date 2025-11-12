@@ -6,7 +6,6 @@ using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
-using Ecliptix.Domain.Memberships.WorkerActors.Membership;
 using Ecliptix.Domain.Memberships.ActorEvents.Membership;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
@@ -97,7 +96,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
                         AccountFailure.NotFoundById());
                 }
 
-                account = accountOpt!.Value;
+                account = accountOpt.Value!;
             }
             else
             {
@@ -120,7 +119,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
 
             if (authOpt.IsSome)
             {
-                AccountSecureKeyAuthEntity existingAuth = authOpt.Value;
+                AccountSecureKeyAuthEntity existingAuth = authOpt.Value!;
                 await ctx.AccountSecureKeyAuths
                     .Where(a => a.UniqueId == existingAuth.UniqueId && !a.IsDeleted)
                     .ExecuteUpdateAsync(setters => setters
@@ -249,8 +248,6 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
                 547 => AccountFailure.ValidationFailed($"Foreign key constraint violation: {sqlEx.Message}"),
                 1205 => AccountFailure.DatabaseError(sqlEx),
                 -2 => AccountFailure.Timeout(sqlEx),
-                2 => AccountFailure.DatabaseError(sqlEx),
-                18456 => AccountFailure.DatabaseError(sqlEx),
                 _ => AccountFailure.DatabaseError(sqlEx)
             };
         }

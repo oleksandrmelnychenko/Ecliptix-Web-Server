@@ -187,11 +187,11 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
             if (!currentFlow.OtpActive.IsSome)
             {
-                await ContinueWithOtp();
+                await ContinueWithOtp(_currentRequestCancellationToken);
             }
             else
             {
-                _activeOtp = OneTimePassword.FromExisting(currentFlow.OtpActive.Value);
+                _activeOtp = OneTimePassword.FromExisting(currentFlow.OtpActive.Value!);
                 Self.Tell(new StartOtpTimerEvent());
                 Become(Running);
                 Stash.UnstashAll();

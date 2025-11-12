@@ -729,7 +729,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 Status = activityStatus,
                 CreationStatus = creationStatus,
                 AccountUniqueIdentifier = accountOpt.IsSome
-                    ? Helpers.GuidToByteString(accountOpt.Value.UniqueId)
+                    ? Helpers.GuidToByteString(accountOpt.Value!.UniqueId)
                     : ByteString.Empty
             };
 

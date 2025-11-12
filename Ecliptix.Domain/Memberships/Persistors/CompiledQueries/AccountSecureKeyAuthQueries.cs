@@ -103,7 +103,7 @@ public static class AccountSecureKeyAuthQueries
             return Option<CredentialsRecord>.None;
         }
 
-        AccountSecureKeyAuthEntity auth = authOpt.Value;
+        AccountSecureKeyAuthEntity auth = authOpt.Value!;
         return Option<CredentialsRecord>.Some(new CredentialsRecord(
             auth.SecureKey,
             auth.MaskingKey,

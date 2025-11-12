@@ -86,10 +86,10 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
             await TerminateFlowActorAsync(actorToCleanup, actorEvent.IdempotencyKey, actorEvent.CancellationToken);
         }
 
-        if (!existingActor.IsNobody() && (actorToCleanup == null || !existingActor.Equals(actorToCleanup)))
+        if (!existingActor.IsNobody() && (actorToCleanup == null || !existingActor!.Equals(actorToCleanup)))
         {
             Log.Information("[verification.flow.manager.cleanup] Cleaning up existing (non-idempotent) flow. ConnectId {ConnectId}", actorEvent.ConnectId);
-            await TerminateFlowActorAsync(existingActor, Option<string>.None, actorEvent.CancellationToken);
+            await TerminateFlowActorAsync(existingActor!, Option<string>.None, actorEvent.CancellationToken);
         }
 
         IActorRef newFlowActor = SpawnNewFlowActor(actorEvent, baseActorName);
@@ -112,7 +112,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     {
         if (!existingActor.IsNobody())
         {
-            _flowWriters[existingActor] = actorEvent.ChannelWriter;
+            _flowWriters[existingActor!] = actorEvent.ChannelWriter;
             existingActor.Forward(actorEvent);
         }
         else

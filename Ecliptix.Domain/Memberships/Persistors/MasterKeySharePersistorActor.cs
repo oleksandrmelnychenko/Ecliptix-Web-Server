@@ -97,7 +97,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
                     MasterKeyFailure.CredentialsNotFound());
             }
 
-            CredentialsRecord credentials = credentialsOpt.Value;
+            CredentialsRecord credentials = credentialsOpt.Value!;
             int credentialsVersion = credentials.Version;
 
             List<MasterKeyShareEntity> existingShares =
