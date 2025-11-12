@@ -55,7 +55,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     private bool _isCompleting;
     private bool _timersStarted;
     private bool _cleanupCompleted;
-    private CancellationTokenSource? _smsOperationCts;
+    private CancellationTokenSource? _smsOperationCancellationTokenSource;
     private Option<OtpQueryRecord> _activeOtpRecord;
     private uint _lastPublishedRemainingSeconds;
     private bool _otpTimerStartLogged;
@@ -87,7 +87,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         _securityConfig = securityConfig;
         _timeouts = securityConfig.CurrentValue.VerificationFlow;
         _currentRequestCancellationToken = initialCancellationToken;
-        _metricTags = new[] { KeyValuePair.Create<string, object?>("connectId", connectId) };
+        _metricTags = [KeyValuePair.Create<string, object?>("connectId", connectId)];
         ActivityContext parentContext = parentActivityContext != default
             ? parentActivityContext
             : Activity.Current?.Context ?? default;
@@ -205,15 +205,15 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     private async Task ContinueWithOtp(CancellationToken requestCancellationToken = default)
     {
         _isCompleting = false;
-        _smsOperationCts?.Cancel();
-        _smsOperationCts?.Dispose();
-        _smsOperationCts = new CancellationTokenSource();
+        _smsOperationCancellationTokenSource?.Cancel();
+        _smsOperationCancellationTokenSource?.Dispose();
+        _smsOperationCancellationTokenSource = new CancellationTokenSource();
 
         CancellationToken effectiveCancellation =
             requestCancellationToken.CanBeCanceled ? requestCancellationToken : GetOperationCancellationToken();
 
         using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-            _smsOperationCts.Token,
+            _smsOperationCancellationTokenSource.Token,
             effectiveCancellation);
 
         Result<Unit, VerificationFlowFailure> otpResult = await PrepareAndSendOtp(_cultureName, linkedCts.Token);
@@ -564,6 +564,13 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (actorEvent.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
         {
+            if (_writer != null && !_writerCompleted)
+            {
+                Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.Generic("A verification session is already in progress for this connection")));
+                return;
+            }
+
             if (_verificationFlow.IsSome && _verificationFlow.Value!.OtpCount > 0)
             {
                 Result<(string Outcome, uint RemainingSeconds), VerificationFlowFailure> cooldownCheckResult =
@@ -653,6 +660,13 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (actorEvent.RequestType != InitiateVerificationRequest.Types.Type.ResendOtp)
         {
+            return;
+        }
+
+        if (_writer != null && !_writerCompleted)
+        {
+            Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.Generic("A verification session is already in progress for this connection")));
             return;
         }
 
@@ -1464,9 +1478,9 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 _cleanupFallbackTimer = null;
             }
 
-            if (_smsOperationCts is { IsCancellationRequested: false })
+            if (_smsOperationCancellationTokenSource is { IsCancellationRequested: false })
             {
-                _smsOperationCts.Cancel();
+                _smsOperationCancellationTokenSource.Cancel();
             }
 
             _timersStarted = false;
@@ -1681,8 +1695,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         {
             CancelTimers();
             CompleteWriter();
-            _smsOperationCts?.Dispose();
-            _smsOperationCts = null;
+            _smsOperationCancellationTokenSource?.Dispose();
+            _smsOperationCancellationTokenSource = null;
             _activity?.Dispose();
             VerificationFlowTelemetry.ActiveFlows.Add(-1, _metricTags);
         }
