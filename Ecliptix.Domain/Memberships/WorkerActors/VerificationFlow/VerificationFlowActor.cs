@@ -46,7 +46,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
     private ICancelable? _otpTimer = Cancelable.CreateCanceled();
     private ICancelable? _sessionTimer = Cancelable.CreateCanceled();
-    private ICancelable? _cleanupFallbackTimer = Cancelable.CreateCanceled();
     private Option<VerificationFlowQueryRecord> _verificationFlow = Option<VerificationFlowQueryRecord>.None;
     private DateTimeOffset _sessionDeadline;
     private bool _sessionTimerPaused;
@@ -114,7 +113,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     protected override void PreStart()
     {
         base.PreStart();
-        Context.System.EventStream.Subscribe(Self, typeof(SessionExpiredMessageDeliveredEvent));
     }
 
     public static Props Build(
@@ -163,6 +161,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 else
                 {
                     CancelOtpTimer();
+                    CompleteWriter();
                     Become(OtpExpiredWaitingForSession);
                 }
 
@@ -257,6 +256,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             else
             {
                 CancelOtpTimer();
+                CompleteWriter();
                 Become(OtpExpiredWaitingForSession);
                 Stash.UnstashAll();
             }
@@ -280,10 +280,12 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         CommandAsync<VerifyFlowActorEvent>(HandleVerifyOtp);
         CommandAsync<InitiateVerificationFlowActorEvent>(HandleInitiateVerificationRequest);
         CommandAsync<PrepareForTerminationMessage>(HandleClientDisconnection);
-        CommandAsync<SessionExpiredMessageDeliveredEvent>(HandleSessionExpiredMessageDelivered);
-        CommandAsync<FallbackCleanupEvent>(HandleFallbackCleanup);
         Command<CheckFlowValidityQuery>(HandleSessionValidityCheck);
         CommandAsync<ReplaceChannelWriterCommand>(HandleReplaceChannelWriter);
+        Command<DeleteMessagesSuccess>(_ => HandleDeleteMessagesSuccess());
+        Command<DeleteMessagesFailure>(HandleDeleteMessagesFailure);
+        Command<DeleteSnapshotsSuccess>(_ => HandleDeleteSnapshotsSuccess());
+        Command<DeleteSnapshotsFailure>(HandleDeleteSnapshotsFailure);
     }
 
     private void OtpActive()
@@ -294,10 +296,12 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         CommandAsync<VerifyFlowActorEvent>(HandleVerifyOtp);
         CommandAsync<InitiateVerificationFlowActorEvent>(HandleInitiateVerificationRequest);
         CommandAsync<PrepareForTerminationMessage>(HandleClientDisconnection);
-        CommandAsync<SessionExpiredMessageDeliveredEvent>(HandleSessionExpiredMessageDelivered);
-        CommandAsync<FallbackCleanupEvent>(HandleFallbackCleanup);
         Command<CheckFlowValidityQuery>(HandleSessionValidityCheck);
         CommandAsync<ReplaceChannelWriterCommand>(HandleReplaceChannelWriter);
+        Command<DeleteMessagesSuccess>(_ => HandleDeleteMessagesSuccess());
+        Command<DeleteMessagesFailure>(HandleDeleteMessagesFailure);
+        Command<DeleteSnapshotsSuccess>(_ => HandleDeleteSnapshotsSuccess());
+        Command<DeleteSnapshotsFailure>(HandleDeleteSnapshotsFailure);
     }
 
     private void OtpExpiredWaitingForSession()
@@ -314,8 +318,10 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         });
         CommandAsync<InitiateVerificationFlowActorEvent>(HandleInitiateVerificationRequest);
         CommandAsync<PrepareForTerminationMessage>(HandleClientDisconnection);
-        CommandAsync<SessionExpiredMessageDeliveredEvent>(HandleSessionExpiredMessageDelivered);
-        CommandAsync<FallbackCleanupEvent>(HandleFallbackCleanup);
+        Command<DeleteMessagesSuccess>(_ => HandleDeleteMessagesSuccess());
+        Command<DeleteMessagesFailure>(HandleDeleteMessagesFailure);
+        Command<DeleteSnapshotsSuccess>(_ => HandleDeleteSnapshotsSuccess());
+        Command<DeleteSnapshotsFailure>(HandleDeleteSnapshotsFailure);
     }
 
     private async Task HandleVerifyOtp(VerifyFlowActorEvent actorEvent)
@@ -534,6 +540,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             }
 
             CancelOtpTimer();
+            CompleteWriter();
             Become(OtpExpiredWaitingForSession);
 
             Sender.Tell(CreateVerifyResponse(VerificationResult.Expired, maxAttemptsMessage));
@@ -564,13 +571,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (actorEvent.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
         {
-            if (_writer != null && !_writerCompleted)
-            {
-                Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.Generic("A verification session is already in progress for this connection")));
-                return;
-            }
-
+            // Check cooldown first for resend attempts (OtpCount > 0)
             if (_verificationFlow.IsSome && _verificationFlow.Value!.OtpCount > 0)
             {
                 Result<(string Outcome, uint RemainingSeconds), VerificationFlowFailure> cooldownCheckResult =
@@ -581,23 +582,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
                 if (cooldownCheckResult.IsErr)
                 {
-                    VerificationFlowFailure failure = cooldownCheckResult.UnwrapErr();
-
-                    if (failure.IsUserFacing)
-                    {
-                        string message = _localizationProvider.Localize(failure.Message, _cultureName);
-                        await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
-                            new VerificationCountdownUpdate
-                            {
-                                SecondsRemaining = 0,
-                                SessionIdentifier =
-                                    Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
-                                Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Failed,
-                                Message = message
-                            }));
-                    }
-
-                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(failure));
+                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(cooldownCheckResult.UnwrapErr()));
                     return;
                 }
 
@@ -607,33 +592,19 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                     switch (cooldownOutcome)
                     {
                         case VerificationFlowMessageKeys.OtpMaxAttemptsReached:
-                            await SafeWriteToChannelAsync(
-                                Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
-                                    new VerificationCountdownUpdate
-                                    {
-                                        SecondsRemaining = 0,
-                                        SessionIdentifier =
-                                            Helpers.GuidToByteString(_verificationFlow.Value.UniqueIdentifier),
-                                        Status =
-                                            VerificationCountdownUpdate.Types.CountdownUpdateStatus.MaxAttemptsReached,
-                                        Message = _localizationProvider.Localize(
-                                            VerificationFlowMessageKeys.OtpMaxAttemptsReached,
-                                            actorEvent.CultureName)
-                                    }));
+                            {
+                                string message = _localizationProvider.Localize(
+                                    VerificationFlowMessageKeys.OtpMaxAttemptsReached, actorEvent.CultureName);
+                                Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
+                                    VerificationFlowFailure.RateLimitExceeded(message)));
+                            }
                             break;
                         case VerificationFlowMessageKeys.ResendCooldown:
-                            await SafeWriteToChannelAsync(
-                                Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
-                                    new VerificationCountdownUpdate
-                                    {
-                                        SecondsRemaining = cooldownRemainingSeconds,
-                                        SessionIdentifier =
-                                            Helpers.GuidToByteString(_verificationFlow.Value.UniqueIdentifier),
-                                        Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus
-                                            .ResendCooldown,
-                                        Message = _localizationProvider.Localize(VerificationFlowMessageKeys
-                                            .ResendCooldown)
-                                    }));
+                            {
+                                string message = _localizationProvider.Localize(VerificationFlowMessageKeys.ResendCooldown);
+                                Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
+                                    VerificationFlowFailure.RateLimitExceeded($"{message} ({cooldownRemainingSeconds}s)")));
+                            }
                             break;
                         default:
                             await CompleteWithError(
@@ -642,9 +613,21 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                             break;
                     }
 
-                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
                     return;
                 }
+
+                // Cooldown passed - if writer exists, complete it before continuing with new OTP
+                if (_writer != null && !_writerCompleted)
+                {
+                    CompleteWriter();
+                }
+            }
+            else if (_writer != null && !_writerCompleted)
+            {
+                // OtpCount = 0, this is truly a concurrent first request - reject it
+                Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
+                    VerificationFlowFailure.Generic("A verification session is already in progress for this connection")));
+                return;
             }
 
             _isCompleting = false;
@@ -660,13 +643,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (actorEvent.RequestType != InitiateVerificationRequest.Types.Type.ResendOtp)
         {
-            return;
-        }
-
-        if (_writer != null && !_writerCompleted)
-        {
-            Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
-                VerificationFlowFailure.Generic("A verification session is already in progress for this connection")));
             return;
         }
 
@@ -707,40 +683,39 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             case VerificationFlowMessageKeys.ResendAllowed:
                 _timersStarted = false;
                 CancelTimers();
-                CompleteWriter();
+
+                // Complete existing writer AFTER cooldown validation passes
+                if (_writer != null && !_writerCompleted)
+                {
+                    CompleteWriter();
+                }
+
                 _writer = actorEvent.ChannelWriter;
                 _writerCompleted = false;
                 _sessionDeadline = DateTimeOffset.UtcNow.Add(_timeouts.SessionTimeout);
                 await ContinueWithOtp(actorEvent.CancellationToken);
+                Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
                 break;
             case VerificationFlowMessageKeys.OtpMaxAttemptsReached:
-                await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
-                    new VerificationCountdownUpdate
-                    {
-                        SecondsRemaining = 0,
-                        SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value.UniqueIdentifier),
-                        Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.MaxAttemptsReached,
-                        Message = _localizationProvider.Localize(VerificationFlowMessageKeys.OtpMaxAttemptsReached,
-                            actorEvent.CultureName)
-                    }));
+                {
+                    string message = _localizationProvider.Localize(
+                        VerificationFlowMessageKeys.OtpMaxAttemptsReached, actorEvent.CultureName);
+                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.RateLimitExceeded(message)));
+                }
                 break;
             case VerificationFlowMessageKeys.ResendCooldown:
-                await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
-                    new VerificationCountdownUpdate
-                    {
-                        SecondsRemaining = remainingSeconds,
-                        SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value.UniqueIdentifier),
-                        Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.ResendCooldown,
-                        Message = _localizationProvider.Localize(VerificationFlowMessageKeys.ResendCooldown)
-                    }));
+                {
+                    string message = _localizationProvider.Localize(VerificationFlowMessageKeys.ResendCooldown);
+                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.RateLimitExceeded($"{message} ({remainingSeconds}s)")));
+                }
                 break;
             default:
                 await CompleteWithError(
                     VerificationFlowFailure.Generic($"Unknown outcome from RequestResendOtp: {outcome}"));
                 break;
         }
-
-        Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
     }
 
     private void StartTimers()
@@ -759,9 +734,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (!_verificationFlow.IsSome)
         {
-            Serilog.Log.Debug(
-                "[verification.timers.skipped] No verification flow state present for ConnectId {ConnectId}",
-                _connectId);
             return;
         }
 
@@ -798,9 +770,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (_activeOtp?.IsActive != true)
         {
-            Serilog.Log.Debug(
-                "[verification.timers.skipped] Attempted to start OTP timer without active OTP for ConnectId {ConnectId}",
-                _connectId);
             return;
         }
 
@@ -929,39 +898,15 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                     Message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowExpired,
                         actorEvent.CultureName)
                 }));
+
+            // Complete writer immediately after sending the final message
+            CompleteWriter();
         }
 
         _isCompleting = true;
 
-        _cleanupFallbackTimer = Context.System.Scheduler.ScheduleTellOnceCancelable(
-            _timeouts.FallbackCleanupDelay, Self, new FallbackCleanupEvent(), ActorRefs.NoSender);
-
-        PersistState();
-    }
-
-    private async Task HandleFallbackCleanup(FallbackCleanupEvent _)
-    {
-        await PerformCleanup();
-    }
-
-    private async Task HandleSessionExpiredMessageDelivered(SessionExpiredMessageDeliveredEvent evt)
-    {
-        if (evt.ConnectId != _connectId)
-        {
-            return;
-        }
-
-        if (_cleanupFallbackTimer?.IsCancellationRequested == false)
-        {
-            _cleanupFallbackTimer.Cancel(false);
-        }
-
-        await PerformCleanup();
-    }
-
-    private async Task PerformCleanup()
-    {
-        await TerminateActor(graceful: true, updateFlowToExpired: true, reason: "fallback_cleanup");
+        // Proceed directly to cleanup
+        await TerminateActor(graceful: true, updateFlowToExpired: true, reason: "session_expired");
     }
 
     private async Task HandleClientDisconnection(PrepareForTerminationMessage _)
@@ -1310,6 +1255,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
 
         CancelOtpTimer();
+        // Don't complete writer here - let session expiration handle it
+        // This allows SessionExpired message to be sent when session timeout occurs
         ResumeSessionTimer();
         PersistState();
     }
@@ -1431,7 +1378,11 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             }
         }
 
-        CompleteWriter(error);
+        // Complete writer if not already completed
+        if (!_writerCompleted)
+        {
+            CompleteWriter(error);
+        }
 
         Serilog.Log.Information(
             "[verification.flow.terminated] ConnectId {ConnectId} FlowId {FlowId} Graceful {Graceful} Reason {Reason}",
@@ -1447,6 +1398,35 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         _activity?.AddEvent(new ActivityEvent("verification.flow.terminated"));
 
+        // Request journal cleanup (fire-and-forget)
+        if (LastSequenceNr > 0)
+        {
+            try
+            {
+                // Save final snapshot with current state
+                PersistState();
+
+                // Delete all journal messages (final snapshot will be kept)
+                DeleteMessages(LastSequenceNr);
+
+                // Delete old snapshots (keep only the final one)
+                if (LastSequenceNr > 1)
+                {
+                    DeleteSnapshots(new SnapshotSelectionCriteria(LastSequenceNr - 1));
+                }
+
+                Serilog.Log.Debug(
+                    "[verification.flow.journal-cleanup-requested] ConnectId {ConnectId} SequenceNr {SequenceNr}",
+                    _connectId, LastSequenceNr);
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex,
+                    "[verification.flow.journal-cleanup-error] ConnectId {ConnectId} - Non-critical, continuing termination",
+                    _connectId);
+            }
+        }
+
         Self.Tell(PoisonPill.Instance);
     }
 
@@ -1460,6 +1440,34 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             reason: $"failure_{failure.FailureType}");
     }
 
+    private void HandleDeleteMessagesSuccess()
+    {
+        Serilog.Log.Information(
+            "[verification.flow.journal-deleted] ConnectId {ConnectId} - Journal entries successfully deleted",
+            _connectId);
+    }
+
+    private void HandleDeleteMessagesFailure(DeleteMessagesFailure failure)
+    {
+        Serilog.Log.Warning(
+            "[verification.flow.journal-delete-failed] ConnectId {ConnectId} Error {Error} - Non-critical, journal will be cleaned by retention policy",
+            _connectId, failure.Cause?.Message ?? "Unknown");
+    }
+
+    private void HandleDeleteSnapshotsSuccess()
+    {
+        Serilog.Log.Information(
+            "[verification.flow.snapshots-deleted] ConnectId {ConnectId} - Old snapshots successfully deleted",
+            _connectId);
+    }
+
+    private void HandleDeleteSnapshotsFailure(DeleteSnapshotsFailure failure)
+    {
+        Serilog.Log.Warning(
+            "[verification.flow.snapshots-delete-failed] ConnectId {ConnectId} Error {Error} - Non-critical, snapshots will be cleaned by retention policy",
+            _connectId, failure.Cause?.Message ?? "Unknown");
+    }
+
     private void CancelTimers()
     {
         try
@@ -1470,12 +1478,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             {
                 _sessionTimer.Cancel(true);
                 _sessionTimer = null;
-            }
-
-            if (_cleanupFallbackTimer?.IsCancellationRequested == false)
-            {
-                _cleanupFallbackTimer.Cancel(true);
-                _cleanupFallbackTimer = null;
             }
 
             if (_smsOperationCancellationTokenSource is { IsCancellationRequested: false })
@@ -1492,10 +1494,11 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
     }
 
-    private void CompleteWriter(Exception? error = null)
+    private void CompleteWriter(Exception? error = null, [System.Runtime.CompilerServices.CallerMemberName] string callerMethod = "", [System.Runtime.CompilerServices.CallerLineNumber] int callerLine = 0)
     {
         if (_writerCompleted)
         {
+            Serilog.Log.Debug("[verification.writer.already-completed] ConnectId {ConnectId} Caller {Caller}:{Line}", _connectId, callerMethod, callerLine);
             return;
         }
 
@@ -1506,8 +1509,11 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (writer == null)
         {
+            Serilog.Log.Warning("[verification.writer.complete-null] ConnectId {ConnectId} Caller {Caller}:{Line}", _connectId, callerMethod, callerLine);
             return;
         }
+
+        Serilog.Log.Information("[verification.writer.completing] ConnectId {ConnectId} HasError {HasError} Caller {Caller}:{Line}", _connectId, error != null, callerMethod, callerLine);
 
         try
         {
