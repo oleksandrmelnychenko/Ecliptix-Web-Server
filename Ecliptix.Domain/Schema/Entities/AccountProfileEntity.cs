@@ -1,14 +1,12 @@
-﻿namespace Ecliptix.Domain.Schema.Entities;
+namespace Ecliptix.Domain.Schema.Entities;
 
-public class UserEntity : EntityBase
+public class AccountProfileEntity : EntityBase
 {
     public Guid AccountId { get; set; }
 
     public virtual AccountEntity Account { get; set; } = null!;
 
-    public string UserName { get; set; } = string.Empty;
+    public string ProfileName { get; set; } = string.Empty;
 
     public string DisplayName { get; set; } = string.Empty;
-
-
 }

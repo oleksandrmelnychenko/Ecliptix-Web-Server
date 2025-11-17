@@ -22,7 +22,7 @@ public class EcliptixSchemaContext : DbContext
     public DbSet<LoginAttemptEntity> LoginAttempts { get; set; }
     public DbSet<LogoutAuditEntity> LogoutAudits { get; set; }
     public DbSet<AccountEntity> Accounts { get; set; }
-    public DbSet<UserEntity> Users { get; set; }
+    public DbSet<AccountProfileEntity> AccountProfiles { get; set; }
     public DbSet<DeviceContextEntity> DeviceContexts { get; set; }
     public DbSet<AccountSecureKeyAuthEntity> AccountSecureKeyAuths { get; set; }
     public DbSet<AccountPinAuthEntity> AccountPinAuths { get; set; }
@@ -40,7 +40,7 @@ public class EcliptixSchemaContext : DbContext
         modelBuilder.AddConfiguration(new MasterKeyShareConfiguration());
         modelBuilder.AddConfiguration(new MembershipConfiguration());
         modelBuilder.AddConfiguration(new AccountConfiguration());
-        modelBuilder.AddConfiguration(new UserConfiguration());
+        modelBuilder.AddConfiguration(new AccountProfileConfiguration());
         modelBuilder.AddConfiguration(new DeviceContextConfiguration());
         modelBuilder.AddConfiguration(new LoginAttemptConfiguration());
         modelBuilder.AddConfiguration(new LogoutAuditConfiguration());

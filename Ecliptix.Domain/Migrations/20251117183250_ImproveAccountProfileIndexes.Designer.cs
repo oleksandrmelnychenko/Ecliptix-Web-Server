@@ -4,6 +4,7 @@ using Ecliptix.Domain.Schema;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Ecliptix.Domain.Migrations
 {
     [DbContext(typeof(EcliptixSchemaContext))]
-    partial class EcliptixSchemaContextModelSnapshot : ModelSnapshot
+    [Migration("20251117183250_ImproveAccountProfileIndexes")]
+    partial class ImproveAccountProfileIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -29,6 +32,11 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("bigint");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AccountName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<int>("AccountType")
                         .HasColumnType("int");
@@ -100,7 +108,7 @@ namespace Ecliptix.Domain.Migrations
                         .HasDatabaseName("IX_Accounts_Membership_Active_Covering")
                         .HasFilter("IsDeleted = 0 AND Status = 1");
 
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("MembershipId"), new[] { "UniqueId", "AccountType", "IsDefaultAccount" });
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("MembershipId"), new[] { "UniqueId", "AccountType", "AccountName", "IsDefaultAccount" });
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Accounts_Status")

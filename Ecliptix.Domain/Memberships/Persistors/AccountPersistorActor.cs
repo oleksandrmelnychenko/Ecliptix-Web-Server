@@ -44,42 +44,42 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
             GetDefaultAccountIdAsync,
             "GetDefaultAccountId");
 
-        ReceivePersistorCommand<GetUserInfoByMobileEvent, Option<UserInfo>>(
-            GetUserInfoByMobileAsync,
-            "GetUserInfoByMobile");
+        ReceivePersistorCommand<GetAccountProfileInfoByMobileEvent, Option<AccountProfileInfo>>(
+            GetAccountProfileInfoByMobileAsync,
+            "GetAccountProfileInfoByMobile");
     }
 
-    private static async Task<Result<Option<UserInfo>, AccountFailure>> GetUserInfoByMobileAsync(
-        EcliptixSchemaContext ctx, GetUserInfoByMobileEvent cmd, CancellationToken cancellationToken)
+    private static async Task<Result<Option<AccountProfileInfo>, AccountFailure>> GetAccountProfileInfoByMobileAsync(
+        EcliptixSchemaContext ctx, GetAccountProfileInfoByMobileEvent cmd, CancellationToken cancellationToken)
     {
         try
         {
-            Option<UserEntity> userOption =
-                await UserQueries.GetPrimaryUserByMobileNumber(
+            Option<AccountProfileEntity> profileOption =
+                await AccountProfileQueries.GetPrimaryAccountProfileByMobileNumber(
                     ctx,
                     cmd.MobileNumber,
                     cmd.CurrentAccountId);
 
-            if (!userOption.IsSome)
+            if (!profileOption.IsSome)
             {
-                return Result<Option<UserInfo>, AccountFailure>.Ok(Option<UserInfo>.None);
+                return Result<Option<AccountProfileInfo>, AccountFailure>.Ok(Option<AccountProfileInfo>.None);
             }
 
-            UserEntity user = userOption.Value!;
+            AccountProfileEntity profile = profileOption.Value!;
 
-            UserInfo userInfo = new UserInfo(
-                user.UniqueId,
-                user.AccountId,
-                user.UserName,
-                user.DisplayName
+            AccountProfileInfo profileInfo = new AccountProfileInfo(
+                profile.UniqueId,
+                profile.AccountId,
+                profile.ProfileName,
+                profile.DisplayName
             );
 
-            return Result<Option<UserInfo>, AccountFailure>.Ok(Option<UserInfo>.Some(userInfo));
+            return Result<Option<AccountProfileInfo>, AccountFailure>.Ok(Option<AccountProfileInfo>.Some(profileInfo));
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to get user by phone number: {MobileNumber}", cmd.MobileNumber);
-            return Result<Option<UserInfo>, AccountFailure>.Err(
+            Log.Error(ex, "Failed to get account profile by mobile number: {MobileNumber}", cmd.MobileNumber);
+            return Result<Option<AccountProfileInfo>, AccountFailure>.Err(
                 AccountFailure.QueryFailed(ex));
         }
     }
@@ -213,7 +213,6 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
             {
                 MembershipId = cmd.MembershipId,
                 AccountType = Protobuf.Account.AccountType.Personal,
-                AccountName = "Personal",
                 Status = Protobuf.Account.AccountStatus.Active,
                 IsDefaultAccount = true
             };
@@ -222,16 +221,16 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
 
             await ctx.SaveChangesAsync(cancellationToken);
 
-            UserEntity userProfile = new()
+            AccountProfileEntity accountProfile = new()
             {
                 AccountId = personalAccount.UniqueId,
 
-                UserName = $"UserName: {personalAccount.UniqueId}",
+                ProfileName = $"profile_{personalAccount.UniqueId.ToString().Replace("-", "").Substring(0, 16)}",
 
-                DisplayName = $"DisplayName: {personalAccount.UniqueId}",
+                DisplayName = $"Account {personalAccount.UniqueId}",
             };
 
-            ctx.Users.Add(userProfile);
+            ctx.AccountProfiles.Add(accountProfile);
 
             await ctx.SaveChangesAsync(cancellationToken);
 
@@ -241,7 +240,6 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
                     personalAccount.UniqueId,
                     cmd.MembershipId,
                     Protobuf.Account.AccountType.Personal,
-                    "Personal",
                     true,
                     Protobuf.Account.AccountStatus.Active)
             ];

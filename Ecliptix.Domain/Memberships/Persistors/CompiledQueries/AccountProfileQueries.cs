@@ -1,0 +1,67 @@
+using Ecliptix.Domain.Schema;
+using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Utilities;
+using Microsoft.EntityFrameworkCore;
+
+namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
+
+public static class AccountProfileQueries
+{
+
+    private static readonly Func<EcliptixSchemaContext, Guid, Task<AccountProfileEntity?>>
+        GetByAccountIdCompiled = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, Guid accountId) =>
+                ctx.AccountProfiles
+                    .Where(p => p.AccountId == accountId && !p.IsDeleted)
+                    .AsNoTracking()
+                    .FirstOrDefault());
+
+    public static async Task<Option<AccountProfileEntity>> GetByAccountId(
+        EcliptixSchemaContext ctx,
+        Guid accountId)
+    {
+        AccountProfileEntity? result = await GetByAccountIdCompiled(ctx, accountId);
+        return result is not null ? Option<AccountProfileEntity>.Some(result) : Option<AccountProfileEntity>.None;
+    }
+
+    private static readonly Func<EcliptixSchemaContext, string, Task<AccountProfileEntity?>>
+        GetByProfileNameCompiled = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, string profileName) =>
+                ctx.AccountProfiles
+                    .Where(p => p.ProfileName == profileName && !p.IsDeleted)
+                    .AsNoTracking()
+                    .FirstOrDefault());
+
+    public static async Task<Option<AccountProfileEntity>> GetByProfileName(
+        EcliptixSchemaContext ctx,
+        string profileName)
+    {
+        AccountProfileEntity? result = await GetByProfileNameCompiled(ctx, profileName);
+        return result is not null ? Option<AccountProfileEntity>.Some(result) : Option<AccountProfileEntity>.None;
+    }
+
+    private static readonly Func<EcliptixSchemaContext, string, Guid, Task<AccountProfileEntity?>>
+        GetPrimaryAccountProfileByMobileNumberCompiled = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, string mobileNumber, Guid currentAccountId) =>
+                ctx.AccountProfiles
+                    .Where(p => p.Account.Membership.MobileNumber.Number == mobileNumber &&
+                                p.AccountId != currentAccountId &&
+                                !p.IsDeleted &&
+                                !p.Account.IsDeleted &&
+                                !p.Account.Membership.IsDeleted &&
+                                !p.Account.Membership.MobileNumber.IsDeleted)
+                    .OrderByDescending(p => p.Account.IsDefaultAccount)
+                    .ThenBy(p => p.Account.AccountType)
+                    .AsNoTracking()
+                    .FirstOrDefault());
+
+    public static async Task<Option<AccountProfileEntity>> GetPrimaryAccountProfileByMobileNumber(
+        EcliptixSchemaContext ctx,
+        string mobileNumber,
+        Guid currentAccountId)
+    {
+        AccountProfileEntity? result = await GetPrimaryAccountProfileByMobileNumberCompiled(
+            ctx, mobileNumber, currentAccountId);
+        return result is not null ? Option<AccountProfileEntity>.Some(result) : Option<AccountProfileEntity>.None;
+    }
+}

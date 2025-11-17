@@ -18,10 +18,6 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
         builder.Property(e => e.AccountType)
             .IsRequired();
 
-        builder.Property(e => e.AccountName)
-            .IsRequired()
-            .HasMaxLength(200);
-
         builder.Property(e => e.Status)
             .IsRequired();
 
@@ -62,7 +58,7 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
         Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
             builder.HasIndex(e => e.MembershipId)
                 .HasFilter("IsDeleted = 0 AND Status = 1"),
-            e => new { e.UniqueId, e.AccountType, e.AccountName, e.IsDefaultAccount })
+            e => new { e.UniqueId, e.AccountType, e.IsDefaultAccount })
             .HasDatabaseName("IX_Accounts_Membership_Active_Covering");
 
         builder.HasOne(e => e.Membership)

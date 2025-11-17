@@ -23,7 +23,7 @@ using Ecliptix.Domain.Services.Security;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Protobuf.ProtocolState;
-using Ecliptix.Protobuf.User;
+using Ecliptix.Protobuf.Account;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Ecliptix.Utilities.Failures;
@@ -876,55 +876,55 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         return response;
     }
 
-    public override async Task<SecureEnvelope> GetUserByMobile(SecureEnvelope request,
+    public override async Task<SecureEnvelope> GetAccountProfileByMobile(SecureEnvelope request,
     ServerCallContext context)
 {
 
     return await _service
-        .ExecuteEncryptedOperationAsync<GetUserByMobileRequest, GetUserByMobileResponse>(request,
+        .ExecuteEncryptedOperationAsync<GetAccountProfileByMobileRequest, GetAccountProfileByMobileResponse>(request,
             context,
             async (message, _, _, cancellationToken) =>
             {
 
-                GetUserInfoByMobileEvent actorEvent = new(
+                GetAccountProfileInfoByMobileEvent actorEvent = new(
                     message.MobileNumber,
-                    Helpers.FromByteStringToGuid(message.CurrentAccountId),
+                    Helpers.FromByteStringToGuid(message.AccountId),
                     cancellationToken
                 );
 
-                Task<GetUserInfoByMobileResult>? task = _membershipActor.Ask<GetUserInfoByMobileResult>(
+                Task<GetAccountProfileInfoByMobileResult>? task = _membershipActor.Ask<GetAccountProfileInfoByMobileResult>(
                     actorEvent,
                     TimeoutConfiguration.Actor.AskTimeout
                 );
 
-                GetUserInfoByMobileResult actorResult =
+                GetAccountProfileInfoByMobileResult actorResult =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 if (actorResult.Result.IsErr)
                 {
-                    return Result<GetUserByMobileResponse, FailureBase>.Err(
+                    return Result<GetAccountProfileByMobileResponse, FailureBase>.Err(
                         actorResult.Result.UnwrapErr());
                 }
 
-                Option<UserInfo> userInfoOpt = actorResult.Result.Unwrap();
+                Option<AccountProfileInfo> profileInfoOpt = actorResult.Result.Unwrap();
 
-                GetUserByMobileResponse response = new();
+                GetAccountProfileByMobileResponse response = new();
 
-                if (userInfoOpt.IsSome)
+                if (profileInfoOpt.IsSome)
                 {
-                    UserInfo userInfo = userInfoOpt.Value!;
+                    AccountProfileInfo profileInfo = profileInfoOpt.Value!;
 
 
-                    response.User = new UserProfile
+                    response.Profile = new AccountProfile
                     {
-                        UserId = Helpers.GuidToByteString(userInfo.UserId),
-                        AccountId = Helpers.GuidToByteString(userInfo.AccountId),
-                        UserName = userInfo.UserName,
-                        DisplayName = userInfo.DisplayName
+                        ProfileId = Helpers.GuidToByteString(profileInfo.ProfileId),
+                        AccountId = Helpers.GuidToByteString(profileInfo.AccountId),
+                        ProfileName = profileInfo.ProfileName,
+                        DisplayName = profileInfo.DisplayName
                     };
                 }
 
-                return Result<GetUserByMobileResponse, FailureBase>.Ok(response);
+                return Result<GetAccountProfileByMobileResponse, FailureBase>.Ok(response);
             });
 }
 }

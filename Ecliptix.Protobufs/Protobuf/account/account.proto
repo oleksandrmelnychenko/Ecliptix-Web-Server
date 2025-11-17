@@ -20,10 +20,25 @@ message Account {
   bytes unique_identifier = 1;
   bytes membership_identifier = 2;
   AccountType account_type = 3;
-  string account_name = 4;
   AccountStatus status = 5;
   bool is_default_account = 6;
   optional string preferred_language = 7;
   optional string time_zone_id = 8;
   optional string region = 9;
+}
+
+message AccountProfile {
+  bytes profile_id = 1;
+  bytes account_id = 2;
+  string profile_name = 3;
+  string display_name = 4;
+}
+
+message GetAccountProfileByMobileRequest {
+  string mobile_number = 1;
+  bytes account_id = 2;
+}
+
+message GetAccountProfileByMobileResponse {
+  optional AccountProfile profile = 1;
 }

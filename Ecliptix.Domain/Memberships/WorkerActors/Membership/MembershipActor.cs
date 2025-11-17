@@ -98,7 +98,7 @@ public sealed class MembershipActor : ReceivePersistentActor
         CommandAsync<OprfInitRecoverySecureKeyEvent>(HandleInitRecoveryRequestEvent);
         CommandAsync<OprfCompleteRecoverySecureKeyEvent>(HandleCompleteRecoverySecureKeyEvent);
         CommandAsync<GetMembershipByVerificationFlowEvent>(HandleGetMembershipByVerificationFlow);
-        CommandAsync<GetUserInfoByMobileEvent>(HandleGetUserByMobile);
+        CommandAsync<GetAccountProfileInfoByMobileEvent>(HandleGetAccountProfileByMobile);
 
         Command<SaveSnapshotSuccess>(_ =>
             Log.Info("[MEMBERSHIP-SNAPSHOT] ✅ Snapshot saved successfully at sequence {0}", LastSequenceNr));
@@ -244,27 +244,27 @@ public sealed class MembershipActor : ReceivePersistentActor
         base.PostStop();
     }
 
-    private async Task HandleGetUserByMobile(GetUserInfoByMobileEvent @event)
+    private async Task HandleGetAccountProfileByMobile(GetAccountProfileInfoByMobileEvent @event)
     {
         IActorRef replyTo = Sender;
 
-        GetUserInfoByMobileEvent persistorEvent = new GetUserInfoByMobileEvent(
+        GetAccountProfileInfoByMobileEvent persistorEvent = new GetAccountProfileInfoByMobileEvent(
             @event.MobileNumber,
             @event.CurrentAccountId,
             @event.CancellationToken
         );
 
-        Result<Option<UserInfo>, AccountFailure> persistorResult = await _accountPersistor
-            .Ask<Result<Option<UserInfo>, AccountFailure>>(
+        Result<Option<AccountProfileInfo>, AccountFailure> persistorResult = await _accountPersistor
+            .Ask<Result<Option<AccountProfileInfo>, AccountFailure>>(
                 persistorEvent,
                 @event.CancellationToken);
 
-        Result<Option<UserInfo>, FailureBase> finalResult = persistorResult.Match<Result<Option<UserInfo>, FailureBase>>(
-            ok => Result<Option<UserInfo>, FailureBase>.Ok(ok),
-            err => Result<Option<UserInfo>, FailureBase>.Err(err)
+        Result<Option<AccountProfileInfo>, FailureBase> finalResult = persistorResult.Match<Result<Option<AccountProfileInfo>, FailureBase>>(
+            ok => Result<Option<AccountProfileInfo>, FailureBase>.Ok(ok),
+            err => Result<Option<AccountProfileInfo>, FailureBase>.Err(err)
         );
 
-        replyTo.Tell(new GetUserInfoByMobileResult(finalResult));
+        replyTo.Tell(new GetAccountProfileInfoByMobileResult(finalResult));
     }
 
     private async Task HandleCompleteRegistrationRecord(CompleteRegistrationRecordActorEvent @event)
@@ -367,7 +367,6 @@ public sealed class MembershipActor : ReceivePersistentActor
                 UniqueIdentifier = Helpers.GuidToByteString(a.AccountId),
                 MembershipIdentifier = Helpers.GuidToByteString(a.MembershipId),
                 AccountType = a.Type,
-                AccountName = a.Name,
                 Status = a.Status,
                 IsDefaultAccount = a.IsDefault
             });
@@ -859,7 +858,6 @@ public sealed class MembershipActor : ReceivePersistentActor
                     UniqueIdentifier = Helpers.GuidToByteString(a.AccountId),
                     MembershipIdentifier = Helpers.GuidToByteString(a.MembershipId),
                     AccountType = a.Type,
-                    AccountName = a.Name,
                     Status = a.Status,
                     IsDefaultAccount = a.IsDefault
                 }).ToList();
@@ -1137,7 +1135,6 @@ public sealed class MembershipActor : ReceivePersistentActor
             source.AccountId,
             source.MembershipId,
             source.Type,
-            source.Name,
             source.IsDefault,
             source.Status);
     }
