@@ -98,6 +98,7 @@ public sealed class MembershipActor : ReceivePersistentActor
         CommandAsync<OprfInitRecoverySecureKeyEvent>(HandleInitRecoveryRequestEvent);
         CommandAsync<OprfCompleteRecoverySecureKeyEvent>(HandleCompleteRecoverySecureKeyEvent);
         CommandAsync<GetMembershipByVerificationFlowEvent>(HandleGetMembershipByVerificationFlow);
+        CommandAsync<GetUserInfoByMobileEvent>(HandleGetUserByMobile);
 
         Command<SaveSnapshotSuccess>(_ =>
             Log.Info("[MEMBERSHIP-SNAPSHOT] ✅ Snapshot saved successfully at sequence {0}", LastSequenceNr));
@@ -241,6 +242,28 @@ public sealed class MembershipActor : ReceivePersistentActor
         _passwordRecoveryCleanupTimer?.Cancel();
         ClearState();
         base.PostStop();
+    }
+
+    private async Task HandleGetUserByMobile(GetUserInfoByMobileEvent @event)
+    {
+        IActorRef replyTo = Sender;
+
+        GetUserInfoByMobileEvent persistorEvent = new GetUserInfoByMobileEvent(
+            @event.MobileNumber,
+            @event.CancellationToken
+        );
+
+        Result<Option<UserInfo>, AccountFailure> persistorResult = await _accountPersistor
+            .Ask<Result<Option<UserInfo>, AccountFailure>>(
+                persistorEvent,
+                @event.CancellationToken);
+
+        Result<Option<UserInfo>, FailureBase> finalResult = persistorResult.Match<Result<Option<UserInfo>, FailureBase>>(
+            ok => Result<Option<UserInfo>, FailureBase>.Ok(ok),
+            err => Result<Option<UserInfo>, FailureBase>.Err(err)
+        );
+
+        replyTo.Tell(new GetUserInfoByMobileResult(finalResult));
     }
 
     private async Task HandleCompleteRegistrationRecord(CompleteRegistrationRecordActorEvent @event)

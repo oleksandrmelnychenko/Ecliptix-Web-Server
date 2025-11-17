@@ -17,6 +17,7 @@ public class AccountEntity : EntityBase
 
     public DateTimeOffset? LastAccessedAt { get; set; }
 
+    public virtual UserEntity User { get; set; } = null!;
     public virtual MembershipEntity Membership { get; set; } = null!;
     public virtual ICollection<LoginAttemptEntity> LoginAttempts { get; set; } = new List<LoginAttemptEntity>();
     public virtual ICollection<LogoutAuditEntity> LogoutAudits { get; set; } = new List<LogoutAuditEntity>();

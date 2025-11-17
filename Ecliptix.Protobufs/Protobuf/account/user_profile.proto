@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package ecliptix.proto.user;
+option csharp_namespace = "Ecliptix.Protobuf.User";
+
+message UserProfile {
+  bytes user_id = 1;
+  bytes account_id = 2;
+  string user_name = 3;
+  string display_name = 4;
+}
+
+message GetUserByMobileRequest {
+  string mobile_number = 1;
+}
+
+message GetUserByMobileResponse {
+  optional UserProfile user = 1;
+}

@@ -43,6 +43,42 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         ReceivePersistorCommand<GetDefaultAccountIdEvent, Option<Guid>>(
             GetDefaultAccountIdAsync,
             "GetDefaultAccountId");
+
+        ReceivePersistorCommand<GetUserInfoByMobileEvent, Option<UserInfo>>(
+            GetUserInfoByMobileAsync,
+            "GetUserInfoByMobile");
+    }
+
+    private static async Task<Result<Option<UserInfo>, AccountFailure>> GetUserInfoByMobileAsync(
+        EcliptixSchemaContext ctx, GetUserInfoByMobileEvent cmd, CancellationToken cancellationToken)
+    {
+        try
+        {
+            Option<UserEntity> userOption =
+                await UserQueries.GetPrimaryUserByMobileNumber(ctx, cmd.MobileNumber);
+
+            if (!userOption.IsSome)
+            {
+                return Result<Option<UserInfo>, AccountFailure>.Ok(Option<UserInfo>.None);
+            }
+
+            UserEntity user = userOption.Value!;
+
+            UserInfo userInfo = new UserInfo(
+                user.UniqueId,
+                user.AccountId,
+                user.UserName,
+                user.DisplayName
+            );
+
+            return Result<Option<UserInfo>, AccountFailure>.Ok(Option<UserInfo>.Some(userInfo));
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to get user by phone number: {MobileNumber}", cmd.MobileNumber);
+            return Result<Option<UserInfo>, AccountFailure>.Err(
+                AccountFailure.QueryFailed(ex));
+        }
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
@@ -180,6 +216,20 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
             };
 
             ctx.Accounts.Add(personalAccount);
+
+            await ctx.SaveChangesAsync(cancellationToken);
+
+            UserEntity userProfile = new()
+            {
+                AccountId = personalAccount.UniqueId,
+
+                UserName = $"UserName: {personalAccount.UniqueId}",
+
+                DisplayName = $"DisplayName: {personalAccount.UniqueId}",
+            };
+
+            ctx.Users.Add(userProfile);
+
             await ctx.SaveChangesAsync(cancellationToken);
 
             List<AccountInfo> accounts =

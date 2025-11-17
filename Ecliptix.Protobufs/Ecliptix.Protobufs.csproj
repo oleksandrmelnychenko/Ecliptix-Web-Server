@@ -46,6 +46,7 @@
 
     <!-- Account proto files -->
     <Protobuf Include="Protobuf\account\account_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\account\user_profile.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
   </ItemGroup>
 
 </Project>

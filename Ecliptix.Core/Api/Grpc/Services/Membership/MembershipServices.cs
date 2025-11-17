@@ -15,6 +15,7 @@ using Ecliptix.Domain.Memberships.ActorEvents.Membership;
 using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
+using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.WorkerActors.Membership;
 using Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow;
 using Ecliptix.Domain.Schema.Entities;
@@ -22,6 +23,7 @@ using Ecliptix.Domain.Services.Security;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Protobuf.User;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Ecliptix.Utilities.Failures;
@@ -873,4 +875,55 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
         return response;
     }
+
+    public override async Task<SecureEnvelope> GetUserByMobile(SecureEnvelope request,
+    ServerCallContext context)
+{
+
+    return await _service
+        .ExecuteEncryptedOperationAsync<GetUserByMobileRequest, GetUserByMobileResponse>(request,
+            context,
+            async (message, _, _, cancellationToken) =>
+            {
+
+                GetUserInfoByMobileEvent actorEvent = new(
+                    message.MobileNumber,
+                    cancellationToken
+                );
+
+                Task<GetUserInfoByMobileResult>? task = _membershipActor.Ask<GetUserInfoByMobileResult>(
+                    actorEvent,
+                    TimeoutConfiguration.Actor.AskTimeout
+                );
+
+                GetUserInfoByMobileResult actorResult =
+                    await task.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                if (actorResult.Result.IsErr)
+                {
+                    return Result<GetUserByMobileResponse, FailureBase>.Err(
+                        actorResult.Result.UnwrapErr());
+                }
+
+                Option<UserInfo> userInfoOpt = actorResult.Result.Unwrap();
+
+                GetUserByMobileResponse response = new();
+
+                if (userInfoOpt.IsSome)
+                {
+                    UserInfo userInfo = userInfoOpt.Value!;
+
+
+                    response.User = new UserProfile
+                    {
+                        UserId = Helpers.GuidToByteString(userInfo.UserId),
+                        AccountId = Helpers.GuidToByteString(userInfo.AccountId),
+                        UserName = userInfo.UserName,
+                        DisplayName = userInfo.DisplayName
+                    };
+                }
+
+                return Result<GetUserByMobileResponse, FailureBase>.Ok(response);
+            });
+}
 }
