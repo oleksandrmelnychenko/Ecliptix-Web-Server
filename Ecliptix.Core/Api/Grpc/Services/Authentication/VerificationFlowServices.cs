@@ -346,13 +346,6 @@ internal sealed class VerificationFlowServices : AuthVerificationServices.AuthVe
                     else
                     {
                         payload = encryptResult.Unwrap();
-
-                        if (update.Status == VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired)
-                        {
-                            ActorSystem actorSystem =
-                                context.GetHttpContext().RequestServices.GetRequiredService<ActorSystem>();
-                            actorSystem.EventStream.Publish(new SessionExpiredMessageDeliveredEvent(connectId));
-                        }
                     }
                 }
 

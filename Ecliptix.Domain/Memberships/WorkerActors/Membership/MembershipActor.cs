@@ -599,7 +599,8 @@ public sealed class MembershipActor : ReceivePersistentActor
             "[PASSWORD-RECOVERY-INIT] OPRF generated for membership {0}. Credentials stored in pending state (persisted).",
             @event.MembershipIdentifier);
 
-        PersistAsync(
+        // Use Persist instead of PersistAsync to prevent race conditions during password recovery
+        Persist(
             new RecoverySessionStartedEvent(
                 @event.MembershipIdentifier,
                 maskingKeyCopy,
@@ -634,7 +635,8 @@ public sealed class MembershipActor : ReceivePersistentActor
         Log.Info("[MEMBERSHIP-PERSIST] Persisting RegistrationMaskingKeyStoredEvent for MembershipId: {0}. Current LastSequenceNr: {1}",
             @event.MembershipIdentifier, LastSequenceNr);
 
-        PersistAsync(
+        // Use Persist instead of PersistAsync to prevent race conditions during concurrent registrations
+        Persist(
             new RegistrationMaskingKeyStoredEvent(@event.MembershipIdentifier, maskingKey),
             evt =>
             {
@@ -733,7 +735,9 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         List<AccountInfo> accountsCopy = record.AvailableAccounts.Select(CloneAccountInfo).ToList();
 
-        PersistAsync(
+        // Use Persist instead of PersistAsync to prevent race conditions when same account
+        // signs in from multiple devices simultaneously
+        Persist(
             new PendingSignInStoredEvent(
                 @event.ConnectId,
                 record.UniqueIdentifier,

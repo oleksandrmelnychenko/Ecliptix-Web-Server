@@ -561,19 +561,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 otp.VerifiedAt = utcNow;
             }
 
-            if (cmd.Status == OtpStatus.Expired)
-            {
-                int cooldownSeconds = _securityConfig.CurrentValue.VerificationFlow.ResendCooldownBufferSeconds;
-                DateTimeOffset resendAvailableAt = utcNow.AddSeconds(cooldownSeconds);
-
-                await schemeContext.VerificationFlows
-                    .Where(vf => vf.Id == otp.VerificationFlowId && !vf.IsDeleted)
-                    .ExecuteUpdateAsync(setters => setters
-                            .SetProperty(vf => vf.ResendAvailableAt, resendAvailableAt)
-                            .SetProperty(vf => vf.UpdatedAt, utcNow),
-                        cancellationToken);
-            }
-
             await schemeContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
@@ -1110,12 +1097,15 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             schemeContext.OtpCodes.Add(otp);
 
             DateTimeOffset now = DateTimeOffset.UtcNow;
+            int resendCooldownSeconds = _securityConfig.CurrentValue.VerificationFlow.ResendCooldownBufferSeconds;
+            DateTimeOffset resendAvailableAt = now.AddSeconds(resendCooldownSeconds);
+
             await schemeContext.VerificationFlows
                 .Where(f => f.Id == flow.Id)
                 .ExecuteUpdateAsync(setters => setters
                         .SetProperty(f => f.OtpCount, f => f.OtpCount + 1)
                         .SetProperty(f => f.LastOtpSentAt, now)
-                        .SetProperty(f => f.ResendAvailableAt, (DateTimeOffset?)null)
+                        .SetProperty(f => f.ResendAvailableAt, resendAvailableAt)
                         .SetProperty(f => f.UpdatedAt, now),
                     cancellationToken);
 
