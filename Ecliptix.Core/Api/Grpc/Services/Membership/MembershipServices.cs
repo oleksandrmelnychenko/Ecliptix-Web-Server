@@ -888,6 +888,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
                 GetUserInfoByMobileEvent actorEvent = new(
                     message.MobileNumber,
+                    Helpers.FromByteStringToGuid(message.CurrentAccountId),
                     cancellationToken
                 );
 

@@ -55,7 +55,10 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         try
         {
             Option<UserEntity> userOption =
-                await UserQueries.GetPrimaryUserByMobileNumber(ctx, cmd.MobileNumber);
+                await UserQueries.GetPrimaryUserByMobileNumber(
+                    ctx,
+                    cmd.MobileNumber,
+                    cmd.CurrentAccountId);
 
             if (!userOption.IsSome)
             {

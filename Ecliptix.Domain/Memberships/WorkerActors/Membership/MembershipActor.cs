@@ -250,6 +250,7 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         GetUserInfoByMobileEvent persistorEvent = new GetUserInfoByMobileEvent(
             @event.MobileNumber,
+            @event.CurrentAccountId,
             @event.CancellationToken
         );
 

@@ -40,11 +40,12 @@ public static class UserQueries
         return result is not null ? Option<UserEntity>.Some(result) : Option<UserEntity>.None;
     }
 
-    private static readonly Func<EcliptixSchemaContext, string, Task<UserEntity?>>
+    private static readonly Func<EcliptixSchemaContext, string, Guid, Task<UserEntity?>>
         GetPrimaryUserByMobileNumberCompiled = EF.CompileAsyncQuery(
-            (EcliptixSchemaContext ctx, string mobileNumber) =>
+            (EcliptixSchemaContext ctx, string mobileNumber, Guid currentAccountId) =>
                 ctx.Users
                     .Where(u => u.Account.Membership.MobileNumber.Number == mobileNumber &&
+                                u.AccountId != currentAccountId &&
                                 !u.IsDeleted &&
                                 !u.Account.IsDeleted &&
                                 !u.Account.Membership.IsDeleted &&
@@ -56,9 +57,10 @@ public static class UserQueries
 
     public static async Task<Option<UserEntity>> GetPrimaryUserByMobileNumber(
         EcliptixSchemaContext ctx,
-        string mobileNumber)
+        string mobileNumber,
+        Guid currentAccountId)
     {
-        UserEntity? result = await GetPrimaryUserByMobileNumberCompiled(ctx, mobileNumber);
+        UserEntity? result = await GetPrimaryUserByMobileNumberCompiled(ctx, mobileNumber, currentAccountId);
         return result is not null ? Option<UserEntity>.Some(result) : Option<UserEntity>.None;
     }
 }

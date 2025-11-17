@@ -12,6 +12,7 @@ message UserProfile {
 
 message GetUserByMobileRequest {
   string mobile_number = 1;
+  bytes current_account_id = 2;
 }
 
 message GetUserByMobileResponse {
