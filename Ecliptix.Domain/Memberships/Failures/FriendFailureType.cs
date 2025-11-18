@@ -1,12 +1,21 @@
 namespace Ecliptix.Domain.Memberships.Failures;
 
-public enum FriendFailureType
+public enum FriendFailureType : short
 {
     NotFound,
-    ValidationFailed,
     AlreadyRequested,
     AlreadyFriends,
     Blocked,
+    
+    InvalidRequest,
+    Validation,
+    
     PersistorAccess,
-    UnexpectedError
+    ConcurrencyConflict,
+    DatabaseError,
+    
+    Unauthorized,
+    
+    Generic
 }
+

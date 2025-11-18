@@ -124,7 +124,7 @@ public class FriendPersistorActor : PersistorBase<FriendFailure>
         if (evt.FromMembershipId == evt.ToMembershipId)
         {
             return Result<FriendEntity, FriendFailure>.Err(
-                FriendFailure.ValidationFailed("Cannot send friend request to yourself"));
+                FriendFailure.CannotFriendYourself());
         }
 
         (Guid ua, Guid ub) = CanonicalPair(evt.FromMembershipId, evt.ToMembershipId);
@@ -182,17 +182,17 @@ public class FriendPersistorActor : PersistorBase<FriendFailure>
 
         if (relation == null)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.NotFound("Friend request not found"));
+            return Result<Unit, FriendFailure>.Err(FriendFailure.FriendRequestNotFound());
         }
 
         if (relation.Status != FriendRelationStatus.Pending)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.ValidationFailed("Request is not pending"));
+            return Result<Unit, FriendFailure>.Err(FriendFailure.RequestNotPending());
         }
 
         if (relation.RequestedById == evt.ByMembershipId)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.ValidationFailed("Cannot accept own request"));
+            return Result<Unit, FriendFailure>.Err(FriendFailure.CannotAcceptOwnRequest());
         }
 
         relation.Status = FriendRelationStatus.Accepted;
@@ -216,12 +216,12 @@ public class FriendPersistorActor : PersistorBase<FriendFailure>
 
         if (relation == null)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.NotFound("Friend request not found"));
+            return Result<Unit, FriendFailure>.Err(FriendFailure.FriendRequestNotFound());
         }
 
         if (relation.Status != FriendRelationStatus.Pending)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.ValidationFailed("Request is not pending"));
+            return Result<Unit, FriendFailure>.Err(FriendFailure.RequestNotPending());
         }
 
         relation.Status = FriendRelationStatus.Rejected;
