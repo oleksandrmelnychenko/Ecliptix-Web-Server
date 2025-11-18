@@ -47,6 +47,41 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         ReceivePersistorCommand<GetAccountProfileInfoByMobileEvent, Option<AccountProfileInfo>>(
             GetAccountProfileInfoByMobileAsync,
             "GetAccountProfileInfoByMobile");
+        ReceivePersistorCommand<GetAccountProfileByIdEvent, Option<AccountProfileInfo>>(
+            GetAccountProfileByIdAsync,
+            "GetAccountProfileById");
+    }
+
+    private static async Task<Result<Option<AccountProfileInfo>, AccountFailure>> GetAccountProfileByIdAsync(
+        EcliptixSchemaContext ctx, GetAccountProfileByIdEvent cmd, CancellationToken cancellationToken)
+    {
+        try
+        {
+            Option<AccountProfileEntity> profileOpt =
+                await AccountProfileQueries.GetByAccountId(ctx, cmd.AccountId);
+
+            if (!profileOpt.IsSome)
+            {
+                return Result<Option<AccountProfileInfo>, AccountFailure>.Ok(Option<AccountProfileInfo>.None);
+            }
+
+            AccountProfileEntity entity = profileOpt.Value!;
+
+
+            AccountProfileInfo profileInfo = new (
+                entity.UniqueId,
+                entity.AccountId,
+                entity.ProfileName,
+                entity.DisplayName
+            );
+
+            return Result<Option<AccountProfileInfo>, AccountFailure>.Ok(Option<AccountProfileInfo>.Some(profileInfo));
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to get account profile by ID: {AccountId}", cmd.AccountId);
+            return Result<Option<AccountProfileInfo>, AccountFailure>.Err(AccountFailure.QueryFailed(ex));
+        }
     }
 
     private static async Task<Result<Option<AccountProfileInfo>, AccountFailure>> GetAccountProfileInfoByMobileAsync(

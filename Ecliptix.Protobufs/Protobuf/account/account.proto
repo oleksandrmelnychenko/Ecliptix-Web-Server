@@ -42,3 +42,11 @@ message GetAccountProfileByMobileRequest {
 message GetAccountProfileByMobileResponse {
   optional AccountProfile profile = 1;
 }
+
+message GetAccountProfileByIdRequest {
+  bytes account_id = 1;
+}
+
+message GetAccountProfileByIdResponse {
+  optional AccountProfile profile = 1;
+}
