@@ -20,6 +20,8 @@ public static class ApplicationConstants
         public const string LogoutAuditPersistorActor = "LogoutAuditPersistorActor";
         public const string AccountPersistorActor = "AccountPersistorActor";
         public const string PasswordRecoveryPersistorActor = "PasswordRecoveryPersistorActor";
+        public const string FriendPersistorActor = "FriendPersistorActor";
+        public const string FriendActor = "FriendActor";
     }
 
     public static class Endpoints

@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package ecliptix.friend.v1;
+option csharp_namespace = "Ecliptix.Protobuf.Friend";
+
+import "google/protobuf/timestamp.proto";
+import "common/secure_envelope.proto";
+
+message Friend {
+  bytes membership_id = 1;
+  string display_name = 2;
+  string avatar_url = 3;
+  google.protobuf.Timestamp since = 4;
+}
+
+message SendFriendRequestRequest {
+  bytes from_membership = 1;
+  bytes to_membership = 2;
+  string message = 3;
+}
+
+message SendFriendRequestResponse {
+  enum Result {
+    SUCCEEDED = 0;
+    ALREADY_REQUESTED = 1;
+    ALREADY_FRIENDS = 2;
+    BLOCKED = 3;
+    FAILED = 4;
+  }
+  Result result = 1;
+  string message = 2;
+}
+
+message AcceptFriendRequestRequest {
+  bytes by_membership = 1;
+  bytes from_membership = 2;
+}
+
+message GenericResponse {
+  bool ok = 1;
+  string message = 2;
+}
+
+message ListFriendsRequest {
+  bytes membership = 1;
+  int32 limit = 2;
+  string cursor = 3;
+}
+
+message ListFriendsResponse {
+  repeated Friend friends = 1;
+  string next_cursor = 2;
+}
+
+service FriendService {
+  rpc SendFriendRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+}
