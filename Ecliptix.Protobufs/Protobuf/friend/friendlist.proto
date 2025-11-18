@@ -54,4 +54,6 @@ message ListFriendsResponse {
 
 service FriendService {
   rpc SendFriendRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc AcceptFriendRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc ListFriends(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
 }
