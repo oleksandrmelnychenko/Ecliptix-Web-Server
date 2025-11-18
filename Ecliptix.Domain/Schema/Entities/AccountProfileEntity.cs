@@ -6,7 +6,7 @@ public class AccountProfileEntity : EntityBase
 
     public virtual AccountEntity Account { get; set; } = null!;
 
-    public string ProfileName { get; set; } = string.Empty;
+    public string ProfileName { get; set; } = string.Empty; // Seachable
 
     public string DisplayName { get; set; } = string.Empty;
 }

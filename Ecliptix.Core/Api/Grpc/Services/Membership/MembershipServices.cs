@@ -914,7 +914,6 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                 if (profileInfoOpt.IsSome)
                 {
                     AccountProfileInfo profileInfo = profileInfoOpt.Value!;
-
                     response.Profile = new AccountProfile
                     {
                         ProfileId = Helpers.GuidToByteString(profileInfo.ProfileId),

@@ -211,6 +211,40 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             await HandleLingeringActiveFlowAsync(schemeContext, cmd, cancellationToken);
 
+            // Silent cleanup: expire any existing flow with the same ConnectionId
+            VerificationFlowEntity? existingByConnectionId = await schemeContext.VerificationFlows
+                .Where(vf => vf.ConnectionId == cmd.ConnectId
+                    && vf.Status == VerificationFlowStatus.Pending
+                    && !vf.IsDeleted)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (existingByConnectionId != null)
+            {
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+
+                await schemeContext.VerificationFlows
+                    .Where(vf => vf.Id == existingByConnectionId.Id)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(vf => vf.Status, VerificationFlowStatus.Expired)
+                        .SetProperty(vf => vf.ConnectionId, (long?)null)
+                        .SetProperty(vf => vf.ExpiresAt, now)
+                        .SetProperty(vf => vf.UpdatedAt, now),
+                        cancellationToken);
+
+                await schemeContext.OtpCodes
+                    .Where(o => o.VerificationFlowId == existingByConnectionId.Id
+                        && o.Status == OtpStatus.Active
+                        && !o.IsDeleted)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(o => o.Status, OtpStatus.Expired)
+                        .SetProperty(o => o.UpdatedAt, now),
+                        cancellationToken);
+
+                Log.Debug(
+                    "[verification.flow.persistor.connection-id-cleanup] Silently expired flow {FlowId} with ConnectionId {ConnectionId}",
+                    existingByConnectionId.UniqueId, cmd.ConnectId);
+            }
+
             if (cmd.Purpose == VerificationPurpose.SecureKeyRecovery)
             {
                 Option<VerificationFlowFailure> recoveryRuleResult = await HandlePasswordRecoveryRulesAsync(
