@@ -1,4 +1,5 @@
 using Ecliptix.Utilities;
+using Grpc.Core;
 
 namespace Ecliptix.Domain.Memberships.Failures;
 
@@ -231,6 +232,88 @@ public sealed record FriendFailure(
             innerException);
     }
 
+    public override GrpcErrorDescriptor ToGrpcDescriptor()
+    {
+        string i18NKey = string.IsNullOrWhiteSpace(Message) ? GetDefaultI18NKey(FailureType) : Message;
+
+        return FailureType switch
+        {
+            FriendFailureType.NotFound => new GrpcErrorDescriptor(
+                ErrorCode.NotFound,
+                StatusCode.NotFound,
+                i18NKey),
+            
+            FriendFailureType.AlreadyRequested => new GrpcErrorDescriptor(
+                ErrorCode.AlreadyExists,
+                StatusCode.AlreadyExists,
+                i18NKey),
+            
+            FriendFailureType.AlreadyFriends => new GrpcErrorDescriptor(
+                ErrorCode.AlreadyExists,
+                StatusCode.AlreadyExists,
+                i18NKey),
+            
+            FriendFailureType.Blocked => new GrpcErrorDescriptor(
+                ErrorCode.PermissionDenied,
+                StatusCode.PermissionDenied,
+                i18NKey),
+            
+            FriendFailureType.InvalidRequest => new GrpcErrorDescriptor(
+                ErrorCode.PreconditionFailed,
+                StatusCode.FailedPrecondition,
+                i18NKey),
+            
+            FriendFailureType.Validation => new GrpcErrorDescriptor(
+                ErrorCode.ValidationFailed,
+                StatusCode.InvalidArgument,
+                i18NKey),
+            
+            FriendFailureType.Unauthorized => new GrpcErrorDescriptor(
+                ErrorCode.Unauthenticated,
+                StatusCode.Unauthenticated,
+                i18NKey),
+            
+            FriendFailureType.ConcurrencyConflict => new GrpcErrorDescriptor(
+                ErrorCode.Conflict,
+                StatusCode.Aborted,
+                i18NKey),
+            
+            FriendFailureType.PersistorAccess => new GrpcErrorDescriptor(
+                ErrorCode.DatabaseUnavailable,
+                StatusCode.Unavailable,
+                i18NKey,
+                Retryable: true),
+            
+            FriendFailureType.DatabaseError => new GrpcErrorDescriptor(
+                ErrorCode.DatabaseUnavailable,
+                StatusCode.Unavailable,
+                i18NKey,
+                Retryable: true),
+            
+            _ => new GrpcErrorDescriptor(
+                ErrorCode.InternalError,
+                StatusCode.Internal,
+                i18NKey)
+        };
+    }
+
+    private static string GetDefaultI18NKey(FriendFailureType failureType) =>
+        failureType switch
+        {
+            FriendFailureType.NotFound => ErrorI18NKeys.NotFound,
+            FriendFailureType.AlreadyRequested => ErrorI18NKeys.AlreadyExists,
+            FriendFailureType.AlreadyFriends => ErrorI18NKeys.AlreadyExists,
+            FriendFailureType.Blocked => ErrorI18NKeys.PermissionDenied,
+            FriendFailureType.InvalidRequest => ErrorI18NKeys.PreconditionFailed,
+            FriendFailureType.Validation => ErrorI18NKeys.Validation,
+            FriendFailureType.Unauthorized => ErrorI18NKeys.Unauthenticated,
+            FriendFailureType.ConcurrencyConflict => ErrorI18NKeys.Conflict,
+            FriendFailureType.PersistorAccess => ErrorI18NKeys.DatabaseUnavailable,
+            FriendFailureType.DatabaseError => ErrorI18NKeys.DatabaseUnavailable,
+            FriendFailureType.Generic => ErrorI18NKeys.Internal,
+            _ => ErrorI18NKeys.Internal
+        };
+
     public override object ToStructuredLog()
     {
         return new
@@ -240,13 +323,9 @@ public sealed record FriendFailure(
             IsRecoverable,
             IsUserFacing,
             SourceFailure = SourceFailure?.Message,
-            InnerException = InnerException?.Message
+            InnerException = InnerException?.Message,
+            Timestamp
         };
-    }
-
-    public override GrpcErrorDescriptor ToGrpcDescriptor()
-    {
-        throw new NotImplementedException();
     }
 }
 
