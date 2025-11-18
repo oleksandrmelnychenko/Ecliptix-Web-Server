@@ -34,19 +34,15 @@ message AccountProfile {
   string display_name = 4;
 }
 
-message GetAccountProfileByMobileRequest {
-  string mobile_number = 1;
-  bytes account_id = 2;
+message GetAccountProfileRequest {
+  bytes current_account_id = 1;
+  oneof search_criteria {
+    string by_mobile_number = 2;
+    bytes by_account_id = 3;
+    string by_username = 4;
+  }
 }
 
-message GetAccountProfileByMobileResponse {
-  optional AccountProfile profile = 1;
-}
-
-message GetAccountProfileByIdRequest {
-  bytes account_id = 1;
-}
-
-message GetAccountProfileByIdResponse {
+message GetAccountProfileResponse {
   optional AccountProfile profile = 1;
 }
