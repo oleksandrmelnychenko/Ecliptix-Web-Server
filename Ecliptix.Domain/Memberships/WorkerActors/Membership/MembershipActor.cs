@@ -98,8 +98,7 @@ public sealed class MembershipActor : ReceivePersistentActor
         CommandAsync<OprfInitRecoverySecureKeyEvent>(HandleInitRecoveryRequestEvent);
         CommandAsync<OprfCompleteRecoverySecureKeyEvent>(HandleCompleteRecoverySecureKeyEvent);
         CommandAsync<GetMembershipByVerificationFlowEvent>(HandleGetMembershipByVerificationFlow);
-        CommandAsync<GetAccountProfileInfoByMobileEvent>(HandleGetAccountProfileByMobile);
-        CommandAsync<GetAccountProfileByIdEvent>(HandleGetAccountProfileById);
+        CommandAsync<GetAccountProfileActorEvent>(HandleGetAccountProfile);
 
         Command<SaveSnapshotSuccess>(_ =>
             Log.Info("[MEMBERSHIP-SNAPSHOT] ✅ Snapshot saved successfully at sequence {0}", LastSequenceNr));
@@ -245,11 +244,11 @@ public sealed class MembershipActor : ReceivePersistentActor
         base.PostStop();
     }
 
-    private async Task HandleGetAccountProfileById(GetAccountProfileByIdEvent @event)
+    private async Task HandleGetAccountProfile(GetAccountProfileActorEvent @event)
     {
         IActorRef replyTo = Sender;
 
-        GetAccountProfileByIdEvent persistorEvent = new (@event.AccountId, @event.CancellationToken);
+        GetAccountProfileActorEvent persistorEvent = new (@event.CurrentAccountId, @event.Criteria, @event.CancellationToken);
 
         Result<Option<AccountProfileInfo>, AccountFailure> persistorResult = await _accountPersistor
             .Ask<Result<Option<AccountProfileInfo>, AccountFailure>>(
@@ -261,31 +260,50 @@ public sealed class MembershipActor : ReceivePersistentActor
             err => Result<Option<AccountProfileInfo>, FailureBase>.Err(err)
         );
 
-        replyTo.Tell(new GetAccountProfileByIdResult(finalResult));
+        replyTo.Tell(new GetAccountProfileResult(finalResult));
     }
 
-    private async Task HandleGetAccountProfileByMobile(GetAccountProfileInfoByMobileEvent @event)
-    {
-        IActorRef replyTo = Sender;
-
-        GetAccountProfileInfoByMobileEvent persistorEvent = new GetAccountProfileInfoByMobileEvent(
-            @event.MobileNumber,
-            @event.CurrentAccountId,
-            @event.CancellationToken
-        );
-
-        Result<Option<AccountProfileInfo>, AccountFailure> persistorResult = await _accountPersistor
-            .Ask<Result<Option<AccountProfileInfo>, AccountFailure>>(
-                persistorEvent,
-                @event.CancellationToken);
-
-        Result<Option<AccountProfileInfo>, FailureBase> finalResult = persistorResult.Match<Result<Option<AccountProfileInfo>, FailureBase>>(
-            ok => Result<Option<AccountProfileInfo>, FailureBase>.Ok(ok),
-            err => Result<Option<AccountProfileInfo>, FailureBase>.Err(err)
-        );
-
-        replyTo.Tell(new GetAccountProfileInfoByMobileResult(finalResult));
-    }
+    // private async Task HandleGetAccountProfileById(GetAccountProfileEvent @event)
+    // {
+    //     IActorRef replyTo = Sender;
+    //
+    //     GetAccountProfileEvent persistorEvent = new (@event.AccountId, @event.CancellationToken);
+    //
+    //     Result<Option<AccountProfileInfo>, AccountFailure> persistorResult = await _accountPersistor
+    //         .Ask<Result<Option<AccountProfileInfo>, AccountFailure>>(
+    //             persistorEvent,
+    //             @event.CancellationToken);
+    //
+    //     Result<Option<AccountProfileInfo>, FailureBase> finalResult = persistorResult.Match<Result<Option<AccountProfileInfo>, FailureBase>>(
+    //         ok => Result<Option<AccountProfileInfo>, FailureBase>.Ok(ok),
+    //         err => Result<Option<AccountProfileInfo>, FailureBase>.Err(err)
+    //     );
+    //
+    //     replyTo.Tell(new GetAccountProfileByIdResult(finalResult));
+    // }
+    //
+    // private async Task HandleGetAccountProfileByMobile(GetAccountProfileInfoByMobileEvent @event)
+    // {
+    //     IActorRef replyTo = Sender;
+    //
+    //     GetAccountProfileInfoByMobileEvent persistorEvent = new GetAccountProfileInfoByMobileEvent(
+    //         @event.MobileNumber,
+    //         @event.CurrentAccountId,
+    //         @event.CancellationToken
+    //     );
+    //
+    //     Result<Option<AccountProfileInfo>, AccountFailure> persistorResult = await _accountPersistor
+    //         .Ask<Result<Option<AccountProfileInfo>, AccountFailure>>(
+    //             persistorEvent,
+    //             @event.CancellationToken);
+    //
+    //     Result<Option<AccountProfileInfo>, FailureBase> finalResult = persistorResult.Match<Result<Option<AccountProfileInfo>, FailureBase>>(
+    //         ok => Result<Option<AccountProfileInfo>, FailureBase>.Ok(ok),
+    //         err => Result<Option<AccountProfileInfo>, FailureBase>.Err(err)
+    //     );
+    //
+    //     replyTo.Tell(new GetAccountProfileInfoByMobileResult(finalResult));
+    // }
 
     private async Task HandleCompleteRegistrationRecord(CompleteRegistrationRecordActorEvent @event)
     {

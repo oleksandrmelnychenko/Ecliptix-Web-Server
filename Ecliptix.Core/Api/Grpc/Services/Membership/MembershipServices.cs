@@ -39,6 +39,7 @@ using OprfRegistrationCompleteRequest = Ecliptix.Protobuf.Membership.OpaqueRegis
 using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
 using OprfRegistrationInitRequest = Ecliptix.Protobuf.Membership.OpaqueRegistrationInitRequest;
 using OprfRegistrationInitResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationInitResponse;
+using Status = Grpc.Core.Status;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Membership;
 
@@ -876,97 +877,53 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         return response;
     }
 
-    public override async Task<SecureEnvelope> GetAccountProfileByMobile(SecureEnvelope request,
-    ServerCallContext context)
+    public override async Task<SecureEnvelope> GetAccountProfile(SecureEnvelope request, ServerCallContext context)
     {
-
-        return await _service
-            .ExecuteEncryptedOperationAsync<GetAccountProfileByMobileRequest, GetAccountProfileByMobileResponse>(request,
-                context,
-                async (message, _, _, cancellationToken) =>
-                {
-
-                    GetAccountProfileInfoByMobileEvent actorEvent = new(
-                        message.MobileNumber,
-                        Helpers.FromByteStringToGuid(message.AccountId),
-                        cancellationToken
-                    );
-
-                    Task<GetAccountProfileInfoByMobileResult>? task = _membershipActor.Ask<GetAccountProfileInfoByMobileResult>(
-                        actorEvent,
-                        TimeoutConfiguration.Actor.AskTimeout
-                    );
-
-                    GetAccountProfileInfoByMobileResult actorResult =
-                        await task.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                    if (actorResult.Result.IsErr)
-                    {
-                        return Result<GetAccountProfileByMobileResponse, FailureBase>.Err(
-                            actorResult.Result.UnwrapErr());
-                    }
-
-                    Option<AccountProfileInfo> profileInfoOpt = actorResult.Result.Unwrap();
-
-                    GetAccountProfileByMobileResponse response = new();
-
-                    if (profileInfoOpt.IsSome)
-                    {
-                        AccountProfileInfo profileInfo = profileInfoOpt.Value!;
-
-
-                        response.Profile = new AccountProfile
-                        {
-                            ProfileId = Helpers.GuidToByteString(profileInfo.ProfileId),
-                            AccountId = Helpers.GuidToByteString(profileInfo.AccountId),
-                            ProfileName = profileInfo.ProfileName,
-                            DisplayName = profileInfo.DisplayName
-                        };
-                    }
-
-                    return Result<GetAccountProfileByMobileResponse, FailureBase>.Ok(response);
-                });
-    }
-
-    public override async Task<SecureEnvelope> GetAccountProfileById(SecureEnvelope request, ServerCallContext context)
-    {
-        return await _service.ExecuteEncryptedOperationAsync<GetAccountProfileByIdRequest, GetAccountProfileByIdResponse>(
+        return await _service.ExecuteEncryptedOperationAsync<GetAccountProfileRequest, GetAccountProfileResponse>(
             request,
             context,
             async (message, _, _, cancellationToken) =>
             {
-                Guid targetAccountId = Helpers.FromByteStringToGuid(message.AccountId);
+                Guid currentAccountId = Helpers.FromByteStringToGuid(message.CurrentAccountId);
 
-                GetAccountProfileByIdEvent actorEvent = new(targetAccountId, cancellationToken);
+                ProfileSearchCriteria criteria = message.SearchCriteriaCase switch
+                {
+                    GetAccountProfileRequest.SearchCriteriaOneofCase.ByMobileNumber =>
+                        new SearchByMobile(message.ByMobileNumber),
 
-                Task<GetAccountProfileByIdResult>? task = _membershipActor.Ask<GetAccountProfileByIdResult>(
-                    actorEvent,
-                    TimeoutConfiguration.Actor.AskTimeout);
+                    GetAccountProfileRequest.SearchCriteriaOneofCase.ByAccountId =>
+                        new SearchById(Helpers.FromByteStringToGuid(message.ByAccountId)),
 
-                GetAccountProfileByIdResult actorResult =
-                    await task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    _ => throw new RpcException(new Status(StatusCode.InvalidArgument, "Search criteria not specified"))
+                };
+
+                GetAccountProfileActorEvent actorEvent = new(currentAccountId, criteria, cancellationToken);
+
+                Task<GetAccountProfileResult> task = _membershipActor.Ask<GetAccountProfileResult>(actorEvent, TimeoutConfiguration.Actor.AskTimeout);
+                GetAccountProfileResult actorResult = await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 if (actorResult.Result.IsErr)
                 {
-                    return Result<GetAccountProfileByIdResponse, FailureBase>.Err(actorResult.Result.UnwrapErr());
+                    return Result<GetAccountProfileResponse, FailureBase>.Err(actorResult.Result.UnwrapErr());
                 }
 
-                GetAccountProfileByIdResponse response = new();
-                Option<AccountProfileInfo> profileOpt = actorResult.Result.Unwrap();
+                Option<AccountProfileInfo> profileInfoOpt = actorResult.Result.Unwrap();
 
-                if (profileOpt.IsSome)
+                GetAccountProfileResponse response = new();
+
+                if (profileInfoOpt.IsSome)
                 {
-                    AccountProfileInfo? info = profileOpt.Value;
+                    AccountProfileInfo profileInfo = profileInfoOpt.Value!;
+
                     response.Profile = new AccountProfile
                     {
-                        ProfileId = Helpers.GuidToByteString(info.ProfileId),
-                        AccountId = Helpers.GuidToByteString(info.AccountId),
-                        ProfileName = info.ProfileName,
-                        DisplayName = info.DisplayName
+                        ProfileId = Helpers.GuidToByteString(profileInfo.ProfileId),
+                        AccountId = Helpers.GuidToByteString(profileInfo.AccountId),
+                        ProfileName = profileInfo.ProfileName,
+                        DisplayName = profileInfo.DisplayName
                     };
                 }
-
-                return Result<GetAccountProfileByIdResponse, FailureBase>.Ok(response);
+                return Result<GetAccountProfileResponse, FailureBase>.Ok(response);
             });
     }
 }

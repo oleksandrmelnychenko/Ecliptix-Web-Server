@@ -44,21 +44,29 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
             GetDefaultAccountIdAsync,
             "GetDefaultAccountId");
 
-        ReceivePersistorCommand<GetAccountProfileInfoByMobileEvent, Option<AccountProfileInfo>>(
-            GetAccountProfileInfoByMobileAsync,
-            "GetAccountProfileInfoByMobile");
-        ReceivePersistorCommand<GetAccountProfileByIdEvent, Option<AccountProfileInfo>>(
-            GetAccountProfileByIdAsync,
-            "GetAccountProfileById");
+        ReceivePersistorCommand<GetAccountProfileActorEvent, Option<AccountProfileInfo>>(
+            GetAccountProfileAsync, "GetAccountProfile");
+
     }
 
-    private static async Task<Result<Option<AccountProfileInfo>, AccountFailure>> GetAccountProfileByIdAsync(
-        EcliptixSchemaContext ctx, GetAccountProfileByIdEvent cmd, CancellationToken cancellationToken)
+    private static async Task<Result<Option<AccountProfileInfo>, AccountFailure>> GetAccountProfileAsync(
+        EcliptixSchemaContext ctx, GetAccountProfileActorEvent cmd, CancellationToken cancellationToken)
     {
         try
         {
-            Option<AccountProfileEntity> profileOpt =
-                await AccountProfileQueries.GetByAccountId(ctx, cmd.AccountId);
+            Option<AccountProfileEntity> profileOpt = Option<AccountProfileEntity>.None;
+
+            switch (cmd.Criteria)
+            {
+                case SearchByMobile mobileCriteria:
+                    profileOpt = await AccountProfileQueries.GetPrimaryAccountProfileByMobileNumber(
+                        ctx, mobileCriteria.MobileNumber, cmd.CurrentAccountId);
+                    break;
+
+                case SearchById idCriteria:
+                    profileOpt = await AccountProfileQueries.GetByAccountId(ctx, idCriteria.AccountId);
+                    break;
+            }
 
             if (!profileOpt.IsSome)
             {
@@ -79,43 +87,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to get account profile by ID: {AccountId}", cmd.AccountId);
             return Result<Option<AccountProfileInfo>, AccountFailure>.Err(AccountFailure.QueryFailed(ex));
-        }
-    }
-
-    private static async Task<Result<Option<AccountProfileInfo>, AccountFailure>> GetAccountProfileInfoByMobileAsync(
-        EcliptixSchemaContext ctx, GetAccountProfileInfoByMobileEvent cmd, CancellationToken cancellationToken)
-    {
-        try
-        {
-            Option<AccountProfileEntity> profileOption =
-                await AccountProfileQueries.GetPrimaryAccountProfileByMobileNumber(
-                    ctx,
-                    cmd.MobileNumber,
-                    cmd.CurrentAccountId);
-
-            if (!profileOption.IsSome)
-            {
-                return Result<Option<AccountProfileInfo>, AccountFailure>.Ok(Option<AccountProfileInfo>.None);
-            }
-
-            AccountProfileEntity profile = profileOption.Value!;
-
-            AccountProfileInfo profileInfo = new AccountProfileInfo(
-                profile.UniqueId,
-                profile.AccountId,
-                profile.ProfileName,
-                profile.DisplayName
-            );
-
-            return Result<Option<AccountProfileInfo>, AccountFailure>.Ok(Option<AccountProfileInfo>.Some(profileInfo));
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Failed to get account profile by mobile number: {MobileNumber}", cmd.MobileNumber);
-            return Result<Option<AccountProfileInfo>, AccountFailure>.Err(
-                AccountFailure.QueryFailed(ex));
         }
     }
 
