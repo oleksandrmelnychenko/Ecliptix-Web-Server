@@ -1,12 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# 
+#
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ecliptix.Core", "Ecliptix.Core\Ecliptix.Core.csproj", "{AC145AD6-BCCF-4DD2-A99B-A190744431B5}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{E9747EDF-1B3E-4516-9D2B-BCBDEBA05957}"
-	ProjectSection(SolutionItems) = preProject
-		# compose.yaml = compose.yaml
-	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Scripts", "Scripts", "{F2A8B5C3-9E7D-4C1F-B8A6-3D2E5F7A9B1C}"
 	ProjectSection(SolutionItems) = preProject
@@ -61,5 +56,12 @@ Global
 		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9CB505C2-0F54-4E3C-971F-142CD067FC0F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9CB505C2-0F54-4E3C-971F-142CD067FC0F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9CB505C2-0F54-4E3C-971F-142CD067FC0F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9CB505C2-0F54-4E3C-971F-142CD067FC0F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{9CB505C2-0F54-4E3C-971F-142CD067FC0F} = {9CA0B587-931F-4BCE-870E-CFCEAB8990CF}
 	EndGlobalSection
 EndGlobal

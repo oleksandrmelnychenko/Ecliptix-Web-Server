@@ -55,10 +55,10 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
         builder.ToTable(t => t.HasCheckConstraint("CHK_Accounts_Default_Active",
             "(IsDefaultAccount = 0) OR (Status != 2)"));
 
-        Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
-            builder.HasIndex(e => e.MembershipId)
-                .HasFilter("IsDeleted = 0 AND Status = 1"),
-            e => new { e.UniqueId, e.AccountType, e.IsDefaultAccount })
+
+        builder.HasIndex(e => e.MembershipId)
+            .HasFilter("IsDeleted = 0 AND Status = 1")
+            .IncludeProperties(e => new { e.UniqueId, e.AccountType, e.AccountName, e.IsDefaultAccount })
             .HasDatabaseName("IX_Accounts_Membership_Active_Covering");
 
         builder.HasOne(e => e.Membership)

@@ -17,8 +17,8 @@ namespace Ecliptix.Core.Configuration.Settings
 
         public sealed class ClusterSettings
         {
-            public string[] Roles { get; set; } = Array.Empty<string>();
-            public string[] SeedNodes { get; set; } = Array.Empty<string>();
+            public string[] Roles { get; set; } = [];
+            public string[] SeedNodes { get; set; } = [];
         }
 
         public sealed class AkkaManagementSettings

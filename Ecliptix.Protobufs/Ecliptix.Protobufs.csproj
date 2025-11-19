@@ -46,6 +46,10 @@
 
     <!-- Account proto files -->
     <Protobuf Include="Protobuf\account\account.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    
+    <!-- Friend proto files -->
+    <Protobuf Include="Protobuf\friend\friendlist.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    
   </ItemGroup>
 
 </Project>

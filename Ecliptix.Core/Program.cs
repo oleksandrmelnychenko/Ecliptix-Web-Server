@@ -4,10 +4,10 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Akka;
 using Akka.Actor;
-using Akka.Configuration;
 using Ecliptix.Core;
 using Ecliptix.Core.Api.Grpc.Services.Authentication;
 using Ecliptix.Core.Api.Grpc.Services.Device;
+using Ecliptix.Core.Api.Grpc.Services.Friend;
 using Ecliptix.Core.Api.Grpc.Services.Membership;
 using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Configuration.Settings;
@@ -251,6 +251,7 @@ static void ConfigureEndpoints(WebApplication app)
     app.MapGrpcService<DeviceService>();
     app.MapGrpcService<VerificationFlowServices>();
     app.MapGrpcService<MembershipServices>();
+    app.MapGrpcService<FriendServices>();
 
     app.MapHealthChecks(AppConstants.Endpoints.Health);
 

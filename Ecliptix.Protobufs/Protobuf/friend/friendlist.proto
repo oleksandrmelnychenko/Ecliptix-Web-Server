@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package ecliptix.friend.v1;
+option csharp_namespace = "Ecliptix.Protobuf.Friend";
+
+import "google/protobuf/timestamp.proto";
+import "common/secure_envelope.proto";
+
+message Friend {
+  bytes membership_id = 1;
+  string display_name = 2;
+  string avatar_url = 3;
+  google.protobuf.Timestamp since = 4;
+}
+
+message SendFriendRequestRequest {
+  bytes from_membership = 1;
+  bytes to_membership = 2;
+  string message = 3;
+}
+
+message SendFriendRequestResponse {
+  enum Result {
+    SUCCEEDED = 0;
+    ALREADY_REQUESTED = 1;
+    ALREADY_FRIENDS = 2;
+    BLOCKED = 3;
+    FAILED = 4;
+  }
+  Result result = 1;
+  string message = 2;
+}
+
+message AcceptFriendRequestRequest {
+  bytes by_membership = 1;
+  bytes from_membership = 2;
+}
+
+message GenericResponse {
+  bool ok = 1;
+  string message = 2;
+}
+
+message ListFriendsRequest {
+  bytes membership = 1;
+  int32 limit = 2;
+  string cursor = 3;
+}
+
+message ListFriendsResponse {
+  repeated Friend friends = 1;
+  string next_cursor = 2;
+}
+
+message CancelFriendRequestRequest {
+  bytes by_membership = 1;
+  bytes to_membership = 2;
+}
+
+message RejectFriendRequestRequest {
+  bytes by_membership = 1;
+  bytes from_membership = 2;
+}
+
+message RemoveFriendRequest {
+  bytes by_membership = 1;
+  bytes friend_membership = 2;
+}
+
+message BlockUserRequest {
+  bytes by_membership = 1;
+  bytes target_membership = 2;
+}
+
+message UnblockUserRequest {
+  bytes by_membership = 1;
+  bytes target_membership = 2;
+}
+
+enum RequestDirection {
+  INCOMING = 0;
+  OUTGOING = 1;
+}
+
+message ListPendingRequestsRequest {
+  bytes membership = 1;
+  RequestDirection direction = 2;
+  int32 limit = 3;
+  string cursor = 4;
+}
+
+message PendingRequest {
+  bytes membership_id = 1;
+  string display_name = 2;
+  string avatar_url = 3;
+  google.protobuf.Timestamp requested_at = 4;
+  string message = 5;
+}
+
+message ListPendingRequestsResponse {
+  repeated PendingRequest requests = 1;
+  string next_cursor = 2;
+}
+
+enum FriendshipStatus {
+  NONE = 0;
+  PENDING_OUTGOING = 1;
+  PENDING_INCOMING = 2;
+  ACCEPTED = 3;
+  BLOCKED = 4;
+  BLOCKED_BY = 5;
+  REJECTED = 6;
+}
+
+message GetFriendshipStatusRequest {
+  bytes from_membership = 1;
+  bytes to_membership = 2;
+}
+
+message GetFriendshipStatusResponse {
+  FriendshipStatus status = 1;
+  google.protobuf.Timestamp since = 2;
+}
+
+service FriendService {
+  rpc SendFriendRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc AcceptFriendRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc ListFriends(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc CancelFriendRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc RejectFriendRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc RemoveFriend(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc BlockUser(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc UnblockUser(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc ListPendingRequests(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+  rpc GetFriendshipStatus(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+}
