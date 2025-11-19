@@ -43,6 +43,52 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         ReceivePersistorCommand<GetDefaultAccountIdEvent, Option<Guid>>(
             GetDefaultAccountIdAsync,
             "GetDefaultAccountId");
+
+        ReceivePersistorCommand<GetAccountProfileActorEvent, Option<AccountProfileInfo>>(
+            GetAccountProfileAsync, "GetAccountProfile");
+
+    }
+
+    private static async Task<Result<Option<AccountProfileInfo>, AccountFailure>> GetAccountProfileAsync(
+        EcliptixSchemaContext ctx, GetAccountProfileActorEvent cmd, CancellationToken cancellationToken)
+    {
+        try
+        {
+            Option<AccountProfileEntity> profileOpt = Option<AccountProfileEntity>.None;
+
+            switch (cmd.Criteria)
+            {
+                case SearchByMobile mobileCriteria:
+                    profileOpt = await AccountProfileQueries.GetPrimaryAccountProfileByMobileNumber(
+                        ctx, mobileCriteria.MobileNumber, cmd.CurrentAccountId);
+                    break;
+
+                case SearchById idCriteria:
+                    profileOpt = await AccountProfileQueries.GetByAccountId(ctx, idCriteria.AccountId);
+                    break;
+            }
+
+            if (!profileOpt.IsSome)
+            {
+                return Result<Option<AccountProfileInfo>, AccountFailure>.Ok(Option<AccountProfileInfo>.None);
+            }
+
+            AccountProfileEntity entity = profileOpt.Value!;
+
+
+            AccountProfileInfo profileInfo = new (
+                entity.UniqueId,
+                entity.AccountId,
+                entity.ProfileName,
+                entity.DisplayName
+            );
+
+            return Result<Option<AccountProfileInfo>, AccountFailure>.Ok(Option<AccountProfileInfo>.Some(profileInfo));
+        }
+        catch (Exception ex)
+        {
+            return Result<Option<AccountProfileInfo>, AccountFailure>.Err(AccountFailure.QueryFailed(ex));
+        }
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
@@ -174,12 +220,25 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
             {
                 MembershipId = cmd.MembershipId,
                 AccountType = Protobuf.Account.AccountType.Personal,
-                AccountName = "Personal",
                 Status = Protobuf.Account.AccountStatus.Active,
                 IsDefaultAccount = true
             };
 
             ctx.Accounts.Add(personalAccount);
+
+            await ctx.SaveChangesAsync(cancellationToken);
+
+            AccountProfileEntity accountProfile = new()
+            {
+                AccountId = personalAccount.UniqueId,
+
+                ProfileName = $"profile_{personalAccount.UniqueId.ToString().Replace("-", "").Substring(0, 16)}",
+
+                DisplayName = $"Account {personalAccount.UniqueId}",
+            };
+
+            ctx.AccountProfiles.Add(accountProfile);
+
             await ctx.SaveChangesAsync(cancellationToken);
 
             List<AccountInfo> accounts =
@@ -188,7 +247,6 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
                     personalAccount.UniqueId,
                     cmd.MembershipId,
                     Protobuf.Account.AccountType.Personal,
-                    "Personal",
                     true,
                     Protobuf.Account.AccountStatus.Active)
             ];

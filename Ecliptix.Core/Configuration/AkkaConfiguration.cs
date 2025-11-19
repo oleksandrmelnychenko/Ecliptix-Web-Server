@@ -124,10 +124,14 @@ internal static class AkkaConfiguration
                             }}
                             recovery {{
                                 replay-filter {{
-                                    mode = repair-by-discard-old
+                                    # Changed from 'repair-by-discard-old' to 'warn' to prevent silent event discarding
+                                    # 'warn' mode will log warnings about potential issues but recover all events
+                                    # This prevents the issue where event #11 was silently discarded during recovery
+                                    mode = warn
                                     window-size = 100
                                     max-old-writers = 10
-                                    debug = false
+                                    # Enable debug to see detailed recovery information
+                                    debug = true
                                 }}
                             }}
                         }}

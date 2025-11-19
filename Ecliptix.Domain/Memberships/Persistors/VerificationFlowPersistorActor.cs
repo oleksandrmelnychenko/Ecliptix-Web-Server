@@ -211,6 +211,40 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             await HandleLingeringActiveFlowAsync(schemeContext, cmd, cancellationToken);
 
+            // Silent cleanup: expire any existing flow with the same ConnectionId
+            VerificationFlowEntity? existingByConnectionId = await schemeContext.VerificationFlows
+                .Where(vf => vf.ConnectionId == cmd.ConnectId
+                    && vf.Status == VerificationFlowStatus.Pending
+                    && !vf.IsDeleted)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (existingByConnectionId != null)
+            {
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+
+                await schemeContext.VerificationFlows
+                    .Where(vf => vf.Id == existingByConnectionId.Id)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(vf => vf.Status, VerificationFlowStatus.Expired)
+                        .SetProperty(vf => vf.ConnectionId, (long?)null)
+                        .SetProperty(vf => vf.ExpiresAt, now)
+                        .SetProperty(vf => vf.UpdatedAt, now),
+                        cancellationToken);
+
+                await schemeContext.OtpCodes
+                    .Where(o => o.VerificationFlowId == existingByConnectionId.Id
+                        && o.Status == OtpStatus.Active
+                        && !o.IsDeleted)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(o => o.Status, OtpStatus.Expired)
+                        .SetProperty(o => o.UpdatedAt, now),
+                        cancellationToken);
+
+                Log.Debug(
+                    "[verification.flow.persistor.connection-id-cleanup] Silently expired flow {FlowId} with ConnectionId {ConnectionId}",
+                    existingByConnectionId.UniqueId, cmd.ConnectId);
+            }
+
             if (cmd.Purpose == VerificationPurpose.SecureKeyRecovery)
             {
                 Option<VerificationFlowFailure> recoveryRuleResult = await HandlePasswordRecoveryRulesAsync(
@@ -559,19 +593,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             if (cmd.Status == OtpStatus.Used)
             {
                 otp.VerifiedAt = utcNow;
-            }
-
-            if (cmd.Status == OtpStatus.Expired)
-            {
-                int cooldownSeconds = _securityConfig.CurrentValue.VerificationFlow.ResendCooldownBufferSeconds;
-                DateTimeOffset resendAvailableAt = utcNow.AddSeconds(cooldownSeconds);
-
-                await schemeContext.VerificationFlows
-                    .Where(vf => vf.Id == otp.VerificationFlowId && !vf.IsDeleted)
-                    .ExecuteUpdateAsync(setters => setters
-                            .SetProperty(vf => vf.ResendAvailableAt, resendAvailableAt)
-                            .SetProperty(vf => vf.UpdatedAt, utcNow),
-                        cancellationToken);
             }
 
             await schemeContext.SaveChangesAsync(cancellationToken);
@@ -1110,12 +1131,15 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             schemeContext.OtpCodes.Add(otp);
 
             DateTimeOffset now = DateTimeOffset.UtcNow;
+            int resendCooldownSeconds = _securityConfig.CurrentValue.VerificationFlow.ResendCooldownBufferSeconds;
+            DateTimeOffset resendAvailableAt = now.AddSeconds(resendCooldownSeconds);
+
             await schemeContext.VerificationFlows
                 .Where(f => f.Id == flow.Id)
                 .ExecuteUpdateAsync(setters => setters
                         .SetProperty(f => f.OtpCount, f => f.OtpCount + 1)
                         .SetProperty(f => f.LastOtpSentAt, now)
-                        .SetProperty(f => f.ResendAvailableAt, (DateTimeOffset?)null)
+                        .SetProperty(f => f.ResendAvailableAt, resendAvailableAt)
                         .SetProperty(f => f.UpdatedAt, now),
                     cancellationToken);
 

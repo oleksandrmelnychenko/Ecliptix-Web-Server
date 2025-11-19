@@ -15,6 +15,7 @@ using Ecliptix.Domain.Memberships.ActorEvents.Membership;
 using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
+using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.WorkerActors.Membership;
 using Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow;
 using Ecliptix.Domain.Schema.Entities;
@@ -22,6 +23,7 @@ using Ecliptix.Domain.Services.Security;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Protobuf.Account;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Ecliptix.Utilities.Failures;
@@ -37,6 +39,7 @@ using OprfRegistrationCompleteRequest = Ecliptix.Protobuf.Membership.OpaqueRegis
 using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
 using OprfRegistrationInitRequest = Ecliptix.Protobuf.Membership.OpaqueRegistrationInitRequest;
 using OprfRegistrationInitResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationInitResponse;
+using Status = Grpc.Core.Status;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Membership;
 
@@ -872,5 +875,54 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                 });
 
         return response;
+    }
+
+    public override async Task<SecureEnvelope> GetAccountProfile(SecureEnvelope request, ServerCallContext context)
+    {
+        return await _service.ExecuteEncryptedOperationAsync<GetAccountProfileRequest, GetAccountProfileResponse>(
+            request,
+            context,
+            async (message, _, _, cancellationToken) =>
+            {
+                Guid currentAccountId = Helpers.FromByteStringToGuid(message.CurrentAccountId);
+
+                ProfileSearchCriteria criteria = message.SearchCriteriaCase switch
+                {
+                    GetAccountProfileRequest.SearchCriteriaOneofCase.ByMobileNumber =>
+                        new SearchByMobile(message.ByMobileNumber),
+
+                    GetAccountProfileRequest.SearchCriteriaOneofCase.ByAccountId =>
+                        new SearchById(Helpers.FromByteStringToGuid(message.ByAccountId)),
+
+                    _ => throw new RpcException(new Status(StatusCode.InvalidArgument, "Search criteria not specified"))
+                };
+
+                GetAccountProfileActorEvent actorEvent = new(currentAccountId, criteria, cancellationToken);
+
+                Task<GetAccountProfileResult> task = _membershipActor.Ask<GetAccountProfileResult>(actorEvent, TimeoutConfiguration.Actor.AskTimeout);
+                GetAccountProfileResult actorResult = await task.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                if (actorResult.Result.IsErr)
+                {
+                    return Result<GetAccountProfileResponse, FailureBase>.Err(actorResult.Result.UnwrapErr());
+                }
+
+                Option<AccountProfileInfo> profileInfoOpt = actorResult.Result.Unwrap();
+
+                GetAccountProfileResponse response = new();
+
+                if (profileInfoOpt.IsSome)
+                {
+                    AccountProfileInfo profileInfo = profileInfoOpt.Value!;
+                    response.Profile = new AccountProfile
+                    {
+                        ProfileId = Helpers.GuidToByteString(profileInfo.ProfileId),
+                        AccountId = Helpers.GuidToByteString(profileInfo.AccountId),
+                        ProfileName = profileInfo.ProfileName,
+                        DisplayName = profileInfo.DisplayName
+                    };
+                }
+                return Result<GetAccountProfileResponse, FailureBase>.Ok(response);
+            });
     }
 }

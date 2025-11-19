@@ -98,6 +98,7 @@ public sealed class MembershipActor : ReceivePersistentActor
         CommandAsync<OprfInitRecoverySecureKeyEvent>(HandleInitRecoveryRequestEvent);
         CommandAsync<OprfCompleteRecoverySecureKeyEvent>(HandleCompleteRecoverySecureKeyEvent);
         CommandAsync<GetMembershipByVerificationFlowEvent>(HandleGetMembershipByVerificationFlow);
+        CommandAsync<GetAccountProfileActorEvent>(HandleGetAccountProfile);
 
         Command<SaveSnapshotSuccess>(_ =>
             Log.Info("[MEMBERSHIP-SNAPSHOT] ✅ Snapshot saved successfully at sequence {0}", LastSequenceNr));
@@ -243,6 +244,67 @@ public sealed class MembershipActor : ReceivePersistentActor
         base.PostStop();
     }
 
+    private async Task HandleGetAccountProfile(GetAccountProfileActorEvent @event)
+    {
+        IActorRef replyTo = Sender;
+
+        GetAccountProfileActorEvent persistorEvent = new (@event.CurrentAccountId, @event.Criteria, @event.CancellationToken);
+
+        Result<Option<AccountProfileInfo>, AccountFailure> persistorResult = await _accountPersistor
+            .Ask<Result<Option<AccountProfileInfo>, AccountFailure>>(
+                persistorEvent,
+                @event.CancellationToken);
+
+        Result<Option<AccountProfileInfo>, FailureBase> finalResult = persistorResult.Match<Result<Option<AccountProfileInfo>, FailureBase>>(
+            ok => Result<Option<AccountProfileInfo>, FailureBase>.Ok(ok),
+            err => Result<Option<AccountProfileInfo>, FailureBase>.Err(err)
+        );
+
+        replyTo.Tell(new GetAccountProfileResult(finalResult));
+    }
+
+    // private async Task HandleGetAccountProfileById(GetAccountProfileEvent @event)
+    // {
+    //     IActorRef replyTo = Sender;
+    //
+    //     GetAccountProfileEvent persistorEvent = new (@event.AccountId, @event.CancellationToken);
+    //
+    //     Result<Option<AccountProfileInfo>, AccountFailure> persistorResult = await _accountPersistor
+    //         .Ask<Result<Option<AccountProfileInfo>, AccountFailure>>(
+    //             persistorEvent,
+    //             @event.CancellationToken);
+    //
+    //     Result<Option<AccountProfileInfo>, FailureBase> finalResult = persistorResult.Match<Result<Option<AccountProfileInfo>, FailureBase>>(
+    //         ok => Result<Option<AccountProfileInfo>, FailureBase>.Ok(ok),
+    //         err => Result<Option<AccountProfileInfo>, FailureBase>.Err(err)
+    //     );
+    //
+    //     replyTo.Tell(new GetAccountProfileByIdResult(finalResult));
+    // }
+    //
+    // private async Task HandleGetAccountProfileByMobile(GetAccountProfileInfoByMobileEvent @event)
+    // {
+    //     IActorRef replyTo = Sender;
+    //
+    //     GetAccountProfileInfoByMobileEvent persistorEvent = new GetAccountProfileInfoByMobileEvent(
+    //         @event.MobileNumber,
+    //         @event.CurrentAccountId,
+    //         @event.CancellationToken
+    //     );
+    //
+    //     Result<Option<AccountProfileInfo>, AccountFailure> persistorResult = await _accountPersistor
+    //         .Ask<Result<Option<AccountProfileInfo>, AccountFailure>>(
+    //             persistorEvent,
+    //             @event.CancellationToken);
+    //
+    //     Result<Option<AccountProfileInfo>, FailureBase> finalResult = persistorResult.Match<Result<Option<AccountProfileInfo>, FailureBase>>(
+    //         ok => Result<Option<AccountProfileInfo>, FailureBase>.Ok(ok),
+    //         err => Result<Option<AccountProfileInfo>, FailureBase>.Err(err)
+    //     );
+    //
+    //     replyTo.Tell(new GetAccountProfileInfoByMobileResult(finalResult));
+    // }
+
     private async Task HandleCompleteRegistrationRecord(CompleteRegistrationRecordActorEvent @event)
     {
         IActorRef replyTo = Sender;
@@ -343,7 +405,6 @@ public sealed class MembershipActor : ReceivePersistentActor
                 UniqueIdentifier = Helpers.GuidToByteString(a.AccountId),
                 MembershipIdentifier = Helpers.GuidToByteString(a.MembershipId),
                 AccountType = a.Type,
-                AccountName = a.Name,
                 Status = a.Status,
                 IsDefaultAccount = a.IsDefault
             });
@@ -599,7 +660,8 @@ public sealed class MembershipActor : ReceivePersistentActor
             "[PASSWORD-RECOVERY-INIT] OPRF generated for membership {0}. Credentials stored in pending state (persisted).",
             @event.MembershipIdentifier);
 
-        PersistAsync(
+        // Use Persist instead of PersistAsync to prevent race conditions during password recovery
+        Persist(
             new RecoverySessionStartedEvent(
                 @event.MembershipIdentifier,
                 maskingKeyCopy,
@@ -634,7 +696,8 @@ public sealed class MembershipActor : ReceivePersistentActor
         Log.Info("[MEMBERSHIP-PERSIST] Persisting RegistrationMaskingKeyStoredEvent for MembershipId: {0}. Current LastSequenceNr: {1}",
             @event.MembershipIdentifier, LastSequenceNr);
 
-        PersistAsync(
+        // Use Persist instead of PersistAsync to prevent race conditions during concurrent registrations
+        Persist(
             new RegistrationMaskingKeyStoredEvent(@event.MembershipIdentifier, maskingKey),
             evt =>
             {
@@ -733,7 +796,9 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         List<AccountInfo> accountsCopy = record.AvailableAccounts.Select(CloneAccountInfo).ToList();
 
-        PersistAsync(
+        // Use Persist instead of PersistAsync to prevent race conditions when same account
+        // signs in from multiple devices simultaneously
+        Persist(
             new PendingSignInStoredEvent(
                 @event.ConnectId,
                 record.UniqueIdentifier,
@@ -831,7 +896,6 @@ public sealed class MembershipActor : ReceivePersistentActor
                     UniqueIdentifier = Helpers.GuidToByteString(a.AccountId),
                     MembershipIdentifier = Helpers.GuidToByteString(a.MembershipId),
                     AccountType = a.Type,
-                    AccountName = a.Name,
                     Status = a.Status,
                     IsDefaultAccount = a.IsDefault
                 }).ToList();
@@ -1109,7 +1173,6 @@ public sealed class MembershipActor : ReceivePersistentActor
             source.AccountId,
             source.MembershipId,
             source.Type,
-            source.Name,
             source.IsDefault,
             source.Status);
     }

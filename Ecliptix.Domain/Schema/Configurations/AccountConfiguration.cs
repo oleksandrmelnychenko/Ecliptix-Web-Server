@@ -18,10 +18,6 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
         builder.Property(e => e.AccountType)
             .IsRequired();
 
-        builder.Property(e => e.AccountName)
-            .IsRequired()
-            .HasMaxLength(200);
-
         builder.Property(e => e.Status)
             .IsRequired();
 
@@ -58,6 +54,7 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_Accounts_Default_Active",
             "(IsDefaultAccount = 0) OR (Status != 2)"));
+
 
         builder.HasIndex(e => e.MembershipId)
             .HasFilter("IsDeleted = 0 AND Status = 1")

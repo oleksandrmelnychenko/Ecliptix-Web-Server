@@ -22,7 +22,6 @@ public static class AccountQueries
                 a.UniqueId,
                 a.MembershipId,
                 a.AccountType,
-                a.AccountName,
                 a.IsDefaultAccount,
                 a.Status))
             .ToListAsync(cancellationToken);

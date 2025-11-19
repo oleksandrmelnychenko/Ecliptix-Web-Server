@@ -4,6 +4,7 @@ using Ecliptix.Domain.Schema;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Ecliptix.Domain.Migrations
 {
     [DbContext(typeof(EcliptixSchemaContext))]
-    partial class EcliptixSchemaContextModelSnapshot : ModelSnapshot
+    [Migration("20251117101727_AddUserEntity")]
+    partial class AddUserEntity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -29,6 +32,11 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("bigint");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AccountName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<int>("AccountType")
                         .HasColumnType("int");
@@ -100,7 +108,7 @@ namespace Ecliptix.Domain.Migrations
                         .HasDatabaseName("IX_Accounts_Membership_Active_Covering")
                         .HasFilter("IsDeleted = 0 AND Status = 1");
 
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("MembershipId"), new[] { "UniqueId", "AccountType", "IsDefaultAccount" });
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("MembershipId"), new[] { "UniqueId", "AccountType", "AccountName", "IsDefaultAccount" });
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Accounts_Status")
@@ -244,84 +252,6 @@ namespace Ecliptix.Domain.Migrations
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("AccountId", "DeviceId"), new[] { "UniqueId", "SecureKey", "MaskingKey", "CredentialsVersion", "IsDeviceSpecific" });
 
                     b.ToTable("AccountPinAuth", (string)null);
-                });
-
-            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.AccountProfileEntity", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetimeoffset")
-                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<bool>("IsDeleted")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<string>("ProfileName")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
-                    b.Property<Guid>("UniqueId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier")
-                        .HasDefaultValueSql("NEWID()");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetimeoffset")
-                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_AccountProfiles_AccountId_Unique")
-                        .HasFilter("IsDeleted = 0");
-
-                    b.HasIndex("CreatedAt")
-                        .IsDescending()
-                        .HasDatabaseName("IX_AccountProfileEntity_CreatedAt")
-                        .HasFilter("IsDeleted = 0");
-
-                    b.HasIndex("ProfileName")
-                        .IsUnique()
-                        .HasDatabaseName("IX_AccountProfiles_ProfileName_Covering")
-                        .HasFilter("IsDeleted = 0");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("ProfileName"), new[] { "AccountId", "DisplayName" });
-
-                    b.HasIndex("UniqueId")
-                        .IsUnique()
-                        .HasDatabaseName("UQ_AccountProfileEntity_UniqueId");
-
-                    b.HasIndex("UpdatedAt")
-                        .IsDescending()
-                        .HasDatabaseName("IX_AccountProfileEntity_UpdatedAt")
-                        .HasFilter("IsDeleted = 0");
-
-                    b.ToTable("AccountProfiles", (string)null);
                 });
 
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.AccountSecureKeyAuthEntity", b =>
@@ -1290,6 +1220,82 @@ namespace Ecliptix.Domain.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.UserEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("UniqueId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetimeoffset")
+                        .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_Users_AccountId_Active")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_UserEntity_CreatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("UniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_UserEntity_UniqueId");
+
+                    b.HasIndex("UpdatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("IX_UserEntity_UpdatedAt")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.HasIndex("UserName")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_Users_UserName_Active")
+                        .HasFilter("IsDeleted = 0");
+
+                    b.ToTable("Users", (string)null);
+                });
+
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.VerificationFlowEntity", b =>
                 {
                     b.Property<long>("Id")
@@ -1551,19 +1557,6 @@ namespace Ecliptix.Domain.Migrations
                     b.Navigation("Device");
                 });
 
-            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.AccountProfileEntity", b =>
-                {
-                    b.HasOne("Ecliptix.Domain.Schema.Entities.AccountEntity", "Account")
-                        .WithOne("Profile")
-                        .HasForeignKey("Ecliptix.Domain.Schema.Entities.AccountProfileEntity", "AccountId")
-                        .HasPrincipalKey("Ecliptix.Domain.Schema.Entities.AccountEntity", "UniqueId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("FK_AccountProfiles_Accounts");
-
-                    b.Navigation("Account");
-                });
-
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.AccountSecureKeyAuthEntity", b =>
                 {
                     b.HasOne("Ecliptix.Domain.Schema.Entities.AccountEntity", "Account")
@@ -1734,6 +1727,19 @@ namespace Ecliptix.Domain.Migrations
                     b.Navigation("VerificationFlow");
                 });
 
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.UserEntity", b =>
+                {
+                    b.HasOne("Ecliptix.Domain.Schema.Entities.AccountEntity", "Account")
+                        .WithOne("User")
+                        .HasForeignKey("Ecliptix.Domain.Schema.Entities.UserEntity", "AccountId")
+                        .HasPrincipalKey("Ecliptix.Domain.Schema.Entities.AccountEntity", "UniqueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_Users_Accounts");
+
+                    b.Navigation("Account");
+                });
+
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.VerificationFlowEntity", b =>
                 {
                     b.HasOne("Ecliptix.Domain.Schema.Entities.DeviceEntity", "AppDevice")
@@ -1807,10 +1813,10 @@ namespace Ecliptix.Domain.Migrations
 
                     b.Navigation("PinAuths");
 
-                    b.Navigation("Profile")
-                        .IsRequired();
-
                     b.Navigation("SecureKeyAuths");
+
+                    b.Navigation("User")
+                        .IsRequired();
 
                     b.Navigation("VerificationLogs");
                 });

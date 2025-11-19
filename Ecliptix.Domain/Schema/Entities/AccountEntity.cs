@@ -7,7 +7,6 @@ public class AccountEntity : EntityBase
     public Guid MembershipId { get; set; }
 
     public AccountType AccountType { get; set; } = AccountType.Personal;
-    public string AccountName { get; set; } = string.Empty;
     public AccountStatus Status { get; set; } = AccountStatus.Inactive;
     public bool IsDefaultAccount { get; set; } = false;
     public string? PreferredLanguage { get; set; }
@@ -17,6 +16,7 @@ public class AccountEntity : EntityBase
 
     public DateTimeOffset? LastAccessedAt { get; set; }
 
+    public virtual AccountProfileEntity Profile { get; set; } = null!;
     public virtual MembershipEntity Membership { get; set; } = null!;
     public virtual ICollection<LoginAttemptEntity> LoginAttempts { get; set; } = new List<LoginAttemptEntity>();
     public virtual ICollection<LogoutAuditEntity> LogoutAudits { get; set; } = new List<LogoutAuditEntity>();

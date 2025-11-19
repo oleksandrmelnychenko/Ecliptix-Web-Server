@@ -71,9 +71,8 @@ internal sealed class SecurityMiddleware(RequestDelegate next)
 
         foreach (KeyValuePair<string, StringValues> header in headers)
         {
-            if (header.Value.Any(v => v != null && v.Length > SecurityConstants.Limits.MaxHeaderLengthBytes))
+            if (header.Value.Any(v => v is { Length: > SecurityConstants.Limits.MaxHeaderLengthBytes }))
             {
-
                 return false;
             }
 

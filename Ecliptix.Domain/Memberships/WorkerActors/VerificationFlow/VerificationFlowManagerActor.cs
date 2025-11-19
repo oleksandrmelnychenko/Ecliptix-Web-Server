@@ -80,16 +80,35 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
             return;
         }
 
+        bool cleanupSucceeded = true;
+
         if (actorToCleanup != null)
         {
             Log.Information("[verification.flow.manager.cleanup] Cleaning up invalid idempotent flow. ConnectId {ConnectId}", actorEvent.ConnectId);
-            await TerminateFlowActorAsync(actorToCleanup, actorEvent.IdempotencyKey, actorEvent.CancellationToken);
+            cleanupSucceeded = await TerminateFlowActorAsync(actorToCleanup, actorEvent.IdempotencyKey, actorEvent.CancellationToken);
         }
 
         if (!existingActor.IsNobody() && (actorToCleanup == null || !existingActor!.Equals(actorToCleanup)))
         {
             Log.Information("[verification.flow.manager.cleanup] Cleaning up existing (non-idempotent) flow. ConnectId {ConnectId}", actorEvent.ConnectId);
-            await TerminateFlowActorAsync(existingActor!, Option<string>.None, actorEvent.CancellationToken);
+            bool existingCleanupSucceeded = await TerminateFlowActorAsync(existingActor!, Option<string>.None, actorEvent.CancellationToken);
+            cleanupSucceeded = cleanupSucceeded && existingCleanupSucceeded;
+        }
+
+        // Defensive check: ensure actor is truly removed before spawning
+        IActorRef? stillExists = Context.Child(baseActorName);
+        if (!stillExists.IsNobody())
+        {
+            Log.Warning(
+                "[verification.flow.manager.spawn-blocked] Actor {ActorName} still exists after cleanup, cannot create new flow. ConnectId {ConnectId}",
+                baseActorName, actorEvent.ConnectId);
+
+            Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
+                new VerificationFlowFailure(
+                    VerificationFlowFailureType.Generic,
+                    VerificationFlowMessageKeys.InitiateFlowFailed
+                )));
+            return;
         }
 
         IActorRef newFlowActor = SpawnNewFlowActor(actorEvent, baseActorName);
@@ -176,11 +195,13 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         return (false, trackedActor);
     }
 
-    private async Task TerminateFlowActorAsync(
+    private async Task<bool> TerminateFlowActorAsync(
         IActorRef actorToStop,
         Option<string> idempotencyKey,
         CancellationToken cancellationToken)
     {
+        string actorName = actorToStop.Path.Name;
+
         _flowWriters.Remove(actorToStop, out _);
         Context.Unwatch(actorToStop);
         if (idempotencyKey.IsSome)
@@ -194,6 +215,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                 _securityConfig.CurrentValue.VerificationFlow.ChannelWriteTimeoutSeconds +
                 _securityConfig.CurrentValue.VerificationFlow.OtpExpirationSeconds));
 
+        bool gracefulStopSucceeded = false;
         try
         {
             Task<bool> gracefulStop = actorToStop.GracefulStop(
@@ -202,27 +224,89 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
 
             if (cancellationToken.CanBeCanceled)
             {
-                await gracefulStop.WaitAsync(cancellationToken);
+                gracefulStopSucceeded = await gracefulStop.WaitAsync(cancellationToken);
             }
             else
             {
-                await gracefulStop;
+                gracefulStopSucceeded = await gracefulStop;
+            }
+
+            if (gracefulStopSucceeded)
+            {
+                Log.Information("[verification.flow.manager.graceful-stop] Successfully stopped {ActorName}",
+                    actorName);
             }
         }
-        catch (OperationCanceledException ex)
+        catch (OperationCanceledException)
         {
-            Log.Debug(ex,
-                "[verification.flow.manager.force-stop] Cancellation while waiting for termination of {ActorPath}",
-                actorToStop.Path);
-            Context.Stop(actorToStop);
+            Log.Debug(
+                "[verification.flow.manager.force-stop] Cancellation while waiting for termination of {ActorName}, using PoisonPill",
+                actorName);
+            actorToStop.Tell(PoisonPill.Instance);
         }
         catch (Exception ex)
         {
             Log.Warning(ex,
-                "[verification.flow.manager.force-stop] Failed to gracefully stop flow actor {ActorPath}",
-                actorToStop.Path);
-            Context.Stop(actorToStop);
+                "[verification.flow.manager.force-stop] Graceful stop failed for {ActorName}, using PoisonPill",
+                actorName);
+            actorToStop.Tell(PoisonPill.Instance);
         }
+
+        if (!gracefulStopSucceeded)
+        {
+            TimeSpan waitTimeout = TimeSpan.FromSeconds(5);
+            bool removed = await WaitForActorRemovalAsync(actorName, waitTimeout, cancellationToken);
+
+            if (removed)
+            {
+                Log.Information("[verification.flow.manager.force-stop-success] {ActorName} removed after PoisonPill",
+                    actorName);
+            }
+
+            return removed;
+        }
+
+        return true;
+    }
+
+    private async Task<bool> WaitForActorRemovalAsync(
+        string actorName,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+        const int pollIntervalMs = 50;
+
+        while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
+        {
+            if (Context.Child(actorName).IsNobody())
+            {
+                Log.Debug("[verification.flow.manager.actor-removed] {ActorName} successfully removed from hierarchy",
+                    actorName);
+                return true;
+            }
+
+            try
+            {
+                await Task.Delay(pollIntervalMs, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                Log.Debug("[verification.flow.manager.wait-cancelled] Wait for {ActorName} removal was cancelled",
+                    actorName);
+                return false;
+            }
+        }
+
+        bool finalCheck = Context.Child(actorName).IsNobody();
+        if (!finalCheck)
+        {
+            Log.Warning(
+                "[verification.flow.manager.removal-timeout] {ActorName} still exists after {TimeoutSeconds}s timeout",
+                actorName, timeout.TotalSeconds);
+        }
+
+        return finalCheck;
     }
 
     private IActorRef SpawnNewFlowActor(
@@ -348,11 +432,6 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         string? keyToRemove = _idempotencyToActor
             .FirstOrDefault(kvp => kvp.Value.Equals(deadActor))
             .Key;
-
-        if (keyToRemove != null)
-        {
-            _idempotencyToActor.Remove(keyToRemove);
-        }
 
         if (keyToRemove != null)
         {

@@ -1,6 +1,6 @@
 syntax = "proto3";
 import "membership/membership_core.proto";
-import "account/account_models.proto";
+import "account/account.proto";
 import "google/protobuf/timestamp.proto";
 
 package ecliptix.proto.membership;

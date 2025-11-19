@@ -1,0 +1,12 @@
+namespace Ecliptix.Domain.Schema.Entities;
+
+public class AccountProfileEntity : EntityBase
+{
+    public Guid AccountId { get; set; }
+
+    public virtual AccountEntity Account { get; set; } = null!;
+
+    public string ProfileName { get; set; } = string.Empty; // Seachable
+
+    public string DisplayName { get; set; } = string.Empty;
+}
