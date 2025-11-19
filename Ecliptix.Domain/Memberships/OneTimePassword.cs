@@ -57,6 +57,9 @@ public sealed class OneTimePassword
             () =>
             {
                 string otp = GenerateOtpCode();
+
+                Console.WriteLine("\n\n\nGenerated OTP: " + otp+"\n\n\n");
+
                 DateTimeOffset expiresAt = _utcNow().Add(_timeToLive);
 
                 (string hash, string salt) = OneTimePasswordHashing.HashOtp(otp);
