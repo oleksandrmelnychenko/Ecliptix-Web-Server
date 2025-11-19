@@ -3,6 +3,9 @@ using Akka.Actor;
 using Ecliptix.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.Domain.Memberships.ActorEvents.Friend;
 using Ecliptix.Domain.Memberships.Failures;
+using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
+using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Utilities;
@@ -26,33 +29,50 @@ public class FriendPersistorActor : PersistorBase<FriendFailure>
 
     private void Ready()
     {
-        ReceivePersistorCommand<SendFriendRequestEvent, FriendEntity>(
+        RegisterHandlers();
+    }
+
+    private void RegisterHandlers()
+    {
+        ReceivePersistorCommand<SendFriendRequestEvent, SendFriendRequestResult>(
             SendFriendRequestAsync,
             "SendFriendRequest");
 
-        ReceivePersistorCommand<AcceptFriendRequestEvent, Unit>(
+        ReceivePersistorCommand<AcceptFriendRequestEvent, ModifyFriendRelationResult>(
             AcceptFriendRequestAsync,
             "AcceptFriendRequest");
 
-        ReceivePersistorCommand<RejectFriendRequestEvent, Unit>(
+        ReceivePersistorCommand<RejectFriendRequestEvent, ModifyFriendRelationResult>(
             RejectFriendRequestAsync,
             "RejectFriendRequest");
 
-        ReceivePersistorCommand<CancelFriendRequestEvent, Unit>(
+        ReceivePersistorCommand<CancelFriendRequestEvent, ModifyFriendRelationResult>(
             CancelFriendRequestAsync,
             "CancelFriendRequest");
 
-        ReceivePersistorCommand<RemoveFriendEvent, Unit>(
+        ReceivePersistorCommand<RemoveFriendEvent, ModifyFriendRelationResult>(
             RemoveFriendAsync,
             "RemoveFriend");
 
-        ReceivePersistorCommand<ListFriendsEvent, List<FriendEntity>>(
+        ReceivePersistorCommand<ListFriendsEvent, List<FriendQueryRecord>>(
             ListFriendsAsync,
             "ListFriends");
 
-        ReceivePersistorCommand<GetFriendshipStatusEvent, FriendEntity?>(
+        ReceivePersistorCommand<GetFriendshipStatusEvent, FriendshipStatusQueryRecord>(
             GetFriendshipStatusAsync,
             "GetFriendshipStatus");
+
+        ReceivePersistorCommand<BlockUserEvent, ModifyFriendRelationResult>(
+            BlockUserAsync,
+            "BlockUser");
+
+        ReceivePersistorCommand<UnblockUserEvent, ModifyFriendRelationResult>(
+            UnblockUserAsync,
+            "UnblockUser");
+
+        ReceivePersistorCommand<ListPendingRequestsEvent, List<PendingRequestQueryRecord>>(
+            ListPendingRequestsAsync,
+            "ListPendingRequests");
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
@@ -111,47 +131,47 @@ public class FriendPersistorActor : PersistorBase<FriendFailure>
         return linkedSource.Token;
     }
 
-    private static (Guid, Guid) CanonicalPair(Guid a, Guid b)
-    {
-        return a.CompareTo(b) < 0 ? (a, b) : (b, a);
-    }
-
-    private async Task<Result<FriendEntity, FriendFailure>> SendFriendRequestAsync(
+    private async Task<Result<SendFriendRequestResult, FriendFailure>> SendFriendRequestAsync(
         EcliptixSchemaContext ctx,
         SendFriendRequestEvent evt,
         CancellationToken cancellationToken)
     {
         if (evt.FromMembershipId == evt.ToMembershipId)
         {
-            return Result<FriendEntity, FriendFailure>.Err(
+            return Result<SendFriendRequestResult, FriendFailure>.Err(
                 FriendFailure.CannotFriendYourself());
         }
 
-        (Guid ua, Guid ub) = CanonicalPair(evt.FromMembershipId, evt.ToMembershipId);
-
-        FriendEntity? existing = await ctx.FriendRelations
-            .FirstOrDefaultAsync(x => x.UserAId == ua && x.UserBId == ub && !x.IsDeleted, cancellationToken);
+        FriendEntity? existing = await FriendQueries.GetFriendRelation(
+            ctx,
+            evt.FromMembershipId,
+            evt.ToMembershipId,
+            cancellationToken);
 
         if (existing != null)
         {
             if (existing.Status == FriendRelationStatus.Accepted)
             {
-                return Result<FriendEntity, FriendFailure>.Err(
+                return Result<SendFriendRequestResult, FriendFailure>.Err(
                     FriendFailure.AlreadyFriends());
             }
 
             if (existing.Status == FriendRelationStatus.Pending)
             {
-                return Result<FriendEntity, FriendFailure>.Err(
+                return Result<SendFriendRequestResult, FriendFailure>.Err(
                     FriendFailure.AlreadyRequested());
             }
 
             if (existing.Status == FriendRelationStatus.Blocked)
             {
-                return Result<FriendEntity, FriendFailure>.Err(
+                return Result<SendFriendRequestResult, FriendFailure>.Err(
                     FriendFailure.Blocked());
             }
         }
+
+        (Guid ua, Guid ub) = evt.FromMembershipId.CompareTo(evt.ToMembershipId) < 0
+            ? (evt.FromMembershipId, evt.ToMembershipId)
+            : (evt.ToMembershipId, evt.FromMembershipId);
 
         FriendEntity relation = new()
         {
@@ -165,163 +185,332 @@ public class FriendPersistorActor : PersistorBase<FriendFailure>
         ctx.FriendRelations.Add(relation);
         await ctx.SaveChangesAsync(cancellationToken);
 
-        Log.Information("[FRIEND-REQUEST-SENT] From: {From}, To: {To}", evt.FromMembershipId, evt.ToMembershipId);
+        Log.Information("[FRIEND-REQUEST-SENT] From: {From}, To: {To}", 
+            evt.FromMembershipId, evt.ToMembershipId);
 
-        return Result<FriendEntity, FriendFailure>.Ok(relation);
+        return Result<SendFriendRequestResult, FriendFailure>.Ok(new SendFriendRequestResult
+        {
+            RelationId = relation.UniqueId,
+            Outcome = "friend_request_sent"
+        });
     }
 
-    private async Task<Result<Unit, FriendFailure>> AcceptFriendRequestAsync(
+    private async Task<Result<ModifyFriendRelationResult, FriendFailure>> AcceptFriendRequestAsync(
         EcliptixSchemaContext ctx,
         AcceptFriendRequestEvent evt,
         CancellationToken cancellationToken)
     {
-        (Guid ua, Guid ub) = CanonicalPair(evt.ByMembershipId, evt.FromMembershipId);
-
-        FriendEntity? relation = await ctx.FriendRelations
-            .FirstOrDefaultAsync(x => x.UserAId == ua && x.UserBId == ub && !x.IsDeleted, cancellationToken);
+        FriendEntity? relation = await FriendQueries.GetFriendRelation(
+            ctx,
+            evt.ByMembershipId,
+            evt.FromMembershipId,
+            cancellationToken);
 
         if (relation == null)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.FriendRequestNotFound());
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.FriendRequestNotFound());
         }
 
         if (relation.Status != FriendRelationStatus.Pending)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.RequestNotPending());
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.RequestNotPending());
         }
 
         if (relation.RequestedById == evt.ByMembershipId)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.CannotAcceptOwnRequest());
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.CannotAcceptOwnRequest());
         }
 
         relation.Status = FriendRelationStatus.Accepted;
         relation.AcceptedAt = DateTimeOffset.UtcNow;
         await ctx.SaveChangesAsync(cancellationToken);
 
-        Log.Information("[FRIEND-REQUEST-ACCEPTED] By: {By}, From: {From}", evt.ByMembershipId, evt.FromMembershipId);
+        Log.Information("[FRIEND-REQUEST-ACCEPTED] By: {By}, From: {From}", 
+            evt.ByMembershipId, evt.FromMembershipId);
 
-        return Result<Unit, FriendFailure>.Ok(Unit.Value);
+        return Result<ModifyFriendRelationResult, FriendFailure>.Ok(new ModifyFriendRelationResult
+        {
+            Outcome = "friend_request_accepted"
+        });
     }
 
-    private async Task<Result<Unit, FriendFailure>> RejectFriendRequestAsync(
+    private async Task<Result<ModifyFriendRelationResult, FriendFailure>> RejectFriendRequestAsync(
         EcliptixSchemaContext ctx,
         RejectFriendRequestEvent evt,
         CancellationToken cancellationToken)
     {
-        (Guid ua, Guid ub) = CanonicalPair(evt.ByMembershipId, evt.FromMembershipId);
-
-        FriendEntity? relation = await ctx.FriendRelations
-            .FirstOrDefaultAsync(x => x.UserAId == ua && x.UserBId == ub && !x.IsDeleted, cancellationToken);
+        FriendEntity? relation = await FriendQueries.GetFriendRelation(
+            ctx,
+            evt.ByMembershipId,
+            evt.FromMembershipId,
+            cancellationToken);
 
         if (relation == null)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.FriendRequestNotFound());
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.FriendRequestNotFound());
         }
 
         if (relation.Status != FriendRelationStatus.Pending)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.RequestNotPending());
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.RequestNotPending());
         }
 
         relation.Status = FriendRelationStatus.Rejected;
         await ctx.SaveChangesAsync(cancellationToken);
 
-        Log.Information("[FRIEND-REQUEST-REJECTED] By: {By}, From: {From}", evt.ByMembershipId, evt.FromMembershipId);
+        Log.Information("[FRIEND-REQUEST-REJECTED] By: {By}, From: {From}", 
+            evt.ByMembershipId, evt.FromMembershipId);
 
-        return Result<Unit, FriendFailure>.Ok(Unit.Value);
+        return Result<ModifyFriendRelationResult, FriendFailure>.Ok(new ModifyFriendRelationResult
+        {
+            Outcome = "friend_request_rejected"
+        });
     }
 
-    private async Task<Result<Unit, FriendFailure>> CancelFriendRequestAsync(
+    private async Task<Result<ModifyFriendRelationResult, FriendFailure>> CancelFriendRequestAsync(
         EcliptixSchemaContext ctx,
         CancelFriendRequestEvent evt,
         CancellationToken cancellationToken)
     {
-        (Guid ua, Guid ub) = CanonicalPair(evt.FromMembershipId, evt.ToMembershipId);
-
-        FriendEntity? relation = await ctx.FriendRelations
-            .FirstOrDefaultAsync(x => x.UserAId == ua && x.UserBId == ub && !x.IsDeleted, cancellationToken);
+        FriendEntity? relation = await FriendQueries.GetFriendRelation(
+            ctx,
+            evt.FromMembershipId,
+            evt.ToMembershipId,
+            cancellationToken);
 
         if (relation == null)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.NotFound("Friend request not found"));
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.FriendRequestNotFound());
         }
 
         if (relation.Status != FriendRelationStatus.Pending)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.ValidationFailed("Request is not pending"));
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.RequestNotPending());
         }
 
         if (relation.RequestedById != evt.FromMembershipId)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.ValidationFailed("Cannot cancel request sent by another user"));
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.CannotCancelOtherRequest());
         }
 
         ctx.FriendRelations.Remove(relation);
         await ctx.SaveChangesAsync(cancellationToken);
 
-        Log.Information("[FRIEND-REQUEST-CANCELLED] From: {From}, To: {To}", evt.FromMembershipId, evt.ToMembershipId);
+        Log.Information("[FRIEND-REQUEST-CANCELLED] From: {From}, To: {To}", 
+            evt.FromMembershipId, evt.ToMembershipId);
 
-        return Result<Unit, FriendFailure>.Ok(Unit.Value);
+        return Result<ModifyFriendRelationResult, FriendFailure>.Ok(new ModifyFriendRelationResult
+        {
+            Outcome = "friend_request_cancelled"
+        });
     }
 
-    private async Task<Result<Unit, FriendFailure>> RemoveFriendAsync(
+    private async Task<Result<ModifyFriendRelationResult, FriendFailure>> RemoveFriendAsync(
         EcliptixSchemaContext ctx,
         RemoveFriendEvent evt,
         CancellationToken cancellationToken)
     {
-        (Guid ua, Guid ub) = CanonicalPair(evt.MembershipId, evt.FriendMembershipId);
-
-        FriendEntity? relation = await ctx.FriendRelations
-            .FirstOrDefaultAsync(x => x.UserAId == ua && x.UserBId == ub && !x.IsDeleted, cancellationToken);
+        FriendEntity? relation = await FriendQueries.GetFriendRelation(
+            ctx,
+            evt.MembershipId,
+            evt.FriendMembershipId,
+            cancellationToken);
 
         if (relation == null)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.NotFound("Friendship not found"));
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.FriendRelationNotFound());
         }
 
         if (relation.Status != FriendRelationStatus.Accepted)
         {
-            return Result<Unit, FriendFailure>.Err(FriendFailure.ValidationFailed("Not friends"));
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.NotFriends());
         }
 
         relation.Status = FriendRelationStatus.Removed;
         await ctx.SaveChangesAsync(cancellationToken);
 
-        Log.Information("[FRIEND-REMOVED] By: {By}, Friend: {Friend}", evt.MembershipId, evt.FriendMembershipId);
+        Log.Information("[FRIEND-REMOVED] By: {By}, Friend: {Friend}", 
+            evt.MembershipId, evt.FriendMembershipId);
 
-        return Result<Unit, FriendFailure>.Ok(Unit.Value);
+        return Result<ModifyFriendRelationResult, FriendFailure>.Ok(new ModifyFriendRelationResult
+        {
+            Outcome = "friend_removed"
+        });
     }
 
-    private async Task<Result<List<FriendEntity>, FriendFailure>> ListFriendsAsync(
+    private async Task<Result<List<FriendQueryRecord>, FriendFailure>> ListFriendsAsync(
         EcliptixSchemaContext ctx,
         ListFriendsEvent evt,
         CancellationToken cancellationToken)
     {
         int limit = Math.Max(1, Math.Min(100, evt.Limit));
 
-        List<FriendEntity> friends = await ctx.FriendRelations
-            .Where(x => (x.UserAId == evt.MembershipId || x.UserBId == evt.MembershipId) &&
-                        x.Status == FriendRelationStatus.Accepted &&
-                        !x.IsDeleted)
-            .OrderByDescending(x => x.AcceptedAt)
-            .Take(limit)
-            .ToListAsync(cancellationToken);
+        List<FriendEntity> friends = await FriendQueries.GetFriendsList(
+            ctx,
+            evt.MembershipId,
+            limit,
+            cancellationToken);
 
-        return Result<List<FriendEntity>, FriendFailure>.Ok(friends);
+        List<FriendQueryRecord> records = friends.Select(f => new FriendQueryRecord
+        {
+            MembershipId = f.OtherUserId(evt.MembershipId),
+            Since = f.AcceptedAt
+        }).ToList();
+
+        return Result<List<FriendQueryRecord>, FriendFailure>.Ok(records);
     }
 
-    private async Task<Result<FriendEntity?, FriendFailure>> GetFriendshipStatusAsync(
+    private async Task<Result<FriendshipStatusQueryRecord, FriendFailure>> GetFriendshipStatusAsync(
         EcliptixSchemaContext ctx,
         GetFriendshipStatusEvent evt,
         CancellationToken cancellationToken)
     {
-        (Guid ua, Guid ub) = CanonicalPair(evt.MembershipId, evt.OtherMembershipId);
+        FriendEntity? relation = await FriendQueries.GetFriendRelation(
+            ctx,
+            evt.MembershipId,
+            evt.OtherMembershipId,
+            cancellationToken);
 
-        FriendEntity? relation = await ctx.FriendRelations
-            .FirstOrDefaultAsync(x => x.UserAId == ua && x.UserBId == ub && !x.IsDeleted, cancellationToken);
+        FriendshipStatusQueryRecord record = new()
+        {
+            Status = relation?.Status,
+            RequestedById = relation?.RequestedById,
+            Since = relation?.AcceptedAt ?? relation?.CreatedAt
+        };
 
-        return Result<FriendEntity?, FriendFailure>.Ok(relation);
+        return Result<FriendshipStatusQueryRecord, FriendFailure>.Ok(record);
+    }
+
+    private async Task<Result<ModifyFriendRelationResult, FriendFailure>> BlockUserAsync(
+        EcliptixSchemaContext ctx,
+        BlockUserEvent evt,
+        CancellationToken cancellationToken)
+    {
+        if (evt.ByMembershipId == evt.TargetMembershipId)
+        {
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.ValidationFailed("Cannot block yourself"));
+        }
+
+        FriendEntity? existing = await FriendQueries.GetFriendRelation(
+            ctx,
+            evt.ByMembershipId,
+            evt.TargetMembershipId,
+            cancellationToken);
+
+        if (existing != null)
+        {
+            if (existing.Status == FriendRelationStatus.Blocked)
+            {
+                return Result<ModifyFriendRelationResult, FriendFailure>.Ok(new ModifyFriendRelationResult
+                {
+                    Outcome = "user_already_blocked"
+                });
+            }
+
+            existing.Status = FriendRelationStatus.Blocked;
+            existing.RequestedById = evt.ByMembershipId;
+            await ctx.SaveChangesAsync(cancellationToken);
+        }
+        else
+        {
+            (Guid ua, Guid ub) = evt.ByMembershipId.CompareTo(evt.TargetMembershipId) < 0
+                ? (evt.ByMembershipId, evt.TargetMembershipId)
+                : (evt.TargetMembershipId, evt.ByMembershipId);
+
+            FriendEntity relation = new()
+            {
+                UserAId = ua,
+                UserBId = ub,
+                RequestedById = evt.ByMembershipId,
+                Status = FriendRelationStatus.Blocked
+            };
+
+            ctx.FriendRelations.Add(relation);
+            await ctx.SaveChangesAsync(cancellationToken);
+        }
+
+        Log.Information("[USER-BLOCKED] By: {By}, Target: {Target}", 
+            evt.ByMembershipId, evt.TargetMembershipId);
+
+        return Result<ModifyFriendRelationResult, FriendFailure>.Ok(new ModifyFriendRelationResult
+        {
+            Outcome = "user_blocked"
+        });
+    }
+
+    private async Task<Result<ModifyFriendRelationResult, FriendFailure>> UnblockUserAsync(
+        EcliptixSchemaContext ctx,
+        UnblockUserEvent evt,
+        CancellationToken cancellationToken)
+    {
+        FriendEntity? relation = await FriendQueries.GetFriendRelation(
+            ctx,
+            evt.ByMembershipId,
+            evt.TargetMembershipId,
+            cancellationToken);
+
+        if (relation == null)
+        {
+            return Result<ModifyFriendRelationResult, FriendFailure>.Ok(new ModifyFriendRelationResult
+            {
+                Outcome = "user_not_blocked"
+            });
+        }
+
+        if (relation.Status != FriendRelationStatus.Blocked)
+        {
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.ValidationFailed("User is not blocked"));
+        }
+
+        if (relation.RequestedById != evt.ByMembershipId)
+        {
+            return Result<ModifyFriendRelationResult, FriendFailure>.Err(
+                FriendFailure.ValidationFailed("Cannot unblock user you didn't block"));
+        }
+
+        ctx.FriendRelations.Remove(relation);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        Log.Information("[USER-UNBLOCKED] By: {By}, Target: {Target}", 
+            evt.ByMembershipId, evt.TargetMembershipId);
+
+        return Result<ModifyFriendRelationResult, FriendFailure>.Ok(new ModifyFriendRelationResult
+        {
+            Outcome = "user_unblocked"
+        });
+    }
+
+    private async Task<Result<List<PendingRequestQueryRecord>, FriendFailure>> ListPendingRequestsAsync(
+        EcliptixSchemaContext ctx,
+        ListPendingRequestsEvent evt,
+        CancellationToken cancellationToken)
+    {
+        int limit = Math.Max(1, Math.Min(100, evt.Limit));
+
+        List<FriendEntity> requests = evt.IsIncoming
+            ? await FriendQueries.GetPendingRequestsIncoming(ctx, evt.MembershipId, limit, cancellationToken)
+            : await FriendQueries.GetPendingRequestsOutgoing(ctx, evt.MembershipId, limit, cancellationToken);
+
+        List<PendingRequestQueryRecord> records = requests.Select(r => new PendingRequestQueryRecord
+        {
+            MembershipId = r.OtherUserId(evt.MembershipId),
+            RequestedAt = r.CreatedAt,
+            Message = r.Message
+        }).ToList();
+
+        return Result<List<PendingRequestQueryRecord>, FriendFailure>.Ok(records);
     }
 
     protected override FriendFailure MapDbException(DbException ex)

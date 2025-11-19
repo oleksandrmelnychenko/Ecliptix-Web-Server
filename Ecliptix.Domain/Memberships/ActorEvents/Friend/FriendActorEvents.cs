@@ -53,3 +53,25 @@ public record GetFriendshipStatusEvent(
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
+public record BlockUserEvent(
+    uint ConnectId,
+    Guid ByMembershipId,
+    Guid TargetMembershipId,
+    CancellationToken CancellationToken = default
+) : ICancellableActorEvent;
+
+public record UnblockUserEvent(
+    uint ConnectId,
+    Guid ByMembershipId,
+    Guid TargetMembershipId,
+    CancellationToken CancellationToken = default
+) : ICancellableActorEvent;
+
+public record ListPendingRequestsEvent(
+    uint ConnectId,
+    Guid MembershipId,
+    bool IsIncoming,
+    int Limit,
+    string? Cursor,
+    CancellationToken CancellationToken = default
+) : ICancellableActorEvent;

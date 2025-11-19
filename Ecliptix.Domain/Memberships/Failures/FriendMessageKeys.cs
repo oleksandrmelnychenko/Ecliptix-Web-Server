@@ -29,6 +29,9 @@ public static class FriendMessageKeys
     public const string RemoveFriendFailed = "remove_friend_failed";
     public const string ListFriendsFailed = "list_friends_failed";
     public const string GetFriendshipStatusFailed = "get_friendship_status_failed";
+    public const string BlockUserFailed = "block_user_failed";
+    public const string UnblockUserFailed = "unblock_user_failed";
+    public const string ListPendingRequestsFailed = "list_pending_requests_failed";
     
     public const string ConcurrencyConflict = "friend_concurrency_conflict";
     

@@ -1,6 +1,8 @@
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.ActorEvents.Friend;
 using Ecliptix.Domain.Memberships.Failures;
+using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Protobuf.Friend;
 using Ecliptix.Utilities;
@@ -24,6 +26,9 @@ public sealed class FriendActor : ReceiveActor
         ReceiveAsync<RemoveFriendEvent>(HandleRemoveFriend);
         ReceiveAsync<ListFriendsEvent>(HandleListFriends);
         ReceiveAsync<GetFriendshipStatusEvent>(HandleGetFriendshipStatus);
+        ReceiveAsync<BlockUserEvent>(HandleBlockUser);
+        ReceiveAsync<UnblockUserEvent>(HandleUnblockUser);
+        ReceiveAsync<ListPendingRequestsEvent>(HandleListPendingRequests);
     }
 
     public static Props Build(IActorRef friendPersistor)
@@ -37,28 +42,25 @@ public sealed class FriendActor : ReceiveActor
 
         try
         {
-            Task<Result<FriendEntity, FriendFailure>> task =
-                _friendPersistor.Ask<Result<FriendEntity, FriendFailure>>(
+            Task<Result<SendFriendRequestResult, FriendFailure>> task =
+                _friendPersistor.Ask<Result<SendFriendRequestResult, FriendFailure>>(
                     evt, TimeoutConfiguration.Actor.AskTimeout);
 
-            Result<FriendEntity, FriendFailure> result = await task;
+            Result<SendFriendRequestResult, FriendFailure> result = await task;
 
             Result<SendFriendRequestResponse, FriendFailure> response = result.Match(
-                ok: relation => Result<SendFriendRequestResponse, FriendFailure>.Ok(
+                ok: _ => Result<SendFriendRequestResponse, FriendFailure>.Ok(
                     new SendFriendRequestResponse
                     {
                         Result = SendFriendRequestResponse.Types.Result.Succeeded
                     }),
                 err: failure =>
                 {
-                    SendFriendRequestResponse.Types.Result resultType = failure.Message switch
+                    SendFriendRequestResponse.Types.Result resultType = failure.FailureType switch
                     {
-                        var m when m.Contains("already sent") || m.Contains("Already requested") =>
-                            SendFriendRequestResponse.Types.Result.AlreadyRequested,
-                        var m when m.Contains("Already friends") =>
-                            SendFriendRequestResponse.Types.Result.AlreadyFriends,
-                        var m when m.Contains("blocked") || m.Contains("Blocked") =>
-                            SendFriendRequestResponse.Types.Result.Blocked,
+                        FriendFailureType.AlreadyRequested => SendFriendRequestResponse.Types.Result.AlreadyRequested,
+                        FriendFailureType.AlreadyFriends => SendFriendRequestResponse.Types.Result.AlreadyFriends,
+                        FriendFailureType.Blocked => SendFriendRequestResponse.Types.Result.Blocked,
                         _ => SendFriendRequestResponse.Types.Result.Failed
                     };
 
@@ -92,10 +94,11 @@ public sealed class FriendActor : ReceiveActor
 
         try
         {
-            Task<Result<Unit, FriendFailure>> task =
-                _friendPersistor.Ask<Result<Unit, FriendFailure>>(evt, TimeoutConfiguration.Actor.AskTimeout);
+            Task<Result<ModifyFriendRelationResult, FriendFailure>> task =
+                _friendPersistor.Ask<Result<ModifyFriendRelationResult, FriendFailure>>(
+                    evt, TimeoutConfiguration.Actor.AskTimeout);
 
-            Result<Unit, FriendFailure> result = await task;
+            Result<ModifyFriendRelationResult, FriendFailure> result = await task;
 
             Result<GenericResponse, FriendFailure> response = result.Match(
                 ok: _ => Result<GenericResponse, FriendFailure>.Ok(
@@ -132,10 +135,11 @@ public sealed class FriendActor : ReceiveActor
 
         try
         {
-            Task<Result<Unit, FriendFailure>> task =
-                _friendPersistor.Ask<Result<Unit, FriendFailure>>(evt, TimeoutConfiguration.Actor.AskTimeout);
+            Task<Result<ModifyFriendRelationResult, FriendFailure>> task =
+                _friendPersistor.Ask<Result<ModifyFriendRelationResult, FriendFailure>>(
+                    evt, TimeoutConfiguration.Actor.AskTimeout);
 
-            Result<Unit, FriendFailure> result = await task;
+            Result<ModifyFriendRelationResult, FriendFailure> result = await task;
 
             Result<GenericResponse, FriendFailure> response = result.Match(
                 ok: _ => Result<GenericResponse, FriendFailure>.Ok(new GenericResponse { Ok = true }),
@@ -167,10 +171,11 @@ public sealed class FriendActor : ReceiveActor
 
         try
         {
-            Task<Result<Unit, FriendFailure>> task =
-                _friendPersistor.Ask<Result<Unit, FriendFailure>>(evt, TimeoutConfiguration.Actor.AskTimeout);
+            Task<Result<ModifyFriendRelationResult, FriendFailure>> task =
+                _friendPersistor.Ask<Result<ModifyFriendRelationResult, FriendFailure>>(
+                    evt, TimeoutConfiguration.Actor.AskTimeout);
 
-            Result<Unit, FriendFailure> result = await task;
+            Result<ModifyFriendRelationResult, FriendFailure> result = await task;
 
             Result<GenericResponse, FriendFailure> response = result.Match(
                 ok: _ => Result<GenericResponse, FriendFailure>.Ok(new GenericResponse { Ok = true }),
@@ -202,10 +207,11 @@ public sealed class FriendActor : ReceiveActor
 
         try
         {
-            Task<Result<Unit, FriendFailure>> task =
-                _friendPersistor.Ask<Result<Unit, FriendFailure>>(evt, TimeoutConfiguration.Actor.AskTimeout);
+            Task<Result<ModifyFriendRelationResult, FriendFailure>> task =
+                _friendPersistor.Ask<Result<ModifyFriendRelationResult, FriendFailure>>(
+                    evt, TimeoutConfiguration.Actor.AskTimeout);
 
-            Result<Unit, FriendFailure> result = await task;
+            Result<ModifyFriendRelationResult, FriendFailure> result = await task;
 
             Result<GenericResponse, FriendFailure> response = result.Match(
                 ok: _ => Result<GenericResponse, FriendFailure>.Ok(new GenericResponse { Ok = true }),
@@ -237,24 +243,23 @@ public sealed class FriendActor : ReceiveActor
 
         try
         {
-            Task<Result<List<FriendEntity>, FriendFailure>> task =
-                _friendPersistor.Ask<Result<List<FriendEntity>, FriendFailure>>(
+            Task<Result<List<FriendQueryRecord>, FriendFailure>> task =
+                _friendPersistor.Ask<Result<List<FriendQueryRecord>, FriendFailure>>(
                     evt, TimeoutConfiguration.Actor.AskTimeout);
 
-            Result<List<FriendEntity>, FriendFailure> result = await task;
+            Result<List<FriendQueryRecord>, FriendFailure> result = await task;
 
             Result<ListFriendsResponse, FriendFailure> response = result.Match(
                 ok: friends =>
                 {
                     ListFriendsResponse listResponse = new();
-                    foreach (FriendEntity f in friends)
+                    foreach (FriendQueryRecord f in friends)
                     {
-                        Guid otherUserId = f.OtherUserId(evt.MembershipId);
                         listResponse.Friends.Add(new Ecliptix.Protobuf.Friend.Friend
                         {
-                            MembershipId = Google.Protobuf.ByteString.CopyFrom(otherUserId.ToByteArray()),
+                            MembershipId = Google.Protobuf.ByteString.CopyFrom(f.MembershipId.ToByteArray()),
                             Since = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(
-                                f.AcceptedAt ?? DateTimeOffset.UtcNow)
+                                f.Since ?? DateTimeOffset.UtcNow)
                         });
                     }
 
@@ -279,19 +284,173 @@ public sealed class FriendActor : ReceiveActor
 
         try
         {
-            Task<Result<FriendEntity?, FriendFailure>> task =
-                _friendPersistor.Ask<Result<FriendEntity?, FriendFailure>>(
+            Task<Result<FriendshipStatusQueryRecord, FriendFailure>> task =
+                _friendPersistor.Ask<Result<FriendshipStatusQueryRecord, FriendFailure>>(
                     evt, TimeoutConfiguration.Actor.AskTimeout);
 
-            Result<FriendEntity?, FriendFailure> result = await task;
+            Result<FriendshipStatusQueryRecord, FriendFailure> result = await task;
 
-            replyTo.Tell(result);
+            Result<GetFriendshipStatusResponse, FriendFailure> response = result.Match(
+                ok: record =>
+                {
+                    if (record.Status == null)
+                    {
+                        return Result<GetFriendshipStatusResponse, FriendFailure>.Ok(
+                            new GetFriendshipStatusResponse
+                            {
+                                Status = FriendshipStatus.None
+                            });
+                    }
+
+                    FriendshipStatus status = record.Status.Value switch
+                    {
+                        FriendRelationStatus.Pending when record.RequestedById == evt.MembershipId =>
+                            FriendshipStatus.PendingOutgoing,
+                        FriendRelationStatus.Pending => FriendshipStatus.PendingIncoming,
+                        FriendRelationStatus.Accepted => FriendshipStatus.Accepted,
+                        FriendRelationStatus.Blocked when record.RequestedById == evt.MembershipId =>
+                            FriendshipStatus.Blocked,
+                        FriendRelationStatus.Blocked => FriendshipStatus.BlockedBy,
+                        FriendRelationStatus.Rejected => FriendshipStatus.Rejected,
+                        _ => FriendshipStatus.None
+                    };
+
+                    GetFriendshipStatusResponse statusResponse = new()
+                    {
+                        Status = status
+                    };
+
+                    if (record.Since.HasValue)
+                    {
+                        statusResponse.Since = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(
+                            record.Since.Value);
+                    }
+
+                    return Result<GetFriendshipStatusResponse, FriendFailure>.Ok(statusResponse);
+                },
+                err: failure => Result<GetFriendshipStatusResponse, FriendFailure>.Err(failure)
+            );
+
+            replyTo.Tell(response);
         }
         catch (Exception ex)
         {
             Log.Error(ex, "[FRIEND-ACTOR] Error handling GetFriendshipStatus");
-            replyTo.Tell(Result<FriendEntity?, FriendFailure>.Err(
+            replyTo.Tell(Result<GetFriendshipStatusResponse, FriendFailure>.Err(
                 FriendFailure.UnexpectedError("Failed to get friendship status", ex)));
+        }
+    }
+
+    private async Task HandleBlockUser(BlockUserEvent evt)
+    {
+        IActorRef replyTo = Sender;
+
+        try
+        {
+            Task<Result<ModifyFriendRelationResult, FriendFailure>> task =
+                _friendPersistor.Ask<Result<ModifyFriendRelationResult, FriendFailure>>(
+                    evt, TimeoutConfiguration.Actor.AskTimeout);
+
+            Result<ModifyFriendRelationResult, FriendFailure> result = await task;
+
+            Result<GenericResponse, FriendFailure> response = result.Match(
+                ok: _ => Result<GenericResponse, FriendFailure>.Ok(new GenericResponse { Ok = true }),
+                err: failure =>
+                {
+                    if (failure.IsUserFacing)
+                    {
+                        return Result<GenericResponse, FriendFailure>.Ok(
+                            new GenericResponse { Ok = false, Message = failure.Message });
+                    }
+
+                    return Result<GenericResponse, FriendFailure>.Err(failure);
+                }
+            );
+
+            replyTo.Tell(response);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "[FRIEND-ACTOR] Error handling BlockUser");
+            replyTo.Tell(Result<GenericResponse, FriendFailure>.Err(
+                FriendFailure.UnexpectedError("Failed to block user", ex)));
+        }
+    }
+
+    private async Task HandleUnblockUser(UnblockUserEvent evt)
+    {
+        IActorRef replyTo = Sender;
+
+        try
+        {
+            Task<Result<ModifyFriendRelationResult, FriendFailure>> task =
+                _friendPersistor.Ask<Result<ModifyFriendRelationResult, FriendFailure>>(
+                    evt, TimeoutConfiguration.Actor.AskTimeout);
+
+            Result<ModifyFriendRelationResult, FriendFailure> result = await task;
+
+            Result<GenericResponse, FriendFailure> response = result.Match(
+                ok: _ => Result<GenericResponse, FriendFailure>.Ok(new GenericResponse { Ok = true }),
+                err: failure =>
+                {
+                    if (failure.IsUserFacing)
+                    {
+                        return Result<GenericResponse, FriendFailure>.Ok(
+                            new GenericResponse { Ok = false, Message = failure.Message });
+                    }
+
+                    return Result<GenericResponse, FriendFailure>.Err(failure);
+                }
+            );
+
+            replyTo.Tell(response);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "[FRIEND-ACTOR] Error handling UnblockUser");
+            replyTo.Tell(Result<GenericResponse, FriendFailure>.Err(
+                FriendFailure.UnexpectedError("Failed to unblock user", ex)));
+        }
+    }
+
+    private async Task HandleListPendingRequests(ListPendingRequestsEvent evt)
+    {
+        IActorRef replyTo = Sender;
+
+        try
+        {
+            Task<Result<List<PendingRequestQueryRecord>, FriendFailure>> task =
+                _friendPersistor.Ask<Result<List<PendingRequestQueryRecord>, FriendFailure>>(
+                    evt, TimeoutConfiguration.Actor.AskTimeout);
+
+            Result<List<PendingRequestQueryRecord>, FriendFailure> result = await task;
+
+            Result<ListPendingRequestsResponse, FriendFailure> response = result.Match(
+                ok: requests =>
+                {
+                    ListPendingRequestsResponse listResponse = new();
+                    foreach (PendingRequestQueryRecord r in requests)
+                    {
+                        listResponse.Requests.Add(new PendingRequest
+                        {
+                            MembershipId = Google.Protobuf.ByteString.CopyFrom((ReadOnlySpan<byte>)r.MembershipId.ToByteArray()),
+                            RequestedAt = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(r.RequestedAt),
+                            Message = r.Message ?? string.Empty
+                        });
+                    }
+
+                    return Result<ListPendingRequestsResponse, FriendFailure>.Ok(listResponse);
+                },
+                err: failure => Result<ListPendingRequestsResponse, FriendFailure>.Err(failure)
+            );
+
+            replyTo.Tell(response);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "[FRIEND-ACTOR] Error handling ListPendingRequests");
+            replyTo.Tell(Result<ListPendingRequestsResponse, FriendFailure>.Err(
+                FriendFailure.UnexpectedError("Failed to list pending requests", ex)));
         }
     }
 }

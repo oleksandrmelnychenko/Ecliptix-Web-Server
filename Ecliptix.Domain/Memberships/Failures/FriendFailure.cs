@@ -192,6 +192,30 @@ public sealed record FriendFailure(
             InnerException: innerException);
     }
 
+    public static FriendFailure BlockUserFailed(Exception? innerException = null)
+    {
+        return new FriendFailure(
+            FriendFailureType.PersistorAccess,
+            FriendMessageKeys.BlockUserFailed,
+            InnerException: innerException);
+    }
+
+    public static FriendFailure UnblockUserFailed(Exception? innerException = null)
+    {
+        return new FriendFailure(
+            FriendFailureType.PersistorAccess,
+            FriendMessageKeys.UnblockUserFailed,
+            InnerException: innerException);
+    }
+
+    public static FriendFailure ListPendingRequestsFailed(Exception? innerException = null)
+    {
+        return new FriendFailure(
+            FriendFailureType.PersistorAccess,
+            FriendMessageKeys.ListPendingRequestsFailed,
+            InnerException: innerException);
+    }
+
     public static FriendFailure ConcurrencyConflict(string? details = null)
     {
         return new FriendFailure(
@@ -310,7 +334,6 @@ public sealed record FriendFailure(
             FriendFailureType.ConcurrencyConflict => ErrorI18NKeys.Conflict,
             FriendFailureType.PersistorAccess => ErrorI18NKeys.DatabaseUnavailable,
             FriendFailureType.DatabaseError => ErrorI18NKeys.DatabaseUnavailable,
-            FriendFailureType.Generic => ErrorI18NKeys.Internal,
             _ => ErrorI18NKeys.Internal
         };
 
