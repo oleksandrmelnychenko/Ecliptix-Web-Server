@@ -58,7 +58,7 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
 
         builder.HasIndex(e => e.MembershipId)
             .HasFilter("IsDeleted = 0 AND Status = 1")
-            .IncludeProperties(e => new { e.UniqueId, e.AccountType, e.AccountName, e.IsDefaultAccount })
+            .IncludeProperties(e => new { e.UniqueId, e.AccountType, e.IsDefaultAccount })
             .HasDatabaseName("IX_Accounts_Membership_Active_Covering");
 
         builder.HasOne(e => e.Membership)
