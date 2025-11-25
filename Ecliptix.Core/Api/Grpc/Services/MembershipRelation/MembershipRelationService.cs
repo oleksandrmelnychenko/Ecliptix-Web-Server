@@ -2,28 +2,28 @@ using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Domain.Memberships.ActorEvents.Friend;
-using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Friend;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Grpc.Core;
 using Microsoft.Extensions.Options;
+using DomainFriendFailure = Ecliptix.Domain.Memberships.Failures.FriendFailure;
 
-namespace Ecliptix.Core.Api.Grpc.Services.Friend;
+namespace Ecliptix.Core.Api.Grpc.Services.MembershipRelation;
 
-internal sealed class FriendServices : FriendService.FriendServiceBase
+internal sealed class MembershipRelationService : FriendService.FriendServiceBase
 {
     private readonly GrpcSecurityService _service;
-    private readonly IActorRef _friendActor;
+    private readonly IActorRef _membershipRelationActor;
 
-    public FriendServices(
+    public MembershipRelationService(
         IEcliptixActorRegistry actorRegistry,
         IGrpcCipherService grpcCipherService,
         IOptions<SecurityConfiguration> securityConfig)
     {
         _service = new GrpcSecurityService(grpcCipherService, securityConfig);
-        _friendActor = actorRegistry.Get(ActorIds.FriendActor);
+        _membershipRelationActor = actorRegistry.Get(ActorIds.MembershipRelationActor);
     }
 
     public override async Task<SecureEnvelope> SendFriendRequest(SecureEnvelope request, ServerCallContext context)
@@ -44,11 +44,11 @@ internal sealed class FriendServices : FriendService.FriendServiceBase
                     message.Message,
                     cancellationToken);
 
-                Task<Result<SendFriendRequestResponse, FriendFailure>> task =
-                    _friendActor.Ask<Result<SendFriendRequestResponse, FriendFailure>>(
+                Task<Result<SendFriendRequestResponse, DomainFriendFailure>> task =
+                    _membershipRelationActor.Ask<Result<SendFriendRequestResponse, DomainFriendFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<SendFriendRequestResponse, FriendFailure> result =
+                Result<SendFriendRequestResponse, DomainFriendFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
@@ -60,7 +60,7 @@ internal sealed class FriendServices : FriendService.FriendServiceBase
 
     public override async Task<SecureEnvelope> AcceptFriendRequest(SecureEnvelope request, ServerCallContext context)
     {
-        return await _service.ExecuteEncryptedOperationAsync<AcceptFriendRequestRequest, GenericResponse>(
+        return await _service.ExecuteEncryptedOperationAsync<AcceptFriendRequestRequest, AcceptFriendRequestResponse>(
             request, context,
             async (message, connectId, _, cancellationToken) =>
             {
@@ -75,16 +75,16 @@ internal sealed class FriendServices : FriendService.FriendServiceBase
                     fromMembershipId,
                     cancellationToken);
 
-                Task<Result<GenericResponse, FriendFailure>> task =
-                    _friendActor.Ask<Result<GenericResponse, FriendFailure>>(
+                Task<Result<AcceptFriendRequestResponse, DomainFriendFailure>> task =
+                    _membershipRelationActor.Ask<Result<AcceptFriendRequestResponse, DomainFriendFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<GenericResponse, FriendFailure> result =
+                Result<AcceptFriendRequestResponse, DomainFriendFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
-                    ok: Result<GenericResponse, FailureBase>.Ok,
-                    err: Result<GenericResponse, FailureBase>.Err
+                    ok: Result<AcceptFriendRequestResponse, FailureBase>.Ok,
+                    err: Result<AcceptFriendRequestResponse, FailureBase>.Err
                 );
             });
     }
@@ -106,11 +106,11 @@ internal sealed class FriendServices : FriendService.FriendServiceBase
                     message.Cursor,
                     cancellationToken);
 
-                Task<Result<ListFriendsResponse, FriendFailure>> task =
-                    _friendActor.Ask<Result<ListFriendsResponse, FriendFailure>>(
+                Task<Result<ListFriendsResponse, DomainFriendFailure>> task =
+                    _membershipRelationActor.Ask<Result<ListFriendsResponse, DomainFriendFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<ListFriendsResponse, FriendFailure> result =
+                Result<ListFriendsResponse, DomainFriendFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
@@ -137,11 +137,11 @@ internal sealed class FriendServices : FriendService.FriendServiceBase
                     toMembershipId,
                     cancellationToken);
 
-                Task<Result<GenericResponse, FriendFailure>> task =
-                    _friendActor.Ask<Result<GenericResponse, FriendFailure>>(
+                Task<Result<GenericResponse, DomainFriendFailure>> task =
+                    _membershipRelationActor.Ask<Result<GenericResponse, DomainFriendFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<GenericResponse, FriendFailure> result =
+                Result<GenericResponse, DomainFriendFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
@@ -168,11 +168,11 @@ internal sealed class FriendServices : FriendService.FriendServiceBase
                     fromMembershipId,
                     cancellationToken);
 
-                Task<Result<GenericResponse, FriendFailure>> task =
-                    _friendActor.Ask<Result<GenericResponse, FriendFailure>>(
+                Task<Result<GenericResponse, DomainFriendFailure>> task =
+                    _membershipRelationActor.Ask<Result<GenericResponse, DomainFriendFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<GenericResponse, FriendFailure> result =
+                Result<GenericResponse, DomainFriendFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
@@ -189,21 +189,21 @@ internal sealed class FriendServices : FriendService.FriendServiceBase
             async (message, connectId, _, cancellationToken) =>
             {
                 byte[] byBytes = message.ByMembership.ToByteArray();
-                byte[] friendBytes = message.FriendMembership.ToByteArray();
+                byte[] targetBytes = message.FriendMembership.ToByteArray();
                 Guid byMembershipId = new Guid(byBytes);
-                Guid friendMembershipId = new Guid(friendBytes);
+                Guid targetMembershipId = new Guid(targetBytes);
 
                 RemoveFriendEvent evt = new(
                     connectId,
                     byMembershipId,
-                    friendMembershipId,
+                    targetMembershipId,
                     cancellationToken);
 
-                Task<Result<GenericResponse, FriendFailure>> task =
-                    _friendActor.Ask<Result<GenericResponse, FriendFailure>>(
+                Task<Result<GenericResponse, DomainFriendFailure>> task =
+                    _membershipRelationActor.Ask<Result<GenericResponse, DomainFriendFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<GenericResponse, FriendFailure> result =
+                Result<GenericResponse, DomainFriendFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
@@ -230,11 +230,11 @@ internal sealed class FriendServices : FriendService.FriendServiceBase
                     targetMembershipId,
                     cancellationToken);
 
-                Task<Result<GenericResponse, FriendFailure>> task =
-                    _friendActor.Ask<Result<GenericResponse, FriendFailure>>(
+                Task<Result<GenericResponse, DomainFriendFailure>> task =
+                    _membershipRelationActor.Ask<Result<GenericResponse, DomainFriendFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<GenericResponse, FriendFailure> result =
+                Result<GenericResponse, DomainFriendFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
@@ -261,11 +261,11 @@ internal sealed class FriendServices : FriendService.FriendServiceBase
                     targetMembershipId,
                     cancellationToken);
 
-                Task<Result<GenericResponse, FriendFailure>> task =
-                    _friendActor.Ask<Result<GenericResponse, FriendFailure>>(
+                Task<Result<GenericResponse, DomainFriendFailure>> task =
+                    _membershipRelationActor.Ask<Result<GenericResponse, DomainFriendFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<GenericResponse, FriendFailure> result =
+                Result<GenericResponse, DomainFriendFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
@@ -294,11 +294,11 @@ internal sealed class FriendServices : FriendService.FriendServiceBase
                     message.Cursor,
                     cancellationToken);
 
-                Task<Result<ListPendingRequestsResponse, FriendFailure>> task =
-                    _friendActor.Ask<Result<ListPendingRequestsResponse, FriendFailure>>(
+                Task<Result<ListPendingRequestsResponse, DomainFriendFailure>> task =
+                    _membershipRelationActor.Ask<Result<ListPendingRequestsResponse, DomainFriendFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<ListPendingRequestsResponse, FriendFailure> result =
+                Result<ListPendingRequestsResponse, DomainFriendFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
@@ -325,11 +325,11 @@ internal sealed class FriendServices : FriendService.FriendServiceBase
                     toMembershipId,
                     cancellationToken);
 
-                Task<Result<GetFriendshipStatusResponse, FriendFailure>> task =
-                    _friendActor.Ask<Result<GetFriendshipStatusResponse, FriendFailure>>(
+                Task<Result<GetFriendshipStatusResponse, DomainFriendFailure>> task =
+                    _membershipRelationActor.Ask<Result<GetFriendshipStatusResponse, DomainFriendFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<GetFriendshipStatusResponse, FriendFailure> result =
+                Result<GetFriendshipStatusResponse, DomainFriendFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(

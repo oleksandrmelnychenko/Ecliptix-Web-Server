@@ -4,8 +4,7 @@ namespace Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 
 public record FriendshipStatusQueryRecord
 {
-    public required FriendRelationStatus? Status { get; init; }
-    public required Guid? RequestedById { get; init; }
+    public required MembershipRelationStatus? Status { get; init; }
+    public required long? InitiatorAccountId { get; init; }
     public DateTimeOffset? Since { get; init; }
 }
-

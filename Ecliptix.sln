@@ -56,12 +56,7 @@ Global
 		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{34B9751A-097B-4BE6-AD13-59F20786C5D0}.Release|Any CPU.Build.0 = Release|Any CPU
-		{9CB505C2-0F54-4E3C-971F-142CD067FC0F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{9CB505C2-0F54-4E3C-971F-142CD067FC0F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{9CB505C2-0F54-4E3C-971F-142CD067FC0F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{9CB505C2-0F54-4E3C-971F-142CD067FC0F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{9CB505C2-0F54-4E3C-971F-142CD067FC0F} = {9CA0B587-931F-4BCE-870E-CFCEAB8990CF}
 	EndGlobalSection
 EndGlobal

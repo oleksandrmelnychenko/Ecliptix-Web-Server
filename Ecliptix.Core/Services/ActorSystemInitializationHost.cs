@@ -87,13 +87,13 @@ public sealed class ActorSystemInitializationHost(
                 securityConfig),
             ApplicationConstants.ActorNames.VerificationFlowManagerActor);
 
-        IActorRef friendPersistorActor = actorSystem.ActorOf(
-            FriendPersistorActor.Build(dbContextFactory),
-            ApplicationConstants.ActorNames.FriendPersistorActor);
+        IActorRef membershipRelationPersistorActor = actorSystem.ActorOf(
+            MembershipRelationPersistorActor.Build(dbContextFactory),
+            ApplicationConstants.ActorNames.MembershipRelationPersistorActor);
 
-        IActorRef friendActor = actorSystem.ActorOf(
-            Ecliptix.Domain.Memberships.WorkerActors.Friend.FriendActor.Build(friendPersistorActor),
-            ApplicationConstants.ActorNames.FriendActor);
+        IActorRef membershipRelationActor = actorSystem.ActorOf(
+            Ecliptix.Domain.Memberships.WorkerActors.MembershipRelation.MembershipRelationActor.Build(membershipRelationPersistorActor),
+            ApplicationConstants.ActorNames.MembershipRelationActor);
 
         registry.Register(ActorIds.EcliptixProtocolSystemActor, protocolSystemActor);
         registry.Register(ActorIds.AppDevicePersistorActor, appDevicePersistor);
@@ -105,8 +105,8 @@ public sealed class ActorSystemInitializationHost(
         registry.Register(ActorIds.AccountPersistorActor, accountPersistorActor);
         registry.Register(ActorIds.PasswordRecoveryPersistorActor, passwordRecoveryPersistorActor);
         registry.Register(ActorIds.MembershipActor, membershipActor);
-        registry.Register(ActorIds.FriendPersistorActor, friendPersistorActor);
-        registry.Register(ActorIds.FriendActor, friendActor);
+        registry.Register(ActorIds.MembershipRelationPersistorActor, membershipRelationPersistorActor);
+        registry.Register(ActorIds.MembershipRelationActor, membershipRelationActor);
 
         return Task.CompletedTask;
     }

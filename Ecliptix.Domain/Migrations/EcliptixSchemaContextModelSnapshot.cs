@@ -28,7 +28,7 @@ namespace Ecliptix.Domain.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                    b.Property<long>("Id").UseIdentityColumn();
 
                     b.Property<int>("AccountType")
                         .HasColumnType("int");
@@ -707,7 +707,7 @@ namespace Ecliptix.Domain.Migrations
                     b.ToTable("FailedOtpAttempts", (string)null);
                 });
 
-            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.FriendEntity", b =>
+            modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.MembershipRelationEntity", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -728,6 +728,18 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<Guid>("InitiatorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("InitiatorAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("RecipientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RecipientAccountId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Message")
                         .HasMaxLength(512)
                         .IsUnicode(true)
@@ -735,9 +747,6 @@ namespace Ecliptix.Domain.Migrations
 
                     b.Property<string>("MetaJson")
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("RequestedById")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -759,41 +768,35 @@ namespace Ecliptix.Domain.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasDefaultValueSql("SYSDATETIMEOFFSET()");
 
-                    b.Property<Guid>("UserAId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("UserBId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt")
                         .IsDescending()
-                        .HasDatabaseName("IX_FriendEntity_CreatedAt")
+                        .HasDatabaseName("IX_MembershipRelations_CreatedAt")
                         .HasFilter("IsDeleted = 0");
 
                     b.HasIndex("Status")
-                        .HasDatabaseName("IX_Accounts_Status")
+                        .HasDatabaseName("IX_MembershipRelations_Status")
                         .HasFilter("IsDeleted = 0");
 
                     b.HasIndex("UniqueId")
                         .IsUnique()
-                        .HasDatabaseName("UQ_FriendEntity_UniqueId");
+                        .HasDatabaseName("UQ_MembershipRelations_UniqueId");
 
                     b.HasIndex("UpdatedAt")
                         .IsDescending()
-                        .HasDatabaseName("IX_FriendEntity_UpdatedAt")
+                        .HasDatabaseName("IX_MembershipRelations_UpdatedAt")
                         .HasFilter("IsDeleted = 0");
 
-                    b.HasIndex("UserAId")
-                        .HasDatabaseName("IX_Accounts_UserAId")
+                    b.HasIndex("InitiatorId")
+                        .HasDatabaseName("IX_MembershipRelations_InitiatorId")
                         .HasFilter("IsDeleted = 0");
 
-                    b.HasIndex("UserBId")
-                        .HasDatabaseName("IX_Accounts_UserBId")
+                    b.HasIndex("RecipientId")
+                        .HasDatabaseName("IX_MembershipRelations_RecipientId")
                         .HasFilter("IsDeleted = 0");
 
-                    b.ToTable("FriendRelations", (string)null);
+                    b.ToTable("MembershipRelations", (string)null);
                 });
 
             modelBuilder.Entity("Ecliptix.Domain.Schema.Entities.LoginAttemptEntity", b =>

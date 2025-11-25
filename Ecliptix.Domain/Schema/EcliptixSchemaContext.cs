@@ -27,7 +27,7 @@ public class EcliptixSchemaContext : DbContext
     public DbSet<AccountSecureKeyAuthEntity> AccountSecureKeyAuths { get; set; }
     public DbSet<AccountPinAuthEntity> AccountPinAuths { get; set; }
     public DbSet<VerificationLogEntity> VerificationLogs { get; set; }
-    public DbSet<FriendEntity> FriendRelations { get; set; }
+    public DbSet<MembershipRelationEntity> MembershipRelations { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -48,7 +48,7 @@ public class EcliptixSchemaContext : DbContext
         modelBuilder.AddConfiguration(new AccountSecureKeyAuthConfiguration());
         modelBuilder.AddConfiguration(new AccountPinAuthConfiguration());
         modelBuilder.AddConfiguration(new VerificationLogConfiguration());
-        modelBuilder.AddConfiguration(new FriendConfiguration());
+        modelBuilder.AddConfiguration(new MembershipRelationConfiguration());
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
