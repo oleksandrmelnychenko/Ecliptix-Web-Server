@@ -8,7 +8,6 @@ using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Serilog;
 using DomainFriendFailure = Ecliptix.Domain.Memberships.Failures.FriendFailure;
-using DomainFriendFailureType = Ecliptix.Domain.Memberships.Failures.FriendFailureType;
 
 namespace Ecliptix.Domain.Memberships.WorkerActors.MembershipRelation;
 
@@ -194,22 +193,6 @@ public sealed class MembershipRelationActor : ReceiveActor
             replyTo.Tell(Result<GenericResponse, DomainFriendFailure>.Err(
                 DomainFriendFailure.UnexpectedError("Failed to unblock user", ex)));
         }
-    }
-
-    private static FriendFailureType MapToProtoFailureType(DomainFriendFailureType domainType)
-    {
-        return domainType switch
-        {
-            DomainFriendFailureType.NotFound => FriendFailureType.FriendNotFound,
-            DomainFriendFailureType.Blocked => FriendFailureType.FriendBlocked,
-            DomainFriendFailureType.InvalidRequest => FriendFailureType.FriendInvalidRequest,
-            DomainFriendFailureType.Validation => FriendFailureType.FriendValidationFailed,
-            DomainFriendFailureType.Unauthorized => FriendFailureType.FriendNotAuthorized,
-            DomainFriendFailureType.ConcurrencyConflict => FriendFailureType.FriendConcurrencyConflict,
-            DomainFriendFailureType.PersistorAccess => FriendFailureType.FriendPersistorAccess,
-            DomainFriendFailureType.DatabaseError => FriendFailureType.FriendDatabaseError,
-            _ => FriendFailureType.FriendInternal
-        };
     }
 }
 

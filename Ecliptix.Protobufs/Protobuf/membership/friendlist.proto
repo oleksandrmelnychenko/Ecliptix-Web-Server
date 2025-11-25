@@ -61,27 +61,28 @@ message ListFriendsResponse {
 }
 
 message FriendFailure {
-  FriendFailureType type = 1;
+  enum Type {
+    UNKNOWN = 0;
+    NOT_FOUND = 1;
+    NOT_AUTHORIZED = 2;
+    INVALID_REQUEST = 3;
+    ALREADY_FRIENDS = 4;
+    ALREADY_REQUESTED = 5;
+    CANNOT_ACCEPT_OWN_REQUEST = 6;
+    BLOCKED = 7;
+    CONFLICT = 8;
+    VALIDATION_FAILED = 9;
+    DATABASE_ERROR = 10;
+    PERSISTOR_ACCESS = 11;
+    CONCURRENCY_CONFLICT = 12;
+    INTERNAL = 100;
+  }
+  
+  Type type = 1;
   string message_key = 2;      
   repeated string message_params = 3;
 }
 
-enum FriendFailureType {
-  FRIEND_UNKNOWN = 0;
-  FRIEND_NOT_FOUND = 1;
-  FRIEND_NOT_AUTHORIZED = 2;
-  FRIEND_INVALID_REQUEST = 3;
-  FRIEND_ALREADY_FRIENDS = 4;
-  FRIEND_ALREADY_REQUESTED = 5;
-  FRIEND_CANNOT_ACCEPT_OWN_REQUEST = 6;
-  FRIEND_BLOCKED = 7;
-  FRIEND_CONFLICT = 8;
-  FRIEND_VALIDATION_FAILED = 9;
-  FRIEND_DATABASE_ERROR = 10;
-  FRIEND_PERSISTOR_ACCESS = 11;
-  FRIEND_CONCURRENCY_CONFLICT = 12;
-  FRIEND_INTERNAL = 100;
-}
 
 message CancelFriendRequestRequest {
   bytes by_membership = 1;
