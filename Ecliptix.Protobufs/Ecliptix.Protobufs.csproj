@@ -27,6 +27,15 @@
     <!-- Core proto files -->
     <Protobuf Include="Protobuf\common\secure_envelope.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
     <Protobuf Include="Protobuf\common\health_check.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\membership\friendlist.proto">
+      <GrpcServices>Server</GrpcServices>
+      <Access>Public</Access>
+      <ProtoCompile>True</ProtoCompile>
+      <ProtoRoot>Protobuf/</ProtoRoot>
+      <CompileOutputs>True</CompileOutputs>
+      <OutputDir>obj/</OutputDir>
+      <Generator>MSBuild:Compile</Generator>
+    </Protobuf>
     <Protobuf Include="Protobuf\protocol\key_exchange.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
     <Protobuf Include="Protobuf\protocol\protocol_state.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
     <Protobuf Include="Protobuf\protocol\key_materials.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
@@ -48,7 +57,6 @@
     <Protobuf Include="Protobuf\account\account.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
     
     <!-- Friend proto files -->
-    <Protobuf Include="Protobuf\friend\friendlist.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
     
   </ItemGroup>
 
