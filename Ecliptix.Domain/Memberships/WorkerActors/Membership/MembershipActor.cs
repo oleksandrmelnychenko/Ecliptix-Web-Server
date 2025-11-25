@@ -109,6 +109,38 @@ public sealed class MembershipActor : ReceivePersistentActor
                 LastSequenceNr);
         });
 
+        Command<WriteMessageFailure>(failure =>
+        {
+            Log.Error(failure.Cause,
+                "[MEMBERSHIP-PERSIST] ❌ CRITICAL: Write message failure at sequence {0}. " +
+                "PersistenceId: {1}. " +
+                "This may indicate a sequence number collision or database constraint violation. " +
+                "Actor will restart to recover.",
+                LastSequenceNr,
+                PersistenceId);
+
+            if (failure.Cause is Microsoft.Data.SqlClient.SqlException sqlEx)
+            {
+                Log.Error(
+                    "[MEMBERSHIP-PERSIST] SQL Error Number: {0}, State: {1}, Message: {2}",
+                    sqlEx.Number, sqlEx.State, sqlEx.Message);
+
+                if (sqlEx.Number == 2627)
+                {
+                    Log.Warning(
+                        "[MEMBERSHIP-PERSIST] Unique constraint violation detected (Error 2627). " +
+                        "This indicates a sequence number collision during concurrent writes. " +
+                        "Current LastSequenceNr: {0}. " +
+                        "The actor will restart and reload the correct sequence number from the database.",
+                        LastSequenceNr);
+                }
+            }
+
+            throw new InvalidOperationException(
+                $"Persistence failed at sequence {LastSequenceNr} - actor will restart to recover",
+                failure.Cause);
+        });
+
         Recover<SnapshotOffer>(offer =>
         {
             Log.Info("[MEMBERSHIP-RECOVERY] Snapshot offered at sequence {0}, snapshot type: {1}",

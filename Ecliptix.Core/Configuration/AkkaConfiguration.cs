@@ -110,6 +110,13 @@ internal static class AkkaConfiguration
                          stdout-loglevel = INFO
 
                         persistence {{
+                            journal {{
+                                # Max batch size for batched writes - set to 1 to prevent sequence collisions
+                                # This ensures events are written one at a time to avoid unique constraint violations
+                                max-batch-size = 1
+                                # Disable parallelism to enforce sequential writes
+                                parallelism = 1
+                            }}
                             sql-store {{
                                 journal.circuit-breaker {{
                                     max-failures = 5
