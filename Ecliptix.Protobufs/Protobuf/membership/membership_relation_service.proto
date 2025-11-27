@@ -5,7 +5,7 @@ package ecliptix.proto.membership;
 option csharp_namespace = "Ecliptix.Protobuf.Membership";
 
 
-service FriendService {
+service MembershipRelationService {
   rpc SendFriendRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
   rpc AcceptFriendRequest(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
   rpc ListFriends(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);

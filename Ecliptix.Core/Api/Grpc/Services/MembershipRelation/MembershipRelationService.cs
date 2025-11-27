@@ -12,7 +12,7 @@ using DomainFriendFailure = Ecliptix.Domain.Memberships.Failures.FriendFailure;
 
 namespace Ecliptix.Core.Api.Grpc.Services.MembershipRelation;
 
-internal sealed class MembershipRelationService : FriendService.FriendServiceBase
+internal sealed class MembershipRelationService : Protobuf.Membership.MembershipRelationService.MembershipRelationServiceBase
 {
     private readonly GrpcSecurityService _service;
     private readonly IActorRef _membershipRelationActor;
