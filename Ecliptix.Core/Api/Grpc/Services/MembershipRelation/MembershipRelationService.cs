@@ -4,6 +4,7 @@ using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler
 using Ecliptix.Domain.Memberships.ActorEvents.Friend;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Friend;
+using Ecliptix.Protobuf.Membership;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Grpc.Core;

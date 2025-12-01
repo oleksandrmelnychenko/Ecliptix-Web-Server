@@ -96,12 +96,18 @@ public class MembershipRelationPersistorActor : PersistorBase<FriendFailure>
         bool firstActive = first.CanBeCanceled;
         bool secondActive = second.CanBeCanceled;
 
-        if (!firstActive && !secondActive)
-            return CancellationToken.None;
-        if (!firstActive)
-            return second;
+        switch (firstActive)
+        {
+            case false when !secondActive:
+                return CancellationToken.None;
+            case false:
+                return second;
+        }
+
         if (!secondActive)
+        {
             return first;
+        }
 
         linkedSource = CancellationTokenSource.CreateLinkedTokenSource(first, second);
         return linkedSource.Token;
@@ -116,16 +122,11 @@ public class MembershipRelationPersistorActor : PersistorBase<FriendFailure>
             ctx,
             evt.MembershipId,
             evt.FriendMembershipId,
+            cancellationToken) ?? await MembershipRelationQueries.GetMembershipRelation(
+            ctx,
+            evt.FriendMembershipId,
+            evt.MembershipId,
             cancellationToken);
-
-        if (relation == null)
-        {
-            relation = await MembershipRelationQueries.GetMembershipRelation(
-                ctx,
-                evt.FriendMembershipId,
-                evt.MembershipId,
-                cancellationToken);
-        }
 
         if (relation == null)
         {
@@ -136,16 +137,13 @@ public class MembershipRelationPersistorActor : PersistorBase<FriendFailure>
         relation.Status = MembershipRelationStatus.Removed;
         await ctx.SaveChangesAsync(cancellationToken);
 
-        Log.Information("[MEMBERSHIP-RELATION-REMOVED] By: {By}, Target: {Target}", 
-            evt.MembershipId, evt.FriendMembershipId);
-
         return Result<ModifyFriendRelationResult, FriendFailure>.Ok(new ModifyFriendRelationResult
         {
             Outcome = "relation_removed"
         });
     }
 
-    private async Task<Result<FriendshipStatusQueryRecord, FriendFailure>> GetFriendshipStatusAsync(
+    private static async Task<Result<FriendshipStatusQueryRecord, FriendFailure>> GetFriendshipStatusAsync(
         EcliptixSchemaContext ctx,
         GetFriendshipStatusEvent evt,
         CancellationToken cancellationToken)
@@ -154,16 +152,11 @@ public class MembershipRelationPersistorActor : PersistorBase<FriendFailure>
             ctx,
             evt.MembershipId,
             evt.OtherMembershipId,
+            cancellationToken) ?? await MembershipRelationQueries.GetMembershipRelation(
+            ctx,
+            evt.OtherMembershipId,
+            evt.MembershipId,
             cancellationToken);
-
-        if (relation == null)
-        {
-            relation = await MembershipRelationQueries.GetMembershipRelation(
-                ctx,
-                evt.OtherMembershipId,
-                evt.MembershipId,
-                cancellationToken);
-        }
 
         FriendshipStatusQueryRecord record = new()
         {
@@ -175,7 +168,7 @@ public class MembershipRelationPersistorActor : PersistorBase<FriendFailure>
         return Result<FriendshipStatusQueryRecord, FriendFailure>.Ok(record);
     }
 
-    private async Task<Result<ModifyFriendRelationResult, FriendFailure>> BlockUserAsync(
+    private static async Task<Result<ModifyFriendRelationResult, FriendFailure>> BlockUserAsync(
         EcliptixSchemaContext ctx,
         BlockUserEvent evt,
         CancellationToken cancellationToken)
@@ -203,7 +196,6 @@ public class MembershipRelationPersistorActor : PersistorBase<FriendFailure>
             }
 
             existing.Status = MembershipRelationStatus.Blocked;
-            await ctx.SaveChangesAsync(cancellationToken);
         }
         else
         {
@@ -231,11 +223,9 @@ public class MembershipRelationPersistorActor : PersistorBase<FriendFailure>
             };
 
             ctx.MembershipRelations.Add(relation);
-            await ctx.SaveChangesAsync(cancellationToken);
         }
 
-        Log.Information("[USER-BLOCKED] By: {By}, Target: {Target}", 
-            evt.ByMembershipId, evt.TargetMembershipId);
+        await ctx.SaveChangesAsync(cancellationToken);
 
         return Result<ModifyFriendRelationResult, FriendFailure>.Ok(new ModifyFriendRelationResult
         {
@@ -288,7 +278,7 @@ public class MembershipRelationPersistorActor : PersistorBase<FriendFailure>
         ctx.MembershipRelations.Remove(relation);
         await ctx.SaveChangesAsync(cancellationToken);
 
-        Log.Information("[USER-UNBLOCKED] By: {By}, Target: {Target}", 
+        Log.Information("[USER-UNBLOCKED] By: {By}, Target: {Target}",
             evt.ByMembershipId, evt.TargetMembershipId);
 
         return Result<ModifyFriendRelationResult, FriendFailure>.Ok(new ModifyFriendRelationResult
