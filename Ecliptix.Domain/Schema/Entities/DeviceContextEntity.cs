@@ -16,7 +16,8 @@ public class DeviceContextEntity : EntityBase, IExpirable
 
     public DateTimeOffset ExpiresAt => ContextExpiresAt;
 
-    public virtual MembershipEntity Membership { get; set; } = null!;
-    public virtual DeviceEntity Device { get; set; } = null!;
-    public virtual AccountEntity? ActiveAccount { get; set; }
+    // Navigation properties - no virtual
+    public MembershipEntity Membership { get; set; } = null!;
+    public DeviceEntity Device { get; set; } = null!;
+    public AccountEntity? ActiveAccount { get; set; }
 }

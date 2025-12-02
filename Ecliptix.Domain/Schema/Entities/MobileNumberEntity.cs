@@ -5,6 +5,16 @@ public class MobileNumberEntity : EntityBase
     public string Number { get; set; } = string.Empty;
     public string? Region { get; set; }
 
-    public virtual ICollection<VerificationFlowEntity> VerificationFlows { get; set; } = new List<VerificationFlowEntity>();
-    public virtual ICollection<MembershipEntity> Memberships { get; set; } = new List<MembershipEntity>();
+    // Collections with lazy initialization - no virtual
+    public List<VerificationFlowEntity> VerificationFlows
+    {
+        get => field ??= [];
+        set;
+    }
+
+    public List<MembershipEntity> Memberships
+    {
+        get => field ??= [];
+        set;
+    }
 }

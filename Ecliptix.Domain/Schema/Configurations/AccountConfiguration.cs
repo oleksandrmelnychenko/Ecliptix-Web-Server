@@ -56,10 +56,10 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
             "(IsDefaultAccount = 0) OR (Status != 2)"));
 
 
-        builder.HasIndex(e => e.MembershipId)
-            .HasFilter("IsDeleted = 0 AND Status = 1")
-            .IncludeProperties(e => new { e.UniqueId, e.AccountType, e.IsDefaultAccount })
-            .HasDatabaseName("IX_Accounts_Membership_Active_Covering");
+        IndexBuilder<AccountEntity> idx = builder.HasIndex(e => e.MembershipId)
+            .HasFilter("IsDeleted = 0 AND Status = 1");
+        SqlServerIndexBuilderExtensions.IncludeProperties(idx, nameof(AccountEntity.UniqueId), nameof(AccountEntity.AccountType), nameof(AccountEntity.IsDefaultAccount));
+        idx.HasDatabaseName("IX_Accounts_Membership_Active_Covering");
 
         builder.HasOne(e => e.Membership)
             .WithMany(m => m.Accounts)

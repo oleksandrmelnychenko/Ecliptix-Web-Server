@@ -113,15 +113,83 @@ static void ConfigureLogging(WebApplicationBuilder builder)
 
 static void ConfigureServices(WebApplicationBuilder builder)
 {
+    // Determine which database provider to use
+    bool usePostgreSQL = builder.Configuration.GetValue("UsePostgreSQL", defaultValue: false);
+    string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
+    int commandTimeout = (int)TimeoutConfiguration.Database.CommandTimeout.TotalSeconds;
+    bool isDevelopment = builder.Environment.IsDevelopment();
+
+    builder.Services.AddPooledDbContextFactory<EcliptixSchemaContext>(options =>
+    {
+        if (usePostgreSQL)
+        {
+            // PostgreSQL Configuration
+            options.UseNpgsql(connectionString, npgsqlOptions =>
+                   {
+                       npgsqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
+
+                       // Automatic retry with exponential backoff
+                       npgsqlOptions.EnableRetryOnFailure(
+                           maxRetryCount: 3,
+                           maxRetryDelay: TimeSpan.FromSeconds(5),
+                           errorCodesToAdd: null);
+
+                       // Split queries by default for better performance with Include operations
+                       npgsqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+
+                       // Enable optimizations
+                       npgsqlOptions.UseRelationalNulls(false);
+                   })
+                   .UseSnakeCaseNamingConvention()
+                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                   .EnableSensitiveDataLogging(isDevelopment)
+                   .EnableDetailedErrors(isDevelopment);
+        }
+        else
+        {
+            // SQL Server Configuration
+            options.UseSqlServer(connectionString, sqlOptions =>
+                   {
+                       sqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
+
+                       // Automatic retry with exponential backoff
+                       sqlOptions.EnableRetryOnFailure(
+                           maxRetryCount: 3,
+                           maxRetryDelay: TimeSpan.FromSeconds(5),
+                           errorNumbersToAdd: null);
+
+                       // Split queries by default for better performance with Include operations
+                       sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+
+                       // Optimize for row-level versioning (assuming READ_COMMITTED_SNAPSHOT is ON)
+                       sqlOptions.UseRelationalNulls(false);
+                   })
+                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                   .EnableSensitiveDataLogging(false)
+                   .EnableDetailedErrors(false);
+        }
+    }, poolSize: 128); // FIXED: Reduced from 1024 to 128 (realistic actor concurrency)
+
+    // Also register non-pooled factory for scenarios requiring explicit control
     builder.Services.AddDbContextFactory<EcliptixSchemaContext>(options =>
     {
-        string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
-        options.UseSqlServer(connectionString, sqlOptions =>
-               {
-                   int commandTimeout = (int)TimeoutConfiguration.Database.CommandTimeout.TotalSeconds;
-                   sqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
-               })
-               .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+        if (usePostgreSQL)
+        {
+            options.UseNpgsql(connectionString, npgsqlOptions =>
+                   {
+                       npgsqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
+                   })
+                   .UseSnakeCaseNamingConvention()
+                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+        }
+        else
+        {
+            options.UseSqlServer(connectionString, sqlOptions =>
+                   {
+                       sqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
+                   })
+                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+        }
     });
 
     builder.Services.AddSingleton<SecrecyHandshakeKeepAliveInterceptor>();

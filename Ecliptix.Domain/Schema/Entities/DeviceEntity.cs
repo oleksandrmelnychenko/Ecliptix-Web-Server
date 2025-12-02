@@ -9,7 +9,22 @@ public class DeviceEntity : EntityBase
     public Guid DeviceId { get; set; }
     public int DeviceType { get; set; } = 1;
 
-    public virtual ICollection<VerificationFlowEntity> VerificationFlows { get; set; } = new List<VerificationFlowEntity>();
-    public virtual ICollection<MembershipEntity> Memberships { get; set; } = new List<MembershipEntity>();
-    public virtual ICollection<DeviceContextEntity> DeviceContexts { get; set; } = new List<DeviceContextEntity>();
+    // Collections with lazy initialization - no virtual
+    public List<VerificationFlowEntity> VerificationFlows
+    {
+        get => field ??= [];
+        set;
+    }
+
+    public List<MembershipEntity> Memberships
+    {
+        get => field ??= [];
+        set;
+    }
+
+    public List<DeviceContextEntity> DeviceContexts
+    {
+        get => field ??= [];
+        set;
+    }
 }

@@ -16,5 +16,6 @@ public class AccountSecureKeyAuthEntity : EntityBase
     public int FailedAttempts { get; set; } = 0;
     public DateTimeOffset? LockedUntil { get; set; }
 
-    public virtual AccountEntity Account { get; set; } = null!;
+    // Navigation property - no virtual
+    public AccountEntity Account { get; set; } = null!;
 }

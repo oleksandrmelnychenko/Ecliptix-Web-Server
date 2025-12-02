@@ -4,9 +4,10 @@ public class AccountProfileEntity : EntityBase
 {
     public Guid AccountId { get; set; }
 
-    public virtual AccountEntity Account { get; set; } = null!;
+    // Navigation property - no virtual
+    public AccountEntity Account { get; set; } = null!;
 
-    public string ProfileName { get; set; } = string.Empty; // Seachable
+    public string ProfileName { get; set; } = string.Empty; // Searchable
 
     public string DisplayName { get; set; } = string.Empty;
 }

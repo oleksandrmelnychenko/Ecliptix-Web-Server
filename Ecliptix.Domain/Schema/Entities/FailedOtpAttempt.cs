@@ -12,6 +12,7 @@ public class FailedOtpAttemptEntity : EntityBase
 
     public DateTimeOffset AttemptedAt { get; set; } = DateTimeOffset.UtcNow;
 
+    // Navigation property - no virtual
     [ForeignKey(nameof(OtpRecordId))]
-    public virtual OtpCodeEntity OtpRecord { get; set; } = null!;
+    public OtpCodeEntity OtpRecord { get; set; } = null!;
 }

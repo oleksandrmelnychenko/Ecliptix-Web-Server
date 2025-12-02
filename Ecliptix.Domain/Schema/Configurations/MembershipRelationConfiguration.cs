@@ -9,43 +9,40 @@ public class MembershipRelationConfiguration : EntityBaseMap<MembershipRelationE
     public override void Map(EntityTypeBuilder<MembershipRelationEntity> builder)
     {
         base.Map(builder);
-        
+
         builder.ToTable("MembershipRelations");
 
         builder.HasKey(x => x.Id);
 
         builder.Property(x => x.InitiatorAccountId)
             .IsRequired();
-        
+
         builder.Property(x => x.RecipientAccountId)
             .IsRequired();
-        
+
         builder.Property(x => x.Status)
             .HasConversion<string>()
             .IsRequired();
-        
+
         builder.Property(x => x.Message)
             .HasMaxLength(512)
             .IsUnicode();
-        
+
         builder.Property(x => x.MetaJson)
             .HasColumnType("nvarchar(max)");
 
-        builder.HasIndex(x => x.InitiatorAccountId)
-            .HasFilter("IsDeleted = 0")
-            .HasDatabaseName("IX_MembershipRelations_InitiatorAccountId");
-            
-        builder.HasIndex(x => x.RecipientAccountId)
-            .HasFilter("IsDeleted = 0")
-            .HasDatabaseName("IX_MembershipRelations_RecipientAccountId");
-        
-        builder.HasIndex(x => x.Status)
-            .HasFilter("IsDeleted = 0")
-            .HasDatabaseName("IX_MembershipRelations_Status");
+        builder.Property(x => x.MutedUntil)
+            .IsRequired(false);
 
-        builder.HasIndex(x => new { x.InitiatorAccountId, x.RecipientAccountId })
-            .HasFilter("IsDeleted = 0")
-            .HasDatabaseName("IX_MembershipRelations_InitiatorRecipient");
+        IndexBuilder<MembershipRelationEntity> initiatorIdx = builder.HasIndex(x => new { x.InitiatorAccountId, x.RecipientAccountId })
+            .HasFilter("[IsDeleted] = 0");
+        SqlServerIndexBuilderExtensions.IncludeProperties(initiatorIdx, nameof(MembershipRelationEntity.Status), nameof(MembershipRelationEntity.Message), nameof(MembershipRelationEntity.CreatedAt), nameof(MembershipRelationEntity.MutedUntil));
+        initiatorIdx.HasDatabaseName("IX_MembershipRelations_InitiatorRecipient_Covering");
+
+        IndexBuilder<MembershipRelationEntity> recipientIdx = builder.HasIndex(x => new { x.RecipientAccountId, x.InitiatorAccountId })
+            .HasFilter("[IsDeleted] = 0");
+        SqlServerIndexBuilderExtensions.IncludeProperties(recipientIdx, nameof(MembershipRelationEntity.Status), nameof(MembershipRelationEntity.Message), nameof(MembershipRelationEntity.CreatedAt), nameof(MembershipRelationEntity.MutedUntil));
+        recipientIdx.HasDatabaseName("IX_MembershipRelations_RecipientInitiator_Covering");
 
         builder.HasOne(x => x.InitiatorAccount)
             .WithMany()

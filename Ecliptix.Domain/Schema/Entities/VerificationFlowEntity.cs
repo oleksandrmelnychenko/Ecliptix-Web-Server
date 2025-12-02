@@ -17,8 +17,20 @@ public class VerificationFlowEntity : EntityBase, IExpirable
 
     public DateTimeOffset ExpiresAt { get; set; }
 
-    public virtual MobileNumberEntity MobileNumber { get; set; } = null!;
-    public virtual DeviceEntity AppDevice { get; set; } = null!;
-    public virtual ICollection<OtpCodeEntity> OtpCodes { get; set; } = new List<OtpCodeEntity>();
-    public virtual ICollection<MembershipEntity> Memberships { get; set; } = new List<MembershipEntity>();
+    // Navigation properties - no virtual
+    public MobileNumberEntity MobileNumber { get; set; } = null!;
+    public DeviceEntity AppDevice { get; set; } = null!;
+
+    // Collections with lazy initialization
+    public List<OtpCodeEntity> OtpCodes
+    {
+        get => field ??= [];
+        set;
+    }
+
+    public List<MembershipEntity> Memberships
+    {
+        get => field ??= [];
+        set;
+    }
 }

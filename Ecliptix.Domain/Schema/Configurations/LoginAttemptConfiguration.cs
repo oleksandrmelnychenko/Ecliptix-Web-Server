@@ -54,32 +54,27 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
         builder.ToTable(t => t.HasCheckConstraint("CHK_LoginAttempts_LockedUntil_Future",
             "LockedUntil IS NULL OR LockedUntil > AttemptedAt"));
 
-        builder.HasIndex(e => new { e.MembershipUniqueId, e.AttemptedAt })
+        IndexBuilder<LoginAttemptEntity> lockoutIdx = builder.HasIndex(e => new { e.MobileNumber, e.LockedUntil, e.AttemptedAt })
+            .IsDescending(false, false, true)
+            .HasFilter("[IsDeleted] = 0 AND [LockedUntil] IS NOT NULL");
+        SqlServerIndexBuilderExtensions.IncludeProperties(lockoutIdx, nameof(LoginAttemptEntity.Id), nameof(LoginAttemptEntity.Outcome), nameof(LoginAttemptEntity.ErrorMessage));
+        lockoutIdx.HasDatabaseName("IX_LoginAttempts_Lockout_Covering");
+
+        builder.HasIndex(e => new { e.MobileNumber, e.AttemptedAt, e.IsSuccess })
+            .IsDescending(false, false, false)
+            .HasFilter("[IsDeleted] = 0 AND [IsSuccess] = 0 AND [LockedUntil] IS NULL")
+            .HasDatabaseName("IX_LoginAttempts_CountFailed");
+
+        builder.HasIndex(e => new { e.MembershipUniqueId, e.Outcome, e.AttemptedAt })
+            .IsDescending(false, false, false)
+            .HasFilter("[IsDeleted] = 0 AND [IsSuccess] = 0 AND [Outcome] = 'membership_creation'")
+            .HasDatabaseName("IX_LoginAttempts_MembershipCreation");
+
+        IndexBuilder<LoginAttemptEntity> deviceIdx = builder.HasIndex(e => new { e.DeviceId, e.AttemptedAt })
             .IsDescending(false, true)
-            .HasFilter("IsDeleted = 0")
-            .HasDatabaseName("IX_LoginAttempts_Membership_AttemptedAt");
-
-        builder.HasIndex(e => e.MobileNumber)
-            .HasFilter("IsDeleted = 0 AND MobileNumber IS NOT NULL")
-            .HasDatabaseName("IX_LoginAttempts_MobileNumber");
-
-        builder.HasIndex(e => new { e.MobileNumber, e.AttemptedAt, e.IsSuccess, e.LockedUntil })
-            .IsDescending(false, true, false, false)
-            .HasFilter("IsDeleted = 0 AND LockedUntil IS NULL AND MobileNumber IS NOT NULL")
-            .HasDatabaseName("IX_LoginAttempts_RateLimiting_Optimized");
-
-        builder.HasIndex(e => new { e.DeviceId, e.AttemptedAt, e.IsSuccess })
-            .IsDescending(false, true, false)
-            .HasFilter("IsDeleted = 0 AND DeviceId IS NOT NULL")
-            .HasDatabaseName("IX_LoginAttempts_DeviceRateLimiting");
-
-        builder.HasIndex(e => new { e.MobileNumber, e.LockedUntil })
-            .HasFilter("IsDeleted = 0 AND LockedUntil IS NOT NULL")
-            .HasDatabaseName("IX_LoginAttempts_Lockout");
-
-        builder.HasIndex(e => e.IsSuccess)
-            .HasFilter("IsDeleted = 0")
-            .HasDatabaseName("IX_LoginAttempts_IsSuccess");
+            .HasFilter("[IsDeleted] = 0 AND [DeviceId] IS NOT NULL");
+        SqlServerIndexBuilderExtensions.IncludeProperties(deviceIdx, e => e.IsSuccess);
+        deviceIdx.HasDatabaseName("IX_LoginAttempts_Device");
 
         builder.HasOne(e => e.Membership)
             .WithMany(m => m.LoginAttempts)

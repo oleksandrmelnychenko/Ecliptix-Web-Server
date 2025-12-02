@@ -18,6 +18,6 @@ public class AccountPinAuthEntity : EntityBase
     public int FailedAttempts { get; set; } = 0;
     public DateTimeOffset? LockedUntil { get; set; }
 
-    public virtual AccountEntity Account { get; set; } = null!;
-    public virtual DeviceEntity? Device { get; set; }
+    public AccountEntity Account { get; set; } = null!;
+    public DeviceEntity? Device { get; set; }
 }
