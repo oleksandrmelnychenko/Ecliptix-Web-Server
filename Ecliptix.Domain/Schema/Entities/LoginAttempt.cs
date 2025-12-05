@@ -17,7 +17,6 @@ public class LoginAttemptEntity : EntityBase
     public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset? LockedUntil { get; set; }
 
-    // Navigation properties - no virtual
     public MembershipEntity? Membership { get; set; }
     public AccountEntity? Account { get; set; }
     public DeviceEntity? Device { get; set; }

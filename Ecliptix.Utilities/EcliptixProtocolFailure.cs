@@ -74,20 +74,6 @@ public sealed record EcliptixProtocolFailure(
                 ErrorI18NKeys.PreconditionFailed,
                 Retryable: true),
 
-            EcliptixProtocolFailureType.DeriveKeyFailed or
-            EcliptixProtocolFailureType.DecodeFailed or
-            EcliptixProtocolFailureType.KeyGenerationFailed or
-            EcliptixProtocolFailureType.PrepareLocalFailed or
-            EcliptixProtocolFailureType.MemoryBufferError => new GrpcErrorDescriptor(
-                ErrorCode.InternalError,
-                StatusCode.Internal,
-                ErrorI18NKeys.Internal),
-
-            EcliptixProtocolFailureType.Generic => new GrpcErrorDescriptor(
-                ErrorCode.InternalError,
-                StatusCode.Internal,
-                ErrorI18NKeys.Internal),
-
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,

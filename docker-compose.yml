@@ -7,7 +7,7 @@ services:
     container_name: ecliptix_postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ecliptix_admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Dev_Password_2024}

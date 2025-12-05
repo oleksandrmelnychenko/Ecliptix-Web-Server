@@ -27,9 +27,9 @@ public abstract class PersistorBase<TFailure>(IDbContextFactory<EcliptixSchemaCo
             },
             operationName,
             operationTimeout,
-            (dbEx, opName) => MapDbException(dbEx),
+            (dbEx, _) => MapDbException(dbEx),
             (timeoutEx, _) => CreateTimeoutFailure(timeoutEx),
-            (ex, opName) => CreateGenericFailure(ex),
+            (ex, _) => CreateGenericFailure(ex),
             cancellationToken);
     }
 

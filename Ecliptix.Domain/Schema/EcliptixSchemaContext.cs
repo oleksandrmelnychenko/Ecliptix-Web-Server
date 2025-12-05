@@ -1,8 +1,7 @@
 using Ecliptix.Domain.Schema.Configurations;
 using Ecliptix.Domain.Schema.Entities;
-using Ecliptix.Domain.Schema.Interfaces;
+using Ecliptix.Domain.Schema.Interceptors;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace Ecliptix.Domain.Schema;
 
@@ -57,63 +56,6 @@ public class EcliptixSchemaContext : DbContext
         {
             throw new InvalidOperationException(
                 "DbContext is not configured. Ensure connection string is provided through dependency injection or design-time factory.");
-        }
-    }
-
-    public override int SaveChanges()
-    {
-        ApplyAuditInformation();
-        return base.SaveChanges();
-    }
-
-    public override int SaveChanges(bool acceptAllChangesOnSuccess)
-    {
-        ApplyAuditInformation();
-        return base.SaveChanges(acceptAllChangesOnSuccess);
-    }
-
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-    {
-        ApplyAuditInformation();
-        return base.SaveChangesAsync(cancellationToken);
-    }
-
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
-    {
-        ApplyAuditInformation();
-        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
-    }
-
-    private void ApplyAuditInformation()
-    {
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        IEnumerable<EntityEntry<EntityBase>> entries = ChangeTracker.Entries<EntityBase>();
-
-        foreach (EntityEntry<EntityBase> entry in entries)
-        {
-            if (entry.Entity is not IAuditable auditable)
-            {
-                continue;
-            }
-
-            switch (entry.State)
-            {
-                case EntityState.Added:
-                    auditable.CreatedAt = now;
-                    auditable.UpdatedAt = now;
-                    auditable.IsDeleted = false;
-                    break;
-
-                case EntityState.Modified:
-                    auditable.UpdatedAt = now;
-                    break;
-
-                case EntityState.Deleted:
-                    entry.State = EntityState.Modified;
-                    auditable.IsDeleted = true;
-                    auditable.UpdatedAt = now;
-                    break;
-            }
         }
     }
 }

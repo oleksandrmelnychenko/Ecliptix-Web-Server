@@ -19,7 +19,6 @@ public class MembershipRelationEntity : EntityBase
     public long GetOtherAccountId(long accountId) =>
         accountId == InitiatorAccountId ? RecipientAccountId : InitiatorAccountId;
 
-    // Navigation properties - no virtual for better performance
     public AccountEntity InitiatorAccount { get; set; } = null!;
     public AccountEntity RecipientAccount { get; set; } = null!;
 }

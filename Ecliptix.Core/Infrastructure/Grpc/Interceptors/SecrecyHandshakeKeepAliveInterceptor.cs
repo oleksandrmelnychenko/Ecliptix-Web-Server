@@ -1,6 +1,4 @@
 using Akka.Actor;
-using Akka.Hosting;
-using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Grpc.Core;

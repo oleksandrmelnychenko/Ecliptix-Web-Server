@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Infrastructure.Grpc.Constants;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
@@ -11,7 +10,6 @@ using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Options;
 using Serilog;
-using GrpcStatus = Grpc.Core.Status;
 
 namespace Ecliptix.Core.Api.Grpc.Base;
 

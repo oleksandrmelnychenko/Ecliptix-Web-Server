@@ -9,13 +9,13 @@ public class AccountPinAuthEntity : EntityBase
     public byte[] MaskingKey { get; set; } = null!;
     public int CredentialsVersion { get; set; } = 1;
 
-    public bool IsPrimary { get; set; } = false;
+    public bool IsPrimary { get; set; }
     public bool IsEnabled { get; set; } = true;
-    public bool IsDeviceSpecific { get; set; } = false;
+    public bool IsDeviceSpecific { get; set; }
     public int PinLength { get; set; } = 6;
 
     public DateTimeOffset? LastUsedAt { get; set; }
-    public int FailedAttempts { get; set; } = 0;
+    public int FailedAttempts { get; set; }
     public DateTimeOffset? LockedUntil { get; set; }
 
     public AccountEntity Account { get; set; } = null!;

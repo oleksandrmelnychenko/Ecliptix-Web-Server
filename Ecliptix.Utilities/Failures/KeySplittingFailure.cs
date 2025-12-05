@@ -110,18 +110,6 @@ public sealed record KeySplittingFailure(KeySplittingFailureType Type, string Me
                 ErrorI18NKeys.ResourceExhausted,
                 Retryable: true),
 
-            KeySplittingFailureType.HmacKeyStorageFailed or
-            KeySplittingFailureType.HmacKeyRetrievalFailed or
-            KeySplittingFailureType.HmacKeyRemovalFailed or
-            KeySplittingFailureType.KeySplittingFailed or
-            KeySplittingFailureType.KeyReconstructionFailed or
-            KeySplittingFailureType.KeyDerivationFailed or
-            KeySplittingFailureType.MemoryReadFailed or
-            KeySplittingFailureType.MemoryWriteFailed => new GrpcErrorDescriptor(
-                ErrorCode.InternalError,
-                StatusCode.Internal,
-                ErrorI18NKeys.Internal),
-
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,

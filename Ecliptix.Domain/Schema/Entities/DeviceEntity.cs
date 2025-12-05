@@ -1,6 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-
 namespace Ecliptix.Domain.Schema.Entities;
 
 public class DeviceEntity : EntityBase
@@ -9,7 +6,6 @@ public class DeviceEntity : EntityBase
     public Guid DeviceId { get; set; }
     public int DeviceType { get; set; } = 1;
 
-    // Collections with lazy initialization - no virtual
     public List<VerificationFlowEntity> VerificationFlows
     {
         get => field ??= [];

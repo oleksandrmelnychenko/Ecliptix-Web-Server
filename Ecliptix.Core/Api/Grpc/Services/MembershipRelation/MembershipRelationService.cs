@@ -1,15 +1,14 @@
 using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
-using Ecliptix.Domain.Memberships.ActorEvents.Friend;
+using Ecliptix.Domain.Memberships.ActorEvents.Contact;
 using Ecliptix.Protobuf.Common;
-using Ecliptix.Protobuf.Friend;
-using Ecliptix.Protobuf.Membership;
+using Ecliptix.Protobuf.Contact;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Grpc.Core;
 using Microsoft.Extensions.Options;
-using DomainFriendFailure = Ecliptix.Domain.Memberships.Failures.FriendFailure;
+using DomainContactFailure = Ecliptix.Domain.Memberships.Failures.ContactFailure;
 
 namespace Ecliptix.Core.Api.Grpc.Services.MembershipRelation;
 
@@ -27,215 +26,59 @@ internal sealed class MembershipRelationService : Protobuf.Membership.Membership
         _membershipRelationActor = actorRegistry.Get(ActorIds.MembershipRelationActor);
     }
 
-    public override async Task<SecureEnvelope> SendFriendRequest(SecureEnvelope request, ServerCallContext context)
+    public override async Task<SecureEnvelope> ListContacts(SecureEnvelope request, ServerCallContext context)
     {
-        return await _service.ExecuteEncryptedOperationAsync<SendFriendRequestRequest, SendFriendRequestResponse>(
-            request, context,
-            async (message, connectId, _, cancellationToken) =>
-            {
-                byte[] fromBytes = message.FromMembership.ToByteArray();
-                byte[] toBytes = message.ToMembership.ToByteArray();
-                Guid fromMembershipId = new Guid(fromBytes);
-                Guid toMembershipId = new Guid(toBytes);
-
-                SendFriendRequestEvent evt = new(
-                    connectId,
-                    fromMembershipId,
-                    toMembershipId,
-                    message.Message,
-                    cancellationToken);
-
-                Task<Result<SendFriendRequestResponse, DomainFriendFailure>> task =
-                    _membershipRelationActor.Ask<Result<SendFriendRequestResponse, DomainFriendFailure>>(
-                        evt, TimeoutConfiguration.Actor.AskTimeout);
-
-                Result<SendFriendRequestResponse, DomainFriendFailure> result =
-                    await task.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                return result.Match(
-                    ok: Result<SendFriendRequestResponse, FailureBase>.Ok,
-                    err: Result<SendFriendRequestResponse, FailureBase>.Err
-                );
-            });
-    }
-
-    public override async Task<SecureEnvelope> AcceptFriendRequest(SecureEnvelope request, ServerCallContext context)
-    {
-        return await _service.ExecuteEncryptedOperationAsync<AcceptFriendRequestRequest, AcceptFriendRequestResponse>(
-            request, context,
-            async (message, connectId, _, cancellationToken) =>
-            {
-                byte[] byBytes = message.ByMembership.ToByteArray();
-                byte[] fromBytes = message.FromMembership.ToByteArray();
-                Guid byMembershipId = new Guid(byBytes);
-                Guid fromMembershipId = new Guid(fromBytes);
-
-                AcceptFriendRequestEvent evt = new(
-                    connectId,
-                    byMembershipId,
-                    fromMembershipId,
-                    cancellationToken);
-
-                Task<Result<AcceptFriendRequestResponse, DomainFriendFailure>> task =
-                    _membershipRelationActor.Ask<Result<AcceptFriendRequestResponse, DomainFriendFailure>>(
-                        evt, TimeoutConfiguration.Actor.AskTimeout);
-
-                Result<AcceptFriendRequestResponse, DomainFriendFailure> result =
-                    await task.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                return result.Match(
-                    ok: Result<AcceptFriendRequestResponse, FailureBase>.Ok,
-                    err: Result<AcceptFriendRequestResponse, FailureBase>.Err
-                );
-            });
-    }
-
-    public override async Task<SecureEnvelope> ListFriends(SecureEnvelope request, ServerCallContext context)
-    {
-        return await _service.ExecuteEncryptedOperationAsync<ListFriendsRequest, ListFriendsResponse>(
+        return await _service.ExecuteEncryptedOperationAsync<ListContactsRequest, ListContactsResponse>(
             request, context,
             async (message, connectId, _, cancellationToken) =>
             {
                 byte[] membershipBytes = message.Membership.ToByteArray();
-                Guid membershipId = new Guid(membershipBytes);
+                Guid membershipId = new(membershipBytes);
                 int limit = message.Limit > 0 ? message.Limit : 50;
 
-                ListFriendsEvent evt = new(
+                ListContactsEvent evt = new(
                     connectId,
                     membershipId,
                     limit,
                     message.Cursor,
                     cancellationToken);
 
-                Task<Result<ListFriendsResponse, DomainFriendFailure>> task =
-                    _membershipRelationActor.Ask<Result<ListFriendsResponse, DomainFriendFailure>>(
+                Task<Result<ListContactsResponse, DomainContactFailure>> task =
+                    _membershipRelationActor.Ask<Result<ListContactsResponse, DomainContactFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<ListFriendsResponse, DomainFriendFailure> result =
+                Result<ListContactsResponse, DomainContactFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
-                    ok: Result<ListFriendsResponse, FailureBase>.Ok,
-                    err: Result<ListFriendsResponse, FailureBase>.Err
+                    ok: Result<ListContactsResponse, FailureBase>.Ok,
+                    err: Result<ListContactsResponse, FailureBase>.Err
                 );
             });
     }
 
-    public override async Task<SecureEnvelope> CancelFriendRequest(SecureEnvelope request, ServerCallContext context)
+    public override async Task<SecureEnvelope> RemoveContact(SecureEnvelope request, ServerCallContext context)
     {
-        return await _service.ExecuteEncryptedOperationAsync<CancelFriendRequestRequest, GenericResponse>(
-            request, context,
-            async (message, connectId, _, cancellationToken) =>
-            {
-                byte[] byBytes = message.ByMembership.ToByteArray();
-                byte[] toBytes = message.ToMembership.ToByteArray();
-                Guid byMembershipId = new Guid(byBytes);
-                Guid toMembershipId = new Guid(toBytes);
-
-                CancelFriendRequestEvent evt = new(
-                    connectId,
-                    byMembershipId,
-                    toMembershipId,
-                    cancellationToken);
-
-                Task<Result<GenericResponse, DomainFriendFailure>> task =
-                    _membershipRelationActor.Ask<Result<GenericResponse, DomainFriendFailure>>(
-                        evt, TimeoutConfiguration.Actor.AskTimeout);
-
-                Result<GenericResponse, DomainFriendFailure> result =
-                    await task.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                return result.Match(
-                    ok: Result<GenericResponse, FailureBase>.Ok,
-                    err: Result<GenericResponse, FailureBase>.Err
-                );
-            });
-    }
-
-    public override async Task<SecureEnvelope> RejectFriendRequest(SecureEnvelope request, ServerCallContext context)
-    {
-        return await _service.ExecuteEncryptedOperationAsync<RejectFriendRequestRequest, GenericResponse>(
-            request, context,
-            async (message, connectId, _, cancellationToken) =>
-            {
-                byte[] byBytes = message.ByMembership.ToByteArray();
-                byte[] fromBytes = message.FromMembership.ToByteArray();
-                Guid byMembershipId = new Guid(byBytes);
-                Guid fromMembershipId = new Guid(fromBytes);
-
-                RejectFriendRequestEvent evt = new(
-                    connectId,
-                    byMembershipId,
-                    fromMembershipId,
-                    cancellationToken);
-
-                Task<Result<GenericResponse, DomainFriendFailure>> task =
-                    _membershipRelationActor.Ask<Result<GenericResponse, DomainFriendFailure>>(
-                        evt, TimeoutConfiguration.Actor.AskTimeout);
-
-                Result<GenericResponse, DomainFriendFailure> result =
-                    await task.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                return result.Match(
-                    ok: Result<GenericResponse, FailureBase>.Ok,
-                    err: Result<GenericResponse, FailureBase>.Err
-                );
-            });
-    }
-
-    public override async Task<SecureEnvelope> RemoveFriend(SecureEnvelope request, ServerCallContext context)
-    {
-        return await _service.ExecuteEncryptedOperationAsync<RemoveFriendRequest, GenericResponse>(
-            request, context,
-            async (message, connectId, _, cancellationToken) =>
-            {
-                byte[] byBytes = message.ByMembership.ToByteArray();
-                byte[] targetBytes = message.FriendMembership.ToByteArray();
-                Guid byMembershipId = new Guid(byBytes);
-                Guid targetMembershipId = new Guid(targetBytes);
-
-                RemoveFriendEvent evt = new(
-                    connectId,
-                    byMembershipId,
-                    targetMembershipId,
-                    cancellationToken);
-
-                Task<Result<GenericResponse, DomainFriendFailure>> task =
-                    _membershipRelationActor.Ask<Result<GenericResponse, DomainFriendFailure>>(
-                        evt, TimeoutConfiguration.Actor.AskTimeout);
-
-                Result<GenericResponse, DomainFriendFailure> result =
-                    await task.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                return result.Match(
-                    ok: Result<GenericResponse, FailureBase>.Ok,
-                    err: Result<GenericResponse, FailureBase>.Err
-                );
-            });
-    }
-
-    public override async Task<SecureEnvelope> BlockUser(SecureEnvelope request, ServerCallContext context)
-    {
-        return await _service.ExecuteEncryptedOperationAsync<BlockUserRequest, GenericResponse>(
+        return await _service.ExecuteEncryptedOperationAsync<RemoveContactRequest, GenericResponse>(
             request, context,
             async (message, connectId, _, cancellationToken) =>
             {
                 byte[] byBytes = message.ByMembership.ToByteArray();
                 byte[] targetBytes = message.TargetMembership.ToByteArray();
-                Guid byMembershipId = new Guid(byBytes);
-                Guid targetMembershipId = new Guid(targetBytes);
+                Guid byMembershipId = new(byBytes);
+                Guid targetMembershipId = new(targetBytes);
 
-                BlockUserEvent evt = new(
+                RemoveContactEvent evt = new(
                     connectId,
                     byMembershipId,
                     targetMembershipId,
                     cancellationToken);
 
-                Task<Result<GenericResponse, DomainFriendFailure>> task =
-                    _membershipRelationActor.Ask<Result<GenericResponse, DomainFriendFailure>>(
+                Task<Result<GenericResponse, DomainContactFailure>> task =
+                    _membershipRelationActor.Ask<Result<GenericResponse, DomainContactFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<GenericResponse, DomainFriendFailure> result =
+                Result<GenericResponse, DomainContactFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
@@ -245,28 +88,28 @@ internal sealed class MembershipRelationService : Protobuf.Membership.Membership
             });
     }
 
-    public override async Task<SecureEnvelope> UnblockUser(SecureEnvelope request, ServerCallContext context)
+    public override async Task<SecureEnvelope> BlockContact(SecureEnvelope request, ServerCallContext context)
     {
-        return await _service.ExecuteEncryptedOperationAsync<UnblockUserRequest, GenericResponse>(
+        return await _service.ExecuteEncryptedOperationAsync<BlockContactRequest, GenericResponse>(
             request, context,
             async (message, connectId, _, cancellationToken) =>
             {
                 byte[] byBytes = message.ByMembership.ToByteArray();
                 byte[] targetBytes = message.TargetMembership.ToByteArray();
-                Guid byMembershipId = new Guid(byBytes);
-                Guid targetMembershipId = new Guid(targetBytes);
+                Guid byMembershipId = new(byBytes);
+                Guid targetMembershipId = new(targetBytes);
 
-                UnblockUserEvent evt = new(
+                BlockContactEvent evt = new(
                     connectId,
                     byMembershipId,
                     targetMembershipId,
                     cancellationToken);
 
-                Task<Result<GenericResponse, DomainFriendFailure>> task =
-                    _membershipRelationActor.Ask<Result<GenericResponse, DomainFriendFailure>>(
+                Task<Result<GenericResponse, DomainContactFailure>> task =
+                    _membershipRelationActor.Ask<Result<GenericResponse, DomainContactFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<GenericResponse, DomainFriendFailure> result =
+                Result<GenericResponse, DomainContactFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
@@ -276,66 +119,128 @@ internal sealed class MembershipRelationService : Protobuf.Membership.Membership
             });
     }
 
-    public override async Task<SecureEnvelope> ListPendingRequests(SecureEnvelope request, ServerCallContext context)
+    public override async Task<SecureEnvelope> UnblockContact(SecureEnvelope request, ServerCallContext context)
     {
-        return await _service.ExecuteEncryptedOperationAsync<ListPendingRequestsRequest, ListPendingRequestsResponse>(
+        return await _service.ExecuteEncryptedOperationAsync<UnblockContactRequest, GenericResponse>(
             request, context,
             async (message, connectId, _, cancellationToken) =>
             {
-                byte[] membershipBytes = message.Membership.ToByteArray();
-                Guid membershipId = new Guid(membershipBytes);
-                int limit = message.Limit > 0 ? message.Limit : 50;
-                bool isIncoming = message.Direction == RequestDirection.Incoming;
+                byte[] byBytes = message.ByMembership.ToByteArray();
+                byte[] targetBytes = message.TargetMembership.ToByteArray();
+                Guid byMembershipId = new(byBytes);
+                Guid targetMembershipId = new(targetBytes);
 
-                ListPendingRequestsEvent evt = new(
+                UnblockContactEvent evt = new(
                     connectId,
-                    membershipId,
-                    isIncoming,
-                    limit,
-                    message.Cursor,
+                    byMembershipId,
+                    targetMembershipId,
                     cancellationToken);
 
-                Task<Result<ListPendingRequestsResponse, DomainFriendFailure>> task =
-                    _membershipRelationActor.Ask<Result<ListPendingRequestsResponse, DomainFriendFailure>>(
+                Task<Result<GenericResponse, DomainContactFailure>> task =
+                    _membershipRelationActor.Ask<Result<GenericResponse, DomainContactFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<ListPendingRequestsResponse, DomainFriendFailure> result =
+                Result<GenericResponse, DomainContactFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
-                    ok: Result<ListPendingRequestsResponse, FailureBase>.Ok,
-                    err: Result<ListPendingRequestsResponse, FailureBase>.Err
+                    ok: Result<GenericResponse, FailureBase>.Ok,
+                    err: Result<GenericResponse, FailureBase>.Err
                 );
             });
     }
 
-    public override async Task<SecureEnvelope> GetFriendshipStatus(SecureEnvelope request, ServerCallContext context)
+    public override async Task<SecureEnvelope> MuteContact(SecureEnvelope request, ServerCallContext context)
     {
-        return await _service.ExecuteEncryptedOperationAsync<GetFriendshipStatusRequest, GetFriendshipStatusResponse>(
+        return await _service.ExecuteEncryptedOperationAsync<MuteContactRequest, GenericResponse>(
+            request, context,
+            async (message, connectId, _, cancellationToken) =>
+            {
+                byte[] byBytes = message.ByMembership.ToByteArray();
+                byte[] targetBytes = message.TargetMembership.ToByteArray();
+                Guid byMembershipId = new(byBytes);
+                Guid targetMembershipId = new(targetBytes);
+                DateTimeOffset mutedUntil = message.MutedUntil.ToDateTimeOffset();
+
+                MuteContactEvent evt = new(
+                    connectId,
+                    byMembershipId,
+                    targetMembershipId,
+                    mutedUntil,
+                    cancellationToken);
+
+                Task<Result<GenericResponse, DomainContactFailure>> task =
+                    _membershipRelationActor.Ask<Result<GenericResponse, DomainContactFailure>>(
+                        evt, TimeoutConfiguration.Actor.AskTimeout);
+
+                Result<GenericResponse, DomainContactFailure> result =
+                    await task.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                return result.Match(
+                    ok: Result<GenericResponse, FailureBase>.Ok,
+                    err: Result<GenericResponse, FailureBase>.Err
+                );
+            });
+    }
+
+    public override async Task<SecureEnvelope> UnmuteContact(SecureEnvelope request, ServerCallContext context)
+    {
+        return await _service.ExecuteEncryptedOperationAsync<UnmuteContactRequest, GenericResponse>(
+            request, context,
+            async (message, connectId, _, cancellationToken) =>
+            {
+                byte[] byBytes = message.ByMembership.ToByteArray();
+                byte[] targetBytes = message.TargetMembership.ToByteArray();
+                Guid byMembershipId = new(byBytes);
+                Guid targetMembershipId = new(targetBytes);
+
+                UnmuteContactEvent evt = new(
+                    connectId,
+                    byMembershipId,
+                    targetMembershipId,
+                    cancellationToken);
+
+                Task<Result<GenericResponse, DomainContactFailure>> task =
+                    _membershipRelationActor.Ask<Result<GenericResponse, DomainContactFailure>>(
+                        evt, TimeoutConfiguration.Actor.AskTimeout);
+
+                Result<GenericResponse, DomainContactFailure> result =
+                    await task.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                return result.Match(
+                    ok: Result<GenericResponse, FailureBase>.Ok,
+                    err: Result<GenericResponse, FailureBase>.Err
+                );
+            });
+    }
+
+    public override async Task<SecureEnvelope> GetContactStatus(SecureEnvelope request, ServerCallContext context)
+    {
+        return await _service.ExecuteEncryptedOperationAsync<GetContactStatusRequest, GetContactStatusResponse>(
             request, context,
             async (message, connectId, _, cancellationToken) =>
             {
                 byte[] fromBytes = message.FromMembership.ToByteArray();
                 byte[] toBytes = message.ToMembership.ToByteArray();
-                Guid fromMembershipId = new Guid(fromBytes);
-                Guid toMembershipId = new Guid(toBytes);
+                Guid fromMembershipId = new(fromBytes);
+                Guid toMembershipId = new(toBytes);
 
-                GetFriendshipStatusEvent evt = new(
+                GetContactStatusEvent evt = new(
                     connectId,
                     fromMembershipId,
                     toMembershipId,
                     cancellationToken);
 
-                Task<Result<GetFriendshipStatusResponse, DomainFriendFailure>> task =
-                    _membershipRelationActor.Ask<Result<GetFriendshipStatusResponse, DomainFriendFailure>>(
+                Task<Result<GetContactStatusResponse, DomainContactFailure>> task =
+                    _membershipRelationActor.Ask<Result<GetContactStatusResponse, DomainContactFailure>>(
                         evt, TimeoutConfiguration.Actor.AskTimeout);
 
-                Result<GetFriendshipStatusResponse, DomainFriendFailure> result =
+                Result<GetContactStatusResponse, DomainContactFailure> result =
                     await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 return result.Match(
-                    ok: Result<GetFriendshipStatusResponse, FailureBase>.Ok,
-                    err: Result<GetFriendshipStatusResponse, FailureBase>.Err
+                    ok: Result<GetContactStatusResponse, FailureBase>.Ok,
+                    err: Result<GetContactStatusResponse, FailureBase>.Err
                 );
             });
     }

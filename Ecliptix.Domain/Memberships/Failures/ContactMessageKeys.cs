@@ -1,40 +1,32 @@
 namespace Ecliptix.Domain.Memberships.Failures;
 
-public static class FriendMessageKeys
+public static class ContactMessageKeys
 {
-    public const string FriendNotFound = "friend_not_found";
-    public const string FriendRelationNotFound = "friend_relation_not_found";
-    public const string FriendRequestNotFound = "friend_request_not_found";
-    
-    public const string AlreadyRequested = "friend_already_requested";
-    public const string AlreadyFriends = "already_friends";
+    public const string ContactNotFound = "contact_not_found";
+    public const string ContactRelationNotFound = "contact_relation_not_found";
+
+    public const string AlreadyContact = "already_contact";
 
     public const string UserBlocked = "user_blocked";
     public const string BlockedByUser = "blocked_by_user";
-    
-    public const string CannotFriendYourself = "cannot_friend_yourself";
-    public const string CannotAcceptOwnRequest = "cannot_accept_own_request";
-    public const string CannotCancelOtherRequest = "cannot_cancel_other_request";
-    public const string RequestNotPending = "request_not_pending";
-    public const string NotFriends = "not_friends";
-    
-    public const string ValidationFailed = "friend_validation_failed";
+
+    public const string CannotAddYourself = "cannot_add_yourself";
+    public const string NotInContacts = "not_in_contacts";
+
+    public const string ValidationFailed = "contact_validation_failed";
     public const string InvalidMembershipId = "invalid_membership_id";
-    
-    public const string DataAccess = "friend_data_access_failed";
-    public const string SendRequestFailed = "send_friend_request_failed";
-    public const string AcceptRequestFailed = "accept_friend_request_failed";
-    public const string RejectRequestFailed = "reject_friend_request_failed";
-    public const string CancelRequestFailed = "cancel_friend_request_failed";
-    public const string RemoveFriendFailed = "remove_friend_failed";
-    public const string ListFriendsFailed = "list_friends_failed";
-    public const string GetFriendshipStatusFailed = "get_friendship_status_failed";
-    public const string BlockUserFailed = "block_user_failed";
-    public const string UnblockUserFailed = "unblock_user_failed";
-    public const string ListPendingRequestsFailed = "list_pending_requests_failed";
-    
-    public const string ConcurrencyConflict = "friend_concurrency_conflict";
-    
-    public const string Generic = "friend_generic_error";
-    public const string UnexpectedError = "friend_unexpected_error";
+
+    public const string DataAccess = "contact_data_access_failed";
+    public const string RemoveContactFailed = "remove_contact_failed";
+    public const string ListContactsFailed = "list_contacts_failed";
+    public const string GetContactStatusFailed = "get_contact_status_failed";
+    public const string BlockContactFailed = "block_contact_failed";
+    public const string UnblockContactFailed = "unblock_contact_failed";
+    public const string MuteContactFailed = "mute_contact_failed";
+    public const string UnmuteContactFailed = "unmute_contact_failed";
+
+    public const string ConcurrencyConflict = "contact_concurrency_conflict";
+
+    public const string Generic = "contact_generic_error";
+    public const string UnexpectedError = "contact_unexpected_error";
 }

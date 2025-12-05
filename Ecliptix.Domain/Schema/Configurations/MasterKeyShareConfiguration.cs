@@ -20,11 +20,11 @@ public class MasterKeyShareConfiguration : EntityBaseMap<MasterKeyShareEntity>
 
         builder.Property(e => e.EncryptedShare)
             .IsRequired()
-            .HasColumnType("VARBINARY(128)");
+            .HasColumnType("bytea");
 
         builder.Property(e => e.ShareMetadata)
             .IsRequired()
-            .HasColumnType("NVARCHAR(500)");
+            .HasColumnType("varchar(500)");
 
         builder.Property(e => e.StorageLocation)
             .IsRequired()

@@ -11,12 +11,10 @@ public class MembershipEntity : EntityBase
     public MembershipStatus Status { get; set; } = MembershipStatus.Inactive;
     public MembershipCreationStatus? CreationStatus { get; set; }
 
-    // Navigation properties - no virtual for better memory performance
     public MobileNumberEntity MobileNumber { get; set; } = null!;
     public DeviceEntity AppDevice { get; set; } = null!;
     public VerificationFlowEntity? VerificationFlow { get; set; }
 
-    // Collections with lazy initialization
     public List<LoginAttemptEntity> LoginAttempts
     {
         get => field ??= [];

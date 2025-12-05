@@ -3,8 +3,8 @@ using Grpc.Core;
 
 namespace Ecliptix.Domain.Memberships.Failures;
 
-public sealed record FriendFailure(
-    FriendFailureType FailureType,
+public sealed record ContactFailure(
+    ContactFailureType FailureType,
     string Message,
     FailureBase? SourceFailure = null,
     Exception? InnerException = null)
@@ -12,246 +12,238 @@ public sealed record FriendFailure(
 {
     public bool IsRecoverable => FailureType switch
     {
-        FriendFailureType.PersistorAccess => true,
-        FriendFailureType.ConcurrencyConflict => true,
-        FriendFailureType.DatabaseError => true,
+        ContactFailureType.PersistorAccess => true,
+        ContactFailureType.ConcurrencyConflict => true,
+        ContactFailureType.DatabaseError => true,
         _ => false
     };
 
     public bool IsUserFacing => FailureType switch
     {
-        FriendFailureType.NotFound => true,
-        FriendFailureType.AlreadyRequested => true,
-        FriendFailureType.AlreadyFriends => true,
-        FriendFailureType.Blocked => true,
-        FriendFailureType.InvalidRequest => true,
-        FriendFailureType.Validation => true,
-        FriendFailureType.Unauthorized => true,
+        ContactFailureType.NotFound => true,
+        ContactFailureType.AlreadyContact => true,
+        ContactFailureType.Blocked => true,
+        ContactFailureType.InvalidRequest => true,
+        ContactFailureType.Validation => true,
+        ContactFailureType.Unauthorized => true,
         _ => false
     };
 
-    public static FriendFailure NotFound(string? details = null)
+    public static ContactFailure NotFound(string? details = null)
     {
-        return new FriendFailure(
-            FriendFailureType.NotFound,
-            details ?? FriendMessageKeys.FriendNotFound);
+        return new ContactFailure(
+            ContactFailureType.NotFound,
+            details ?? ContactMessageKeys.ContactNotFound);
     }
 
-    public static FriendFailure FriendRelationNotFound(string? details = null)
+    public static ContactFailure ContactRelationNotFound(string? details = null)
     {
-        return new FriendFailure(
-            FriendFailureType.NotFound,
-            details ?? FriendMessageKeys.FriendRelationNotFound);
+        return new ContactFailure(
+            ContactFailureType.NotFound,
+            details ?? ContactMessageKeys.ContactRelationNotFound);
     }
 
-    public static FriendFailure FriendRequestNotFound(string? details = null)
+    public static ContactFailure ContactRequestNotFound(string? details = null)
     {
-        return new FriendFailure(
-            FriendFailureType.NotFound,
-            details ?? FriendMessageKeys.FriendRequestNotFound);
+        return new ContactFailure(
+            ContactFailureType.NotFound,
+            details ?? ContactMessageKeys.ContactNotFound);
     }
 
-    public static FriendFailure AlreadyRequested(string? details = null)
+    public static ContactFailure AlreadyContact(string? details = null)
     {
-        return new FriendFailure(
-            FriendFailureType.AlreadyRequested,
-            details ?? FriendMessageKeys.AlreadyRequested);
+        return new ContactFailure(
+            ContactFailureType.AlreadyContact,
+            details ?? ContactMessageKeys.AlreadyContact);
     }
 
-    public static FriendFailure AlreadyFriends(string? details = null)
+    public static ContactFailure Blocked(string? details = null)
     {
-        return new FriendFailure(
-            FriendFailureType.AlreadyFriends,
-            details ?? FriendMessageKeys.AlreadyFriends);
+        return new ContactFailure(
+            ContactFailureType.Blocked,
+            details ?? ContactMessageKeys.UserBlocked);
     }
 
-    public static FriendFailure Blocked(string? details = null)
+    public static ContactFailure BlockedByUser(string? details = null)
     {
-        return new FriendFailure(
-            FriendFailureType.Blocked,
-            details ?? FriendMessageKeys.UserBlocked);
+        return new ContactFailure(
+            ContactFailureType.Blocked,
+            details ?? ContactMessageKeys.BlockedByUser);
     }
 
-    public static FriendFailure BlockedByUser(string? details = null)
+    public static ContactFailure CannotContactYourself()
     {
-        return new FriendFailure(
-            FriendFailureType.Blocked,
-            details ?? FriendMessageKeys.BlockedByUser);
+        return new ContactFailure(
+            ContactFailureType.InvalidRequest,
+            ContactMessageKeys.CannotAddYourself);
     }
 
-    public static FriendFailure CannotFriendYourself()
+    public static ContactFailure CannotAcceptOwnRequest()
     {
-        return new FriendFailure(
-            FriendFailureType.InvalidRequest,
-            FriendMessageKeys.CannotFriendYourself);
+        return new ContactFailure(
+            ContactFailureType.InvalidRequest,
+            ContactMessageKeys.InvalidMembershipId);
     }
 
-    public static FriendFailure CannotAcceptOwnRequest()
+    public static ContactFailure CannotCancelOtherRequest()
     {
-        return new FriendFailure(
-            FriendFailureType.InvalidRequest,
-            FriendMessageKeys.CannotAcceptOwnRequest);
+        return new ContactFailure(
+            ContactFailureType.InvalidRequest,
+            ContactMessageKeys.InvalidMembershipId);
     }
 
-    public static FriendFailure CannotCancelOtherRequest()
+    public static ContactFailure RequestNotPending()
     {
-        return new FriendFailure(
-            FriendFailureType.InvalidRequest,
-            FriendMessageKeys.CannotCancelOtherRequest);
+        return new ContactFailure(
+            ContactFailureType.InvalidRequest,
+            ContactMessageKeys.ContactNotFound);
     }
 
-    public static FriendFailure RequestNotPending()
+    public static ContactFailure NotContacts()
     {
-        return new FriendFailure(
-            FriendFailureType.InvalidRequest,
-            FriendMessageKeys.RequestNotPending);
+        return new ContactFailure(
+            ContactFailureType.InvalidRequest,
+            ContactMessageKeys.NotInContacts);
     }
 
-    public static FriendFailure NotFriends()
+    public static ContactFailure ValidationFailed(string? details = null)
     {
-        return new FriendFailure(
-            FriendFailureType.InvalidRequest,
-            FriendMessageKeys.NotFriends);
+        return new ContactFailure(
+            ContactFailureType.Validation,
+            details ?? ContactMessageKeys.ValidationFailed);
     }
 
-    public static FriendFailure ValidationFailed(string? details = null)
+    public static ContactFailure InvalidMembershipId(string? details = null)
     {
-        return new FriendFailure(
-            FriendFailureType.Validation,
-            details ?? FriendMessageKeys.ValidationFailed);
+        return new ContactFailure(
+            ContactFailureType.Validation,
+            details ?? ContactMessageKeys.InvalidMembershipId);
     }
 
-    public static FriendFailure InvalidMembershipId(string? details = null)
+    public static ContactFailure PersistorAccess(string? details = null, Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.Validation,
-            details ?? FriendMessageKeys.InvalidMembershipId);
-    }
-
-    public static FriendFailure PersistorAccess(string? details = null, Exception? innerException = null)
-    {
-        return new FriendFailure(
-            FriendFailureType.PersistorAccess,
-            details ?? FriendMessageKeys.DataAccess,
+        return new ContactFailure(
+            ContactFailureType.PersistorAccess,
+            details ?? ContactMessageKeys.DataAccess,
             InnerException: innerException);
     }
 
-    public static FriendFailure SendRequestFailed(Exception? innerException = null)
+    public static ContactFailure SendRequestFailed(Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.PersistorAccess,
-            FriendMessageKeys.SendRequestFailed,
+        return new ContactFailure(
+            ContactFailureType.PersistorAccess,
+            ContactMessageKeys.DataAccess,
             InnerException: innerException);
     }
 
-    public static FriendFailure AcceptRequestFailed(Exception? innerException = null)
+    public static ContactFailure AcceptRequestFailed(Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.PersistorAccess,
-            FriendMessageKeys.AcceptRequestFailed,
+        return new ContactFailure(
+            ContactFailureType.PersistorAccess,
+            ContactMessageKeys.DataAccess,
             InnerException: innerException);
     }
 
-    public static FriendFailure RejectRequestFailed(Exception? innerException = null)
+    public static ContactFailure RejectRequestFailed(Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.PersistorAccess,
-            FriendMessageKeys.RejectRequestFailed,
+        return new ContactFailure(
+            ContactFailureType.PersistorAccess,
+            ContactMessageKeys.DataAccess,
             InnerException: innerException);
     }
 
-    public static FriendFailure CancelRequestFailed(Exception? innerException = null)
+    public static ContactFailure CancelRequestFailed(Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.PersistorAccess,
-            FriendMessageKeys.CancelRequestFailed,
+        return new ContactFailure(
+            ContactFailureType.PersistorAccess,
+            ContactMessageKeys.DataAccess,
             InnerException: innerException);
     }
 
-    public static FriendFailure RemoveFriendFailed(Exception? innerException = null)
+    public static ContactFailure RemoveContactFailed(Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.PersistorAccess,
-            FriendMessageKeys.RemoveFriendFailed,
+        return new ContactFailure(
+            ContactFailureType.PersistorAccess,
+            ContactMessageKeys.RemoveContactFailed,
             InnerException: innerException);
     }
 
-    public static FriendFailure ListFriendsFailed(Exception? innerException = null)
+    public static ContactFailure ListContactsFailed(Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.PersistorAccess,
-            FriendMessageKeys.ListFriendsFailed,
+        return new ContactFailure(
+            ContactFailureType.PersistorAccess,
+            ContactMessageKeys.ListContactsFailed,
             InnerException: innerException);
     }
 
-    public static FriendFailure GetFriendshipStatusFailed(Exception? innerException = null)
+    public static ContactFailure GetContactshipStatusFailed(Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.PersistorAccess,
-            FriendMessageKeys.GetFriendshipStatusFailed,
+        return new ContactFailure(
+            ContactFailureType.PersistorAccess,
+            ContactMessageKeys.GetContactStatusFailed,
             InnerException: innerException);
     }
 
-    public static FriendFailure BlockUserFailed(Exception? innerException = null)
+    public static ContactFailure BlockUserFailed(Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.PersistorAccess,
-            FriendMessageKeys.BlockUserFailed,
+        return new ContactFailure(
+            ContactFailureType.PersistorAccess,
+            ContactMessageKeys.BlockContactFailed,
             InnerException: innerException);
     }
 
-    public static FriendFailure UnblockUserFailed(Exception? innerException = null)
+    public static ContactFailure UnblockUserFailed(Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.PersistorAccess,
-            FriendMessageKeys.UnblockUserFailed,
+        return new ContactFailure(
+            ContactFailureType.PersistorAccess,
+            ContactMessageKeys.UnblockContactFailed,
             InnerException: innerException);
     }
 
-    public static FriendFailure ListPendingRequestsFailed(Exception? innerException = null)
+    public static ContactFailure ListPendingRequestsFailed(Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.PersistorAccess,
-            FriendMessageKeys.ListPendingRequestsFailed,
+        return new ContactFailure(
+            ContactFailureType.PersistorAccess,
+            ContactMessageKeys.DataAccess,
             InnerException: innerException);
     }
 
-    public static FriendFailure ConcurrencyConflict(string? details = null)
+    public static ContactFailure ConcurrencyConflict(string? details = null)
     {
-        return new FriendFailure(
-            FriendFailureType.ConcurrencyConflict,
-            details ?? FriendMessageKeys.ConcurrencyConflict);
+        return new ContactFailure(
+            ContactFailureType.ConcurrencyConflict,
+            details ?? ContactMessageKeys.ConcurrencyConflict);
     }
 
-    public static FriendFailure DatabaseError(string? details = null, Exception? innerException = null)
+    public static ContactFailure DatabaseError(string? details = null, Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.DatabaseError,
-            details ?? FriendMessageKeys.DataAccess,
+        return new ContactFailure(
+            ContactFailureType.DatabaseError,
+            details ?? ContactMessageKeys.DataAccess,
             InnerException: innerException);
     }
 
-    public static FriendFailure Unauthorized(string? details = null)
+    public static ContactFailure Unauthorized(string? details = null)
     {
-        return new FriendFailure(
-            FriendFailureType.Unauthorized,
+        return new ContactFailure(
+            ContactFailureType.Unauthorized,
             details ?? "Unauthorized");
     }
 
-    public static FriendFailure Generic(string? details = null, Exception? innerException = null)
+    public static ContactFailure Generic(string? details = null, Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.Generic,
-            details ?? FriendMessageKeys.Generic,
+        return new ContactFailure(
+            ContactFailureType.Generic,
+            details ?? ContactMessageKeys.Generic,
             null,
             innerException);
     }
 
-    public static FriendFailure UnexpectedError(string? details = null, Exception? innerException = null)
+    public static ContactFailure UnexpectedError(string? details = null, Exception? innerException = null)
     {
-        return new FriendFailure(
-            FriendFailureType.Generic,
-            details ?? FriendMessageKeys.UnexpectedError,
+        return new ContactFailure(
+            ContactFailureType.Generic,
+            details ?? ContactMessageKeys.UnexpectedError,
             null,
             innerException);
     }
@@ -262,53 +254,48 @@ public sealed record FriendFailure(
 
         return FailureType switch
         {
-            FriendFailureType.NotFound => new GrpcErrorDescriptor(
+            ContactFailureType.NotFound => new GrpcErrorDescriptor(
                 ErrorCode.NotFound,
                 StatusCode.NotFound,
                 i18NKey),
             
-            FriendFailureType.AlreadyRequested => new GrpcErrorDescriptor(
+            ContactFailureType.AlreadyContact => new GrpcErrorDescriptor(
                 ErrorCode.AlreadyExists,
                 StatusCode.AlreadyExists,
                 i18NKey),
             
-            FriendFailureType.AlreadyFriends => new GrpcErrorDescriptor(
-                ErrorCode.AlreadyExists,
-                StatusCode.AlreadyExists,
-                i18NKey),
-            
-            FriendFailureType.Blocked => new GrpcErrorDescriptor(
+            ContactFailureType.Blocked => new GrpcErrorDescriptor(
                 ErrorCode.PermissionDenied,
                 StatusCode.PermissionDenied,
                 i18NKey),
             
-            FriendFailureType.InvalidRequest => new GrpcErrorDescriptor(
+            ContactFailureType.InvalidRequest => new GrpcErrorDescriptor(
                 ErrorCode.PreconditionFailed,
                 StatusCode.FailedPrecondition,
                 i18NKey),
             
-            FriendFailureType.Validation => new GrpcErrorDescriptor(
+            ContactFailureType.Validation => new GrpcErrorDescriptor(
                 ErrorCode.ValidationFailed,
                 StatusCode.InvalidArgument,
                 i18NKey),
             
-            FriendFailureType.Unauthorized => new GrpcErrorDescriptor(
+            ContactFailureType.Unauthorized => new GrpcErrorDescriptor(
                 ErrorCode.Unauthenticated,
                 StatusCode.Unauthenticated,
                 i18NKey),
             
-            FriendFailureType.ConcurrencyConflict => new GrpcErrorDescriptor(
+            ContactFailureType.ConcurrencyConflict => new GrpcErrorDescriptor(
                 ErrorCode.Conflict,
                 StatusCode.Aborted,
                 i18NKey),
             
-            FriendFailureType.PersistorAccess => new GrpcErrorDescriptor(
+            ContactFailureType.PersistorAccess => new GrpcErrorDescriptor(
                 ErrorCode.DatabaseUnavailable,
                 StatusCode.Unavailable,
                 i18NKey,
                 Retryable: true),
             
-            FriendFailureType.DatabaseError => new GrpcErrorDescriptor(
+            ContactFailureType.DatabaseError => new GrpcErrorDescriptor(
                 ErrorCode.DatabaseUnavailable,
                 StatusCode.Unavailable,
                 i18NKey,
@@ -321,19 +308,18 @@ public sealed record FriendFailure(
         };
     }
 
-    private static string GetDefaultI18NKey(FriendFailureType failureType) =>
+    private static string GetDefaultI18NKey(ContactFailureType failureType) =>
         failureType switch
         {
-            FriendFailureType.NotFound => ErrorI18NKeys.NotFound,
-            FriendFailureType.AlreadyRequested => ErrorI18NKeys.AlreadyExists,
-            FriendFailureType.AlreadyFriends => ErrorI18NKeys.AlreadyExists,
-            FriendFailureType.Blocked => ErrorI18NKeys.PermissionDenied,
-            FriendFailureType.InvalidRequest => ErrorI18NKeys.PreconditionFailed,
-            FriendFailureType.Validation => ErrorI18NKeys.Validation,
-            FriendFailureType.Unauthorized => ErrorI18NKeys.Unauthenticated,
-            FriendFailureType.ConcurrencyConflict => ErrorI18NKeys.Conflict,
-            FriendFailureType.PersistorAccess => ErrorI18NKeys.DatabaseUnavailable,
-            FriendFailureType.DatabaseError => ErrorI18NKeys.DatabaseUnavailable,
+            ContactFailureType.NotFound => ErrorI18NKeys.NotFound,
+            ContactFailureType.AlreadyContact => ErrorI18NKeys.AlreadyExists,
+            ContactFailureType.Blocked => ErrorI18NKeys.PermissionDenied,
+            ContactFailureType.InvalidRequest => ErrorI18NKeys.PreconditionFailed,
+            ContactFailureType.Validation => ErrorI18NKeys.Validation,
+            ContactFailureType.Unauthorized => ErrorI18NKeys.Unauthenticated,
+            ContactFailureType.ConcurrencyConflict => ErrorI18NKeys.Conflict,
+            ContactFailureType.PersistorAccess => ErrorI18NKeys.DatabaseUnavailable,
+            ContactFailureType.DatabaseError => ErrorI18NKeys.DatabaseUnavailable,
             _ => ErrorI18NKeys.Internal
         };
 

@@ -20,11 +20,13 @@ public class AccountPinAuthConfiguration : EntityBaseMap<AccountPinAuthEntity>
 
         builder.Property(e => e.SecureKey)
             .IsRequired()
-            .HasColumnType("VARBINARY(176)");
+            .HasColumnType("bytea")
+            .HasMaxLength(176);
 
         builder.Property(e => e.MaskingKey)
             .IsRequired()
-            .HasColumnType("VARBINARY(32)");
+            .HasColumnType("bytea")
+            .HasMaxLength(32);
 
         builder.Property(e => e.CredentialsVersion)
             .HasDefaultValue(1);
@@ -45,24 +47,22 @@ public class AccountPinAuthConfiguration : EntityBaseMap<AccountPinAuthEntity>
             .HasDefaultValue(0);
 
         builder.Property(e => e.LastUsedAt)
-            .HasColumnType("DATETIMEOFFSET");
+            .HasColumnType("timestamp with time zone");
 
         builder.Property(e => e.LockedUntil)
-            .HasColumnType("DATETIMEOFFSET");
+            .HasColumnType("timestamp with time zone");
 
         builder.HasIndex(e => new { e.AccountId, e.DeviceId })
             .IsUnique()
-            .HasFilter("IsDeleted = 0 AND IsDeviceSpecific = 1 AND DeviceId IS NOT NULL")
+            .HasFilter("is_deleted = false AND is_device_specific = true AND device_id IS NOT NULL")
             .HasDatabaseName("UX_AccountPinAuth_Account_Device");
 
         builder.HasIndex(e => e.AccountId)
-            .HasFilter("IsDeleted = 0 AND IsEnabled = 1")
+            .HasFilter("is_deleted = false AND is_enabled = true")
             .HasDatabaseName("IX_AccountPinAuth_Account_Enabled");
 
-        Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
-            builder.HasIndex(e => new { e.AccountId, e.DeviceId })
-                .HasFilter("IsDeleted = 0 AND IsEnabled = 1"),
-            e => new { e.UniqueId, e.SecureKey, e.MaskingKey, e.CredentialsVersion, e.IsDeviceSpecific })
+        builder.HasIndex(e => new { e.AccountId, e.DeviceId })
+            .HasFilter("is_deleted = false AND is_enabled = true")
             .HasDatabaseName("IX_AccountPinAuth_Covering");
 
         builder.HasOne(e => e.Account)

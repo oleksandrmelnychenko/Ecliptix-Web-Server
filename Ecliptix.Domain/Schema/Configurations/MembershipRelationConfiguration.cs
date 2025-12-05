@@ -21,28 +21,27 @@ public class MembershipRelationConfiguration : EntityBaseMap<MembershipRelationE
             .IsRequired();
 
         builder.Property(x => x.Status)
-            .HasConversion<string>()
-            .IsRequired();
+            .HasConversion(
+                v => v == null ? null : v.ToString().ToLowerInvariant(),
+                v => v == null ? null : Enum.Parse<ContactStatus>(v, true));
 
         builder.Property(x => x.Message)
             .HasMaxLength(512)
             .IsUnicode();
 
         builder.Property(x => x.MetaJson)
-            .HasColumnType("nvarchar(max)");
+            .HasColumnType("text");
 
         builder.Property(x => x.MutedUntil)
             .IsRequired(false);
 
-        IndexBuilder<MembershipRelationEntity> initiatorIdx = builder.HasIndex(x => new { x.InitiatorAccountId, x.RecipientAccountId })
-            .HasFilter("[IsDeleted] = 0");
-        SqlServerIndexBuilderExtensions.IncludeProperties(initiatorIdx, nameof(MembershipRelationEntity.Status), nameof(MembershipRelationEntity.Message), nameof(MembershipRelationEntity.CreatedAt), nameof(MembershipRelationEntity.MutedUntil));
-        initiatorIdx.HasDatabaseName("IX_MembershipRelations_InitiatorRecipient_Covering");
+        builder.HasIndex(x => new { x.InitiatorAccountId, x.RecipientAccountId })
+            .HasFilter("is_deleted = false")
+            .HasDatabaseName("IX_MembershipRelations_InitiatorRecipient");
 
-        IndexBuilder<MembershipRelationEntity> recipientIdx = builder.HasIndex(x => new { x.RecipientAccountId, x.InitiatorAccountId })
-            .HasFilter("[IsDeleted] = 0");
-        SqlServerIndexBuilderExtensions.IncludeProperties(recipientIdx, nameof(MembershipRelationEntity.Status), nameof(MembershipRelationEntity.Message), nameof(MembershipRelationEntity.CreatedAt), nameof(MembershipRelationEntity.MutedUntil));
-        recipientIdx.HasDatabaseName("IX_MembershipRelations_RecipientInitiator_Covering");
+        builder.HasIndex(x => new { x.RecipientAccountId, x.InitiatorAccountId })
+            .HasFilter("is_deleted = false")
+            .HasDatabaseName("IX_MembershipRelations_RecipientInitiator");
 
         builder.HasOne(x => x.InitiatorAccount)
             .WithMany()

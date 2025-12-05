@@ -1,4 +1,3 @@
-using Ecliptix.Protobuf.Membership;
 using Ecliptix.Utilities;
 
 namespace Ecliptix.Domain.Memberships.Persistors.QueryRecords;

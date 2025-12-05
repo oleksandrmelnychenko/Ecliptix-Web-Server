@@ -192,7 +192,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             });
     }
 
-    private static readonly List<AccountInfo> EmptyAccountList = new();
+    private static readonly List<AccountInfo> EmptyAccountList = [];
 
     private static List<AccountInfo> MaterializeAccounts(IEnumerable<AccountInfo>? accounts)
     {

@@ -23,16 +23,16 @@ public class DeviceConfiguration : EntityBaseMap<DeviceEntity>
 
         builder.HasIndex(e => e.AppInstanceId)
             .IsUnique()
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_Devices_AppInstanceId");
 
         builder.HasIndex(e => e.DeviceId)
             .IsUnique()
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_Devices_DeviceId");
 
         builder.HasIndex(e => e.DeviceType)
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_Devices_DeviceType");
     }
 }

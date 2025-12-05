@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures.Sodium;
 
 namespace Ecliptix.Utilities;

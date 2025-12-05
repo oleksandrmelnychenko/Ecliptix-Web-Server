@@ -110,11 +110,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         ).PipeTo(Self);
     }
 
-    protected override void PreStart()
-    {
-        base.PreStart();
-    }
-
     public static Props Build(
         uint connectId, Guid phoneNumberIdentifier, Guid appDeviceIdentifier, VerificationPurpose purpose,
         ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> writer,
@@ -571,7 +566,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (actorEvent.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
         {
-            // Check cooldown first for resend attempts (OtpCount > 0)
+
             if (_verificationFlow.IsSome && _verificationFlow.Value!.OtpCount > 0)
             {
                 Result<(string Outcome, uint RemainingSeconds), VerificationFlowFailure> cooldownCheckResult =
@@ -616,7 +611,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                     return;
                 }
 
-                // Cooldown passed - if writer exists, complete it before continuing with new OTP
                 if (_writer != null && !_writerCompleted)
                 {
                     CompleteWriter();
@@ -624,7 +618,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             }
             else if (_writer != null && !_writerCompleted)
             {
-                // OtpCount = 0, this is truly a concurrent first request - reject it
+
                 Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.Generic("A verification session is already in progress for this connection")));
                 return;
@@ -684,7 +678,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 _timersStarted = false;
                 CancelTimers();
 
-                // Complete existing writer AFTER cooldown validation passes
                 if (_writer != null && !_writerCompleted)
                 {
                     CompleteWriter();
@@ -899,13 +892,11 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                         actorEvent.CultureName)
                 }));
 
-            // Complete writer immediately after sending the final message
             CompleteWriter();
         }
 
         _isCompleting = true;
 
-        // Proceed directly to cleanup
         await TerminateActor(graceful: true, updateFlowToExpired: true, reason: "session_expired");
     }
 
@@ -1040,7 +1031,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             }
             catch
             {
-                // Ignore errors updating OTP status in failure scenario
+
             }
 
             VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
@@ -1197,7 +1188,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     private void PersistState(Action? afterApply = null)
     {
         VerificationFlowPersistentState snapshot = CapturePersistentState();
-        PersistAsync(new VerificationFlowStatePersistedEvent(snapshot), evt =>
+        PersistAsync(new VerificationFlowStatePersistedEvent(snapshot), _ =>
         {
             MaybeSaveSnapshot();
             afterApply?.Invoke();
@@ -1255,8 +1246,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
 
         CancelOtpTimer();
-        // Don't complete writer here - let session expiration handle it
-        // This allows SessionExpired message to be sent when session timeout occurs
+
         ResumeSessionTimer();
         PersistState();
     }
@@ -1378,7 +1368,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             }
         }
 
-        // Complete writer if not already completed
         if (!_writerCompleted)
         {
             CompleteWriter(error);
@@ -1398,18 +1387,15 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         _activity?.AddEvent(new ActivityEvent("verification.flow.terminated"));
 
-        // Request journal cleanup (fire-and-forget)
         if (LastSequenceNr > 0)
         {
             try
             {
-                // Save final snapshot with current state
+
                 PersistState();
 
-                // Delete all journal messages (final snapshot will be kept)
                 DeleteMessages(LastSequenceNr);
 
-                // Delete old snapshots (keep only the final one)
                 if (LastSequenceNr > 1)
                 {
                     DeleteSnapshots(new SnapshotSelectionCriteria(LastSequenceNr - 1));
@@ -1646,25 +1632,10 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     {
         try
         {
-            if (Stash != null)
-            {
-                base.AroundPostStop();
-            }
-            else
-            {
-                Log.Debug(
-                    "[verification.flow.aroundpoststop] Stash is null during shutdown. Skipping unstash operations. ConnectId: {ConnectId}",
-                    _connectId);
-
-                PostStop();
-            }
+            base.AroundPostStop();
         }
-        catch (NullReferenceException ex)
+        catch (NullReferenceException)
         {
-            Log.Debug(ex,
-                "[verification.flow.aroundpoststop.suppress] Suppressed NullReferenceException in AroundPostStop. ConnectId: {ConnectId}, Error: {Error}",
-                _connectId, ex.Message);
-
             try
             {
                 PostStop();

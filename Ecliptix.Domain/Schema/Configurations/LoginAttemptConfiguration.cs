@@ -40,41 +40,37 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
             .HasMaxLength(50);
 
         builder.Property(e => e.AttemptedAt)
-            .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
         builder.Property(e => e.CompletedAt)
-            .HasColumnType("DATETIMEOFFSET");
+            .HasColumnType("timestamp with time zone");
 
         builder.Property(e => e.LockedUntil)
-            .HasColumnType("DATETIMEOFFSET");
+            .HasColumnType("timestamp with time zone");
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_LoginAttempts_Success_CompletedAt",
-            "(IsSuccess = 0) OR (CompletedAt IS NOT NULL)"));
+            "(is_success = false) OR (completed_at IS NOT NULL)"));
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_LoginAttempts_LockedUntil_Future",
-            "LockedUntil IS NULL OR LockedUntil > AttemptedAt"));
+            "locked_until IS NULL OR locked_until > attempted_at"));
 
         IndexBuilder<LoginAttemptEntity> lockoutIdx = builder.HasIndex(e => new { e.MobileNumber, e.LockedUntil, e.AttemptedAt })
             .IsDescending(false, false, true)
-            .HasFilter("[IsDeleted] = 0 AND [LockedUntil] IS NOT NULL");
-        SqlServerIndexBuilderExtensions.IncludeProperties(lockoutIdx, nameof(LoginAttemptEntity.Id), nameof(LoginAttemptEntity.Outcome), nameof(LoginAttemptEntity.ErrorMessage));
-        lockoutIdx.HasDatabaseName("IX_LoginAttempts_Lockout_Covering");
+            .HasFilter("is_deleted = false AND locked_until IS NOT NULL");
 
         builder.HasIndex(e => new { e.MobileNumber, e.AttemptedAt, e.IsSuccess })
             .IsDescending(false, false, false)
-            .HasFilter("[IsDeleted] = 0 AND [IsSuccess] = 0 AND [LockedUntil] IS NULL")
+            .HasFilter("is_deleted = false AND is_success = false AND locked_until IS NULL")
             .HasDatabaseName("IX_LoginAttempts_CountFailed");
 
         builder.HasIndex(e => new { e.MembershipUniqueId, e.Outcome, e.AttemptedAt })
             .IsDescending(false, false, false)
-            .HasFilter("[IsDeleted] = 0 AND [IsSuccess] = 0 AND [Outcome] = 'membership_creation'")
+            .HasFilter("is_deleted = false AND is_success = false AND outcome = 'membership_creation'")
             .HasDatabaseName("IX_LoginAttempts_MembershipCreation");
 
         IndexBuilder<LoginAttemptEntity> deviceIdx = builder.HasIndex(e => new { e.DeviceId, e.AttemptedAt })
             .IsDescending(false, true)
-            .HasFilter("[IsDeleted] = 0 AND [DeviceId] IS NOT NULL");
-        SqlServerIndexBuilderExtensions.IncludeProperties(deviceIdx, e => e.IsSuccess);
-        deviceIdx.HasDatabaseName("IX_LoginAttempts_Device");
+            .HasFilter("is_deleted = false AND device_id IS NOT NULL");
 
         builder.HasOne(e => e.Membership)
             .WithMany(m => m.LoginAttempts)

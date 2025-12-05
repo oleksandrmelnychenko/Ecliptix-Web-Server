@@ -53,7 +53,6 @@ public sealed class VerificationFlowTimeouts
 
     public int MaxOtpVerificationAttempts { get; set; } = 3;
 
-
     public TimeSpan SessionTimeout => TimeSpan.FromSeconds(SessionTimeoutSeconds);
     public TimeSpan OtpUpdateInterval => TimeSpan.FromSeconds(OtpUpdateIntervalSeconds);
     public TimeSpan OtpExpiration => TimeSpan.FromSeconds(OtpExpirationSeconds);

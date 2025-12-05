@@ -113,7 +113,7 @@ static void ConfigureLogging(WebApplicationBuilder builder)
 
 static void ConfigureServices(WebApplicationBuilder builder)
 {
-    // Determine which database provider to use
+
     bool usePostgreSQL = builder.Configuration.GetValue("UsePostgreSQL", defaultValue: false);
     string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
     int commandTimeout = (int)TimeoutConfiguration.Database.CommandTimeout.TotalSeconds;
@@ -123,54 +123,43 @@ static void ConfigureServices(WebApplicationBuilder builder)
     {
         if (usePostgreSQL)
         {
-            // PostgreSQL Configuration
+
             options.UseNpgsql(connectionString, npgsqlOptions =>
                    {
                        npgsqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
 
-                       // Automatic retry with exponential backoff
-                       npgsqlOptions.EnableRetryOnFailure(
-                           maxRetryCount: 3,
-                           maxRetryDelay: TimeSpan.FromSeconds(5),
-                           errorCodesToAdd: null);
-
-                       // Split queries by default for better performance with Include operations
                        npgsqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
 
-                       // Enable optimizations
                        npgsqlOptions.UseRelationalNulls(false);
                    })
                    .UseSnakeCaseNamingConvention()
                    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
                    .EnableSensitiveDataLogging(isDevelopment)
-                   .EnableDetailedErrors(isDevelopment);
+                   .EnableDetailedErrors(isDevelopment)
+                   .AddInterceptors(new Ecliptix.Domain.Schema.Interceptors.AuditInterceptor())
+                   .ConfigureWarnings(warnings =>
+                       warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         }
         else
         {
-            // SQL Server Configuration
+
             options.UseSqlServer(connectionString, sqlOptions =>
                    {
                        sqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
 
-                       // Automatic retry with exponential backoff
-                       sqlOptions.EnableRetryOnFailure(
-                           maxRetryCount: 3,
-                           maxRetryDelay: TimeSpan.FromSeconds(5),
-                           errorNumbersToAdd: null);
-
-                       // Split queries by default for better performance with Include operations
                        sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
 
-                       // Optimize for row-level versioning (assuming READ_COMMITTED_SNAPSHOT is ON)
                        sqlOptions.UseRelationalNulls(false);
                    })
                    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
                    .EnableSensitiveDataLogging(false)
-                   .EnableDetailedErrors(false);
+                   .EnableDetailedErrors(false)
+                   .AddInterceptors(new Ecliptix.Domain.Schema.Interceptors.AuditInterceptor())
+                   .ConfigureWarnings(warnings =>
+                       warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         }
     }, poolSize: 128); // FIXED: Reduced from 1024 to 128 (realistic actor concurrency)
 
-    // Also register non-pooled factory for scenarios requiring explicit control
     builder.Services.AddDbContextFactory<EcliptixSchemaContext>(options =>
     {
         if (usePostgreSQL)
@@ -180,7 +169,10 @@ static void ConfigureServices(WebApplicationBuilder builder)
                        npgsqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
                    })
                    .UseSnakeCaseNamingConvention()
-                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                   .AddInterceptors(new Ecliptix.Domain.Schema.Interceptors.AuditInterceptor())
+                   .ConfigureWarnings(warnings =>
+                       warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         }
         else
         {
@@ -188,7 +180,10 @@ static void ConfigureServices(WebApplicationBuilder builder)
                    {
                        sqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
                    })
-                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                   .AddInterceptors(new Ecliptix.Domain.Schema.Interceptors.AuditInterceptor())
+                   .ConfigureWarnings(warnings =>
+                       warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         }
     });
 
@@ -472,7 +467,6 @@ static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
             }
         });
 }
-
 
 static void InitializeOpaqueService(WebApplication app)
 {

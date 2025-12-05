@@ -17,11 +17,9 @@ public class VerificationFlowEntity : EntityBase, IExpirable
 
     public DateTimeOffset ExpiresAt { get; set; }
 
-    // Navigation properties - no virtual
     public MobileNumberEntity MobileNumber { get; set; } = null!;
     public DeviceEntity AppDevice { get; set; } = null!;
 
-    // Collections with lazy initialization
     public List<OtpCodeEntity> OtpCodes
     {
         get => field ??= [];

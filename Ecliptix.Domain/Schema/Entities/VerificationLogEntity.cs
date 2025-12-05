@@ -16,7 +16,6 @@ public class VerificationLogEntity : EntityBase
     public DateTimeOffset VerifiedAt { get; set; }
     public DateTimeOffset? ExpiresAt { get; set; }
 
-    // Navigation properties - no virtual
     public MembershipEntity Membership { get; set; } = null!;
     public MobileNumberEntity MobileNumber { get; set; } = null!;
     public DeviceEntity Device { get; set; } = null!;

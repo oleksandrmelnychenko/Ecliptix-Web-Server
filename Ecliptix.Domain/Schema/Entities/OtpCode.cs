@@ -15,10 +15,8 @@ public class OtpCodeEntity : EntityBase, IExpirable
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? VerifiedAt { get; set; }
 
-    // Navigation properties - no virtual
     public VerificationFlowEntity VerificationFlow { get; set; } = null!;
 
-    // Collections with lazy initialization
     public List<FailedOtpAttemptEntity> FailedAttempts
     {
         get => field ??= [];

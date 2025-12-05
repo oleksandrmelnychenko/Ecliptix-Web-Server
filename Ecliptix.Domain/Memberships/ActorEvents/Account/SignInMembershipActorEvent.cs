@@ -1,4 +1,3 @@
-using System.Threading;
 using Ecliptix.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.Protobuf.Membership;
 

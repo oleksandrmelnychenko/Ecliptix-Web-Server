@@ -17,11 +17,13 @@ public class AccountSecureKeyAuthConfiguration : EntityBaseMap<AccountSecureKeyA
 
         builder.Property(e => e.SecureKey)
             .IsRequired()
-            .HasColumnType("VARBINARY(240)");
+            .HasColumnType("bytea")
+            .HasMaxLength(240);
 
         builder.Property(e => e.MaskingKey)
             .IsRequired()
-            .HasColumnType("VARBINARY(32)");
+            .HasColumnType("bytea")
+            .HasMaxLength(32);
 
         builder.Property(e => e.CredentialsVersion)
             .HasDefaultValue(1);
@@ -36,28 +38,22 @@ public class AccountSecureKeyAuthConfiguration : EntityBaseMap<AccountSecureKeyA
             .HasDefaultValue(0);
 
         builder.Property(e => e.LastUsedAt)
-            .HasColumnType("DATETIMEOFFSET");
+            .HasColumnType("timestamp with time zone");
 
         builder.Property(e => e.ExpiresAt)
-            .HasColumnType("DATETIMEOFFSET");
+            .HasColumnType("timestamp with time zone");
 
         builder.Property(e => e.LockedUntil)
-            .HasColumnType("DATETIMEOFFSET");
+            .HasColumnType("timestamp with time zone");
 
         builder.HasIndex(e => new { e.AccountId, e.IsPrimary })
             .IsUnique()
-            .HasFilter("IsDeleted = 0 AND IsPrimary = 1")
+            .HasFilter("is_deleted = false AND is_primary = true")
             .HasDatabaseName("UX_AccountSecureKeyAuth_Account_Primary");
 
         builder.HasIndex(e => e.AccountId)
-            .HasFilter("IsDeleted = 0 AND IsEnabled = 1")
+            .HasFilter("is_deleted = false AND is_enabled = true")
             .HasDatabaseName("IX_AccountSecureKeyAuth_Account_Enabled");
-
-        Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
-            builder.HasIndex(e => e.AccountId)
-                .HasFilter("IsDeleted = 0 AND IsEnabled = 1"),
-            e => new { e.UniqueId, e.SecureKey, e.MaskingKey, e.CredentialsVersion, e.IsPrimary })
-            .HasDatabaseName("IX_AccountSecureKeyAuth_Covering");
 
         builder.HasOne(e => e.Account)
             .WithMany(a => a.SecureKeyAuths)

@@ -253,8 +253,6 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
                 547 => MasterKeyFailure.InvalidIdentifier($"Foreign key constraint violation: {sqlEx.Message}"),
                 1205 => MasterKeyFailure.DatabaseError(sqlEx),
                 -2 => MasterKeyFailure.Timeout(sqlEx),
-                2 => MasterKeyFailure.DatabaseError(sqlEx),
-                18456 => MasterKeyFailure.DatabaseError(sqlEx),
                 _ => MasterKeyFailure.DatabaseError(sqlEx)
             };
         }

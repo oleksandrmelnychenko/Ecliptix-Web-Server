@@ -12,7 +12,6 @@ public class LogoutAuditEntity : EntityBase
 
     public DateTimeOffset LoggedOutAt { get; set; } = DateTimeOffset.UtcNow;
 
-    // Navigation properties - no virtual
     public MembershipEntity Membership { get; set; } = null!;
     public AccountEntity? Account { get; set; }
 }

@@ -10,6 +10,5 @@ public class MasterKeyShareEntity : EntityBase
     public string StorageLocation { get; set; } = null!;
     public int CredentialsVersion { get; set; }
 
-    // Navigation property - no virtual
     public MembershipEntity Membership { get; set; } = null!;
 }

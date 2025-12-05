@@ -6,7 +6,6 @@ using Akka.TestKit;
 using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Domain.Protocol;
-using Ecliptix.Core.Domain.Protocol.Utilities;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.ProtocolState;

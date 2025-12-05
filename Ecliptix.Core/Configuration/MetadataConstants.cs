@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Configuration;
-
 namespace Ecliptix.Core.Configuration;
 
 public static class MetadataConstants

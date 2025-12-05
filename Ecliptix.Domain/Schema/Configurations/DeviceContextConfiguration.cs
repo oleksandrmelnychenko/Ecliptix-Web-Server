@@ -6,7 +6,7 @@ namespace Ecliptix.Domain.Schema.Configurations;
 
 public class DeviceContextConfiguration : EntityBaseMap<DeviceContextEntity>
 {
-    private readonly string IsNotDeletedAndActiveFilter = "IsDeleted = 0 AND IsActive = 1";
+    private readonly string IsNotDeletedAndActiveFilter = "is_deleted = false AND is_active = true";
     public override void Map(EntityTypeBuilder<DeviceContextEntity> builder)
     {
         base.Map(builder);
@@ -21,13 +21,13 @@ public class DeviceContextConfiguration : EntityBaseMap<DeviceContextEntity>
 
         builder.Property(e => e.ContextEstablishedAt)
             .IsRequired()
-            .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
         builder.Property(e => e.ContextExpiresAt)
             .IsRequired();
 
         builder.Property(e => e.LastActivityAt)
-            .HasColumnType("DATETIMEOFFSET");
+            .HasColumnType("timestamp with time zone");
 
         builder.Property(e => e.IsActive)
             .HasDefaultValue(true);
@@ -38,7 +38,7 @@ public class DeviceContextConfiguration : EntityBaseMap<DeviceContextEntity>
             .HasDatabaseName("UX_DeviceContexts_Membership_Device_Active");
 
         builder.HasIndex(e => new { e.MembershipId, e.IsActive })
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_DeviceContexts_Membership_IsActive");
 
         builder.HasIndex(e => e.DeviceId)
@@ -59,15 +59,13 @@ public class DeviceContextConfiguration : EntityBaseMap<DeviceContextEntity>
             .HasDatabaseName("IX_DeviceContexts_MembershipActivity");
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_DeviceContexts_Expiry_Future",
-            "ContextExpiresAt > ContextEstablishedAt"));
+            "context_expires_at > context_established_at"));
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_DeviceContexts_Activity_Valid",
-            "LastActivityAt IS NULL OR LastActivityAt >= ContextEstablishedAt"));
+            "last_activity_at IS NULL OR last_activity_at >= context_established_at"));
 
-        Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
-            builder.HasIndex(e => new { e.MembershipId, e.DeviceId })
-                .HasFilter("IsDeleted = 0 AND IsActive = 1"),
-            e => new { e.UniqueId, e.ActiveAccountId, e.ContextExpiresAt, e.LastActivityAt })
+        builder.HasIndex(e => new { e.MembershipId, e.DeviceId })
+            .HasFilter("is_deleted = false AND is_active = true")
             .HasDatabaseName("IX_DeviceContexts_Active_Covering");
 
         builder.HasOne(e => e.Membership)

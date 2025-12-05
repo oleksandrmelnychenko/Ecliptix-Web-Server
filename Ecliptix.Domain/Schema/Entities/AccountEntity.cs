@@ -8,7 +8,7 @@ public class AccountEntity : EntityBase
 
     public AccountType AccountType { get; set; } = AccountType.Personal;
     public AccountStatus Status { get; set; } = AccountStatus.Inactive;
-    public bool IsDefaultAccount { get; set; } = false;
+    public bool IsDefaultAccount { get; set; }
     public string? PreferredLanguage { get; set; }
     public string? TimeZoneId { get; set; }
     public string? CountryCode { get; set; }

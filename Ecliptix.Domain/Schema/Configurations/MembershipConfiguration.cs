@@ -34,10 +34,10 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
             .HasConversion(new EnumToSnakeCaseConverter<MembershipCreationStatus>());
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_Memberships_Status",
-            "Status IN ('active', 'inactive')"));
+            "status IN ('active', 'inactive')"));
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_Memberships_CreationStatus",
-            "CreationStatus IN ('otp_verified', 'secure_key_set', 'passphrase_set')"));
+            "creation_status IN ('otp_verified', 'secure_key_set', 'passphrase_set')"));
 
         builder.HasIndex(e => e.UniqueId)
             .IsUnique()
@@ -45,21 +45,15 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
 
         builder.HasIndex(e => e.MobileNumberId)
             .IsUnique()
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("UQ_Memberships_ActiveMembership");
 
         builder.HasIndex(e => e.AppDeviceId)
             .HasDatabaseName("IX_Memberships_AppDeviceId");
 
         builder.HasIndex(e => e.Status)
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_Memberships_Status");
-
-        Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
-            builder.HasIndex(e => e.MobileNumberId)
-                .HasFilter("IsDeleted = 0 AND Status = 'active'"),
-            e => new { e.UniqueId, e.CreationStatus })
-            .HasDatabaseName("IX_Memberships_Login_Covering");
 
         builder.HasOne(e => e.MobileNumber)
             .WithMany(p => p.Memberships)

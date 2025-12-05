@@ -1,4 +1,3 @@
-using Ecliptix.Security.Opaque.Constants;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Utilities;
 

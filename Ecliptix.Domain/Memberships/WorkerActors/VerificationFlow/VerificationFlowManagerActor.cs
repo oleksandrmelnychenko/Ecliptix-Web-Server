@@ -24,6 +24,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
 
     private readonly Dictionary<IActorRef, ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>>
         _flowWriters = new();
+
     private readonly Dictionary<string, IActorRef> _idempotencyToActor = new();
 
     public VerificationFlowManagerActor(
@@ -80,29 +81,19 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
             return;
         }
 
-        bool cleanupSucceeded = true;
-
         if (actorToCleanup != null)
         {
-            Log.Information("[verification.flow.manager.cleanup] Cleaning up invalid idempotent flow. ConnectId {ConnectId}", actorEvent.ConnectId);
-            cleanupSucceeded = await TerminateFlowActorAsync(actorToCleanup, actorEvent.IdempotencyKey, actorEvent.CancellationToken);
+            await TerminateFlowActorAsync(actorToCleanup, actorEvent.IdempotencyKey, actorEvent.CancellationToken);
         }
 
         if (!existingActor.IsNobody() && (actorToCleanup == null || !existingActor!.Equals(actorToCleanup)))
         {
-            Log.Information("[verification.flow.manager.cleanup] Cleaning up existing (non-idempotent) flow. ConnectId {ConnectId}", actorEvent.ConnectId);
-            bool existingCleanupSucceeded = await TerminateFlowActorAsync(existingActor!, Option<string>.None, actorEvent.CancellationToken);
-            cleanupSucceeded = cleanupSucceeded && existingCleanupSucceeded;
+            await TerminateFlowActorAsync(existingActor!, Option<string>.None, actorEvent.CancellationToken);
         }
 
-        // Defensive check: ensure actor is truly removed before spawning
         IActorRef? stillExists = Context.Child(baseActorName);
         if (!stillExists.IsNobody())
         {
-            Log.Warning(
-                "[verification.flow.manager.spawn-blocked] Actor {ActorName} still exists after cleanup, cannot create new flow. ConnectId {ConnectId}",
-                baseActorName, actorEvent.ConnectId);
-
             Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
                 new VerificationFlowFailure(
                     VerificationFlowFailureType.Generic,
@@ -117,9 +108,6 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         {
             _idempotencyToActor[actorEvent.IdempotencyKey.Value!] = newFlowActor;
         }
-
-        Log.Information("[verification.flow.manager.spawned] ConnectId {ConnectId} Purpose {Purpose} IdempotencyKey {IdempotencyKey}",
-            actorEvent.ConnectId, actorEvent.Purpose, actorEvent.IdempotencyKey.Match(key => key, () => "none"));
 
         Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
     }
@@ -144,12 +132,8 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     private async Task<(bool Resumed, IActorRef? ActorFound)> TryResumeIdempotentSessionAsync(
         InitiateVerificationFlowActorEvent actorEvent)
     {
-        if (!actorEvent.IdempotencyKey.IsSome)
-        {
-            return (false, null);
-        }
-
-        if (!_idempotencyToActor.TryGetValue(actorEvent.IdempotencyKey.Value!, out IActorRef? trackedActor) ||
+        if (!actorEvent.IdempotencyKey.IsSome ||
+            !_idempotencyToActor.TryGetValue(actorEvent.IdempotencyKey.Value!, out IActorRef? trackedActor) ||
             trackedActor.IsNobody())
         {
             return (false, null);
@@ -164,18 +148,10 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
 
             if (validity.IsValid)
             {
-                Log.Information(
-                    "[verification.flow.manager.resume] ConnectId {ConnectId} IdempotencyKey {IdempotencyKey} - Resuming valid session with {RemainingSeconds}s remaining",
-                    actorEvent.ConnectId, actorEvent.IdempotencyKey, validity.RemainingSeconds);
-
                 _flowWriters[trackedActor] = actorEvent.ChannelWriter;
                 trackedActor.Tell(new ReplaceChannelWriterCommand(actorEvent.ConnectId, actorEvent.ChannelWriter));
                 return (true, trackedActor);
             }
-
-            Log.Information(
-                "[verification.flow.manager.expired] ConnectId {ConnectId} IdempotencyKey {IdempotencyKey} - Session expired, creating new flow",
-                actorEvent.ConnectId, actorEvent.IdempotencyKey);
 
             return (false, trackedActor);
         }
@@ -195,8 +171,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         return (false, trackedActor);
     }
 
-    private async Task<bool> TerminateFlowActorAsync(
-        IActorRef actorToStop,
+    private async Task TerminateFlowActorAsync(IActorRef actorToStop,
         Option<string> idempotencyKey,
         CancellationToken cancellationToken)
     {
@@ -262,14 +237,10 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                 Log.Information("[verification.flow.manager.force-stop-success] {ActorName} removed after PoisonPill",
                     actorName);
             }
-
-            return removed;
         }
-
-        return true;
     }
 
-    private async Task<bool> WaitForActorRemovalAsync(
+    private static async Task<bool> WaitForActorRemovalAsync(
         string actorName,
         TimeSpan timeout,
         CancellationToken cancellationToken)
@@ -377,7 +348,8 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                     "[verification.flow.manager.verify-not-found] ConnectId {ConnectId} - No flow found",
                     actorEvent.ConnectId);
             }
-            else if (flowStatus.Status == VerificationFlowStatus.Expired || flowStatus.ExpiresAt < DateTimeOffset.UtcNow)
+            else if (flowStatus.Status == VerificationFlowStatus.Expired ||
+                     flowStatus.ExpiresAt < DateTimeOffset.UtcNow)
             {
                 failure = new VerificationFlowFailure(
                     VerificationFlowFailureType.Expired,
@@ -443,7 +415,6 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         {
             if (terminatedMessage is { ExistenceConfirmed: true, AddressTerminated: false })
             {
-
                 VerificationFlowFailure failure = VerificationFlowFailure.Generic(
                     "The verification process was terminated due to an internal server error."
                 );
@@ -452,21 +423,24 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                     writer.TryWrite(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Err(failure));
                 if (!writeSuccess)
                 {
-                    Log.Warning("[verification.flow.manager.channel-write-failed] Unable to notify client for terminated actor {ActorPath}",
+                    Log.Warning(
+                        "[verification.flow.manager.channel-write-failed] Unable to notify client for terminated actor {ActorPath}",
                         deadActor.Path);
                 }
 
                 bool completeSuccess = writer.TryComplete();
                 if (!completeSuccess)
                 {
-                    Log.Warning("[verification.flow.manager.channel-complete-failed] Channel completion failed for terminated actor {ActorPath}",
+                    Log.Warning(
+                        "[verification.flow.manager.channel-complete-failed] Channel completion failed for terminated actor {ActorPath}",
                         deadActor.Path);
                 }
             }
         }
         else
         {
-            Log.Debug("[verification.flow.manager.terminated-untracked] Received termination for untracked actor {ActorPath}",
+            Log.Debug(
+                "[verification.flow.manager.terminated-untracked] Received termination for untracked actor {ActorPath}",
                 deadActor.Path);
         }
     }
@@ -497,6 +471,8 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     public static Props Build(IActorRef persistor, IActorRef membershipActor, ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider, IOptionsMonitor<SecurityConfiguration> securityConfig)
     {
-        return Props.Create(() => new VerificationFlowManagerActor(persistor, membershipActor, smsProvider, localizationProvider, securityConfig));
+        return Props.Create(() =>
+            new VerificationFlowManagerActor(persistor, membershipActor, smsProvider, localizationProvider,
+                securityConfig));
     }
 }

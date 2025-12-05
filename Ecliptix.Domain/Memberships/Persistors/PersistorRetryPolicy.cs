@@ -22,7 +22,7 @@ public static class PersistorRetryPolicy
             .WaitAndRetryAsync(
                 maxRetries,
                 retryAttempt => TimeSpan.FromMilliseconds(Math.Pow(2, retryAttempt) * 200),
-                onRetry: (exception, delay, retryCount, context) =>
+                onRetry: (exception, delay, retryCount, _) =>
                 {
                     Log.Debug("Persistor operation '{OperationName}' retry {RetryCount}/{MaxRetries} after {Delay}ms due to {ExceptionType}",
                         operationName, retryCount, maxRetries, delay.TotalMilliseconds, exception.GetType().Name);
