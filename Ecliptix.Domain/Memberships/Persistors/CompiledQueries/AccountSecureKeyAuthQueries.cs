@@ -53,32 +53,28 @@ public static class AccountSecureKeyAuthQueries
             : Option<AccountSecureKeyAuthEntity>.None;
     }
 
-    private static readonly Func<EcliptixSchemaContext, Guid, Guid, Task<AccountSecureKeyAuthEntity?>>
-        GetPrimaryForActiveAccountCompiled = EF.CompileAsyncQuery(
+    private static readonly Func<EcliptixSchemaContext, Guid, Guid, Task<Guid?>>
+        GetActiveAccountIdForDeviceCompiled = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid membershipId, Guid deviceId) =>
-                ctx.AccountSecureKeyAuths
-                    .Where(auth =>
-                        (ctx.DeviceContexts
-                            .Where(dc => dc.MembershipId == membershipId &&
-                                        dc.DeviceId == deviceId &&
-                                        dc.ActiveAccountId.HasValue &&
-                                        dc.IsActive &&
-                                        !dc.IsDeleted)
-                            .Select(dc => dc.ActiveAccountId)
-                            .FirstOrDefault() == auth.AccountId
-                        ||
-                        ctx.Accounts
-                            .Where(a => a.MembershipId == membershipId &&
-                                        a.IsDefaultAccount &&
-                                        !a.IsDeleted)
-                            .Select(a => a.UniqueId)
-                            .FirstOrDefault() == auth.AccountId)
-                        &&
-                        auth.IsPrimary &&
-                        auth.IsEnabled &&
-                        !auth.IsDeleted &&
-                        !auth.Account.IsDeleted)
-                    .AsNoTracking()
+                ctx.DeviceContexts
+                    .Where(dc => dc.MembershipId == membershipId &&
+                                 dc.DeviceId == deviceId &&
+                                 dc.ActiveAccountId.HasValue &&
+                                 dc.IsActive &&
+                                 !dc.IsDeleted)
+                    .OrderByDescending(dc => dc.UpdatedAt)
+                    .Select(dc => dc.ActiveAccountId)
+                    .FirstOrDefault());
+
+    private static readonly Func<EcliptixSchemaContext, Guid, Task<Guid?>>
+        GetDefaultAccountIdForMembershipCompiled = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, Guid membershipId) =>
+                ctx.Accounts
+                    .Where(a => a.MembershipId == membershipId &&
+                                a.IsDefaultAccount &&
+                                !a.IsDeleted)
+                    .OrderBy(a => a.Id)
+                    .Select(a => (Guid?)a.UniqueId)
                     .FirstOrDefault());
 
     public static async Task<Option<AccountSecureKeyAuthEntity>> GetPrimaryForActiveAccount(
@@ -86,10 +82,19 @@ public static class AccountSecureKeyAuthQueries
         Guid membershipId,
         Guid deviceId)
     {
-        AccountSecureKeyAuthEntity? result = await GetPrimaryForActiveAccountCompiled(ctx, membershipId, deviceId);
-        return result is not null
-            ? Option<AccountSecureKeyAuthEntity>.Some(result)
-            : Option<AccountSecureKeyAuthEntity>.None;
+        Guid? targetAccountId = await GetActiveAccountIdForDeviceCompiled(ctx, membershipId, deviceId);
+
+        if (!targetAccountId.HasValue)
+        {
+            targetAccountId = await GetDefaultAccountIdForMembershipCompiled(ctx, membershipId);
+        }
+
+        if (!targetAccountId.HasValue)
+        {
+            return Option<AccountSecureKeyAuthEntity>.None;
+        }
+
+        return await GetPrimaryForAccount(ctx, targetAccountId.Value);
     }
 
     public static async Task<Option<CredentialsRecord>> GetCredentialsForAccount(

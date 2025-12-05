@@ -113,15 +113,78 @@ static void ConfigureLogging(WebApplicationBuilder builder)
 
 static void ConfigureServices(WebApplicationBuilder builder)
 {
+
+    bool usePostgreSQL = builder.Configuration.GetValue("UsePostgreSQL", defaultValue: false);
+    string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
+    int commandTimeout = (int)TimeoutConfiguration.Database.CommandTimeout.TotalSeconds;
+    bool isDevelopment = builder.Environment.IsDevelopment();
+
+    builder.Services.AddPooledDbContextFactory<EcliptixSchemaContext>(options =>
+    {
+        if (usePostgreSQL)
+        {
+
+            options.UseNpgsql(connectionString, npgsqlOptions =>
+                   {
+                       npgsqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
+
+                       npgsqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+
+                       npgsqlOptions.UseRelationalNulls(false);
+                   })
+                   .UseSnakeCaseNamingConvention()
+                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                   .EnableSensitiveDataLogging(isDevelopment)
+                   .EnableDetailedErrors(isDevelopment)
+                   .AddInterceptors(new Ecliptix.Domain.Schema.Interceptors.AuditInterceptor())
+                   .ConfigureWarnings(warnings =>
+                       warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+        }
+        else
+        {
+
+            options.UseSqlServer(connectionString, sqlOptions =>
+                   {
+                       sqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
+
+                       sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+
+                       sqlOptions.UseRelationalNulls(false);
+                   })
+                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                   .EnableSensitiveDataLogging(false)
+                   .EnableDetailedErrors(false)
+                   .AddInterceptors(new Ecliptix.Domain.Schema.Interceptors.AuditInterceptor())
+                   .ConfigureWarnings(warnings =>
+                       warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+        }
+    }, poolSize: 128); // FIXED: Reduced from 1024 to 128 (realistic actor concurrency)
+
     builder.Services.AddDbContextFactory<EcliptixSchemaContext>(options =>
     {
-        string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
-        options.UseSqlServer(connectionString, sqlOptions =>
-               {
-                   int commandTimeout = (int)TimeoutConfiguration.Database.CommandTimeout.TotalSeconds;
-                   sqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
-               })
-               .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+        if (usePostgreSQL)
+        {
+            options.UseNpgsql(connectionString, npgsqlOptions =>
+                   {
+                       npgsqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
+                   })
+                   .UseSnakeCaseNamingConvention()
+                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                   .AddInterceptors(new Ecliptix.Domain.Schema.Interceptors.AuditInterceptor())
+                   .ConfigureWarnings(warnings =>
+                       warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+        }
+        else
+        {
+            options.UseSqlServer(connectionString, sqlOptions =>
+                   {
+                       sqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
+                   })
+                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                   .AddInterceptors(new Ecliptix.Domain.Schema.Interceptors.AuditInterceptor())
+                   .ConfigureWarnings(warnings =>
+                       warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+        }
     });
 
     builder.Services.AddSingleton<SecrecyHandshakeKeepAliveInterceptor>();
@@ -404,7 +467,6 @@ static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
             }
         });
 }
-
 
 static void InitializeOpaqueService(WebApplication app)
 {

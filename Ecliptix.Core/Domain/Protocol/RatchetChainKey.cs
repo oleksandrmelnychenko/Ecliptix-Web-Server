@@ -93,7 +93,6 @@ public sealed class RatchetChainKey : IDisposable, IEquatable<RatchetChainKey>
         return Result<RatchetChainKey, EcliptixProtocolFailure>.Ok(messageKey);
     }
 
-
     public override int GetHashCode()
     {
         return Index.GetHashCode();

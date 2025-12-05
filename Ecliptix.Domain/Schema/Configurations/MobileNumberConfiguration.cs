@@ -28,16 +28,16 @@ public class MobileNumberConfiguration : EntityBaseMap<MobileNumberEntity>
             .HasDatabaseName("UQ_MobileNumbers_ActiveNumberRegion");
 
         builder.HasIndex(e => new { e.Number, e.Region })
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_MobileNumbers_MobileNumber_Region");
 
         builder.HasIndex(e => e.Region)
-            .HasFilter("IsDeleted = 0 AND Region IS NOT NULL")
+            .HasFilter("is_deleted = false AND Region IS NOT NULL")
             .HasDatabaseName("IX_MobileNumbers_Region");
 
         builder.HasIndex(e => e.CreatedAt)
             .IsDescending()
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_MobileNumbers_CreatedAt");
     }
 }

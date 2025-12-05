@@ -134,11 +134,6 @@ public sealed record MembershipFailure(
                 logoutFailure.Message,
                 logoutFailure.InnerException),
 
-            LogoutFailureType.InternalError => new MembershipFailure(
-                MembershipFailureType.InternalError,
-                logoutFailure.Message,
-                logoutFailure.InnerException),
-
             _ => new MembershipFailure(
                 MembershipFailureType.InternalError,
                 logoutFailure.Message,
@@ -180,11 +175,6 @@ public sealed record MembershipFailure(
                 accountFailure.Message,
                 accountFailure.InnerException),
 
-            AccountFailureType.InternalError => new MembershipFailure(
-                MembershipFailureType.InternalError,
-                accountFailure.Message,
-                accountFailure.InnerException),
-
             _ => new MembershipFailure(
                 MembershipFailureType.InternalError,
                 accountFailure.Message,
@@ -223,11 +213,6 @@ public sealed record MembershipFailure(
 
             VerificationFlowFailureType.PersistorAccess => new MembershipFailure(
                 MembershipFailureType.PersistorAccess,
-                verificationFlowFailure.Message,
-                verificationFlowFailure.InnerException),
-
-            VerificationFlowFailureType.Generic => new MembershipFailure(
-                MembershipFailureType.InternalError,
                 verificationFlowFailure.Message,
                 verificationFlowFailure.InnerException),
 
@@ -298,7 +283,6 @@ public sealed record MembershipFailure(
             MembershipFailureType.UpdateFailed => ErrorI18NKeys.DatabaseUnavailable,
             MembershipFailureType.StatusUpdateFailed => ErrorI18NKeys.DatabaseUnavailable,
             MembershipFailureType.PersistorAccess => ErrorI18NKeys.DatabaseUnavailable,
-            MembershipFailureType.InternalError => ErrorI18NKeys.Internal,
             _ => ErrorI18NKeys.Internal
         };
 

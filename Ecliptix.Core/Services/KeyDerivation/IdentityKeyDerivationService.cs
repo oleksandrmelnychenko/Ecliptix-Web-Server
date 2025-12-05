@@ -4,7 +4,6 @@ using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures;
 using Ecliptix.Utilities.Failures.Sodium;
-using Serilog;
 
 namespace Ecliptix.Core.Services.KeyDerivation;
 
@@ -440,10 +439,9 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
                     EcliptixProtocolFailure.Generic(ErrorMessageConstructorNotFound));
             }
 
-            EcliptixSystemIdentityKeys keys = (EcliptixSystemIdentityKeys)constructor.Invoke(new object[]
-            {
+            EcliptixSystemIdentityKeys keys = (EcliptixSystemIdentityKeys)constructor.Invoke([
                 edSk, edPk, idSk, idPk, spkId, spkSk, spkPk, spkSig, opks
-            });
+            ]);
 
             return Result<EcliptixSystemIdentityKeys, EcliptixProtocolFailure>.Ok(keys);
         }

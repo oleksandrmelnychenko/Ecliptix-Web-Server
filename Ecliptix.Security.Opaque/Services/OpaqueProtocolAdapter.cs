@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Security.Cryptography;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque.Failures;
@@ -131,7 +130,7 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         return sessionKeyResult.Match(
             ok => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
                 (ok, BuildSuccessfulFinalizeResponse(serverMac))),
-            err => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
+            _ => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
                 (null!, BuildFailedFinalizeResponse()))
         );
     }

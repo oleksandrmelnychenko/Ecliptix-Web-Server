@@ -88,7 +88,7 @@ public sealed class TelemetryInterceptor : Interceptor, IDisposable
 
         try
         {
-            TelemetryServerStreamWriter<TResponse> wrappedStream = new TelemetryServerStreamWriter<TResponse>(responseStream, activity);
+            TelemetryServerStreamWriter<TResponse> wrappedStream = new(responseStream, activity);
 
             await continuation(request, wrappedStream, context);
 
@@ -142,7 +142,6 @@ public sealed class TelemetryInterceptor : Interceptor, IDisposable
             return InterceptorConstants.Numbers.Zero;
         }
     }
-
 
     private static string GetClientIdentifierHash(ServerCallContext context)
     {

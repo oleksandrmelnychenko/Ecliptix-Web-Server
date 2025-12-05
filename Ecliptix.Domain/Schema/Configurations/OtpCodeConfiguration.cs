@@ -38,17 +38,17 @@ public class OtpCodeConfiguration : EntityBaseMap<OtpCodeEntity>
             .IsRequired();
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_OtpCodes_Status",
-            "Status IN ('active', 'used', 'expired', 'invalid')"));
+            "status IN ('active', 'used', 'expired', 'invalid')"));
 
         builder.HasIndex(e => e.VerificationFlowId)
             .HasDatabaseName("IX_OtpCodes_VerificationFlowId");
 
         builder.HasIndex(e => e.Status)
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_OtpCodes_Status");
 
         builder.HasIndex(e => e.ExpiresAt)
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_OtpCodes_ExpiresAt");
 
         builder.HasOne(e => e.VerificationFlow)

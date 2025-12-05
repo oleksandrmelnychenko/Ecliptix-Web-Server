@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Threading;
 using System.Threading.Channels;
 using Ecliptix.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.Domain.Memberships.Failures;

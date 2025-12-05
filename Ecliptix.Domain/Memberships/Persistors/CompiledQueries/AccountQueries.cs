@@ -8,16 +8,17 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class AccountQueries
 {
+
     public static async Task<List<AccountInfo>> GetAccountsByMembershipId(
         EcliptixSchemaContext ctx,
         Guid membershipId,
         CancellationToken cancellationToken = default)
     {
         return await ctx.Accounts
+            .AsNoTracking()
             .Where(a => a.MembershipId == membershipId && !a.IsDeleted)
             .OrderByDescending(a => a.IsDefaultAccount)
             .ThenBy(a => a.AccountType)
-            .AsNoTracking()
             .Select(a => new AccountInfo(
                 a.UniqueId,
                 a.MembershipId,
@@ -31,11 +32,10 @@ public static class AccountQueries
         GetDefaultAccountByMembershipIdCompiled = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid membershipId) =>
                 ctx.Accounts
-                    .Where(a => a.MembershipId == membershipId &&
-                                a.IsDefaultAccount &&
-                                !a.IsDeleted)
                     .AsNoTracking()
-                    .FirstOrDefault());
+                    .FirstOrDefault(a => a.MembershipId == membershipId &&
+                                        a.IsDefaultAccount &&
+                                        !a.IsDeleted));
 
     public static async Task<Option<AccountEntity>> GetDefaultAccountByMembershipId(
         EcliptixSchemaContext ctx,
@@ -49,9 +49,8 @@ public static class AccountQueries
         GetAccountByIdCompiled = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid accountId) =>
                 ctx.Accounts
-                    .Where(a => a.UniqueId == accountId && !a.IsDeleted)
                     .AsNoTracking()
-                    .FirstOrDefault());
+                    .FirstOrDefault(a => a.UniqueId == accountId && !a.IsDeleted));
 
     public static async Task<Option<AccountEntity>> GetAccountById(
         EcliptixSchemaContext ctx,
@@ -61,3 +60,4 @@ public static class AccountQueries
         return result is not null ? Option<AccountEntity>.Some(result) : Option<AccountEntity>.None;
     }
 }
+

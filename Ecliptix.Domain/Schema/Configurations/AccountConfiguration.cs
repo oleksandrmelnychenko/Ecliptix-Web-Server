@@ -37,29 +37,26 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
             .HasMaxLength(50);
 
         builder.Property(e => e.LastAccessedAt)
-            .HasColumnType("DATETIMEOFFSET");
+            .HasColumnType("timestamp with time zone");
 
         builder.HasIndex(e => new { e.MembershipId, e.AccountType })
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_Accounts_Membership_Type");
 
         builder.HasIndex(e => new { e.MembershipId, e.IsDefaultAccount })
             .IsUnique()
-            .HasFilter("IsDeleted = 0 AND IsDefaultAccount = 1")
+            .HasFilter("is_deleted = false AND is_default_account = true")
             .HasDatabaseName("UX_Accounts_Membership_Default");
 
         builder.HasIndex(e => e.Status)
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_Accounts_Status");
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_Accounts_Default_Active",
-            "(IsDefaultAccount = 0) OR (Status != 2)"));
+            "(is_default_account = false) OR (status != 2)"));
 
-
-        builder.HasIndex(e => e.MembershipId)
-            .HasFilter("IsDeleted = 0 AND Status = 1")
-            .IncludeProperties(e => new { e.UniqueId, e.AccountType, e.IsDefaultAccount })
-            .HasDatabaseName("IX_Accounts_Membership_Active_Covering");
+        IndexBuilder<AccountEntity> idx = builder.HasIndex(e => e.MembershipId)
+            .HasFilter("is_deleted = false AND status = 1");
 
         builder.HasOne(e => e.Membership)
             .WithMany(m => m.Accounts)

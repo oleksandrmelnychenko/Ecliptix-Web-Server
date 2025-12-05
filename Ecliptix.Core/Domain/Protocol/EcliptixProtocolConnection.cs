@@ -437,7 +437,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
 
                     HKDF.DeriveKey(
                         HashAlgorithmName.SHA256,
-                        ikm: dhSecret!,
+                        ikm: dhSecret,
                         output: hkdfOutputSpan,
                         salt: initialRootKey,
                         info: DhRatchetInfo
@@ -997,7 +997,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 throw new InvalidOperationException("Receiver ratchet pre-conditions not met.");
             }
 
-            // 1. Read private key
             Result<byte[], EcliptixProtocolFailure> privKeyResult = _currentSendingDhPrivateKeyHandle!
                 .ReadBytes(Constants.X25519PrivateKeySize).MapSodiumFailure();
             if (privKeyResult.IsErr)
@@ -1008,7 +1007,6 @@ public sealed class EcliptixProtocolConnection : IDisposable
             byte[] localPrivKey = privKeyResult.Unwrap();
             localPrivateKeyBytes = localPrivKey; // <-- This is now legal
 
-            // 2. Compute secret
             Result<byte[], SodiumFailure> dhSecretResult =
                 SodiumInterop.ScalarMult(localPrivKey, receivedDhPublicKeyBytes);
             if (dhSecretResult.IsErr)
@@ -1016,12 +1014,11 @@ public sealed class EcliptixProtocolConnection : IDisposable
                 throw new InvalidOperationException($"Failed to compute DH secret (receiver): {dhSecretResult.UnwrapErr().Message}");
             }
 
-            // Return the Ok result
             return Result<byte[], EcliptixProtocolFailure>.Ok(dhSecretResult.Unwrap());
         }
         catch (Exception ex) // <-- Manually catch the exception
         {
-            // Replicate the original failure-wrapping behavior
+
             return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.DeriveKey("DH calculation failed during receiver ratchet.", ex));
         }
@@ -1055,7 +1052,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
         }
         catch (Exception ex)
         {
-            // Don't return hkdfOutput here, let the top-level finally block handle it
+
             return Result<(byte[], byte[]), EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.DeriveKey("HKDF failed during DH ratchet.", ex));
         }
@@ -1096,7 +1093,7 @@ public sealed class EcliptixProtocolConnection : IDisposable
             newDhPrivateKeyBytes = newDhPrivResult.Unwrap();
             _currentSendingDhPrivateKeyHandle?.Dispose();
             _currentSendingDhPrivateKeyHandle = newEphemeralSkHandle;
-            updateResult = _sendingStep!.UpdateKeysAfterDhRatchet(newChainKeyForTargetStep, newDhPrivateKeyBytes, newEphemeralPublicKey);
+            updateResult = _sendingStep.UpdateKeysAfterDhRatchet(newChainKeyForTargetStep, newDhPrivateKeyBytes, newEphemeralPublicKey);
         }
         else
         {

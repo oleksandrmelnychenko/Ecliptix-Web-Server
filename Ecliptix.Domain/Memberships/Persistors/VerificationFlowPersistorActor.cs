@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.Common;
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.ActorEvents.Account;
@@ -195,7 +196,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         CancellationToken cancellationToken)
     {
         await using IDbContextTransaction transaction =
-            await schemeContext.Database.BeginTransactionAsync(cancellationToken);
+            await schemeContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
 
         try
         {
@@ -211,7 +212,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             await HandleLingeringActiveFlowAsync(schemeContext, cmd, cancellationToken);
 
-            // Silent cleanup: expire any existing flow with the same ConnectionId
             VerificationFlowEntity? existingByConnectionId = await schemeContext.VerificationFlows
                 .Where(vf => vf.ConnectionId == cmd.ConnectId
                     && vf.Status == VerificationFlowStatus.Pending
@@ -571,7 +571,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         CancellationToken cancellationToken)
     {
         await using IDbContextTransaction transaction =
-            await schemeContext.Database.BeginTransactionAsync(cancellationToken);
+            await schemeContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         try
         {
             DateTimeOffset utcNow = DateTimeOffset.UtcNow;
@@ -645,7 +645,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         CancellationToken cancellationToken)
     {
         await using IDbContextTransaction transaction =
-            await schemeContext.Database.BeginTransactionAsync(cancellationToken);
+            await schemeContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         try
         {
             VerificationFlowEntity? flow = await schemeContext.VerificationFlows
@@ -913,7 +913,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             };
         }
 
-        MobileNumberAvailabilityResponse response = new MobileNumberAvailabilityResponse
+        MobileNumberAvailabilityResponse response = new()
         {
             Status = MobileAvailabilityStatus.IncompleteRegistration,
             CanRegister = false,
@@ -1009,12 +1009,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         if (creationStatus == Membership.Types.CreationStatus.OtpVerified &&
             info.HasValidCredentials)
         {
-            Log.Warning(
-                "[CHECK-AVAILABILITY-INCONSISTENCY] Status={Status} but credentials exist. " +
-                "MembershipId={MembershipId}, DeviceId={DeviceId}. " +
-                "Treating as complete registration (SecureKeySet). Migration will fix status in DB.",
-                creationStatus, info.MembershipId, info.DeviceId);
-
             creationStatus = Membership.Types.CreationStatus.SecureKeySet;
         }
 
@@ -1038,7 +1032,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         CancellationToken cancellationToken)
     {
         await using IDbContextTransaction transaction =
-            await schemeContext.Database.BeginTransactionAsync(cancellationToken);
+            await schemeContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
 
         try
         {
@@ -1173,7 +1167,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         }
 
         await using IDbContextTransaction transaction =
-            await schemeContext.Database.BeginTransactionAsync(cancellationToken);
+            await schemeContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
 
         try
         {
@@ -1272,7 +1266,6 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Ok(flowRecord);
     }
 
-
     private static async Task<Result<Unit, VerificationFlowFailure>> IncrementOtpAttemptCountAsync(
         EcliptixSchemaContext schemeContext,
         IncrementOtpAttemptCountActorEvent cmd,
@@ -1308,7 +1301,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         CancellationToken cancellationToken)
     {
         await using IDbContextTransaction transaction =
-            await schemeContext.Database.BeginTransactionAsync(cancellationToken);
+            await schemeContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
 
         try
         {
@@ -1421,7 +1414,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             return Result<FlowStatusQueryRecord, VerificationFlowFailure>.Ok(notFoundResult);
         }
 
-        (VerificationFlowStatus status, DateTimeOffset expiresAt) = flowStatusOpt.Value!;
+        (VerificationFlowStatus status, DateTimeOffset expiresAt) = flowStatusOpt.Value;
 
         FlowStatusQueryRecord result = new(
             IsFound: true,

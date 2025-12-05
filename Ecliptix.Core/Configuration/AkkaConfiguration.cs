@@ -23,6 +23,7 @@ internal static class AkkaConfiguration
         builder.Services.AddSingleton(akkaSettings);
 
         string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
+        bool usePostgreSQL = builder.Configuration.GetValue<bool>("UsePostgreSQL", false);
 
         string hostname = Environment.GetEnvironmentVariable("POD_IP") ?? akkaSettings.Remoting.Hostname;
         int port = int.Parse(Environment.GetEnvironmentVariable("AKKA_PORT") ?? akkaSettings.Remoting.Port.ToString());
@@ -39,11 +40,11 @@ internal static class AkkaConfiguration
                 })
                 .WithSqlPersistence(
                     connectionString: connectionString!,
-                    providerName: ProviderName.SqlServer2022,
-                    databaseMapping: DatabaseMapping.SqlServer,
+                    providerName: usePostgreSQL ? ProviderName.PostgreSQL : ProviderName.SqlServer2022,
+                    databaseMapping: usePostgreSQL ? DatabaseMapping.PostgreSql : DatabaseMapping.SqlServer,
                     mode: PersistenceMode.Both,
                     autoInitialize: true,
-                    schemaName: "dbo",
+                    schemaName: usePostgreSQL ? "public" : "dbo",
                     journalBuilder: journalBuilder =>
                     {
                         journalBuilder
@@ -95,7 +96,7 @@ internal static class AkkaConfiguration
                 else if (akkaSettings.ClusterMode.Equals("Config", StringComparison.OrdinalIgnoreCase))
                 {
                     configurationBuilder
-                        .WithConfigDiscovery(setup => { });
+                        .WithConfigDiscovery(_ => { });
                 }
             }
 

@@ -34,8 +34,7 @@
             <TargetPath>libcertificate.pinning.server.dll</TargetPath>
         </Content>
 
-        <Content Include="NativeLibraries\dependencies\libcrypto-3-x64.dll"
-                 Condition="('$(RuntimeIdentifier)' == 'win-x64' OR ('$(RuntimeIdentifier)' == '' AND $([MSBuild]::IsOSPlatform('Windows')))) AND Exists('NativeLibraries\windows\libcertificate.pinning.server.dll')">
+        <Content Include="NativeLibraries\dependencies\libcrypto-3-x64.dll" Condition="('$(RuntimeIdentifier)' == 'win-x64' OR ('$(RuntimeIdentifier)' == '' AND $([MSBuild]::IsOSPlatform('Windows')))) AND Exists('NativeLibraries\windows\libcertificate.pinning.server.dll')">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <TargetPath>libcrypto-3-x64.dll</TargetPath>
         </Content>
@@ -89,6 +88,7 @@
     </Target>
 
     <ItemGroup>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     </ItemGroup>

@@ -71,7 +71,8 @@ public static class PersistorSupervisorStrategy
                     OutOfMemoryException => HandleSystemError("Out of memory", Directive.Escalate),
                     StackOverflowException => HandleSystemError("Stack overflow", Directive.Escalate),
 
-                    Exception => HandleGenericException(actorType, exception)
+                    not null => HandleGenericException(actorType, exception),
+                    _ => throw new ArgumentOutOfRangeException(nameof(exception), exception, null)
                 };
             });
     }
@@ -113,8 +114,6 @@ public static class PersistorSupervisorStrategy
 
     private static Directive HandleGenericException(Type actorType, Exception exception)
     {
-        Log.Error(exception, "Unhandled exception {ExceptionType}. Attempting restart.", actorType.Name);
-
         if (ShouldThrottleRestart(actorType))
         {
             return Directive.Stop;

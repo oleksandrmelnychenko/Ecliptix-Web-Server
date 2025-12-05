@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Utilities;

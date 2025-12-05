@@ -6,7 +6,6 @@ using Ecliptix.Core.Api.Grpc.Base;
 using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Core.Services.KeyDerivation;
 using Ecliptix.Domain.Memberships.ActorEvents.Account;
@@ -16,17 +15,13 @@ using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.Domain.Memberships.WorkerActors.Membership;
-using Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow;
 using Ecliptix.Domain.Schema.Entities;
 using Ecliptix.Domain.Services.Security;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
-using Ecliptix.Protobuf.ProtocolState;
 using Ecliptix.Protobuf.Account;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
-using Ecliptix.Utilities.Failures;
 using Ecliptix.Utilities.Failures.Sodium;
 using Grpc.Core;
 using Microsoft.Extensions.Options;
@@ -224,7 +219,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         return await _service
             .ExecuteEncryptedOperationAsync<OprfRegistrationInitRequest, OprfRegistrationInitResponse>(
                 request, context,
-                async (message, _, idempotencyKey, cancellationToken) =>
+                async (message, _, _, cancellationToken) =>
                 {
                     GenerateMembershipOprfRegistrationRequestEvent @event = new(
                         Helpers.FromByteStringToGuid(message.MembershipIdentifier),
@@ -320,7 +315,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
             string canonical = BuildCanonicalLogoutRequest(message);
             int maxByteCount = System.Text.Encoding.UTF8.GetMaxByteCount(canonical.Length);
-            byte[]? canonicalBytes = ArrayPool<byte>.Shared.Rent(maxByteCount);
+            byte[] canonicalBytes = ArrayPool<byte>.Shared.Rent(maxByteCount);
 
             try
             {
@@ -612,12 +607,11 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         });
     }
 
-
     public override async Task<SecureEnvelope> Logout(SecureEnvelope request, ServerCallContext context)
     {
         SecureEnvelope response = await _service.ExecuteEncryptedOperationAsync<LogoutRequest, LogoutResponse>(
             request, context,
-            async (message, connectId, idempotencyKey, cancellationToken) =>
+            async (message, connectId, _, cancellationToken) =>
             {
                 try
                 {
@@ -710,10 +704,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             }
             finally
             {
-                if (canonicalBytes != null)
-                {
-                    ArrayPool<byte>.Shared.Return(canonicalBytes);
-                }
+                ArrayPool<byte>.Shared.Return(canonicalBytes);
             }
         }
         finally
@@ -763,10 +754,6 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
         ScheduleProtocolCleanup(connectId);
 
-        Log.Information(
-            "[LOGOUT-ANONYMOUS] Anonymous logout completed for ConnectId: {ConnectId}. Protocol cleanup scheduled.",
-            connectId);
-
         return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
         {
             Result = AnonymousLogoutResponse.Types.Result.Succeeded,
@@ -814,10 +801,6 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
         if (!sharesExistResult.Unwrap())
         {
-            Log.Warning(
-                "[LOGOUT-ANONYMOUS] No master key shares found for MembershipId: {MembershipId}. Treating as already logged out.",
-                membershipId);
-
             return Result<Unit, AnonymousLogoutResponse>.Err(new AnonymousLogoutResponse
             {
                 Result = AnonymousLogoutResponse.Types.Result.AlreadyLoggedOut,
@@ -851,7 +834,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         SecureEnvelope response =
             await _service.ExecuteEncryptedOperationAsync<AnonymousLogoutRequest, AnonymousLogoutResponse>(
                 request, context,
-                async (message, connectId, idempotencyKey, cancellationToken) =>
+                async (message, connectId, _, cancellationToken) =>
                 {
                     try
                     {
@@ -899,7 +882,8 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
                 GetAccountProfileActorEvent actorEvent = new(currentAccountId, criteria, cancellationToken);
 
-                Task<GetAccountProfileResult> task = _membershipActor.Ask<GetAccountProfileResult>(actorEvent, TimeoutConfiguration.Actor.AskTimeout);
+                Task<GetAccountProfileResult> task =
+                    _membershipActor.Ask<GetAccountProfileResult>(actorEvent, TimeoutConfiguration.Actor.AskTimeout);
                 GetAccountProfileResult actorResult = await task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 if (actorResult.Result.IsErr)
@@ -922,6 +906,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                         DisplayName = profileInfo.DisplayName
                     };
                 }
+
                 return Result<GetAccountProfileResponse, FailureBase>.Ok(response);
             });
     }

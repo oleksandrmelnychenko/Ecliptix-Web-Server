@@ -42,7 +42,7 @@ public class EnumToSnakeCaseConverter<TEnum>() : ValueConverter<TEnum, string>(
             return default;
         }
 
-        StringBuilder result = new StringBuilder();
+        StringBuilder result = new();
         bool capitalizeNext = true;
 
         foreach (char c in value)
@@ -60,7 +60,7 @@ public class EnumToSnakeCaseConverter<TEnum>() : ValueConverter<TEnum, string>(
 
         string pascalCase = result.ToString();
 
-        if (Enum.TryParse<TEnum>(pascalCase, true, out TEnum enumValue))
+        if (Enum.TryParse(pascalCase, true, out TEnum enumValue))
         {
             return enumValue;
         }

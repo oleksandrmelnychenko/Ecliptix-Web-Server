@@ -11,12 +11,37 @@ public class MembershipEntity : EntityBase
     public MembershipStatus Status { get; set; } = MembershipStatus.Inactive;
     public MembershipCreationStatus? CreationStatus { get; set; }
 
-    public virtual MobileNumberEntity MobileNumber { get; set; } = null!;
-    public virtual DeviceEntity AppDevice { get; set; } = null!;
-    public virtual VerificationFlowEntity? VerificationFlow { get; set; }
-    public virtual ICollection<LoginAttemptEntity> LoginAttempts { get; set; } = new List<LoginAttemptEntity>();
-    public virtual ICollection<MasterKeyShareEntity> MasterKeyShares { get; set; } = new List<MasterKeyShareEntity>();
-    public virtual ICollection<AccountEntity> Accounts { get; set; } = new List<AccountEntity>();
-    public virtual ICollection<DeviceContextEntity> DeviceContexts { get; set; } = new List<DeviceContextEntity>();
-    public virtual ICollection<VerificationLogEntity> VerificationLogs { get; set; } = new List<VerificationLogEntity>();
+    public MobileNumberEntity MobileNumber { get; set; } = null!;
+    public DeviceEntity AppDevice { get; set; } = null!;
+    public VerificationFlowEntity? VerificationFlow { get; set; }
+
+    public List<LoginAttemptEntity> LoginAttempts
+    {
+        get => field ??= [];
+        set;
+    }
+
+    public List<MasterKeyShareEntity> MasterKeyShares
+    {
+        get => field ??= [];
+        set;
+    }
+
+    public List<AccountEntity> Accounts
+    {
+        get => field ??= [];
+        set;
+    }
+
+    public List<DeviceContextEntity> DeviceContexts
+    {
+        get => field ??= [];
+        set;
+    }
+
+    public List<VerificationLogEntity> VerificationLogs
+    {
+        get => field ??= [];
+        set;
+    }
 }

@@ -1,7 +1,6 @@
 using Akka.Actor;
 using Ecliptix.Core.Domain.Events;
 using Ecliptix.Utilities;
-using Serilog;
 
 namespace Ecliptix.Core.Domain.Actors;
 

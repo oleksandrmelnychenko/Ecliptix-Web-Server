@@ -94,7 +94,7 @@ public class ShieldProDoubleRatchetTests
         WriteLine("[Test: Ratchet_Parallel50Sessions_ConversationLike] Starting...");
         const int sessionCount = 50;
         const int messagesPerSession = 20;
-        List<(EcliptixProtocolSystem Alice, EcliptixProtocolSystem Bob, uint SessionId)> sessionPairs = new List<(EcliptixProtocolSystem Alice, EcliptixProtocolSystem Bob, uint SessionId)>();
+        List<(EcliptixProtocolSystem Alice, EcliptixProtocolSystem Bob, uint SessionId)> sessionPairs = new();
 
         WriteLine($"[Setup] Creating {sessionCount} session pairs...");
         for (uint i = 0; i < sessionCount; i++)
@@ -116,8 +116,8 @@ public class ShieldProDoubleRatchetTests
                     $"[Setup] Failed to create Bob keys for session {testSessionId}: {bobMaterialResult.UnwrapErr()}");
             }
 
-            EcliptixProtocolSystem alice = new EcliptixProtocolSystem(aliceMaterialResult.Unwrap());
-            EcliptixProtocolSystem bob = new EcliptixProtocolSystem(bobMaterialResult.Unwrap());
+            EcliptixProtocolSystem alice = new(aliceMaterialResult.Unwrap());
+            EcliptixProtocolSystem bob = new(bobMaterialResult.Unwrap());
 
             Result<PubKeyExchange, EcliptixProtocolFailure> aliceInitialMsgResult = alice.BeginDataCenterPubKeyExchange(testSessionId, _exchangeType);
             if (aliceInitialMsgResult.IsErr)

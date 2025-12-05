@@ -25,14 +25,12 @@ public class AccountProfileConfiguration : EntityBaseMap<AccountProfileEntity>
 
         builder.HasIndex(e => e.AccountId)
             .IsUnique()
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_AccountProfiles_AccountId_Unique");
 
-        Microsoft.EntityFrameworkCore.SqlServerIndexBuilderExtensions.IncludeProperties(
-            builder.HasIndex(e => e.ProfileName)
-                .IsUnique()
-                .HasFilter("IsDeleted = 0"),
-            e => new { e.AccountId, e.DisplayName })
+        builder.HasIndex(e => e.ProfileName)
+            .IsUnique()
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_AccountProfiles_ProfileName_Covering");
 
         builder.HasOne(e => e.Account)

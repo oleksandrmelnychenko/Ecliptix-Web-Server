@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.Common;
 using Akka.Actor;
 using Ecliptix.Domain.Memberships.ActorEvents.Account;
@@ -75,7 +76,6 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
 
             AccountProfileEntity entity = profileOpt.Value!;
 
-
             AccountProfileInfo profileInfo = new (
                 entity.UniqueId,
                 entity.AccountId,
@@ -117,7 +117,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
     private static async Task<Result<AccountSecureKeyUpdateResult, AccountFailure>> UpdateAccountSecureKeyAsync(
         EcliptixSchemaContext ctx, UpdateAccountSecureKeyEvent cmd, CancellationToken cancellationToken)
     {
-        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
+        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         try
         {
             Option<MembershipEntity> membershipOpt =
@@ -213,7 +213,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
     private static async Task<Result<AccountCreationResult, AccountFailure>> CreateDefaultAccountAsync(
         EcliptixSchemaContext ctx, CreateDefaultAccountEvent cmd, CancellationToken cancellationToken)
     {
-        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
+        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         try
         {
             AccountEntity personalAccount = new()
@@ -292,7 +292,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         }
         catch
         {
-            // Ignore rollback failures
+
         }
     }
 

@@ -30,28 +30,28 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
         Receive<RecordLogoutEvent>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, cancellationToken) => RecordLogoutAsync(ctx, cmd, cancellationToken), "RecordLogout", cancellationToken)
+            ExecuteWithContext((ctx, token) => RecordLogoutAsync(ctx, cmd, token), "RecordLogout", cancellationToken)
                 .PipeTo(Sender);
         });
 
         Receive<GetLogoutHistoryEvent>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, cancellationToken) => GetLogoutHistoryAsync(ctx, cmd), "GetLogoutHistory", cancellationToken)
+            ExecuteWithContext((ctx, _) => GetLogoutHistoryAsync(ctx, cmd), "GetLogoutHistory", cancellationToken)
                 .PipeTo(Sender);
         });
 
         Receive<GetMostRecentLogoutEvent>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, cancellationToken) => GetMostRecentLogoutAsync(ctx, cmd), "GetMostRecentLogout", cancellationToken)
+            ExecuteWithContext((ctx, _) => GetMostRecentLogoutAsync(ctx, cmd), "GetMostRecentLogout", cancellationToken)
                 .PipeTo(Sender);
         });
 
         Receive<GetLogoutByDeviceEvent>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, cancellationToken) => GetLogoutByDeviceAsync(ctx, cmd), "GetLogoutByDevice", cancellationToken)
+            ExecuteWithContext((ctx, _) => GetLogoutByDeviceAsync(ctx, cmd), "GetLogoutByDevice", cancellationToken)
                 .PipeTo(Sender);
         });
     }
@@ -105,8 +105,6 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
                 2627 or 2601 => LogoutFailure.RecordFailed("Duplicate logout record detected", sqlEx),
                 1205 => LogoutFailure.DatabaseError(sqlEx),
                 -2 => LogoutFailure.Timeout(sqlEx),
-                2 => LogoutFailure.DatabaseError(sqlEx),
-                18456 => LogoutFailure.DatabaseError(sqlEx),
                 _ => LogoutFailure.DatabaseError(sqlEx)
             };
         }

@@ -24,14 +24,14 @@ public class FailedOtpAttemptConfiguration : EntityBaseMap<FailedOtpAttemptEntit
             .HasMaxLength(50);
 
         builder.Property(e => e.AttemptedAt)
-            .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
         builder.HasIndex(e => e.OtpRecordId)
             .HasDatabaseName("IX_FailedOtpAttempts_OtpRecordId");
 
         builder.HasIndex(e => e.AttemptedAt)
             .IsDescending()
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_FailedOtpAttempts_AttemptedAt");
 
         builder.HasOne(e => e.OtpRecord)

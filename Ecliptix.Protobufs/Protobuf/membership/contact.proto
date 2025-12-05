@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package ecliptix.contact.v1;
+option csharp_namespace = "Ecliptix.Protobuf.Contact";
+
+import "google/protobuf/timestamp.proto";
+
+message Contact {
+  bytes membership_id = 1;
+  string display_name = 2;
+  string avatar_url = 3;
+  google.protobuf.Timestamp since = 4;
+  ContactStatus status = 5;
+  google.protobuf.Timestamp muted_until = 6;
+}
+
+message GenericResponse {
+  bool ok = 1;
+  string message = 2;
+}
+
+message ListContactsRequest {
+  bytes membership = 1;
+  int32 limit = 2;
+  string cursor = 3;
+}
+
+message ListContactsResponse {
+  repeated Contact contacts = 1;
+  string next_cursor = 2;
+  ContactFailure failure = 3;
+}
+
+message ContactFailure {
+  enum Type {
+    UNKNOWN = 0;
+    NOT_FOUND = 1;
+    NOT_AUTHORIZED = 2;
+    INVALID_REQUEST = 3;
+    ALREADY_CONTACT = 4;
+    BLOCKED = 5;
+    CONFLICT = 6;
+    VALIDATION_FAILED = 7;
+    DATABASE_ERROR = 8;
+    PERSISTOR_ACCESS = 9;
+    CONCURRENCY_CONFLICT = 10;
+    INTERNAL = 100;
+  }
+
+  Type type = 1;
+  string message_key = 2;
+  repeated string message_params = 3;
+}
+
+message RemoveContactRequest {
+  bytes by_membership = 1;
+  bytes target_membership = 2;
+}
+
+message BlockContactRequest {
+  bytes by_membership = 1;
+  bytes target_membership = 2;
+}
+
+message UnblockContactRequest {
+  bytes by_membership = 1;
+  bytes target_membership = 2;
+}
+
+message MuteContactRequest {
+  bytes by_membership = 1;
+  bytes target_membership = 2;
+  google.protobuf.Timestamp muted_until = 3;
+}
+
+message UnmuteContactRequest {
+  bytes by_membership = 1;
+  bytes target_membership = 2;
+}
+
+enum ContactStatus {
+  NONE = 0;
+  BLOCKED = 1;
+  BLOCKED_BY = 2;
+  REMOVED = 3;
+  MUTED = 4;
+}
+
+message GetContactStatusRequest {
+  bytes from_membership = 1;
+  bytes to_membership = 2;
+}
+
+message GetContactStatusResponse {
+  ContactStatus status = 1;
+  google.protobuf.Timestamp since = 2;
+  google.protobuf.Timestamp muted_until = 3;
+}

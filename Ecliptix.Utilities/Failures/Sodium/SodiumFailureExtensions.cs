@@ -1,5 +1,3 @@
-using Ecliptix.Utilities;
-
 namespace Ecliptix.Utilities.Failures.Sodium;
 
 public static class SodiumFailureExtensions

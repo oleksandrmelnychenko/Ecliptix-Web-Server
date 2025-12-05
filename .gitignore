@@ -517,3 +517,15 @@ AGENTS.md
 *_Implementation_Session.md
 *DEPLOYMENT*.md
 AOT-README.md
+
+# PostgreSQL & Docker
+.env
+*.env.local
+docker-compose.override.yml
+Backups/
+
+# Development Local Settings
+**/appsettings.Development.Local.json
+
+# User Secrets
+secrets.json

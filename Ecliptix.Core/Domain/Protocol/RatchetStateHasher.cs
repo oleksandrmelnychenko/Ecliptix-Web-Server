@@ -36,7 +36,6 @@ public static class RatchetStateHasher
                 writer.Write(0);
             }
 
-
             if (ratchet.SendingStep != null)
             {
                 writer.Write(ratchet.SendingStep.CurrentIndex);
@@ -56,7 +55,6 @@ public static class RatchetStateHasher
                 writer.Write(0);
             }
 
-
             if (ratchet.ReceivingStep != null)
             {
                 writer.Write(ratchet.ReceivingStep.CurrentIndex);
@@ -75,7 +73,6 @@ public static class RatchetStateHasher
                 writer.Write(0U);
                 writer.Write(0);
             }
-
 
             writer.Write(ratchet.NonceCounter);
 

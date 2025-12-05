@@ -78,7 +78,7 @@ public record PublicKeyBundle(
 
         try
         {
-            // 1. Process and validate all required keys in one go
+
             Result<(byte[] IdEd25519, byte[] IdX25519, byte[] SpkPublic, byte[] SpkSig), EcliptixProtocolFailure> requiredKeysResult =
                 ExtractAndValidateRequiredKeys(proto);
             if (requiredKeysResult.IsErr)
@@ -87,7 +87,6 @@ public record PublicKeyBundle(
             }
             (byte[] IdEd25519, byte[] IdX25519, byte[] SpkPublic, byte[] SpkSig) requiredKeys = requiredKeysResult.Unwrap();
 
-            // 2. Process and validate the optional ephemeral key
             Result<byte[]?, EcliptixProtocolFailure> ephemeralKeyResult =
                 ExtractAndValidateOptionalEphemeralKey(proto.EphemeralX25519PublicKey);
             if (ephemeralKeyResult.IsErr)
@@ -96,7 +95,6 @@ public record PublicKeyBundle(
             }
             byte[]? ephemeralX25519 = ephemeralKeyResult.Unwrap();
 
-            // 3. Process and validate the list of one-time pre-keys
             Result<List<OneTimePreKeyRecord>, EcliptixProtocolFailure> opkRecordsResult =
                 ExtractAndValidateOneTimePreKeys(proto.OneTimePreKeys);
             if (opkRecordsResult.IsErr)
@@ -105,7 +103,6 @@ public record PublicKeyBundle(
             }
             List<OneTimePreKeyRecord> opkRecords = opkRecordsResult.Unwrap();
 
-            // 4. Assemble the final bundle from the validated parts
             InternalBundleData internalData = new()
             {
                 IdentityEd25519 = requiredKeys.IdEd25519,
@@ -217,7 +214,7 @@ public record PublicKeyBundle(
             Result<OneTimePreKeyRecord, EcliptixProtocolFailure> opkResult = OneTimePreKeyRecord.Create(pOpk.PreKeyId, opkPublicKey);
             if (opkResult.IsErr)
             {
-                // Propagate the error immediately
+
                 return Result<List<OneTimePreKeyRecord>, EcliptixProtocolFailure>.Err(opkResult.UnwrapErr());
             }
 

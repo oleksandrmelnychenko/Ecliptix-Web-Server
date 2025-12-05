@@ -77,7 +77,6 @@ public sealed record VerificationFlowFailure(
             VerificationFlowMessageKeys.FlowNotFoundOrInvalid);
     }
 
-
     public static VerificationFlowFailure
         OtpGenerationFailed(string? details = null, Exception? innerException = null)
     {
@@ -106,7 +105,6 @@ public sealed record VerificationFlowFailure(
             details ?? VerificationFlowMessageKeys.DataAccess,
             InnerException: innerException);
     }
-
 
     public static VerificationFlowFailure InitiateFlowFailed(Exception? innerException = null)
     {
@@ -180,7 +178,6 @@ public sealed record VerificationFlowFailure(
         return new VerificationFlowFailure(VerificationFlowFailureType.Validation,
             details ?? VerificationFlowMessageKeys.Validation);
     }
-
 
     public static VerificationFlowFailure Unauthorized(string? details = null)
     {

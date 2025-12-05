@@ -10,5 +10,5 @@ public class MasterKeyShareEntity : EntityBase
     public string StorageLocation { get; set; } = null!;
     public int CredentialsVersion { get; set; }
 
-    public virtual MembershipEntity Membership { get; set; } = null!;
+    public MembershipEntity Membership { get; set; } = null!;
 }

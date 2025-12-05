@@ -5,7 +5,6 @@ using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
-using Ecliptix.Protobuf.Membership;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Microsoft.Data.SqlClient;
@@ -205,7 +204,7 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
         }
         catch
         {
-            // Ignore rollback exceptions
+
         }
     }
 
@@ -217,8 +216,6 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
             {
                 1205 => SecretKeyRecoveryFailure.DatabaseError(sqlEx),
                 -2 => SecretKeyRecoveryFailure.Timeout(sqlEx),
-                2 => SecretKeyRecoveryFailure.DatabaseError(sqlEx),
-                18456 => SecretKeyRecoveryFailure.DatabaseError(sqlEx),
                 _ => SecretKeyRecoveryFailure.DatabaseError(sqlEx)
             };
         }

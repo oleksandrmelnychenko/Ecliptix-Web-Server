@@ -1,5 +1,4 @@
 using Ecliptix.Utilities;
-using Ecliptix.Utilities.Failures;
 
 namespace Ecliptix.Domain.Services.Security;
 

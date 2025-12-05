@@ -8,7 +8,7 @@ public class AccountEntity : EntityBase
 
     public AccountType AccountType { get; set; } = AccountType.Personal;
     public AccountStatus Status { get; set; } = AccountStatus.Inactive;
-    public bool IsDefaultAccount { get; set; } = false;
+    public bool IsDefaultAccount { get; set; }
     public string? PreferredLanguage { get; set; }
     public string? TimeZoneId { get; set; }
     public string? CountryCode { get; set; }
@@ -16,11 +16,36 @@ public class AccountEntity : EntityBase
 
     public DateTimeOffset? LastAccessedAt { get; set; }
 
-    public virtual AccountProfileEntity Profile { get; set; } = null!;
-    public virtual MembershipEntity Membership { get; set; } = null!;
-    public virtual ICollection<LoginAttemptEntity> LoginAttempts { get; set; } = new List<LoginAttemptEntity>();
-    public virtual ICollection<LogoutAuditEntity> LogoutAudits { get; set; } = new List<LogoutAuditEntity>();
-    public virtual ICollection<AccountSecureKeyAuthEntity> SecureKeyAuths { get; set; } = new List<AccountSecureKeyAuthEntity>();
-    public virtual ICollection<AccountPinAuthEntity> PinAuths { get; set; } = new List<AccountPinAuthEntity>();
-    public virtual ICollection<VerificationLogEntity> VerificationLogs { get; set; } = new List<VerificationLogEntity>();
+    public AccountProfileEntity Profile { get; set; } = null!;
+    public MembershipEntity Membership { get; set; } = null!;
+
+    public List<LoginAttemptEntity> LoginAttempts
+    {
+        get => field ??= [];
+        set;
+    }
+
+    public List<LogoutAuditEntity> LogoutAudits
+    {
+        get => field ??= [];
+        set;
+    }
+
+    public List<AccountSecureKeyAuthEntity> SecureKeyAuths
+    {
+        get => field ??= [];
+        set;
+    }
+
+    public List<AccountPinAuthEntity> PinAuths
+    {
+        get => field ??= [];
+        set;
+    }
+
+    public List<VerificationLogEntity> VerificationLogs
+    {
+        get => field ??= [];
+        set;
+    }
 }

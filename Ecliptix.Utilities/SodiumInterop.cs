@@ -21,7 +21,6 @@ public static class SodiumInterop
     private const string SodiumNotInitializedMessage = "Sodium not initialized";
     private const string MessageCannotBeNullOrEmpty = "Message cannot be null or empty";
 
-
     private static readonly Result<Unit, SodiumFailure> InitializationResult = InitializeSodium();
     public static bool IsInitialized => InitializationResult.IsOk;
 

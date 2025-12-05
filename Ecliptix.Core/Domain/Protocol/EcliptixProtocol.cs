@@ -1,8 +1,6 @@
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.ProtocolState;
 using Ecliptix.Utilities;
-using Serilog;
-using Serilog.Events;
 
 namespace Ecliptix.Core.Domain.Protocol;
 

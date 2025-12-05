@@ -110,5 +110,26 @@ pipeline {
                 }
             }
         }
+        stage('Qodana') {
+            environment {
+                QODANA_TOKEN = credentials('qodana-token')
+            }
+            agent {
+                docker {
+                    args '''
+                        -v "${WORKSPACE}":/data/project
+                        --entrypoint=""
+                        '''
+                    image 'jetbrains/qodana-dotnet'
+                }
+            }
+            when {
+                branch 'main'
+                branch 'Postgres'
+            }
+            steps {
+                sh '''qodana'''
+            }
+        }
     }
-} 
+}

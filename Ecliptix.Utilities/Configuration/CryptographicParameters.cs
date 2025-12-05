@@ -18,6 +18,5 @@ public sealed class CryptographicParameters
 
     public int AskTimeoutSeconds { get; set; } = 30;
 
-
     public TimeSpan AskTimeout => TimeSpan.FromSeconds(AskTimeoutSeconds);
 }

@@ -34,20 +34,20 @@ public class LogoutAuditConfiguration : EntityBaseMap<LogoutAuditEntity>
 
         builder.Property(e => e.LoggedOutAt)
             .IsRequired()
-            .HasDefaultValueSql("SYSDATETIMEOFFSET()");
+            .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
         builder.HasIndex(e => new { e.MembershipUniqueId, e.LoggedOutAt })
             .IsDescending(false, true)
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_LogoutAudits_Membership_LoggedOutAt");
 
         builder.HasIndex(e => e.DeviceId)
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_LogoutAudits_DeviceId");
 
         builder.HasIndex(e => e.LoggedOutAt)
             .IsDescending(true)
-            .HasFilter("IsDeleted = 0")
+            .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_LogoutAudits_LoggedOutAt");
 
         builder.HasOne(e => e.Membership)

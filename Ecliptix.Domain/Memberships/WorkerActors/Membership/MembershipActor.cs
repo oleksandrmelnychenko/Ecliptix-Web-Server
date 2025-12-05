@@ -3,14 +3,10 @@ using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
 using Ecliptix.Domain.Memberships.ActorEvents.Account;
-using Ecliptix.Domain.Memberships.ActorEvents.Common;
-using Ecliptix.Domain.Memberships.ActorEvents.Logout;
-using Ecliptix.Domain.Memberships.ActorEvents.MasterKeyShares;
 using Ecliptix.Domain.Memberships.ActorEvents.Membership;
 using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Domain.Memberships.WorkerActors.Membership.PersistenceModels;
 using Ecliptix.Domain.Memberships.Failures;
-using Ecliptix.Domain.Memberships.Persistors;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Services.Security;
@@ -294,48 +290,6 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         replyTo.Tell(new GetAccountProfileResult(finalResult));
     }
-
-    // private async Task HandleGetAccountProfileById(GetAccountProfileEvent @event)
-    // {
-    //     IActorRef replyTo = Sender;
-    //
-    //     GetAccountProfileEvent persistorEvent = new (@event.AccountId, @event.CancellationToken);
-    //
-    //     Result<Option<AccountProfileInfo>, AccountFailure> persistorResult = await _accountPersistor
-    //         .Ask<Result<Option<AccountProfileInfo>, AccountFailure>>(
-    //             persistorEvent,
-    //             @event.CancellationToken);
-    //
-    //     Result<Option<AccountProfileInfo>, FailureBase> finalResult = persistorResult.Match<Result<Option<AccountProfileInfo>, FailureBase>>(
-    //         ok => Result<Option<AccountProfileInfo>, FailureBase>.Ok(ok),
-    //         err => Result<Option<AccountProfileInfo>, FailureBase>.Err(err)
-    //     );
-    //
-    //     replyTo.Tell(new GetAccountProfileByIdResult(finalResult));
-    // }
-    //
-    // private async Task HandleGetAccountProfileByMobile(GetAccountProfileInfoByMobileEvent @event)
-    // {
-    //     IActorRef replyTo = Sender;
-    //
-    //     GetAccountProfileInfoByMobileEvent persistorEvent = new GetAccountProfileInfoByMobileEvent(
-    //         @event.MobileNumber,
-    //         @event.CurrentAccountId,
-    //         @event.CancellationToken
-    //     );
-    //
-    //     Result<Option<AccountProfileInfo>, AccountFailure> persistorResult = await _accountPersistor
-    //         .Ask<Result<Option<AccountProfileInfo>, AccountFailure>>(
-    //             persistorEvent,
-    //             @event.CancellationToken);
-    //
-    //     Result<Option<AccountProfileInfo>, FailureBase> finalResult = persistorResult.Match<Result<Option<AccountProfileInfo>, FailureBase>>(
-    //         ok => Result<Option<AccountProfileInfo>, FailureBase>.Ok(ok),
-    //         err => Result<Option<AccountProfileInfo>, FailureBase>.Err(err)
-    //     );
-    //
-    //     replyTo.Tell(new GetAccountProfileInfoByMobileResult(finalResult));
-    // }
 
     private async Task HandleCompleteRegistrationRecord(CompleteRegistrationRecordActorEvent @event)
     {
@@ -692,7 +646,6 @@ public sealed class MembershipActor : ReceivePersistentActor
             "[PASSWORD-RECOVERY-INIT] OPRF generated for membership {0}. Credentials stored in pending state (persisted).",
             @event.MembershipIdentifier);
 
-        // Use Persist instead of PersistAsync to prevent race conditions during password recovery
         Persist(
             new RecoverySessionStartedEvent(
                 @event.MembershipIdentifier,
@@ -728,7 +681,6 @@ public sealed class MembershipActor : ReceivePersistentActor
         Log.Info("[MEMBERSHIP-PERSIST] Persisting RegistrationMaskingKeyStoredEvent for MembershipId: {0}. Current LastSequenceNr: {1}",
             @event.MembershipIdentifier, LastSequenceNr);
 
-        // Use Persist instead of PersistAsync to prevent race conditions during concurrent registrations
         Persist(
             new RegistrationMaskingKeyStoredEvent(@event.MembershipIdentifier, maskingKey),
             evt =>
@@ -828,8 +780,6 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         List<AccountInfo> accountsCopy = record.AvailableAccounts.Select(CloneAccountInfo).ToList();
 
-        // Use Persist instead of PersistAsync to prevent race conditions when same account
-        // signs in from multiple devices simultaneously
         Persist(
             new PendingSignInStoredEvent(
                 @event.ConnectId,
@@ -882,15 +832,12 @@ public sealed class MembershipActor : ReceivePersistentActor
         (SodiumSecureMemoryHandle sessionKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) =
             opaqueResult.Unwrap();
 
-        if (sessionKeyHandle != null && !sessionKeyHandle.IsInvalid)
+        if (!sessionKeyHandle.IsInvalid)
         {
             Result<byte[], SodiumFailure> sessionKeyBytesResult = sessionKeyHandle.ReadBytes(sessionKeyHandle.Length);
             if (sessionKeyBytesResult.IsOk)
             {
                 byte[] sessionKeyBytes = sessionKeyBytesResult.Unwrap();
-                Log.Info(
-                    "[SERVER-OPAQUE-EXPORTKEY] OPAQUE export_key (session key) derived. MembershipId: {0}",
-                    state.MembershipId);
                 CryptographicOperations.ZeroMemory(sessionKeyBytes);
             }
         }
@@ -1259,8 +1206,6 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         if (allocateResult.IsErr)
         {
-            Serilog.Log.Error("Failed to allocate secure memory for session key validation: {0}",
-                allocateResult.UnwrapErr().Message);
             return false;
         }
 
@@ -1269,8 +1214,6 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         if (writeResult.IsErr)
         {
-            Serilog.Log.Error("Failed to write session key to secure memory during validation: {0}",
-                writeResult.UnwrapErr().Message);
             return false;
         }
 
@@ -1282,7 +1225,6 @@ public sealed class MembershipActor : ReceivePersistentActor
         Result<byte[], SodiumFailure> readResult = handle.ReadBytes(handle.Length);
         if (readResult.IsErr)
         {
-            Serilog.Log.Error("Failed to read session key bytes for snapshot: {0}", readResult.UnwrapErr().Message);
             return null;
         }
 
