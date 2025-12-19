@@ -15,7 +15,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
 
-//todo maybe change accoutnt failure
 
 public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
 {

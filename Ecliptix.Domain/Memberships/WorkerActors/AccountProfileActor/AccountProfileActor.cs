@@ -86,7 +86,7 @@ public class AccountProfileActor : ReceiveActor
     {
         IActorRef replyTo = Sender;
 
-            //TODO temporaly logic
+            //TODO temporaly logic, Add real business logic
         try
         {
             if (string.IsNullOrWhiteSpace(evt.ProfileName))
