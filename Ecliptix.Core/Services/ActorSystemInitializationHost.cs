@@ -4,6 +4,7 @@ using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Domain;
 using Ecliptix.Domain.AppDevices.Persistors;
 using Ecliptix.Domain.Memberships.Persistors;
+using Ecliptix.Domain.Memberships.WorkerActors.AccountProfileActor;
 using Ecliptix.Domain.Memberships.WorkerActors.Membership;
 using Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow;
 using Ecliptix.Domain.Providers.Twilio;
@@ -95,6 +96,12 @@ public sealed class ActorSystemInitializationHost(
             Ecliptix.Domain.Memberships.WorkerActors.MembershipRelation.MembershipRelationActor.Build(membershipRelationPersistorActor),
             ApplicationConstants.ActorNames.MembershipRelationActor);
 
+        IActorRef accountProfilePersistorActor = actorSystem.ActorOf(
+            AccountProfilePersistorActor.Build(dbContextFactory),
+            ApplicationConstants.ActorNames.AccountProfilePersistorActor);
+
+        IActorRef accountProfileActor = actorSystem.ActorOf(AccountProfileActor.Build(accountProfilePersistorActor), ApplicationConstants.ActorNames.AccountProfileActor);
+
         registry.Register(ActorIds.EcliptixProtocolSystemActor, protocolSystemActor);
         registry.Register(ActorIds.AppDevicePersistorActor, appDevicePersistor);
         registry.Register(ActorIds.VerificationFlowPersistorActor, verificationFlowPersistorActor);
@@ -107,6 +114,8 @@ public sealed class ActorSystemInitializationHost(
         registry.Register(ActorIds.MembershipActor, membershipActor);
         registry.Register(ActorIds.MembershipRelationPersistorActor, membershipRelationPersistorActor);
         registry.Register(ActorIds.MembershipRelationActor, membershipRelationActor);
+        registry.Register(ActorIds.AccountProfileActor, accountProfileActor);
+        registry.Register(ActorIds.AccountProfilePersistorActor, accountProfilePersistorActor);
 
         return Task.CompletedTask;
     }

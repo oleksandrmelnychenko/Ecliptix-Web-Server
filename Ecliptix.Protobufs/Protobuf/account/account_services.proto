@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+import "account/account.proto";
+import "common/secure_envelope.proto";
+
+package ecliptix.proto.account;
+
+option csharp_namespace = "Ecliptix.Protobuf.Account";
+
+service AccountServices {
+  rpc CheckProfileNameAvailability(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+
+  rpc CreateOrUpdateProfile(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+
+  rpc GetCurrentAccount(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+
+  rpc GetAccountProfile(ecliptix.proto.common.SecureEnvelope) returns (ecliptix.proto.common.SecureEnvelope);
+}

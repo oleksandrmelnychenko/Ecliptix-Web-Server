@@ -22,6 +22,8 @@ public static class ApplicationConstants
         public const string PasswordRecoveryPersistorActor = "PasswordRecoveryPersistorActor";
         public const string MembershipRelationPersistorActor = "MembershipRelationPersistorActor";
         public const string MembershipRelationActor = "MembershipRelationActor";
+        public const string AccountProfileActor = "AccountProfileActor";
+        public const string AccountProfilePersistorActor = "AccountProfilePersistorActor";
     }
 
     public static class Endpoints

@@ -5,6 +5,7 @@ using System.Threading.RateLimiting;
 using Akka;
 using Akka.Actor;
 using Ecliptix.Core;
+using Ecliptix.Core.Api.Grpc.Services.Account;
 using Ecliptix.Core.Api.Grpc.Services.Authentication;
 using Ecliptix.Core.Api.Grpc.Services.Device;
 using Ecliptix.Core.Api.Grpc.Services.Membership;
@@ -23,6 +24,7 @@ using Ecliptix.Domain;
 using Ecliptix.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.Domain.Providers.Twilio;
 using Ecliptix.Domain.Schema;
+using Ecliptix.Protobuf.Account;
 using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Security.Opaque;
 using Ecliptix.Security.Opaque.Contracts;
@@ -50,7 +52,7 @@ try
     ConfigureLogging(builder);
     ConfigureServices(builder);
     ConfigureOpenTelemetry(builder);
-    AkkaConfiguration.ConfigureAkka(builder);    
+    AkkaConfiguration.ConfigureAkka(builder);
 
     WebApplication app = builder.Build();
 
@@ -315,6 +317,7 @@ static void ConfigureEndpoints(WebApplication app)
     app.MapGrpcService<VerificationFlowServices>();
     app.MapGrpcService<MembershipServices>();
     app.MapGrpcService<MembershipRelationService>();
+    app.MapGrpcService<AccountProfileServices>();
 
     app.MapHealthChecks(AppConstants.Endpoints.Health);
 

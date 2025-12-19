@@ -64,4 +64,27 @@ public static class AccountProfileQueries
             ctx, mobileNumber, currentAccountId);
         return result is not null ? Option<AccountProfileEntity>.Some(result) : Option<AccountProfileEntity>.None;
     }
+
+    private static readonly Func<EcliptixSchemaContext, Guid, Task<AccountProfileEntity?>>
+        GetByAccountIdTrackingCompiled = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, Guid accountId) =>
+                ctx.AccountProfiles
+                    .FirstOrDefault(p => p.AccountId == accountId && !p.IsDeleted));
+
+    public static async Task<Option<AccountProfileEntity>> GetByAccountIdTracking(
+        EcliptixSchemaContext ctx, Guid accountId)
+    {
+        AccountProfileEntity? result = await GetByAccountIdTrackingCompiled(ctx, accountId);
+        return result is not null ? Option<AccountProfileEntity>.Some(result) : Option<AccountProfileEntity>.None;
+    }
+
+    private static readonly Func<EcliptixSchemaContext, string, Task<bool>>
+        IsProfileNameTakenCompiled = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, string profileName) =>
+                ctx.AccountProfiles.Any(p => p.ProfileName == profileName && !p.IsDeleted));
+
+    public static Task<bool> IsProfileNameTaken(EcliptixSchemaContext ctx, string profileName)
+    {
+        return IsProfileNameTakenCompiled(ctx, profileName);
+    }
 }

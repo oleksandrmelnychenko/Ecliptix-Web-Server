@@ -9,6 +9,7 @@ using Ecliptix.Core.Infrastructure.Grpc.Utilities;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Core.Services.KeyDerivation;
 using Ecliptix.Domain.Memberships.ActorEvents.Account;
+using Ecliptix.Domain.Memberships.ActorEvents.AccountProfile;
 using Ecliptix.Domain.Memberships.ActorEvents.Logout;
 using Ecliptix.Domain.Memberships.ActorEvents.Membership;
 using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
@@ -860,54 +861,5 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         return response;
     }
 
-    public override async Task<SecureEnvelope> GetAccountProfile(SecureEnvelope request, ServerCallContext context)
-    {
-        return await _service.ExecuteEncryptedOperationAsync<GetAccountProfileRequest, GetAccountProfileResponse>(
-            request,
-            context,
-            async (message, _, _, cancellationToken) =>
-            {
-                Guid currentAccountId = Helpers.FromByteStringToGuid(message.CurrentAccountId);
 
-                ProfileSearchCriteria criteria = message.SearchCriteriaCase switch
-                {
-                    GetAccountProfileRequest.SearchCriteriaOneofCase.ByMobileNumber =>
-                        new SearchByMobile(message.ByMobileNumber),
-
-                    GetAccountProfileRequest.SearchCriteriaOneofCase.ByAccountId =>
-                        new SearchById(Helpers.FromByteStringToGuid(message.ByAccountId)),
-
-                    _ => throw new RpcException(new Status(StatusCode.InvalidArgument, "Search criteria not specified"))
-                };
-
-                GetAccountProfileActorEvent actorEvent = new(currentAccountId, criteria, cancellationToken);
-
-                Task<GetAccountProfileResult> task =
-                    _membershipActor.Ask<GetAccountProfileResult>(actorEvent, TimeoutConfiguration.Actor.AskTimeout);
-                GetAccountProfileResult actorResult = await task.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-                if (actorResult.Result.IsErr)
-                {
-                    return Result<GetAccountProfileResponse, FailureBase>.Err(actorResult.Result.UnwrapErr());
-                }
-
-                Option<AccountProfileInfo> profileInfoOpt = actorResult.Result.Unwrap();
-
-                GetAccountProfileResponse response = new();
-
-                if (profileInfoOpt.IsSome)
-                {
-                    AccountProfileInfo profileInfo = profileInfoOpt.Value!;
-                    response.Profile = new AccountProfile
-                    {
-                        ProfileId = Helpers.GuidToByteString(profileInfo.ProfileId),
-                        AccountId = Helpers.GuidToByteString(profileInfo.AccountId),
-                        ProfileName = profileInfo.ProfileName,
-                        DisplayName = profileInfo.DisplayName
-                    };
-                }
-
-                return Result<GetAccountProfileResponse, FailureBase>.Ok(response);
-            });
-    }
 }

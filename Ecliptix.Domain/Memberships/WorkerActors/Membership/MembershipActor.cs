@@ -3,6 +3,7 @@ using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
 using Ecliptix.Domain.Memberships.ActorEvents.Account;
+using Ecliptix.Domain.Memberships.ActorEvents.AccountProfile;
 using Ecliptix.Domain.Memberships.ActorEvents.Membership;
 using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Domain.Memberships.WorkerActors.Membership.PersistenceModels;

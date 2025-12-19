@@ -14,6 +14,8 @@ public static class ActorIds
     public const int PasswordRecoveryPersistorActor = 10;
     public const int MembershipRelationPersistorActor = 11;
     public const int MembershipRelationActor = 12;
+    public const int AccountProfileActor = 13;
+    public const int AccountProfilePersistorActor = 14;
 }
 
 public static class ActorTypeMap
@@ -32,6 +34,8 @@ public static class ActorTypeMap
         { ActorIds.PasswordRecoveryPersistorActor, "PasswordRecoveryPersistorActor" },
         { ActorIds.MembershipRelationPersistorActor, "MembershipRelationPersistorActor" },
         { ActorIds.MembershipRelationActor, "MembershipRelationActor" },
+        { ActorIds.AccountProfileActor, "AccountProfileActor" },
+        { ActorIds.AccountProfilePersistorActor, "AccountProfilePersistorActor" },
     };
 
     public static string GetActorName(int actorId)
