@@ -1,11 +1,12 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using Ecliptix.Core.Infrastructure.Grpc.Constants;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Protobuf.Common;
-using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
+using Ecliptix.Utilities;
 using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Options;
@@ -175,12 +176,13 @@ public class GrpcSecurityService
 
         try
         {
-            byte[] decryptedBytes = decryptResult.Unwrap();
+            using SecureBytes plaintext = SecureBytes.From(decryptResult.Unwrap());
+
             TRequest parsedRequest = new();
-            parsedRequest.MergeFrom(decryptedBytes);
+            parsedRequest.MergeFrom(plaintext.Span);
 
             activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, true);
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptedSize, decryptedBytes.Length);
+            activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptedSize, plaintext.Span.Length);
 
             return Result<TRequest, FailureBase>.Ok(parsedRequest);
         }
@@ -205,21 +207,31 @@ public class GrpcSecurityService
         byte[]? responseBytes = response.ToByteArray();
         activity?.SetTag(GrpcServiceConstants.ActivityTags.ResponseSize, responseBytes.Length);
 
-        Result<SecureEnvelope, FailureBase> encryptResult =
-            await _cipherService.EncryptEnvelop(responseBytes, connectId, context);
-
-        if (encryptResult.IsErr)
+        try
         {
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, false);
+            Result<SecureEnvelope, FailureBase> encryptResult =
+                await _cipherService.EncryptEnvelop(responseBytes, connectId, context);
 
-            return new SecureEnvelope();
+            if (encryptResult.IsErr)
+            {
+                activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, false);
+
+                return new SecureEnvelope();
+            }
+
+            activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, true);
+            activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptedSize,
+                encryptResult.Unwrap().EncryptedPayload.Length);
+
+            return encryptResult.Unwrap();
         }
-
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, true);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptedSize,
-            encryptResult.Unwrap().EncryptedPayload.Length);
-
-        return encryptResult.Unwrap();
+        finally
+        {
+            if (responseBytes != null)
+            {
+                CryptographicOperations.ZeroMemory(responseBytes);
+            }
+        }
     }
 
     private async Task<SecureEnvelope> CreateFailureResponseAsync<TResponse>(

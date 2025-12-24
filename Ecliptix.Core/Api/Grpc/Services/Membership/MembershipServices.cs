@@ -160,24 +160,35 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                 context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    CompleteRegistrationRecordActorEvent @event = new(
-                        Helpers.FromByteStringToGuid(message.MembershipIdentifier),
-                        Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory),
-                        Helpers.ReadMemoryToRetrieveBytes(message.MasterKey.Memory),
-                        cancellationToken);
+                    byte[] peerRecord = Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory);
+                    byte[] masterKey = Helpers.ReadMemoryToRetrieveBytes(message.MasterKey.Memory);
 
-                    Task<Result<OprfRegistrationCompleteResponse, AccountFailure>> completeRegistrationRecordTask =
-                        _membershipActor.Ask<Result<OprfRegistrationCompleteResponse, AccountFailure>>(
-                            @event,
-                            TimeoutConfiguration.Actor.AskTimeout);
+                    try
+                    {
+                        CompleteRegistrationRecordActorEvent @event = new(
+                            Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                            peerRecord,
+                            masterKey,
+                            cancellationToken);
 
-                    Result<OprfRegistrationCompleteResponse, AccountFailure> completeRegistrationRecordResult =
-                        await completeRegistrationRecordTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+                        Task<Result<OprfRegistrationCompleteResponse, AccountFailure>> completeRegistrationRecordTask =
+                            _membershipActor.Ask<Result<OprfRegistrationCompleteResponse, AccountFailure>>(
+                                @event,
+                                TimeoutConfiguration.Actor.AskTimeout);
 
-                    return completeRegistrationRecordResult.Match(
-                        ok: Result<OprfRegistrationCompleteResponse, FailureBase>.Ok,
-                        err: Result<OprfRegistrationCompleteResponse, FailureBase>.Err
-                    );
+                        Result<OprfRegistrationCompleteResponse, AccountFailure> completeRegistrationRecordResult =
+                            await completeRegistrationRecordTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                        return completeRegistrationRecordResult.Match(
+                            ok: Result<OprfRegistrationCompleteResponse, FailureBase>.Ok,
+                            err: Result<OprfRegistrationCompleteResponse, FailureBase>.Err
+                        );
+                    }
+                    finally
+                    {
+                        CryptographicOperations.ZeroMemory(peerRecord);
+                        CryptographicOperations.ZeroMemory(masterKey);
+                    }
                 });
     }
 
@@ -190,27 +201,38 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                 request, context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    OprfCompleteRecoverySecureKeyEvent @event = new(
-                        Helpers.FromByteStringToGuid(message.MembershipIdentifier),
-                        Helpers.ReadMemoryToRetrieveBytes(message.PeerRecoveryRecord.Memory),
-                        Helpers.ReadMemoryToRetrieveBytes(message.MasterKey.Memory),
-                        cancellationToken);
+                    byte[] peerRecovery = Helpers.ReadMemoryToRetrieveBytes(message.PeerRecoveryRecord.Memory);
+                    byte[] masterKey = Helpers.ReadMemoryToRetrieveBytes(message.MasterKey.Memory);
 
-                    Task<Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>>
-                        completeRecoverySecretKeyTask =
-                            _membershipActor
-                                .Ask<Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>>(
-                                    @event,
-                                    TimeoutConfiguration.Actor.AskTimeout);
+                    try
+                    {
+                        OprfCompleteRecoverySecureKeyEvent @event = new(
+                            Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                            peerRecovery,
+                            masterKey,
+                            cancellationToken);
 
-                    Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>
-                        completeRecoverySecretKeyResult =
-                            await completeRecoverySecretKeyTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+                        Task<Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>>
+                            completeRecoverySecretKeyTask =
+                                _membershipActor
+                                    .Ask<Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>>(
+                                        @event,
+                                        TimeoutConfiguration.Actor.AskTimeout);
 
-                    return completeRecoverySecretKeyResult.Match(
-                        ok: Result<OprfRecoverySecretKeyCompleteResponse, FailureBase>.Ok,
-                        err: Result<OprfRecoverySecretKeyCompleteResponse, FailureBase>.Err
-                    );
+                        Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>
+                            completeRecoverySecretKeyResult =
+                                await completeRecoverySecretKeyTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                        return completeRecoverySecretKeyResult.Match(
+                            ok: Result<OprfRecoverySecretKeyCompleteResponse, FailureBase>.Ok,
+                            err: Result<OprfRecoverySecretKeyCompleteResponse, FailureBase>.Err
+                        );
+                    }
+                    finally
+                    {
+                        CryptographicOperations.ZeroMemory(peerRecovery);
+                        CryptographicOperations.ZeroMemory(masterKey);
+                    }
                 });
     }
 
@@ -222,23 +244,31 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                 request, context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    GenerateMembershipOprfRegistrationRequestEvent @event = new(
-                        Helpers.FromByteStringToGuid(message.MembershipIdentifier),
-                        Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory),
-                        cancellationToken);
+                    byte[] peerOprf = Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory);
+                    try
+                    {
+                        GenerateMembershipOprfRegistrationRequestEvent @event = new(
+                            Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                            peerOprf,
+                            cancellationToken);
 
-                    Task<Result<OprfRegistrationInitResponse, AccountFailure>> updateOperationTask =
-                        _membershipActor.Ask<Result<OprfRegistrationInitResponse, AccountFailure>>(
-                            @event,
-                            TimeoutConfiguration.Actor.AskTimeout);
+                        Task<Result<OprfRegistrationInitResponse, AccountFailure>> updateOperationTask =
+                            _membershipActor.Ask<Result<OprfRegistrationInitResponse, AccountFailure>>(
+                                @event,
+                                TimeoutConfiguration.Actor.AskTimeout);
 
-                    Result<OprfRegistrationInitResponse, AccountFailure> updateOperationResult =
-                        await updateOperationTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+                        Result<OprfRegistrationInitResponse, AccountFailure> updateOperationResult =
+                            await updateOperationTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-                    return updateOperationResult.Match(
-                        ok: Result<OprfRegistrationInitResponse, FailureBase>.Ok,
-                        err: Result<OprfRegistrationInitResponse, FailureBase>.Err
-                    );
+                        return updateOperationResult.Match(
+                            ok: Result<OprfRegistrationInitResponse, FailureBase>.Ok,
+                            err: Result<OprfRegistrationInitResponse, FailureBase>.Err
+                        );
+                    }
+                    finally
+                    {
+                        CryptographicOperations.ZeroMemory(peerOprf);
+                    }
                 });
     }
 
@@ -250,24 +280,32 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                 request, context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    OprfInitRecoverySecureKeyEvent @event = new(
-                        Helpers.FromByteStringToGuid(message.MembershipIdentifier),
-                        Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory),
-                        _cultureName,
-                        cancellationToken);
+                    byte[] peerOprf = Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory);
+                    try
+                    {
+                        OprfInitRecoverySecureKeyEvent @event = new(
+                            Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                            peerOprf,
+                            _cultureName,
+                            cancellationToken);
 
-                    Task<Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>> recoveryInitTask =
-                        _membershipActor.Ask<Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>>(
-                            @event,
-                            TimeoutConfiguration.Actor.AskTimeout);
+                        Task<Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>> recoveryInitTask =
+                            _membershipActor.Ask<Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>>(
+                                @event,
+                                TimeoutConfiguration.Actor.AskTimeout);
 
-                    Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure> result =
-                        await recoveryInitTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+                        Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure> result =
+                            await recoveryInitTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-                    return result.Match(
-                        ok: Result<OprfRecoverySecureKeyInitResponse, FailureBase>.Ok,
-                        err: Result<OprfRecoverySecureKeyInitResponse, FailureBase>.Err
-                    );
+                        return result.Match(
+                            ok: Result<OprfRecoverySecureKeyInitResponse, FailureBase>.Ok,
+                            err: Result<OprfRecoverySecureKeyInitResponse, FailureBase>.Err
+                        );
+                    }
+                    finally
+                    {
+                        CryptographicOperations.ZeroMemory(peerOprf);
+                    }
                 }
             );
     }

@@ -45,6 +45,24 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
                     $"Failed to create server with derived keys: {result}"));
 
         }
+        catch (DllNotFoundException ex)
+        {
+            return Result<Unit, OpaqueServerFailure>.Err(
+                OpaqueServerFailure.LibraryInitializationFailed(
+                    $"Native library 'libopaque_server' not found: {ex.Message}"));
+        }
+        catch (BadImageFormatException ex)
+        {
+            return Result<Unit, OpaqueServerFailure>.Err(
+                OpaqueServerFailure.LibraryInitializationFailed(
+                    $"Native library 'libopaque_server' failed to load: {ex.Message}"));
+        }
+        catch (EntryPointNotFoundException ex)
+        {
+            return Result<Unit, OpaqueServerFailure>.Err(
+                OpaqueServerFailure.LibraryInitializationFailed(
+                    $"Native library 'libopaque_server' entry point missing: {ex.Message}"));
+        }
         catch (Exception ex)
         {
             return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.InitializationException(ex));

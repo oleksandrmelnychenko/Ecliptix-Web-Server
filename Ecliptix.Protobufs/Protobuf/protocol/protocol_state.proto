@@ -17,6 +17,14 @@ message EcliptixSessionState {
 
   // Optional: MembershipId for authenticated sessions (empty for anonymous sessions)
   bytes membership_id = 6;
+
+  // Native protocol serialized state (preferred for hybrid/PQ) and deterministic identity seed.
+  bytes native_state = 7;
+  bytes identity_seed = 8;
+
+  // Persisted chain indices from native protocol for restore/resync.
+  uint32 sending_chain_index = 9;
+  uint32 receiving_chain_index = 10;
 }
 
 message IdentityKeysState {

@@ -1,3 +1,4 @@
+
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
     <PropertyGroup>
@@ -8,6 +9,18 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <RuntimeIdentifiers>win-x64;linux-x64;osx-arm64</RuntimeIdentifiers>
         <LangVersion>14</LangVersion>
+        <RuntimeIdentifier Condition="'$(RuntimeIdentifier)'==''">$([System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier)</RuntimeIdentifier>
+    </PropertyGroup>
+
+    <!-- Native protocol payload resolution for server build -->
+    <PropertyGroup>
+        <NativeProtoBase Condition="'$(NativeProtoBase)'=='' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">ecliptix_protocol_server</NativeProtoBase>
+        <NativeProtoBase Condition="'$(NativeProtoBase)'=='' and !$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">libecliptix_protocol</NativeProtoBase>
+        <NativeProtoExt Condition="'$(NativeProtoExt)'=='' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">.dll</NativeProtoExt>
+        <NativeProtoExt Condition="'$(NativeProtoExt)'=='' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx'))">.dylib</NativeProtoExt>
+        <NativeProtoExt Condition="'$(NativeProtoExt)'==''">.so</NativeProtoExt>
+        <NativeProtoDir Condition="'$(NativeProtoDir)'=='' and Exists('/Users/oleksandrmelnychenko/CLionProjects/Ecliptix.Protocol.System/build/$(RuntimeIdentifier)')">/Users/oleksandrmelnychenko/CLionProjects/Ecliptix.Protocol.System/build/$(RuntimeIdentifier)</NativeProtoDir>
+        <NativeProtoDir Condition="'$(NativeProtoDir)'=='' and Exists('/Users/oleksandrmelnychenko/CLionProjects/Ecliptix.Protocol.System/build')">/Users/oleksandrmelnychenko/CLionProjects/Ecliptix.Protocol.System/build</NativeProtoDir>
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Akka" Version="1.5.56" />
@@ -86,6 +99,16 @@
     <ItemGroup>
       <Compile Remove="Configuration\AkkaConfiguration_Draft.cs" />
     </ItemGroup>
+
+    <!-- Copy native protocol library into the server output -->
+    <Target Name="CopyNativeProtocolLibrary" AfterTargets="Build">
+        <PropertyGroup>
+            <_NativeProtoPath>$(NativeProtoDir)/$(NativeProtoBase)$(NativeProtoExt)</_NativeProtoPath>
+        </PropertyGroup>
+        <Message Importance="High" Text="Copying native protocol library from $(_NativeProtoPath) to $(OutDir)" Condition="Exists('$(_NativeProtoPath)')" />
+        <Copy SourceFiles="$(_NativeProtoPath)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="Exists('$(_NativeProtoPath)')" />
+        <Warning Text="Native protocol library not found at $(_NativeProtoPath). Set NativeProtoDir/NativeProtoBase/NativeProtoExt or build the native target for $(RuntimeIdentifier)." Condition="!Exists('$(_NativeProtoPath)')" />
+    </Target>
 
     <!-- Commented out: Using AOT-safe hardcoded FrozenDictionary instead of ResourceManager
     <ItemGroup>

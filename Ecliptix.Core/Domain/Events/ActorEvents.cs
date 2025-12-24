@@ -1,4 +1,4 @@
-using Ecliptix.Core.Domain.Protocol;
+using Ecliptix.Core.Domain.ProtocolNative;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 
@@ -20,7 +20,7 @@ public record EncryptPayloadComponentsActorEvent(
 
 public record DecryptPayloadWithHeaderActorEvent(
     PubKeyExchangeType ExchangeType,
-    EnvelopeMetadata Metadata,
+    byte[] Metadata,
     byte[] EncryptedPayload);
 
 public record ForwardToConnectActorEvent(uint ConnectId, object Payload);
@@ -33,7 +33,6 @@ public record DeriveSharedSecretReply(PubKeyExchange PubKeyExchange);
 
 public record InitializeProtocolWithMasterKeyActorEvent(
     uint ConnectId,
-    EcliptixSystemIdentityKeys IdentityKeys,
     PubKeyExchange ClientPubKeyExchange,
     Guid MembershipId,
     byte[] RootKey);

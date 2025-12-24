@@ -482,7 +482,9 @@ static void InitializeOpaqueService(WebApplication app)
         return;
     }
 
-    _ = initializationResult.UnwrapErr().Message;
+    OpaqueServerFailure failure = initializationResult.UnwrapErr();
+    Log.Error("OPAQUE server initialization failed: {Error}", failure.Message);
+    throw new InvalidOperationException(failure.Message, failure.Exception);
 
 }
 

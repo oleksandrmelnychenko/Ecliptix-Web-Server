@@ -260,8 +260,14 @@ internal sealed class MasterKeyService(
     public async Task<Result<(dynamic IdentityKeys, byte[] RootKey), FailureBase>> DeriveIdentityKeysAsync(
         Guid membershipId)
     {
+        Result<byte[], FailureBase> rootResult = await DeriveRootKeyAsync(membershipId);
+        if (rootResult.IsErr)
+        {
+            return Result<(dynamic IdentityKeys, byte[] RootKey), FailureBase>.Err(rootResult.UnwrapErr());
+        }
+
+        byte[]? rootKeyBytes = rootResult.Unwrap();
         SodiumSecureMemoryHandle? masterKeyHandle = null;
-        byte[]? rootKeyBytes = null;
         try
         {
             Result<dynamic, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(membershipId);
@@ -272,31 +278,6 @@ internal sealed class MasterKeyService(
             }
 
             masterKeyHandle = (SodiumSecureMemoryHandle)reconstructResult.Unwrap();
-
-            Result<byte[], SodiumFailure> masterKeyReadResult = masterKeyHandle.ReadBytes(_masterKeySize);
-            if (masterKeyReadResult.IsErr)
-            {
-                SodiumFailure error = masterKeyReadResult.UnwrapErr();
-                return Result<(dynamic IdentityKeys, byte[] RootKey), FailureBase>.Err(
-                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageMasterKeyReadFailed}: {error.Message}"));
-            }
-
-            byte[] masterKeyBytes = masterKeyReadResult.Unwrap();
-            try
-            {
-                rootKeyBytes = new byte[_masterKeySize];
-                HKDF.DeriveKey(
-                    HashAlgorithmName.SHA256,
-                    ikm: masterKeyBytes,
-                    output: rootKeyBytes,
-                    salt: null,
-                    info: System.Text.Encoding.UTF8.GetBytes(RootKeyInfo)
-                );
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(masterKeyBytes);
-            }
 
             Result<EcliptixSystemIdentityKeys, KeySplittingFailure> deriveResult =
                 await identityKeyDerivationService.DeriveIdentityKeysFromMasterKeyAsync(masterKeyHandle, membershipId);
@@ -326,6 +307,56 @@ internal sealed class MasterKeyService(
             {
                 CryptographicOperations.ZeroMemory(rootKeyBytes);
             }
+        }
+    }
+
+    public async Task<Result<byte[], FailureBase>> DeriveRootKeyAsync(Guid membershipId)
+    {
+        SodiumSecureMemoryHandle? masterKeyHandle = null;
+        try
+        {
+            Result<dynamic, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(membershipId);
+            if (reconstructResult.IsErr)
+            {
+                return Result<byte[], FailureBase>.Err(reconstructResult.UnwrapErr());
+            }
+
+            masterKeyHandle = (SodiumSecureMemoryHandle)reconstructResult.Unwrap();
+
+            Result<byte[], SodiumFailure> masterKeyReadResult = masterKeyHandle.ReadBytes(_masterKeySize);
+            if (masterKeyReadResult.IsErr)
+            {
+                SodiumFailure error = masterKeyReadResult.UnwrapErr();
+                return Result<byte[], FailureBase>.Err(
+                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageMasterKeyReadFailed}: {error.Message}"));
+            }
+
+            byte[] masterKeyBytes = masterKeyReadResult.Unwrap();
+            try
+            {
+                byte[] rootKeyBytes = new byte[_masterKeySize];
+                HKDF.DeriveKey(
+                    HashAlgorithmName.SHA256,
+                    ikm: masterKeyBytes,
+                    output: rootKeyBytes,
+                    salt: null,
+                    info: System.Text.Encoding.UTF8.GetBytes(RootKeyInfo));
+
+                return Result<byte[], FailureBase>.Ok(rootKeyBytes);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(masterKeyBytes);
+            }
+        }
+        catch (Exception ex)
+        {
+            return Result<byte[], FailureBase>.Err(
+                KeySplittingFailure.KeyDerivationFailed(ErrorMessageUnexpectedIdentityKeyDerivationError, ex));
+        }
+        finally
+        {
+            masterKeyHandle?.Dispose();
         }
     }
 

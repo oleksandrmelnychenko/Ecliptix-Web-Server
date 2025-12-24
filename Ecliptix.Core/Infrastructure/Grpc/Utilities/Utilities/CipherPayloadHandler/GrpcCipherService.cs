@@ -76,15 +76,20 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
             Result<byte[], EcliptixProtocolFailure> decryptionResult =
                 await decryptTask.WaitAsync(context.CancellationToken).ConfigureAwait(false);
 
-            return decryptionResult.IsErr
-                ? Result<byte[], FailureBase>.Err(decryptionResult.UnwrapErr())
-                : Result<byte[], FailureBase>.Ok(decryptionResult.Unwrap());
+            if (decryptionResult.IsErr)
+            {
+                return Result<byte[], FailureBase>.Err(decryptionResult.UnwrapErr());
+            }
+
+            using SecureBytes plaintext = SecureBytes.From(decryptionResult.Unwrap());
+            byte[] materialized = plaintext.ToArray();
+            return Result<byte[], FailureBase>.Ok(materialized);
         }
         catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return Result<byte[], FailureBase>.Err(
                 new EcliptixProtocolFailure(EcliptixProtocolFailureType.Generic, "Payload decryption failed"));

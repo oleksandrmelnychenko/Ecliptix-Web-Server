@@ -1,7 +1,7 @@
 using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
+using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Core.Domain.Events;
-using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Infrastructure.Crypto;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
@@ -21,6 +21,7 @@ using Ecliptix.Utilities.Configuration;
 using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Options;
+using System.Security.Cryptography;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Device;
 
@@ -129,27 +130,27 @@ internal sealed class DeviceService(
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
         byte[]? rootKey = null;
+        byte[]? serverExchangeBytes = null;
+        byte[]? encryptedPayload = null;
+        byte[]? signature = null;
 
         try
         {
             Guid membershipId = Helpers.FromByteStringToGuid(request.MembershipUniqueId);
 
-            Result<(dynamic IdentityKeys, byte[] RootKey), FailureBase> deriveKeysResult =
-                await masterKeyService.DeriveIdentityKeysAsync(membershipId);
+            Result<byte[], FailureBase> deriveRootResult =
+                await masterKeyService.DeriveRootKeyAsync(membershipId);
 
-            if (deriveKeysResult.IsErr)
+            if (deriveRootResult.IsErr)
             {
-                FailureBase failure = deriveKeysResult.UnwrapErr();
+                FailureBase failure = deriveRootResult.UnwrapErr();
                 throw GrpcFailureException.FromDomainFailure(failure);
             }
 
-            (dynamic identityKeysObj, byte[] rootKeyBytes) = deriveKeysResult.Unwrap();
-            EcliptixSystemIdentityKeys identityKeys = (EcliptixSystemIdentityKeys)identityKeysObj;
-            rootKey = rootKeyBytes;
+            rootKey = deriveRootResult.Unwrap();
 
             InitializeProtocolWithMasterKeyActorEvent initEvent = new(
                 connectId,
-                identityKeys,
                 request.ClientPubKeyExchange,
                 membershipId,
                 rootKey);
@@ -166,13 +167,12 @@ internal sealed class DeviceService(
             if (initResult.IsErr)
             {
                 EcliptixProtocolFailure failure = initResult.UnwrapErr();
-                identityKeys.Dispose();
                 throw GrpcFailureException.FromDomainFailure(failure);
             }
 
             InitializeProtocolWithMasterKeyReply reply = initResult.Unwrap();
 
-            byte[] serverExchangeBytes = reply.ServerPubKeyExchange.ToByteArray();
+            serverExchangeBytes = reply.ServerPubKeyExchange.ToByteArray();
 
             Result<byte[], CertificatePinningFailure> encryptResult =
                 await rsaChunkProcessor.EncryptChunkedAsync(serverExchangeBytes, context.CancellationToken);
@@ -184,7 +184,7 @@ internal sealed class DeviceService(
                     SecureChannelFailure.FromCertificateFailure(encryptFailure));
             }
 
-            byte[] encryptedPayload = encryptResult.Unwrap();
+            encryptedPayload = encryptResult.Unwrap();
 
             Result<byte[], CertificatePinningFailure> signResult =
                 certificatePinningService.Sign(encryptedPayload.AsMemory());
@@ -196,21 +196,35 @@ internal sealed class DeviceService(
                     SecureChannelFailure.FromCertificateFailure(signFailure));
             }
 
-            byte[] signature = signResult.Unwrap();
+            signature = signResult.Unwrap();
 
-            return new SecureEnvelope
+            SecureEnvelope envelope = new()
             {
                 EncryptedPayload = ByteString.CopyFrom(encryptedPayload),
                 AuthenticationTag = ByteString.CopyFrom(signature),
                 MetaData = ByteString.Empty,
                 ResultCode = ByteString.Empty
             };
+
+            return envelope;
         }
         finally
         {
             if (rootKey != null)
             {
-                System.Security.Cryptography.CryptographicOperations.ZeroMemory(rootKey);
+                CryptographicOperations.ZeroMemory(rootKey);
+            }
+            if (serverExchangeBytes != null)
+            {
+                CryptographicOperations.ZeroMemory(serverExchangeBytes);
+            }
+            if (encryptedPayload != null)
+            {
+                CryptographicOperations.ZeroMemory(encryptedPayload);
+            }
+            if (signature != null)
+            {
+                CryptographicOperations.ZeroMemory(signature);
             }
         }
     }

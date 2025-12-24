@@ -30,8 +30,9 @@ public class RsaSecureChannelEstablisher(
 
             if (decryptResult.IsErr)
             {
+                CertificatePinningFailure failure = decryptResult.UnwrapErr();
                 return Result<SecureEnvelope, SecureChannelFailure>.Err(
-                    SecureChannelFailure.FromCertificateFailure(decryptResult.UnwrapErr()));
+                    SecureChannelFailure.FromCertificateFailure(failure));
             }
 
             PubKeyExchange pubKeyExchange;
@@ -82,8 +83,9 @@ public class RsaSecureChannelEstablisher(
 
             if (encryptResult.IsErr)
             {
+                CertificatePinningFailure failure = encryptResult.UnwrapErr();
                 return Result<SecureEnvelope, SecureChannelFailure>.Err(
-                    SecureChannelFailure.FromCertificateFailure(encryptResult.UnwrapErr()));
+                    SecureChannelFailure.FromCertificateFailure(failure));
             }
 
             byte[] encryptedPayload = encryptResult.Unwrap();
