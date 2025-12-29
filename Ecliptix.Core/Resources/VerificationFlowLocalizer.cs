@@ -68,7 +68,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["phone_number_not_found"] = "Mobile number not found for login.",
                 ["phone_not_found"] = "Mobile number not found.",
                 ["validation_failed"] = "Form errors; check highlighted fields.",
-                ["invalid_credentials"] = "Invalid username or password.",
+                ["invalid_credentials"] = "Invalid mobile number or password.",
                 ["password_complexity_requirements"] =
                     "Password must be {0}+ chars with upper, lower, number, special.",
                 ["password_empty"] = "Password required.",
@@ -195,7 +195,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["phone_number_not_found"] = "Номер телефону не знайдено для входу.",
                 ["phone_not_found"] = "Номер телефону не знайдено.",
                 ["validation_failed"] = "Помилки форми; перевірте виділені поля.",
-                ["invalid_credentials"] = "Неправильне ім'я користувача або пароль.",
+                ["invalid_credentials"] = "Неправильний номер телефону або пароль.",
                 ["password_complexity_requirements"] =
                     "Пароль повинен містити {0}+ символів з великими, малими літерами, цифрами, спецсимволами.",
                 ["password_empty"] = "Пароль обов'язковий.",
