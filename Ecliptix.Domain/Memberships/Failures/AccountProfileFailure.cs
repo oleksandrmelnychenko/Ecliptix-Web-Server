@@ -1,4 +1,4 @@
-﻿using Ecliptix.Utilities;
+using Ecliptix.Utilities;
 using Grpc.Core;
 
 namespace Ecliptix.Domain.Memberships.Failures;
@@ -107,7 +107,6 @@ public sealed record AccountProfileFailure(AccountProfileFailureType FailureType
             AccountProfileFailureType.PersistorAccess => ErrorI18NKeys.DatabaseUnavailable,
             _ => ErrorI18NKeys.Internal
         };
-
 
     public override object ToStructuredLog()
     {

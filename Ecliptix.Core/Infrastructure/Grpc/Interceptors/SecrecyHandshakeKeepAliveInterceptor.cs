@@ -22,4 +22,45 @@ public class SecrecyHandshakeKeepAliveInterceptor(IEcliptixActorRegistry actorRe
 
         return await continuation(request, context);
     }
+
+    public override async Task ServerStreamingServerHandler<TRequest, TResponse>(
+        TRequest request,
+        IServerStreamWriter<TResponse> responseStream,
+        ServerCallContext context,
+        ServerStreamingServerMethod<TRequest, TResponse> continuation)
+    {
+        uint connectId = (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
+
+        ForwardToConnectActorEvent keepAliveForwarder = new(connectId, KeepAlive.Instance);
+        _protocolSystemActor.Value.Tell(keepAliveForwarder);
+
+        await continuation(request, responseStream, context);
+    }
+
+    public override async Task<TResponse> ClientStreamingServerHandler<TRequest, TResponse>(
+        IAsyncStreamReader<TRequest> requestStream,
+        ServerCallContext context,
+        ClientStreamingServerMethod<TRequest, TResponse> continuation)
+    {
+        uint connectId = (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
+
+        ForwardToConnectActorEvent keepAliveForwarder = new(connectId, KeepAlive.Instance);
+        _protocolSystemActor.Value.Tell(keepAliveForwarder);
+
+        return await continuation(requestStream, context);
+    }
+
+    public override async Task DuplexStreamingServerHandler<TRequest, TResponse>(
+        IAsyncStreamReader<TRequest> requestStream,
+        IServerStreamWriter<TResponse> responseStream,
+        ServerCallContext context,
+        DuplexStreamingServerMethod<TRequest, TResponse> continuation)
+    {
+        uint connectId = (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
+
+        ForwardToConnectActorEvent keepAliveForwarder = new(connectId, KeepAlive.Instance);
+        _protocolSystemActor.Value.Tell(keepAliveForwarder);
+
+        await continuation(requestStream, responseStream, context);
+    }
 }

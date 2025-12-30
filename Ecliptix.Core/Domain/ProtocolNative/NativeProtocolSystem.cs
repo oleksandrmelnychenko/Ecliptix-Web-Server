@@ -3,9 +3,6 @@ using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Domain.ProtocolNative;
 
-/// <summary>
-/// Thin convenience layer around the native hybrid/PQ protocol bindings for server-side use.
-/// </summary>
 public static class NativeProtocolSystem
 {
     public static Result<Unit, EcliptixProtocolFailure> Initialize()
@@ -28,8 +25,8 @@ public static class NativeProtocolSystem
 
     public static Result<EcliptixIdentityKeysWrapper, EcliptixProtocolFailure> CreateIdentityFromSeed(
         byte[] seed,
-        string membershipId)
-        => EcliptixIdentityKeysWrapper.CreateFromSeed(seed, membershipId);
+        string accountId)
+        => EcliptixIdentityKeysWrapper.CreateFromSeed(seed, accountId);
 
     public static Result<NativeProtocolSession, EcliptixProtocolFailure> CreateSessionAdapter(
         EcliptixIdentityKeysWrapper identity,
@@ -41,7 +38,12 @@ public static class NativeProtocolSystem
             return sessionResult;
         }
         NativeProtocolSession session = sessionResult.Unwrap();
-        session.SetEventHandler(onProtocolStateChanged);
+        Result<Unit, EcliptixProtocolFailure> callbackResult = session.SetEventHandler(onProtocolStateChanged);
+        if (callbackResult.IsErr)
+        {
+            session.Dispose();
+            return Result<NativeProtocolSession, EcliptixProtocolFailure>.Err(callbackResult.UnwrapErr());
+        }
         return Result<NativeProtocolSession, EcliptixProtocolFailure>.Ok(session);
     }
 
@@ -59,7 +61,12 @@ public static class NativeProtocolSystem
             return sessionResult;
         }
         NativeProtocolSession session = sessionResult.Unwrap();
-        session.SetEventHandler(onProtocolStateChanged);
+        Result<Unit, EcliptixProtocolFailure> callbackResult = session.SetEventHandler(onProtocolStateChanged);
+        if (callbackResult.IsErr)
+        {
+            session.Dispose();
+            return Result<NativeProtocolSession, EcliptixProtocolFailure>.Err(callbackResult.UnwrapErr());
+        }
         return Result<NativeProtocolSession, EcliptixProtocolFailure>.Ok(session);
     }
 

@@ -72,7 +72,8 @@ public sealed class OneTimePassword
                     OtpSalt = salt,
                     ExpiresAt = expiresAt,
                     IsActive = true,
-                    Status = OtpStatus.Active
+                    Status = OtpStatus.Active,
+                    AttemptCount = 0
                 };
 
                 ExpiresAt = expiresAt;

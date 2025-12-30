@@ -1,4 +1,6 @@
+using System;
 using System.Buffers;
+using Ecliptix.OPAQUE.Server;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque.Failures;
@@ -7,26 +9,39 @@ using Ecliptix.Security.Opaque.Models.AuthenticationMessages;
 using Ecliptix.Security.Opaque.Models.RegistrationMessages;
 using Ecliptix.Utilities;
 using Google.Protobuf;
+using Serilog;
+using Serilog.Events;
 
 namespace Ecliptix.Security.Opaque.Services;
 
-public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeService) : IOpaqueProtocolService
+public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) : IOpaqueProtocolService
 {
-    private const int ServerOprfResponseSize = 32;
-    private const int ServerEphemeralKeySize = 33;
-    private const int MaskingKeySize = 32;
-    private const int ClientRegistrationRecordSize = 208; // 176 (envelope) + 32 (client_public_key)
-    private const int ServerCredentialsSize = 240; // 176 (envelope) + 32 (masking_key) + 32 (export_key)
-    private const int CredentialsBaseOffset = 176; // Envelope size
-    private const int CredentialsMaskingKeyOffset = 176; // Offset to masking_key after envelope
-    private const int CredentialsExportKeyOffset = 208; // Offset to export_key after envelope + masking_key
-    private const int ServerMacOffset = 272; // 32 (nonce) + 32 (pubkey) + 208 (credential_response)
-    private const int ServerMacSize = 64;
+    private const int ServerOprfResponseSize = OpaqueConstants.PUBLIC_KEY_LENGTH;
+    private const int ServerEphemeralKeySize = OpaqueConstants.PUBLIC_KEY_LENGTH;
+    private const int SessionKeyLength = OpaqueConstants.HASH_LENGTH;
+    private const int ClientRegistrationRecordSize = OpaqueConstants.REGISTRATION_RECORD_LENGTH;
+    private const int ServerCredentialsSize = OpaqueConstants.SERVER_CREDENTIALS_LENGTH;
+    private const int ServerMacOffset = OpaqueConstants.NONCE_LENGTH + OpaqueConstants.PUBLIC_KEY_LENGTH + OpaqueConstants.CREDENTIAL_RESPONSE_LENGTH;
+    private const int ServerMacSize = OpaqueConstants.MAC_LENGTH;
+    private const int ServerEphemeralKeyOffset = OpaqueConstants.NONCE_LENGTH;
+    private const int ServerOprfResponseOffset = OpaqueConstants.NONCE_LENGTH + OpaqueConstants.PUBLIC_KEY_LENGTH;
     private const string AuthenticationSuccessful = "Authentication successful";
     private const string AuthenticationFailed = "Authentication failed";
 
-    public (byte[] Response, byte[] MaskingKey) ProcessOprfRequest(byte[] oprfRequest)
+    public (byte[] Response, Guid AccountId, int KeyVersion) ProcessOprfRequest(byte[] oprfRequest, Guid accountId)
     {
+        ArgumentNullException.ThrowIfNull(oprfRequest);
+
+        int keyVersion = keyRingService.ActiveKeyVersion;
+        if (Log.IsEnabled(LogEventLevel.Debug))
+        {
+            Log.Debug(
+                "[OPAQUE-OPRF] Request accountId={AccountId} length={Length} data={Data}",
+                accountId,
+                oprfRequest.Length,
+                oprfRequest.Length > 0 ? Convert.ToHexString(oprfRequest) : string.Empty);
+        }
+
         Result<RegistrationRequest, OpaqueServerFailure> registrationRequestResult =
             RegistrationRequest.Create(oprfRequest);
 
@@ -37,22 +52,42 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         }
 
         RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
-        Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
-            nativeService.CreateRegistrationResponse(registrationRequest);
+        Result<RegistrationResponse, OpaqueServerFailure> result =
+            keyRingService.CreateRegistrationResponse(registrationRequest, accountId, keyVersion);
 
         return result.Match(
             ok =>
             {
-                Span<byte> maskingKeySpan = stackalloc byte[MaskingKeySize];
-                ok.ServerCredentials.AsSpan(CredentialsMaskingKeyOffset, MaskingKeySize).CopyTo(maskingKeySpan);
-                return (ok.Response.Data, maskingKeySpan.ToArray());
+                if (Log.IsEnabled(LogEventLevel.Debug))
+                {
+                    Log.Debug(
+                        "[OPAQUE-OPRF] Response accountId={AccountId} length={Length} data={Data}",
+                        accountId,
+                        ok.Data.Length,
+                        Convert.ToHexString(ok.Data));
+                }
+                return (ok.Data, accountId, keyVersion);
             },
             err => throw new InvalidOperationException($"OPRF processing failed: {err.Message}")
         );
     }
 
-    public (byte[] Response, byte[] MaskingKey, byte[] SessionKey) ProcessOprfRequestWithSessionKey(byte[] oprfRequest)
+    public (byte[] Response, Guid AccountId, byte[] SessionKey, int KeyVersion) ProcessOprfRequestWithSessionKey(
+        byte[] oprfRequest,
+        Guid accountId)
     {
+        ArgumentNullException.ThrowIfNull(oprfRequest);
+
+        int keyVersion = keyRingService.ActiveKeyVersion;
+        if (Log.IsEnabled(LogEventLevel.Debug))
+        {
+            Log.Debug(
+                "[OPAQUE-OPRF] Request+SessionKey accountId={AccountId} length={Length} data={Data}",
+                accountId,
+                oprfRequest.Length,
+                oprfRequest.Length > 0 ? Convert.ToHexString(oprfRequest) : string.Empty);
+        }
+
         Result<RegistrationRequest, OpaqueServerFailure> registrationRequestResult =
             RegistrationRequest.Create(oprfRequest);
 
@@ -63,19 +98,22 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         }
 
         RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
-        Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
-            nativeService.CreateRegistrationResponse(registrationRequest);
+        Result<RegistrationResponse, OpaqueServerFailure> result =
+            keyRingService.CreateRegistrationResponse(registrationRequest, accountId, keyVersion);
 
         return result.Match(
             ok =>
             {
-                Span<byte> maskingKeySpan = stackalloc byte[MaskingKeySize];
-                ok.ServerCredentials.AsSpan(CredentialsMaskingKeyOffset, MaskingKeySize).CopyTo(maskingKeySpan);
-
-                Span<byte> sessionKeySpan = stackalloc byte[MaskingKeySize];
-                ok.ServerCredentials.AsSpan(CredentialsExportKeyOffset, MaskingKeySize).CopyTo(sessionKeySpan);
-
-                return (ok.Response.Data, maskingKeySpan.ToArray(), sessionKeySpan.ToArray());
+                if (Log.IsEnabled(LogEventLevel.Debug))
+                {
+                    Log.Debug(
+                        "[OPAQUE-OPRF] Response+SessionKey accountId={AccountId} length={Length} data={Data}",
+                        accountId,
+                        ok.Data.Length,
+                        Convert.ToHexString(ok.Data));
+                }
+                byte[] sessionKeyPlaceholder = new byte[SessionKeyLength];
+                return (ok.Data, accountId, sessionKeyPlaceholder, keyVersion);
             },
             err => throw new InvalidOperationException($"OPRF processing failed: {err.Message}")
         );
@@ -84,6 +122,8 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
     public Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure> InitiateSignIn(
         OpaqueSignInInitRequest request, MembershipOpaqueQueryRecord queryRecord)
     {
+        ArgumentNullException.ThrowIfNull(queryRecord.RegistrationRecord);
+
         Result<KE1, OpaqueFailure> ke1ValidationResult = ValidateKe1(request);
         if (ke1ValidationResult.IsErr)
         {
@@ -91,11 +131,24 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         }
 
         KE1 ke1 = ke1ValidationResult.Unwrap();
-        byte[] serverCredentials =
-            ConstructServerCredentials(queryRecord.RegistrationRecord, queryRecord.MaskingKey);
+        byte[] registrationRecord = queryRecord.RegistrationRecord;
+        if (Log.IsEnabled(LogEventLevel.Debug))
+        {
+            Log.Debug(
+                "[OPAQUE-SIGNIN-INIT] accountId={AccountId} ke1Len={Length} ke1={Data} recordLen={RecordLen} record={Record}",
+                queryRecord.AccountId,
+                ke1.Data.Length,
+                Convert.ToHexString(ke1.Data),
+                registrationRecord.Length,
+                registrationRecord.Length > 0
+                    ? Convert.ToHexString(registrationRecord)
+                    : string.Empty);
+        }
+
+        byte[] serverCredentials = ConstructServerCredentials(registrationRecord);
 
         Result<KE2, OpaqueServerFailure> ke2Result =
-            nativeService.GenerateKe2(ke1, serverCredentials);
+            keyRingService.GenerateKe2(ke1, queryRecord.AccountId, serverCredentials, queryRecord.OpaqueKeyVersion);
 
         return ke2Result.Match(
             ok =>
@@ -104,8 +157,18 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
                 ExtractServerMac(ok.Data, serverMacSpan);
                 byte[] serverMac = serverMacSpan.ToArray();
 
+                if (Log.IsEnabled(LogEventLevel.Debug))
+                {
+                    Log.Debug(
+                        "[OPAQUE-SIGNIN-INIT] accountId={AccountId} ke2Len={Length} ke2={Data} serverMac={ServerMac}",
+                        queryRecord.AccountId,
+                        ok.Data.Length,
+                        Convert.ToHexString(ok.Data),
+                        Convert.ToHexString(serverMac));
+                }
+
                 OpaqueSignInInitResponse response =
-                    BuildSignInInitResponse(ok.Data, queryRecord.RegistrationRecord);
+                    BuildSignInInitResponse(ok.Data, registrationRecord);
                 return Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Ok((response, serverMac));
             },
             err => Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(
@@ -114,8 +177,15 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
 
     public Result<(SodiumSecureMemoryHandle SessionKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure> CompleteSignIn(
         OpaqueSignInFinalizeRequest request,
-        byte[] serverMac)
+        byte[]? serverMac,
+        int keyVersion)
     {
+        if (serverMac is null)
+        {
+            return Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(
+                OpaqueFailure.InvalidInput("Server MAC is required for sign-in finalization."));
+        }
+
         Result<KE3, OpaqueFailure> ke3ValidationResult = ValidateKe3(request);
         if (ke3ValidationResult.IsErr)
         {
@@ -123,15 +193,62 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         }
 
         KE3 ke3 = ke3ValidationResult.Unwrap();
+        if (Log.IsEnabled(LogEventLevel.Debug))
+        {
+            Log.Debug(
+                "[OPAQUE-SIGNIN-FINAL] ke3Len={Length} ke3={Data} serverMacLen={ServerMacLen} serverMac={ServerMac}",
+                ke3.Data.Length,
+                Convert.ToHexString(ke3.Data),
+                serverMac.Length,
+                serverMac.Length > 0 ? Convert.ToHexString(serverMac) : string.Empty);
+        }
 
         Result<SodiumSecureMemoryHandle, OpaqueServerFailure> sessionKeyResult =
-            nativeService.FinishAuthentication(ke3);
+            keyRingService.FinishAuthentication(ke3, keyVersion);
 
         return sessionKeyResult.Match(
             ok => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
                 (ok, BuildSuccessfulFinalizeResponse(serverMac))),
             _ => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
                 (null!, BuildFailedFinalizeResponse()))
+        );
+    }
+
+    public Result<(SodiumSecureMemoryHandle SessionKeyHandle, SodiumSecureMemoryHandle MasterKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure>
+        CompleteSignInWithMasterKey(OpaqueSignInFinalizeRequest request, byte[]? serverMac, int keyVersion)
+    {
+        if (serverMac is null)
+        {
+            return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(
+                OpaqueFailure.InvalidInput("Server MAC is required for sign-in finalization."));
+        }
+
+        Result<KE3, OpaqueFailure> ke3ValidationResult = ValidateKe3(request);
+        if (ke3ValidationResult.IsErr)
+        {
+            return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(
+                ke3ValidationResult.UnwrapErr());
+        }
+
+        KE3 ke3 = ke3ValidationResult.Unwrap();
+        if (Log.IsEnabled(LogEventLevel.Debug))
+        {
+            Log.Debug(
+                "[OPAQUE-SIGNIN-FINAL] ke3Len={Length} ke3={Data} serverMacLen={ServerMacLen} serverMac={ServerMac}",
+                ke3.Data.Length,
+                Convert.ToHexString(ke3.Data),
+                serverMac.Length,
+                serverMac.Length > 0 ? Convert.ToHexString(serverMac) : string.Empty);
+        }
+
+        Result<(SodiumSecureMemoryHandle SessionKey, SodiumSecureMemoryHandle MasterKey), OpaqueServerFailure> result =
+            keyRingService.FinishAuthenticationWithMasterKey(ke3, keyVersion);
+
+        return result.Match(
+            ok => Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
+                (ok.SessionKey, ok.MasterKey, BuildSuccessfulFinalizeResponse(serverMac))),
+            _ => Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
+                (null!, null!, BuildFailedFinalizeResponse()))
         );
     }
 
@@ -147,21 +264,8 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
                 return Result<byte[], OpaqueFailure>.Err(
                     OpaqueFailure.InvalidInput($"Invalid registration record: {registrationRequestResult.UnwrapErr().Message}"));
             }
-
-            RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
-            Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure> result =
-                nativeService.CreateRegistrationResponse(registrationRequest);
-
-            return result.Match(
-                ok =>
-                {
-                    ReadOnlySpan<byte> exportKeySpan = ok.ServerCredentials.AsSpan(CredentialsExportKeyOffset, MaskingKeySize);
-                    byte[] sessionKey = exportKeySpan.ToArray();
-                    return Result<byte[], OpaqueFailure>.Ok(sessionKey);
-                },
-                err => Result<byte[], OpaqueFailure>.Err(
-                    OpaqueFailure.InvalidInput($"Registration completion failed: {err.Message}"))
-            );
+            return Result<byte[], OpaqueFailure>.Err(
+                OpaqueFailure.InvalidInput("Registration export key is no longer available in OPAQUE registration"));
         }
         catch (Exception ex)
         {
@@ -195,8 +299,8 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         Span<byte> serverOprfResponseBuffer = stackalloc byte[ServerOprfResponseSize];
         Span<byte> serverEphemeralKeyBuffer = stackalloc byte[ServerEphemeralKeySize];
 
-        ke2Span[..ServerOprfResponseSize].CopyTo(serverOprfResponseBuffer);
-        ke2Span.Slice(ServerOprfResponseSize, ServerEphemeralKeySize).CopyTo(serverEphemeralKeyBuffer);
+        ke2Span.Slice(ServerEphemeralKeyOffset, ServerEphemeralKeySize).CopyTo(serverEphemeralKeyBuffer);
+        ke2Span.Slice(ServerOprfResponseOffset, ServerOprfResponseSize).CopyTo(serverOprfResponseBuffer);
 
         return new OpaqueSignInInitResponse
         {
@@ -232,17 +336,14 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         };
     }
 
-    private static byte[] ConstructServerCredentials(byte[] clientRegistrationRecord, byte[] maskingKey)
+    private static byte[] ConstructServerCredentials(byte[] clientRegistrationRecord)
     {
+        ArgumentNullException.ThrowIfNull(clientRegistrationRecord);
+
         if (clientRegistrationRecord.Length != ClientRegistrationRecordSize)
         {
             throw new ArgumentException(
                 $"Client registration record must be {ClientRegistrationRecordSize} bytes, got {clientRegistrationRecord.Length}");
-        }
-
-        if (maskingKey.Length != MaskingKeySize)
-        {
-            throw new ArgumentException($"Masking key must be {MaskingKeySize} bytes, got {maskingKey.Length}");
         }
 
         byte[] credentials = ArrayPool<byte>.Shared.Rent(ServerCredentialsSize);
@@ -250,12 +351,7 @@ public sealed class OpaqueProtocolAdapter(INativeOpaqueProtocolService nativeSer
         {
             Span<byte> credentialsSpan = credentials.AsSpan(0, ServerCredentialsSize);
             ReadOnlySpan<byte> recordSpan = clientRegistrationRecord.AsSpan();
-            ReadOnlySpan<byte> maskingKeySpan = maskingKey.AsSpan();
-
-            recordSpan[..CredentialsBaseOffset].CopyTo(credentialsSpan.Slice(0, CredentialsBaseOffset));
-            maskingKeySpan.CopyTo(credentialsSpan.Slice(CredentialsMaskingKeyOffset, MaskingKeySize));
-            recordSpan.Slice(CredentialsBaseOffset, MaskingKeySize).CopyTo(
-                credentialsSpan.Slice(CredentialsExportKeyOffset, MaskingKeySize));
+            recordSpan.CopyTo(credentialsSpan);
 
             byte[] result = new byte[ServerCredentialsSize];
             credentialsSpan.CopyTo(result);

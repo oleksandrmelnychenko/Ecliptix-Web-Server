@@ -6,7 +6,7 @@ public class AccountProfileEntity : EntityBase
 
     public AccountEntity Account { get; set; } = null!;
 
-    public string ProfileName { get; set; } = string.Empty; // Searchable
+    public string ProfileName { get; set; } = string.Empty;
 
     public string DisplayName { get; set; } = string.Empty;
 }

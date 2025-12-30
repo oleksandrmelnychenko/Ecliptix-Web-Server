@@ -8,19 +8,22 @@ using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler
 using Ecliptix.Core.Infrastructure.SecureChannel;
 using Ecliptix.Domain.AppDevices.Events;
 using Ecliptix.Domain.AppDevices.Failures;
+using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Services.Security;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Device;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.Security.Certificate.Pinning.Services;
+using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque.Failures;
-using Ecliptix.Security.Opaque.Services;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Options;
+using System.Buffers;
+using System.IO;
 using System.Security.Cryptography;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Device;
@@ -29,7 +32,7 @@ internal sealed class DeviceService(
     IGrpcCipherService cipherService,
     IEcliptixActorRegistry actorRegistry,
     ISecureChannelEstablisher secureChannelEstablisher,
-    INativeOpaqueProtocolService opaqueService,
+    IOpaqueKeyRingService opaqueService,
     IMasterKeyService masterKeyService,
     IRsaChunkProcessor rsaChunkProcessor,
     CertificatePinningService certificatePinningService,
@@ -56,7 +59,7 @@ internal sealed class DeviceService(
                 if (registerResult.IsOk)
                 {
                     Result<byte[], OpaqueServerFailure> serverPublicKey =
-                        ((OpaqueProtocolService)opaqueService).GetServerPublicKey();
+                        opaqueService.GetServerPublicKey();
 
                     DeviceRegistrationResponse reply = registerResult.Unwrap();
                     reply.ServerPublicKey = ByteString.CopyFrom(serverPublicKey.Unwrap());
@@ -130,16 +133,25 @@ internal sealed class DeviceService(
     {
         uint connectId = ServiceUtilities.ExtractConnectId(context);
         byte[]? rootKey = null;
-        byte[]? serverExchangeBytes = null;
+        byte[]? masterKeyFingerprint = null;
+        byte[]? serverExchangeBuffer = null;
+        int serverExchangeSize = 0;
         byte[]? encryptedPayload = null;
         byte[]? signature = null;
 
         try
         {
             Guid membershipId = Helpers.FromByteStringToGuid(request.MembershipUniqueId);
+            if (request.AccountUniqueId.IsEmpty)
+            {
+                throw GrpcFailureException.FromDomainFailure(
+                    MasterKeyFailure.InvalidIdentifier("AccountId is required for authenticated channel setup"));
+            }
 
-            Result<byte[], FailureBase> deriveRootResult =
-                await masterKeyService.DeriveRootKeyAsync(membershipId);
+            Guid accountId = Helpers.FromByteStringToGuid(request.AccountUniqueId);
+
+            Result<(byte[] RootKey, byte[] MasterKeyFingerprint), FailureBase> deriveRootResult =
+                await masterKeyService.DeriveRootKeyAndFingerprintAsync(accountId);
 
             if (deriveRootResult.IsErr)
             {
@@ -147,12 +159,20 @@ internal sealed class DeviceService(
                 throw GrpcFailureException.FromDomainFailure(failure);
             }
 
-            rootKey = deriveRootResult.Unwrap();
+            (rootKey, masterKeyFingerprint) = deriveRootResult.Unwrap();
+
+            byte[] requestFingerprint = request.MasterKeyFingerprint.ToByteArray();
+            if (requestFingerprint.Length != masterKeyFingerprint.Length ||
+                !CryptographicOperations.FixedTimeEquals(requestFingerprint, masterKeyFingerprint))
+            {
+                throw GrpcFailureException.FromDomainFailure(MasterKeyFailure.MasterKeyMismatch());
+            }
 
             InitializeProtocolWithMasterKeyActorEvent initEvent = new(
                 connectId,
                 request.ClientPubKeyExchange,
                 membershipId,
+                accountId,
                 rootKey);
 
             ForwardToConnectActorEvent forwardEvent = new(connectId, initEvent);
@@ -172,10 +192,21 @@ internal sealed class DeviceService(
 
             InitializeProtocolWithMasterKeyReply reply = initResult.Unwrap();
 
-            serverExchangeBytes = reply.ServerPubKeyExchange.ToByteArray();
+            ReadOnlyMemory<byte> serverExchangeMemory = ReadOnlyMemory<byte>.Empty;
+            serverExchangeSize = reply.ServerPubKeyExchange.CalculateSize();
+            if (serverExchangeSize > 0)
+            {
+                serverExchangeBuffer = ArrayPool<byte>.Shared.Rent(serverExchangeSize);
+                using MemoryStream stream = new(serverExchangeBuffer, 0, serverExchangeSize, writable: true,
+                    publiclyVisible: true);
+                using CodedOutputStream output = new(stream, leaveOpen: true);
+                reply.ServerPubKeyExchange.WriteTo(output);
+                output.Flush();
+                serverExchangeMemory = new ReadOnlyMemory<byte>(serverExchangeBuffer, 0, serverExchangeSize);
+            }
 
             Result<byte[], CertificatePinningFailure> encryptResult =
-                await rsaChunkProcessor.EncryptChunkedAsync(serverExchangeBytes, context.CancellationToken);
+                await rsaChunkProcessor.EncryptChunkedAsync(serverExchangeMemory, context.CancellationToken);
 
             if (encryptResult.IsErr)
             {
@@ -214,9 +245,13 @@ internal sealed class DeviceService(
             {
                 CryptographicOperations.ZeroMemory(rootKey);
             }
-            if (serverExchangeBytes != null)
+            if (masterKeyFingerprint != null)
             {
-                CryptographicOperations.ZeroMemory(serverExchangeBytes);
+                CryptographicOperations.ZeroMemory(masterKeyFingerprint);
+            }
+            if (serverExchangeBuffer != null)
+            {
+                ArrayPool<byte>.Shared.Return(serverExchangeBuffer, clearArray: true);
             }
             if (encryptedPayload != null)
             {

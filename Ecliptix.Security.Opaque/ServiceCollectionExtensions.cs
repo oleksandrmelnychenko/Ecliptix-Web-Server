@@ -1,3 +1,4 @@
+using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -7,6 +8,6 @@ public static class ServiceCollectionExtensions
 {
     public static void AddOpaqueProtocol(this IServiceCollection services)
     {
-        services.AddSingleton<INativeOpaqueProtocolService, OpaqueProtocolService>();
+        services.AddSingleton<IOpaqueKeyRingService, OpaqueKeyRingService>();
     }
 }

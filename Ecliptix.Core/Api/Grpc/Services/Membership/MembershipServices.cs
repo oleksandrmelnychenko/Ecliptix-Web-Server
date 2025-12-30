@@ -24,6 +24,7 @@ using Ecliptix.Protobuf.Account;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Ecliptix.Utilities.Failures.Sodium;
+using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Options;
 using Serilog;
@@ -43,6 +44,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 {
     private readonly GrpcSecurityService _service;
     private readonly IActorRef _membershipActor;
+    private readonly IActorRef _accountPersistor;
     private readonly IActorRef _logoutAuditPersistor;
     private readonly IActorRef _protocolActor;
     private readonly IMobileNumberValidator _phoneNumberValidator;
@@ -61,6 +63,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
     {
         _service = new GrpcSecurityService(grpcCipherService, securityConfig);
         _membershipActor = actorRegistry.Get(ActorIds.MembershipActor);
+        _accountPersistor = actorRegistry.Get(ActorIds.AccountPersistorActor);
         _logoutAuditPersistor = actorRegistry.Get(ActorIds.LogoutAuditPersistorActor);
         _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
         _phoneNumberValidator = phoneNumberValidator;
@@ -161,14 +164,12 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                 async (message, _, _, cancellationToken) =>
                 {
                     byte[] peerRecord = Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory);
-                    byte[] masterKey = Helpers.ReadMemoryToRetrieveBytes(message.MasterKey.Memory);
 
                     try
                     {
                         CompleteRegistrationRecordActorEvent @event = new(
                             Helpers.FromByteStringToGuid(message.MembershipIdentifier),
                             peerRecord,
-                            masterKey,
                             cancellationToken);
 
                         Task<Result<OprfRegistrationCompleteResponse, AccountFailure>> completeRegistrationRecordTask =
@@ -187,7 +188,6 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                     finally
                     {
                         CryptographicOperations.ZeroMemory(peerRecord);
-                        CryptographicOperations.ZeroMemory(masterKey);
                     }
                 });
     }
@@ -202,14 +202,12 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                 async (message, _, _, cancellationToken) =>
                 {
                     byte[] peerRecovery = Helpers.ReadMemoryToRetrieveBytes(message.PeerRecoveryRecord.Memory);
-                    byte[] masterKey = Helpers.ReadMemoryToRetrieveBytes(message.MasterKey.Memory);
 
                     try
                     {
                         OprfCompleteRecoverySecureKeyEvent @event = new(
                             Helpers.FromByteStringToGuid(message.MembershipIdentifier),
                             peerRecovery,
-                            masterKey,
                             cancellationToken);
 
                         Task<Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>>
@@ -231,7 +229,6 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
                     finally
                     {
                         CryptographicOperations.ZeroMemory(peerRecovery);
-                        CryptographicOperations.ZeroMemory(masterKey);
                     }
                 });
     }
@@ -310,13 +307,45 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             );
     }
 
+    private async Task<Result<Guid, FailureBase>> ResolveAccountIdAsync(
+        Guid membershipId,
+        ByteString? accountIdentifier,
+        CancellationToken cancellationToken)
+    {
+        if (accountIdentifier != null && accountIdentifier.Length > 0)
+        {
+            return Result<Guid, FailureBase>.Ok(Helpers.FromByteStringToGuid(accountIdentifier));
+        }
+
+        Task<Result<Option<Guid>, AccountFailure>> accountTask =
+            _accountPersistor.Ask<Result<Option<Guid>, AccountFailure>>(
+                new GetDefaultAccountIdEvent(membershipId, cancellationToken),
+                TimeoutConfiguration.Actor.AskTimeout);
+
+        Result<Option<Guid>, AccountFailure> accountResult =
+            await accountTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        if (accountResult.IsErr)
+        {
+            return Result<Guid, FailureBase>.Err(accountResult.UnwrapErr());
+        }
+
+        Option<Guid> accountOpt = accountResult.Unwrap();
+        if (!accountOpt.IsSome)
+        {
+            return Result<Guid, FailureBase>.Err(MasterKeyFailure.DefaultAccountNotFound());
+        }
+
+        return Result<Guid, FailureBase>.Ok(accountOpt.Value);
+    }
+
     private async Task<Result<Unit, FailureBase>> ValidateLogoutHmacAsync(
         LogoutRequest message,
-        Guid membershipId)
+        Guid accountId)
     {
         if (message.HmacProof == null || message.HmacProof.IsEmpty)
         {
-            Log.Warning("[LOGOUT-HMAC] Missing HMAC proof for MembershipId: {MembershipId}", membershipId);
+            Log.Warning("[LOGOUT-HMAC] Missing HMAC proof for AccountId: {AccountId}", accountId);
             return Result<Unit, FailureBase>.Err(
                 MembershipFailure.ValidationFailed("Missing HMAC authentication proof"));
         }
@@ -327,12 +356,12 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         try
         {
             Result<dynamic, FailureBase> handleResult =
-                await _masterKeyService.GetMasterKeyHandleAsync(membershipId);
+                await _masterKeyService.GetMasterKeyHandleAsync(accountId);
 
             if (handleResult.IsErr)
             {
-                Log.Error("[LOGOUT-HMAC] Failed to retrieve master key handle for MembershipId: {MembershipId}",
-                    membershipId);
+                Log.Error("[LOGOUT-HMAC] Failed to retrieve master key handle for AccountId: {AccountId}",
+                    accountId);
                 return Result<Unit, FailureBase>.Err(handleResult.UnwrapErr());
             }
 
@@ -343,8 +372,8 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
             if (hmacKeyResult.IsErr)
             {
-                Log.Error("[LOGOUT-HMAC] Failed to derive logout HMAC key for MembershipId: {MembershipId}",
-                    membershipId);
+                Log.Error("[LOGOUT-HMAC] Failed to derive logout HMAC key for AccountId: {AccountId}",
+                    accountId);
                 return Result<Unit, FailureBase>.Err(
                     MembershipFailure.ValidationFailed(
                         $"HMAC key derivation failed: {hmacKeyResult.UnwrapErr().Message}"));
@@ -366,14 +395,14 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
                 if (!isValid)
                 {
-                    Log.Warning("[LOGOUT-HMAC] HMAC verification failed for MembershipId: {MembershipId}",
-                        membershipId);
+                    Log.Warning("[LOGOUT-HMAC] HMAC verification failed for AccountId: {AccountId}",
+                        accountId);
                     return Result<Unit, FailureBase>.Err(
                         MembershipFailure.ValidationFailed("Invalid HMAC authentication proof"));
                 }
 
-                Log.Information("[LOGOUT-HMAC] HMAC validation succeeded for MembershipId: {MembershipId}",
-                    membershipId);
+                Log.Information("[LOGOUT-HMAC] HMAC validation succeeded for AccountId: {AccountId}",
+                    accountId);
                 return Result<Unit, FailureBase>.Ok(Unit.Value);
             }
             finally
@@ -415,7 +444,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
             if (reply.SessionState == null)
             {
-                Log.Warning(
+                Log.Debug(
                     "[LOGOUT-RATCHET] No session state found for ConnectId: {ConnectId}, returning empty fingerprint",
                     connectId);
                 return [];
@@ -438,6 +467,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
     }
 
     private async Task<byte[]> GenerateHmacRevocationProofAsync(
+        Guid accountId,
         Guid membershipId,
         uint connectId,
         long serverTimestamp,
@@ -452,13 +482,13 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         try
         {
             Result<dynamic, FailureBase> handleResult =
-                await _masterKeyService.GetMasterKeyHandleAsync(membershipId);
+                await _masterKeyService.GetMasterKeyHandleAsync(accountId);
 
             if (handleResult.IsErr)
             {
                 FailureBase failure = handleResult.UnwrapErr();
                 throw new InvalidOperationException(
-                    $"Unable to generate revocation proof without master key handle for MembershipId: {membershipId}. Error: {failure.Message}");
+                    $"Unable to generate revocation proof without master key handle for AccountId: {accountId}. Error: {failure.Message}");
             }
 
             masterKeyHandle = (SodiumSecureMemoryHandle)handleResult.Unwrap();
@@ -470,7 +500,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             {
                 SodiumFailure failure = proofKeyResult.UnwrapErr();
                 throw new InvalidOperationException(
-                    $"Unable to derive logout proof key for MembershipId: {membershipId}. Error: {failure.Message}");
+                    $"Unable to derive logout proof key for AccountId: {accountId}. Error: {failure.Message}");
             }
 
             proofKey = proofKeyResult.Unwrap();
@@ -497,8 +527,8 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             byte[] hmacProof = LogoutKeyDerivation.ComputeHmac(proofKey, canonicalProofData);
 
             Log.Information(
-                "[LOGOUT-PROOF] Generated HMAC revocation proof for MembershipId: {MembershipId}, ProofTagPrefix: {ProofTagPrefix}",
-                membershipId, Convert.ToHexString(hmacProof).ToLowerInvariant()[..16]);
+                "[LOGOUT-PROOF] Generated HMAC revocation proof for AccountId: {AccountId}, ProofTagPrefix: {ProofTagPrefix}",
+                accountId, Convert.ToHexString(hmacProof).ToLowerInvariant()[..16]);
 
             using MemoryStream proofStream = new();
             await using BinaryWriter proofWriter = new(proofStream);
@@ -536,8 +566,23 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
         long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
+        Result<Guid, FailureBase> accountResult =
+            await ResolveAccountIdAsync(membershipId, message.AccountIdentifier, cancellationToken);
+
+        if (accountResult.IsErr)
+        {
+            Log.Warning("[LOGOUT] Failed to resolve account for MembershipId: {MembershipId}. Error: {Error}",
+                membershipId, accountResult.UnwrapErr().Message);
+            return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
+            {
+                Result = LogoutResponse.Types.Result.SessionNotFound, ServerTimestamp = serverTimestamp
+            });
+        }
+
+        Guid accountId = accountResult.Unwrap();
+
         Result<Unit, LogoutResponse> validationResult =
-            await PerformValidationChecksAsync(message, membershipId, serverTimestamp);
+            await PerformValidationChecksAsync(message, membershipId, accountId, serverTimestamp);
 
         if (validationResult.IsErr)
         {
@@ -546,15 +591,12 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
         LogoutReason reason = ParseLogoutReason(message.LogoutReason);
         Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
-        Guid? accountId = message.AccountIdentifier != null && message.AccountIdentifier.Length > 0
-            ? Helpers.FromByteStringToGuid(message.AccountIdentifier)
-            : null;
 
         await RecordLogoutAuditAsync(membershipId, accountId, deviceId, reason, cancellationToken);
 
         byte[] ratchetFingerprint = await CaptureRatchetFingerprintAsync(connectId);
         byte[] revocationProof = await GenerateHmacRevocationProofAsync(
-            membershipId, connectId, serverTimestamp, ratchetFingerprint);
+            accountId, membershipId, connectId, serverTimestamp, ratchetFingerprint);
 
         ScheduleProtocolCleanup(connectId);
 
@@ -569,7 +611,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
     }
 
     private async Task<Result<Unit, LogoutResponse>> PerformValidationChecksAsync(
-        LogoutRequest message, Guid membershipId, long serverTimestamp)
+        LogoutRequest message, Guid membershipId, Guid accountId, long serverTimestamp)
     {
         long timestampDrift = Math.Abs(serverTimestamp - message.Timestamp);
         long maxDrift = (long)_securityConfig.GrpcSecurity.MaxTimestampDrift.TotalSeconds;
@@ -583,7 +625,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         }
 
         Result<bool, FailureBase> sharesExistResult =
-            await _masterKeyService.CheckSharesExistAsync(membershipId);
+            await _masterKeyService.CheckSharesExistAsync(accountId);
 
         if (sharesExistResult.IsErr || !sharesExistResult.Unwrap())
         {
@@ -593,7 +635,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
             });
         }
 
-        Result<Unit, FailureBase> hmacValidation = await ValidateLogoutHmacAsync(message, membershipId);
+        Result<Unit, FailureBase> hmacValidation = await ValidateLogoutHmacAsync(message, accountId);
         if (hmacValidation.IsErr)
         {
             return Result<Unit, LogoutResponse>.Err(new LogoutResponse
@@ -676,11 +718,11 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
     private async Task<Result<Unit, FailureBase>> ValidateAnonymousLogoutHmacAsync(
         AnonymousLogoutRequest message,
-        Guid membershipId)
+        Guid accountId)
     {
         if (message.HmacProof == null || message.HmacProof.IsEmpty)
         {
-            Log.Warning("[LOGOUT-ANONYMOUS-HMAC] Missing HMAC proof for MembershipId: {MembershipId}", membershipId);
+            Log.Warning("[LOGOUT-ANONYMOUS-HMAC] Missing HMAC proof for AccountId: {AccountId}", accountId);
             return Result<Unit, FailureBase>.Err(
                 VerificationFlowFailure.Unauthorized("Missing HMAC authentication proof"));
         }
@@ -691,13 +733,13 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         try
         {
             Result<dynamic, FailureBase> handleResult =
-                await _masterKeyService.GetMasterKeyHandleAsync(membershipId);
+                await _masterKeyService.GetMasterKeyHandleAsync(accountId);
 
             if (handleResult.IsErr)
             {
                 Log.Error(
-                    "[LOGOUT-ANONYMOUS-HMAC] Failed to retrieve master key handle for MembershipId: {MembershipId}",
-                    membershipId);
+                    "[LOGOUT-ANONYMOUS-HMAC] Failed to retrieve master key handle for AccountId: {AccountId}",
+                    accountId);
                 return Result<Unit, FailureBase>.Err(handleResult.UnwrapErr());
             }
 
@@ -708,8 +750,8 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
             if (hmacKeyResult.IsErr)
             {
-                Log.Error("[LOGOUT-ANONYMOUS-HMAC] Failed to derive logout HMAC key for MembershipId: {MembershipId}",
-                    membershipId);
+                Log.Error("[LOGOUT-ANONYMOUS-HMAC] Failed to derive logout HMAC key for AccountId: {AccountId}",
+                    accountId);
                 return Result<Unit, FailureBase>.Err(
                     VerificationFlowFailure.Unauthorized(
                         $"HMAC key derivation failed: {hmacKeyResult.UnwrapErr().Message}"));
@@ -731,14 +773,14 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
                 if (!isValid)
                 {
-                    Log.Warning("[LOGOUT-ANONYMOUS-HMAC] HMAC verification failed for MembershipId: {MembershipId}",
-                        membershipId);
+                    Log.Warning("[LOGOUT-ANONYMOUS-HMAC] HMAC verification failed for AccountId: {AccountId}",
+                        accountId);
                     return Result<Unit, FailureBase>.Err(
                         VerificationFlowFailure.Unauthorized("Invalid HMAC authentication proof"));
                 }
 
-                Log.Information("[LOGOUT-ANONYMOUS-HMAC] HMAC validation succeeded for MembershipId: {MembershipId}",
-                    membershipId);
+                Log.Information("[LOGOUT-ANONYMOUS-HMAC] HMAC validation succeeded for AccountId: {AccountId}",
+                    accountId);
                 return Result<Unit, FailureBase>.Ok(Unit.Value);
             }
             finally
@@ -771,8 +813,26 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
         long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
+        Result<Guid, FailureBase> accountResult =
+            await ResolveAccountIdAsync(membershipId, message.AccountIdentifier, cancellationToken);
+
+        if (accountResult.IsErr)
+        {
+            Log.Warning(
+                "[LOGOUT-ANONYMOUS] Failed to resolve account for MembershipId: {MembershipId}. Error: {Error}",
+                membershipId, accountResult.UnwrapErr().Message);
+            return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
+            {
+                Result = AnonymousLogoutResponse.Types.Result.SessionNotFound,
+                ServerTimestamp = serverTimestamp,
+                Message = "Session not found"
+            });
+        }
+
+        Guid accountId = accountResult.Unwrap();
+
         Result<Unit, AnonymousLogoutResponse> validationResult =
-            await PerformAnonymousValidationChecksAsync(message, membershipId, serverTimestamp);
+            await PerformAnonymousValidationChecksAsync(message, membershipId, accountId, serverTimestamp);
 
         if (validationResult.IsErr)
         {
@@ -781,9 +841,6 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
         LogoutReason reason = ParseLogoutReason(message.LogoutReason);
         Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
-        Guid? accountId = message.AccountIdentifier != null && message.AccountIdentifier.Length > 0
-            ? Helpers.FromByteStringToGuid(message.AccountIdentifier)
-            : null;
 
         Log.Information(
             "[LOGOUT-ANONYMOUS] Processing anonymous logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
@@ -802,7 +859,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
     }
 
     private async Task<Result<Unit, AnonymousLogoutResponse>> PerformAnonymousValidationChecksAsync(
-        AnonymousLogoutRequest message, Guid membershipId, long serverTimestamp)
+        AnonymousLogoutRequest message, Guid membershipId, Guid accountId, long serverTimestamp)
     {
         long timestampDrift = Math.Abs(serverTimestamp - message.Timestamp);
         const long maxWindowSeconds = 72 * 3600;
@@ -822,7 +879,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         }
 
         Result<bool, FailureBase> sharesExistResult =
-            await _masterKeyService.CheckSharesExistAsync(membershipId);
+            await _masterKeyService.CheckSharesExistAsync(accountId);
 
         if (sharesExistResult.IsErr)
         {
@@ -851,7 +908,7 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
         Log.Debug("[LOGOUT-ANONYMOUS] Master key shares verified for MembershipId: {MembershipId}", membershipId);
 
         Result<Unit, FailureBase> hmacValidation =
-            await ValidateAnonymousLogoutHmacAsync(message, membershipId);
+            await ValidateAnonymousLogoutHmacAsync(message, accountId);
         if (hmacValidation.IsErr)
         {
             Log.Warning("[LOGOUT-ANONYMOUS] HMAC validation failed for MembershipId: {MembershipId}",
@@ -898,6 +955,5 @@ internal sealed class MembershipServices : Protobuf.Membership.MembershipService
 
         return response;
     }
-
 
 }

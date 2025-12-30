@@ -9,6 +9,7 @@ using Akka.Persistence.Sql.Hosting;
 using Akka.Remote.Hosting;
 using Ecliptix.Core.Configuration.Settings;
 using Ecliptix.Core.Services;
+using Ecliptix.Domain.Schema;
 using Ecliptix.Utilities.Configuration;
 using LinqToDB;
 
@@ -25,8 +26,8 @@ internal static class AkkaConfiguration
         string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
         bool usePostgreSQL = builder.Configuration.GetValue<bool>("UsePostgreSQL", false);
 
-        string hostname = Environment.GetEnvironmentVariable("POD_IP") ?? akkaSettings.Remoting.Hostname;
-        int port = int.Parse(Environment.GetEnvironmentVariable("AKKA_PORT") ?? akkaSettings.Remoting.Port.ToString());
+        string hostname = Environment.GetEnvironmentVariable(EnvironmentVariableNames.PodIp) ?? akkaSettings.Remoting.Hostname;
+        int port = int.Parse(Environment.GetEnvironmentVariable(EnvironmentVariableNames.AkkaPort) ?? akkaSettings.Remoting.Port.ToString());
 
         const string systemActorName = ApplicationConstants.ActorSystem.SystemName;
 
@@ -44,7 +45,7 @@ internal static class AkkaConfiguration
                     databaseMapping: usePostgreSQL ? DatabaseMapping.PostgreSql : DatabaseMapping.SqlServer,
                     mode: PersistenceMode.Both,
                     autoInitialize: true,
-                    schemaName: usePostgreSQL ? "public" : "dbo",
+                    schemaName: usePostgreSQL ? DatabaseConstants.SchemaNames.PostgreSql : DatabaseConstants.SchemaNames.SqlServer,
                     journalBuilder: journalBuilder =>
                     {
                         journalBuilder

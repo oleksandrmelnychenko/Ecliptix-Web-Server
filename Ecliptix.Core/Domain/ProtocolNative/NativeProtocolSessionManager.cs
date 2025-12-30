@@ -5,9 +5,6 @@ using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Domain.ProtocolNative;
 
-/// <summary>
-/// Manages native protocol sessions keyed by connectId for server-side actors.
-/// </summary>
 internal sealed class NativeProtocolSessionManager : IDisposable
 {
     private readonly ConcurrentDictionary<uint, NativeProtocolSession> _sessions = new();

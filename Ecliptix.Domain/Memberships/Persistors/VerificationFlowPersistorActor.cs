@@ -116,7 +116,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             CheckExistingMembershipAsync,
             "CheckExistingMembership");
 
-        ReceivePersistorCommand<IncrementOtpAttemptCountActorEvent, Unit>(
+        ReceivePersistorCommand<IncrementOtpAttemptCountActorEvent, short>(
             IncrementOtpAttemptCountAsync,
             "IncrementOtpAttemptCount");
 
@@ -586,6 +586,24 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 await transaction.RollbackAsync();
                 return Result<Unit, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.FromOtp(OtpFailure.NotFound()));
+            }
+
+            if (otp.Status == cmd.Status)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+            }
+
+            if (otp.Status is OtpStatus.Used or OtpStatus.Expired)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+            }
+
+            if (otp.Status != OtpStatus.Active)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
             }
 
             otp.Status = cmd.Status;
@@ -1244,7 +1262,8 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 OtpSalt = activeOtp.OtpSalt,
                 ExpiresAt = activeOtp.ExpiresAt,
                 Status = activeOtp.Status,
-                IsActive = activeOtp.Status == OtpStatus.Active
+                IsActive = activeOtp.Status == OtpStatus.Active,
+                AttemptCount = activeOtp.AttemptCount
             })
             : Option<OtpQueryRecord>.None;
 
@@ -1266,15 +1285,20 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         return Result<VerificationFlowQueryRecord, VerificationFlowFailure>.Ok(flowRecord);
     }
 
-    private static async Task<Result<Unit, VerificationFlowFailure>> IncrementOtpAttemptCountAsync(
+    private async Task<Result<short, VerificationFlowFailure>> IncrementOtpAttemptCountAsync(
         EcliptixSchemaContext schemeContext,
         IncrementOtpAttemptCountActorEvent cmd,
         CancellationToken cancellationToken)
     {
         try
         {
+            short maxAttempts = (short)_securityConfig.CurrentValue.VerificationFlow.MaxOtpVerificationAttempts;
+
             int updated = await schemeContext.OtpCodes
-                .Where(o => o.UniqueId == cmd.OtpUniqueId && !o.IsDeleted)
+                .Where(o => o.UniqueId == cmd.OtpUniqueId &&
+                            o.Status == OtpStatus.Active &&
+                            o.AttemptCount < maxAttempts &&
+                            !o.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters
                         .SetProperty(o => o.AttemptCount, o => (short)(o.AttemptCount + 1))
                         .SetProperty(o => o.UpdatedAt, DateTimeOffset.UtcNow),
@@ -1282,15 +1306,30 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             if (updated == 0)
             {
-                return Result<Unit, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.FromOtp(OtpFailure.NotFound()));
+                short? existingCount = await schemeContext.OtpCodes
+                    .Where(o => o.UniqueId == cmd.OtpUniqueId && !o.IsDeleted)
+                    .Select(o => (short?)o.AttemptCount)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (existingCount == null)
+                {
+                    return Result<short, VerificationFlowFailure>.Err(
+                        VerificationFlowFailure.FromOtp(OtpFailure.NotFound()));
+                }
+
+                return Result<short, VerificationFlowFailure>.Ok(existingCount.Value);
             }
 
-            return Result<Unit, VerificationFlowFailure>.Ok(Unit.Value);
+            short newCount = await schemeContext.OtpCodes
+                .Where(o => o.UniqueId == cmd.OtpUniqueId && !o.IsDeleted)
+                .Select(o => o.AttemptCount)
+                .FirstAsync(cancellationToken);
+
+            return Result<short, VerificationFlowFailure>.Ok(newCount);
         }
         catch (Exception ex)
         {
-            return Result<Unit, VerificationFlowFailure>.Err(
+            return Result<short, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.IncrementAttemptCountFailed(ex));
         }
     }

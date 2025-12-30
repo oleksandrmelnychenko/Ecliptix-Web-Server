@@ -22,5 +22,6 @@ public enum MasterKeyFailureType : short
     MemoryWriteFailed,
     ValidationFailed,
     PersistorAccess,
-    InternalError
+    InternalError,
+    KeyMismatch
 }

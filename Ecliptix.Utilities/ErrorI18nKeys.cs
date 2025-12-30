@@ -19,4 +19,5 @@ public static class ErrorI18NKeys
     public const string Cancelled = "error.cancelled";
     public const string Internal = "error.internal";
     public const string DatabaseUnavailable = "error.database_unavailable";
+    public const string EncryptionFailed = "error.encryption_failed";
 }

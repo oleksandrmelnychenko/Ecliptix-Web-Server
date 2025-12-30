@@ -26,6 +26,7 @@ public sealed record MasterKeyFailure(
         MasterKeyFailureType.InvalidIdentifier => true,
         MasterKeyFailureType.ShareValidationFailed => true,
         MasterKeyFailureType.InsufficientShares => true,
+        MasterKeyFailureType.KeyMismatch => true,
         _ => false
     };
 
@@ -81,6 +82,12 @@ public sealed record MasterKeyFailure(
     {
         return new MasterKeyFailure(MasterKeyFailureType.InvalidIdentifier,
             MasterKeyMessageKeys.CredentialsNotFound);
+    }
+
+    public static MasterKeyFailure MasterKeyMismatch()
+    {
+        return new MasterKeyFailure(MasterKeyFailureType.KeyMismatch,
+            MasterKeyMessageKeys.MasterKeyMismatch);
     }
 
     public static MasterKeyFailure DatabaseError(Exception? ex = null)
@@ -146,6 +153,10 @@ public sealed record MasterKeyFailure(
                 ErrorCode.NotFound,
                 StatusCode.NotFound,
                 i18NKey),
+            MasterKeyFailureType.KeyMismatch => new GrpcErrorDescriptor(
+                ErrorCode.PreconditionFailed,
+                StatusCode.FailedPrecondition,
+                i18NKey),
 
             MasterKeyFailureType.AllocationFailed => new GrpcErrorDescriptor(
                 ErrorCode.ResourceExhausted,
@@ -189,6 +200,7 @@ public sealed record MasterKeyFailure(
             MasterKeyFailureType.HmacKeyRemovalFailed => MasterKeyMessageKeys.HmacKeyRemovalFailed,
             MasterKeyFailureType.MemoryReadFailed => MasterKeyMessageKeys.MemoryReadFailed,
             MasterKeyFailureType.MemoryWriteFailed => MasterKeyMessageKeys.MemoryWriteFailed,
+            MasterKeyFailureType.KeyMismatch => MasterKeyMessageKeys.MasterKeyMismatch,
             _ => ErrorI18NKeys.Internal
         };
 

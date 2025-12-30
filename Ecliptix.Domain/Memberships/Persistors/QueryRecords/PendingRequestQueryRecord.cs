@@ -8,4 +8,3 @@ public record PendingRequestQueryRecord
     public string? DisplayName { get; init; }
     public string? AvatarUrl { get; init; }
 }
-

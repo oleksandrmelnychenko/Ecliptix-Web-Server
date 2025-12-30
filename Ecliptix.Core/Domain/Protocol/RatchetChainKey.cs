@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures.Sodium;
 
@@ -34,10 +35,35 @@ public sealed class RatchetChainKey : IDisposable, IEquatable<RatchetChainKey>
             return false;
         }
 
-        return
-            Index == other.Index &&
-            _disposed ==
-            other._disposed;
+        if (Index != other.Index || _disposed != other._disposed)
+        {
+            return false;
+        }
+
+        if (_disposed)
+        {
+            return true;
+        }
+
+        Span<byte> thisKey = stackalloc byte[Constants.AesKeySize];
+        Span<byte> otherKey = stackalloc byte[Constants.AesKeySize];
+        try
+        {
+            Result<Unit, EcliptixProtocolFailure> thisRead = ReadKeyMaterial(thisKey);
+            Result<Unit, EcliptixProtocolFailure> otherRead = other.ReadKeyMaterial(otherKey);
+
+            if (thisRead.IsErr || otherRead.IsErr)
+            {
+                return false;
+            }
+
+            return CryptographicOperations.FixedTimeEquals(thisKey, otherKey);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(thisKey);
+            CryptographicOperations.ZeroMemory(otherKey);
+        }
     }
 
     public override bool Equals(object? obj)

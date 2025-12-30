@@ -21,12 +21,6 @@ public class MembershipEntity : EntityBase
         set;
     }
 
-    public List<MasterKeyShareEntity> MasterKeyShares
-    {
-        get => field ??= [];
-        set;
-    }
-
     public List<AccountEntity> Accounts
     {
         get => field ??= [];

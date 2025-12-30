@@ -88,14 +88,6 @@ public sealed class ActorSystemInitializationHost(
                 securityConfig),
             ApplicationConstants.ActorNames.VerificationFlowManagerActor);
 
-        IActorRef membershipRelationPersistorActor = actorSystem.ActorOf(
-            MembershipRelationPersistorActor.Build(dbContextFactory),
-            ApplicationConstants.ActorNames.MembershipRelationPersistorActor);
-
-        IActorRef membershipRelationActor = actorSystem.ActorOf(
-            Ecliptix.Domain.Memberships.WorkerActors.MembershipRelation.MembershipRelationActor.Build(membershipRelationPersistorActor),
-            ApplicationConstants.ActorNames.MembershipRelationActor);
-
         IActorRef accountProfilePersistorActor = actorSystem.ActorOf(
             AccountProfilePersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.AccountProfilePersistorActor);
@@ -112,8 +104,6 @@ public sealed class ActorSystemInitializationHost(
         registry.Register(ActorIds.AccountPersistorActor, accountPersistorActor);
         registry.Register(ActorIds.PasswordRecoveryPersistorActor, passwordRecoveryPersistorActor);
         registry.Register(ActorIds.MembershipActor, membershipActor);
-        registry.Register(ActorIds.MembershipRelationPersistorActor, membershipRelationPersistorActor);
-        registry.Register(ActorIds.MembershipRelationActor, membershipRelationActor);
         registry.Register(ActorIds.AccountProfileActor, accountProfileActor);
         registry.Register(ActorIds.AccountProfilePersistorActor, accountProfilePersistorActor);
 

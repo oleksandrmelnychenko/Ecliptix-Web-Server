@@ -11,6 +11,7 @@ using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.Domain.Services.Security;
+using Ecliptix.OPAQUE.Server;
 using Ecliptix.Protobuf.Membership;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
 using Ecliptix.Security.Opaque.Contracts;
@@ -35,20 +36,32 @@ internal sealed class PendingSignInState : IDisposable
     public required ProtoMembership.Types.ActivityStatus ActivityStatus { get; init; }
     public required ProtoMembership.Types.CreationStatus CreationStatus { get; init; }
     public required DateTimeOffset CreatedAt { get; init; }
-    public required byte[] ServerMac { get; init; }
+    public required byte[]? ServerMac { get; init; }
+    public required int OpaqueKeyVersion { get; init; }
     public List<AccountInfo>? AvailableAccounts { get; init; }
     public Guid? ActiveAccountId { get; init; }
 
     public void Dispose()
     {
-        CryptographicOperations.ZeroMemory(ServerMac);
+        if (ServerMac is not null)
+        {
+            CryptographicOperations.ZeroMemory(ServerMac);
+        }
     }
+}
+
+internal sealed class PendingOpaqueContext
+{
+    public required byte[] AccountIdBytes { get; init; }
+    public required int OpaqueKeyVersion { get; init; }
 }
 
 public sealed class MembershipActor : ReceivePersistentActor
 {
     private const string PersistenceIdValue = "membership-actor";
     private static readonly TimeSpan PendingPasswordRecoveryTimeout = TimeSpan.FromMinutes(15);
+    private const int OpaqueAccountIdLength = 16;
+    private const int OpaqueMaskingKeyLength = 32;
 
     private readonly ILocalizationProvider _localizationProvider;
     private readonly IActorRef _membershipPersistor;
@@ -60,7 +73,7 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private readonly Dictionary<uint, PendingSignInState> _pendingSignIns = new(capacity: 8);
 
-    private readonly Dictionary<Guid, byte[]> _pendingMaskingKeys = new(capacity: 8);
+    private readonly Dictionary<Guid, PendingOpaqueContext> _pendingMaskingKeys = new(capacity: 8);
     private readonly Dictionary<Guid, SodiumSecureMemoryHandle> _pendingSessionKeys = new(capacity: 8);
     private readonly Dictionary<Guid, DateTimeOffset> _pendingRecoveryTimestamps = new(capacity: 8);
 
@@ -296,38 +309,62 @@ public sealed class MembershipActor : ReceivePersistentActor
     {
         IActorRef replyTo = Sender;
 
-        if (!_pendingMaskingKeys.TryGetValue(@event.MembershipIdentifier, out byte[]? maskingKey))
+        if (Log.IsDebugEnabled)
+        {
+            Log.Debug(
+                "[OPAQUE-REG-COMPLETE] MembershipId: {0}, RecordLen: {1}, Record: {2}",
+                @event.MembershipIdentifier,
+                @event.PeerRegistrationRecord?.Length ?? 0,
+                @event.PeerRegistrationRecord is { Length: > 0 }
+                    ? Convert.ToHexString(@event.PeerRegistrationRecord)
+                    : string.Empty);
+        }
+
+        if (!_pendingMaskingKeys.TryGetValue(@event.MembershipIdentifier, out PendingOpaqueContext? pendingContext))
         {
             replyTo.Tell(Result<OprfRegistrationCompleteResponse, AccountFailure>.Err(
                 AccountFailure.ValidationFailed(
-                    "No masking key found for membership during registration completion")));
+                    "No pending account id found for membership during registration completion")));
             return;
         }
 
-        byte[] maskingKeyCopy = maskingKey.AsSpan().ToArray();
-
-        Result<AccountCreationResult, AccountFailure> accountResult =
-            await _accountPersistor.Ask<Result<AccountCreationResult, AccountFailure>>(
-                new CreateDefaultAccountEvent(@event.MembershipIdentifier, @event.CancellationToken),
-                @event.CancellationToken);
-
-        if (accountResult.IsErr)
+        Guid? pendingAccountId = TryParseAccountId(pendingContext.AccountIdBytes);
+        if (!pendingAccountId.HasValue)
         {
             RemovePendingMaskingKey(@event.MembershipIdentifier);
-            replyTo.Tell(
-                Result<OprfRegistrationCompleteResponse, AccountFailure>.Err(
-                    accountResult.UnwrapErr()));
+            replyTo.Tell(Result<OprfRegistrationCompleteResponse, AccountFailure>.Err(
+                AccountFailure.ValidationFailed(
+                    "Registration session invalid. Please restart registration.")));
             return;
         }
 
-        AccountCreationResult accountInfo = accountResult.Unwrap();
-        Guid defaultAccountId = accountInfo.Accounts.First(a => a.IsDefault).AccountId;
+        Guid accountId = pendingAccountId.Value;
+        int opaqueKeyVersion = pendingContext.OpaqueKeyVersion;
+        if (Log.IsDebugEnabled)
+        {
+            Log.Debug(
+                "[OPAQUE-REG-COMPLETE] MembershipId: {0}, AccountId: {1}",
+                @event.MembershipIdentifier,
+                accountId);
+        }
+        byte[] maskingKeyForStorage = new byte[OpaqueMaskingKeyLength];
+
+        if (@event.PeerRegistrationRecord is null ||
+            @event.PeerRegistrationRecord.Length != OpaqueConstants.REGISTRATION_RECORD_LENGTH)
+        {
+            RemovePendingMaskingKey(@event.MembershipIdentifier);
+            replyTo.Tell(Result<OprfRegistrationCompleteResponse, AccountFailure>.Err(
+                AccountFailure.ValidationFailed(
+                    $"Registration record must be {OpaqueConstants.REGISTRATION_RECORD_LENGTH} bytes")));
+            return;
+        }
 
         UpdateAccountSecureKeyEvent updateEvent = new(
             @event.MembershipIdentifier,
             @event.PeerRegistrationRecord,
-            maskingKeyCopy,
-            AccountId: defaultAccountId,
+            maskingKeyForStorage,
+            OpaqueKeyVersion: opaqueKeyVersion,
+            AccountId: accountId,
             CancellationToken: @event.CancellationToken);
 
         Result<AccountSecureKeyUpdateResult, AccountFailure> persistorResult =
@@ -364,29 +401,39 @@ public sealed class MembershipActor : ReceivePersistentActor
                 @event.MembershipIdentifier, statusUpdateResult.UnwrapErr().Message);
         }
 
-        Log.Info("[REGISTRATION-MASTER-KEY] Splitting master key into Shamir shares for MembershipId: {0}", @event.MembershipIdentifier);
-
-        Result<dynamic, FailureBase> splitResult = await _masterKeyService.SplitAndStoreMasterKeyAsync(
-            @event.MasterKey,
-            @event.MembershipIdentifier);
-
-        if (splitResult.IsErr)
-        {
-            RemovePendingMaskingKey(@event.MembershipIdentifier);
-            Log.Error("[REGISTRATION-MASTER-KEY] Failed to split master key for MembershipId: {0}, Error: {1}",
-                @event.MembershipIdentifier, splitResult.UnwrapErr().Message);
-            replyTo.Tell(Result<OprfRegistrationCompleteResponse, AccountFailure>.Err(
-                AccountFailure.ValidationFailed($"Failed to store master key: {splitResult.UnwrapErr().Message}")));
-            return;
-        }
-
         RemovePendingMaskingKey(@event.MembershipIdentifier);
 
-        int accountCount = accountInfo.Accounts.Count;
+        Result<List<AccountInfo>, AccountFailure> accountsResult =
+            await _accountPersistor.Ask<Result<List<AccountInfo>, AccountFailure>>(
+                new GetAccountsByMembershipIdEvent(@event.MembershipIdentifier, @event.CancellationToken),
+                @event.CancellationToken);
+
+        List<AccountInfo>? accountsFromDb = accountsResult.IsOk ? accountsResult.Unwrap() : null;
+        List<AccountInfo> accounts = accountsFromDb is { Count: > 0 }
+            ? accountsFromDb
+            : new List<AccountInfo>
+            {
+                new(
+                    accountId,
+                    @event.MembershipIdentifier,
+                    Protobuf.Account.AccountType.Personal,
+                    true,
+                    Protobuf.Account.AccountStatus.Active)
+            };
+
+        if (accountsResult.IsErr)
+        {
+            Log.Warning(
+                "[REGISTRATION-ACCOUNTS] Failed to load accounts for membership {0}: {1}",
+                @event.MembershipIdentifier,
+                accountsResult.UnwrapErr().Message);
+        }
+
+        int accountCount = accounts.Count;
         List<Protobuf.Account.Account> availableAccounts = new(accountCount);
         for (int i = 0; i < accountCount; i++)
         {
-            AccountInfo a = accountInfo.Accounts[i];
+            AccountInfo a = accounts[i];
             availableAccounts.Add(new Protobuf.Account.Account
             {
                 UniqueIdentifier = Helpers.GuidToByteString(a.AccountId),
@@ -397,6 +444,9 @@ public sealed class MembershipActor : ReceivePersistentActor
             });
         }
 
+        Protobuf.Account.Account activeAccount =
+            availableAccounts.FirstOrDefault(a => a.IsDefaultAccount) ?? availableAccounts[0];
+
         replyTo.Tell(Result<OprfRegistrationCompleteResponse, AccountFailure>.Ok(
             new OprfRegistrationCompleteResponse
             {
@@ -404,7 +454,7 @@ public sealed class MembershipActor : ReceivePersistentActor
                 Message = "Registration completed successfully.",
                 SessionKey = ByteString.Empty,
                 AvailableAccounts = { availableAccounts },
-                ActiveAccount = availableAccounts[0]
+                ActiveAccount = activeAccount
             }));
     }
 
@@ -444,32 +494,37 @@ public sealed class MembershipActor : ReceivePersistentActor
             "[PASSWORD-RECOVERY-COMPLETE] Recovery session validated. MembershipId: {0}, SessionAge: {1}",
             @event.MembershipIdentifier, elapsed);
 
-        if (!_pendingMaskingKeys.TryGetValue(@event.MembershipIdentifier, out byte[]? maskingKey))
+        if (!_pendingMaskingKeys.TryGetValue(@event.MembershipIdentifier, out PendingOpaqueContext? pendingContext))
         {
             replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Err(
                 SecretKeyRecoveryFailure.TokenInvalid(
-                    "No masking key found for membership during recovery completion")));
+                    "No pending account id found for membership during recovery completion")));
             return;
         }
 
-        byte[] maskingKeyCopy = maskingKey.AsSpan().ToArray();
-
-        Log.Info("[PASSWORD-RECOVERY-MASTER-KEY] Splitting new master key into Shamir shares (replacing old shares) for MembershipId: {0}", @event.MembershipIdentifier);
-
-        Result<dynamic, FailureBase> splitResult = await _masterKeyService.SplitAndStoreMasterKeyAsync(
-            @event.MasterKey,
-            @event.MembershipIdentifier,
-            allowOverwrite: true);
-
-        if (splitResult.IsErr)
+        Guid? accountId = TryParseAccountId(pendingContext.AccountIdBytes);
+        if (!accountId.HasValue)
         {
             ClearPendingRecoverySession(@event.MembershipIdentifier);
-            Log.Error("[PASSWORD-RECOVERY-MASTER-KEY] Failed to split master key for MembershipId: {0}, Error: {1}",
-                @event.MembershipIdentifier, splitResult.UnwrapErr().Message);
             replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Err(
-                SecretKeyRecoveryFailure.TokenInvalid($"Failed to store master key: {splitResult.UnwrapErr().Message}")));
+                SecretKeyRecoveryFailure.TokenInvalid(
+                    "Recovery session invalid. Please restart the password recovery process.")));
             return;
         }
+
+        if (@event.PeerRecoveryRecord is null ||
+            @event.PeerRecoveryRecord.Length != OpaqueConstants.REGISTRATION_RECORD_LENGTH)
+        {
+            ClearPendingRecoverySession(@event.MembershipIdentifier);
+            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Err(
+                SecretKeyRecoveryFailure.TokenInvalid(
+                    $"Recovery record must be {OpaqueConstants.REGISTRATION_RECORD_LENGTH} bytes")));
+            return;
+        }
+
+        byte[] maskingKeyForStorage = new byte[OpaqueMaskingKeyLength];
+
+        Log.Info("[PASSWORD-RECOVERY] Credentials will be updated. Master key will be derived on next auth. MembershipId: {0}", @event.MembershipIdentifier);
 
         if (!_pendingSessionKeys.TryGetValue(@event.MembershipIdentifier,
                 out SodiumSecureMemoryHandle? sessionKeyHandle))
@@ -495,8 +550,9 @@ public sealed class MembershipActor : ReceivePersistentActor
         UpdateAccountSecureKeyEvent updateEvent = new(
             @event.MembershipIdentifier,
             @event.PeerRecoveryRecord,
-            maskingKeyCopy,
-            AccountId: null,
+            maskingKeyForStorage,
+            OpaqueKeyVersion: pendingContext.OpaqueKeyVersion,
+            AccountId: accountId,
             CancellationToken: @event.CancellationToken);
 
         Log.Info(
@@ -599,36 +655,45 @@ public sealed class MembershipActor : ReceivePersistentActor
             ClearPendingRecoverySession(@event.MembershipIdentifier);
         }
 
-        (byte[] oprfResponse, byte[] maskingKey, byte[] sessionKey) =
-            _opaqueProtocolService.ProcessOprfRequestWithSessionKey(@event.OprfRequest);
+        Result<Option<Guid>, AccountFailure> accountResult =
+            await _accountPersistor.Ask<Result<Option<Guid>, AccountFailure>>(
+                new GetDefaultAccountIdEvent(@event.MembershipIdentifier, @event.CancellationToken),
+                @event.CancellationToken);
+
+        if (accountResult.IsErr)
+        {
+            replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>.Err(
+                SecretKeyRecoveryFailure.FromAccount(accountResult.UnwrapErr())));
+            return;
+        }
+
+        if (!accountResult.Unwrap().IsSome)
+        {
+            replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>.Err(
+                SecretKeyRecoveryFailure.ValidationFailed("Default account not found for membership")));
+            return;
+        }
+
+        Guid accountId = accountResult.Unwrap().Value;
+
+        var (oprfResponse, _, sessionKey, keyVersion) =
+            _opaqueProtocolService.ProcessOprfRequestWithSessionKey(@event.OprfRequest, accountId);
 
         Log.Info(
-            "[PASSWORD-RECOVERY-INIT-EXPORTKEY] OPAQUE export_key derived during password recovery INIT. MembershipId: {0}",
+            "[PASSWORD-RECOVERY-INIT] OPAQUE OPRF response derived during password recovery init. MembershipId: {0}",
             @event.MembershipIdentifier);
 
         if (!TryValidateSessionKey(sessionKey))
         {
-            CryptographicOperations.ZeroMemory(maskingKey);
             CryptographicOperations.ZeroMemory(sessionKey);
             replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>.Err(
                 SecretKeyRecoveryFailure.InternalError("Failed to process session key securely")));
             return;
         }
 
-        byte[] maskingKeyCopy = maskingKey.AsSpan().ToArray();
+        byte[] accountIdBytes = accountId.ToByteArray();
         byte[] sessionKeyCopy = (byte[])sessionKey.Clone();
         CryptographicOperations.ZeroMemory(sessionKey);
-
-        Result<Option<Guid>, AccountFailure> accountResult =
-            await _accountPersistor.Ask<Result<Option<Guid>, AccountFailure>>(
-                new GetDefaultAccountIdEvent(@event.MembershipIdentifier, @event.CancellationToken),
-                @event.CancellationToken);
-
-        ByteString? accountUniqueId = null;
-        if (accountResult.IsOk && accountResult.Unwrap().IsSome)
-        {
-            accountUniqueId = Helpers.GuidToByteString(accountResult.Unwrap().Value);
-        }
 
         OprfRecoverySecureKeyInitResponse response = new()
         {
@@ -637,7 +702,7 @@ public sealed class MembershipActor : ReceivePersistentActor
                 UniqueIdentifier = Helpers.GuidToByteString(@event.MembershipIdentifier),
                 Status = ProtoMembership.Types.ActivityStatus.Active,
                 CreationStatus = ProtoMembership.Types.CreationStatus.SecureKeySet,
-                AccountUniqueIdentifier = accountUniqueId
+                AccountUniqueIdentifier = Helpers.GuidToByteString(accountId)
             },
             PeerOprf = ByteString.CopyFrom(oprfResponse),
             Result = OprfRecoverySecureKeyInitResponse.Types.RecoveryResult.Succeeded
@@ -647,12 +712,14 @@ public sealed class MembershipActor : ReceivePersistentActor
             "[PASSWORD-RECOVERY-INIT] OPRF generated for membership {0}. Credentials stored in pending state (persisted).",
             @event.MembershipIdentifier);
 
+        // ReSharper disable once MethodHasAsyncOverload
         Persist(
             new RecoverySessionStartedEvent(
                 @event.MembershipIdentifier,
-                maskingKeyCopy,
+                accountIdBytes,
                 sessionKeyCopy,
-                DateTimeOffset.UtcNow),
+                DateTimeOffset.UtcNow,
+                keyVersion),
             evt =>
             {
                 Apply(evt);
@@ -665,7 +732,58 @@ public sealed class MembershipActor : ReceivePersistentActor
         GenerateMembershipOprfRegistrationRequestEvent @event)
     {
         IActorRef replyTo = Sender;
-        (byte[] oprfResponse, byte[] maskingKey) = _opaqueProtocolService.ProcessOprfRequest(@event.OprfRequest);
+        if (@event.OprfRequest is null)
+        {
+            replyTo.Tell(Result<OprfRegistrationInitResponse, AccountFailure>.Err(
+                AccountFailure.ValidationFailed("OPRF request cannot be null")));
+            return;
+        }
+
+        byte[] oprfRequest = @event.OprfRequest!;
+        if (Log.IsDebugEnabled)
+        {
+            Log.Debug(
+                "[OPAQUE-REG-INIT] MembershipId: {0}, OprfLen: {1}, Oprf: {2}",
+                @event.MembershipIdentifier,
+                oprfRequest.Length,
+                oprfRequest.Length > 0 ? Convert.ToHexString(oprfRequest) : string.Empty);
+        }
+        Result<Option<Guid>, AccountFailure> accountResult =
+            await _accountPersistor.Ask<Result<Option<Guid>, AccountFailure>>(
+                new GetDefaultAccountIdEvent(@event.MembershipIdentifier, @event.CancellationToken),
+                @event.CancellationToken);
+
+        if (accountResult.IsErr)
+        {
+            replyTo.Tell(Result<OprfRegistrationInitResponse, AccountFailure>.Err(accountResult.UnwrapErr()));
+            return;
+        }
+
+        if (!accountResult.Unwrap().IsSome)
+        {
+            replyTo.Tell(Result<OprfRegistrationInitResponse, AccountFailure>.Err(
+                AccountFailure.ValidationFailed("Default account not found for membership")));
+            return;
+        }
+
+        Guid accountId = accountResult.Unwrap().Value;
+        if (Log.IsDebugEnabled)
+        {
+            Log.Debug(
+                "[OPAQUE-REG-INIT] MembershipId: {0}, AccountId: {1}",
+                @event.MembershipIdentifier,
+                accountId);
+        }
+        var (oprfResponse, _, keyVersion) = _opaqueProtocolService.ProcessOprfRequest(oprfRequest, accountId);
+        if (Log.IsDebugEnabled)
+        {
+            Log.Debug(
+                "[OPAQUE-REG-INIT] MembershipId: {0}, OprfResponseLen: {1}, OprfResponse: {2}",
+                @event.MembershipIdentifier,
+                oprfResponse.Length,
+                Convert.ToHexString(oprfResponse));
+        }
+        byte[] accountIdBytes = accountId.ToByteArray();
 
         OprfRegistrationInitResponse response = new()
         {
@@ -679,15 +797,16 @@ public sealed class MembershipActor : ReceivePersistentActor
             Result = OprfRegistrationInitResponse.Types.UpdateResult.Succeeded
         };
 
-        Log.Info("[MEMBERSHIP-PERSIST] Persisting RegistrationMaskingKeyStoredEvent for MembershipId: {0}. Current LastSequenceNr: {1}",
+        Log.Info("[MEMBERSHIP-PERSIST] Persisting pending account id for MembershipId: {0}. Current LastSequenceNr: {1}",
             @event.MembershipIdentifier, LastSequenceNr);
 
+        // ReSharper disable once MethodHasAsyncOverload
         Persist(
-            new RegistrationMaskingKeyStoredEvent(@event.MembershipIdentifier, maskingKey),
+            new RegistrationMaskingKeyStoredEvent(@event.MembershipIdentifier, accountIdBytes, keyVersion),
             evt =>
             {
                 Apply(evt);
-                Log.Info("[MEMBERSHIP-PERSIST] ✅ RegistrationMaskingKeyStoredEvent persisted successfully. New LastSequenceNr: {0}",
+                Log.Info("[MEMBERSHIP-PERSIST] ✅ Pending account id persisted successfully. New LastSequenceNr: {0}",
                     LastSequenceNr);
                 MaybeSaveSnapshot();
                 replyTo.Tell(Result<OprfRegistrationInitResponse, AccountFailure>.Ok(response));
@@ -756,11 +875,58 @@ public sealed class MembershipActor : ReceivePersistentActor
         }
 
         MembershipQueryRecord record = persistorResult.Unwrap();
+        if (Serilog.Log.IsEnabled(Serilog.Events.LogEventLevel.Debug))
+        {
+            Serilog.Log.Debug(
+                "[OPAQUE-SIGNIN-INIT] MembershipId: {MembershipId}, Mobile: {Mobile}, SecureKeyLen: {SecureKeyLen}, MaskingKeyLen: {MaskingKeyLen}, CredentialsAccountId: {CredentialsAccountId}, ActiveAccountId: {ActiveAccountId}, Accounts: {Accounts}",
+                record.UniqueIdentifier,
+                @event.MobileNumber,
+                record.SecureKey?.Length ?? 0,
+                record.MaskingKey?.Length ?? 0,
+                record.CredentialsAccountId,
+                record.ActiveAccountId,
+                record.AvailableAccounts?.Count ?? 0);
+        }
 
+        Guid? accountId = ResolveOpaqueAccountId(record);
+        if (!accountId.HasValue)
+        {
+            replyTo.Tell(Result<OpaqueSignInInitResponse, MembershipFailure>.Ok(
+                new OpaqueSignInInitResponse
+                {
+                    Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
+                    Message = _localizationProvider.Localize(
+                        VerificationFlowMessageKeys.InvalidCredentials,
+                        @event.CultureName)
+                }));
+            return;
+        }
+        if (Log.IsDebugEnabled)
+        {
+            Log.Debug(
+                "[OPAQUE-SIGNIN-INIT] MembershipId: {0}, ResolvedAccountId: {1}",
+                record.UniqueIdentifier,
+                accountId.Value);
+        }
+
+        if (record.SecureKey is null || record.SecureKey.Length == 0)
+        {
+            replyTo.Tell(Result<OpaqueSignInInitResponse, MembershipFailure>.Ok(
+                new OpaqueSignInInitResponse
+                {
+                    Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
+                    Message = _localizationProvider.Localize(
+                        VerificationFlowMessageKeys.InvalidCredentials,
+                        @event.CultureName)
+                }));
+            return;
+        }
+
+        byte[] secureKey = record.SecureKey!;
         Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure> initiateSignInResult =
             _opaqueProtocolService.InitiateSignIn(
                 @event.OpaqueSignInInitRequest,
-                new MembershipOpaqueQueryRecord(@event.MobileNumber, record.SecureKey, record.MaskingKey));
+                new MembershipOpaqueQueryRecord(@event.MobileNumber, secureKey, accountId.Value, record.OpaqueKeyVersion));
 
         if (initiateSignInResult.IsErr)
         {
@@ -778,9 +944,19 @@ public sealed class MembershipActor : ReceivePersistentActor
         }
 
         (OpaqueSignInInitResponse response, byte[] serverMac) = initiateSignInResult.Unwrap();
+        if (Log.IsDebugEnabled)
+        {
+            Log.Debug(
+                "[OPAQUE-SIGNIN-INIT] MembershipId: {0}, ServerMacLen: {1}, ServerMac: {2}",
+                record.UniqueIdentifier,
+                serverMac.Length,
+                Convert.ToHexString(serverMac));
+        }
 
-        List<AccountInfo> accountsCopy = record.AvailableAccounts.Select(CloneAccountInfo).ToList();
+        List<AccountInfo> availableAccounts = record.AvailableAccounts ?? new List<AccountInfo>();
+        List<AccountInfo> accountsCopy = availableAccounts.Select(CloneAccountInfo).ToList();
 
+        // ReSharper disable once MethodHasAsyncOverload
         Persist(
             new PendingSignInStoredEvent(
                 @event.ConnectId,
@@ -792,7 +968,8 @@ public sealed class MembershipActor : ReceivePersistentActor
                 DateTimeOffset.UtcNow,
                 serverMac,
                 accountsCopy,
-                record.ActiveAccountId),
+                record.ActiveAccountId,
+                record.OpaqueKeyVersion),
             evt =>
             {
                 Apply(evt);
@@ -814,10 +991,38 @@ public sealed class MembershipActor : ReceivePersistentActor
                 }));
             return;
         }
+        if (state.ServerMac is null)
+        {
+            Log.Warning(
+                "[OPAQUE-SIGNIN-FINAL] Missing server MAC for ConnectId: {0}, MembershipId: {1}",
+                @event.ConnectId,
+                state.MembershipId);
+            RemovePendingSignIn(@event.ConnectId);
+            replyTo.Tell(Result<OpaqueSignInFinalizeResponse, MembershipFailure>.Ok(
+                new OpaqueSignInFinalizeResponse
+                {
+                    Result = OpaqueSignInFinalizeResponse.Types.SignInResult.InvalidCredentials
+                }));
+            return;
+        }
 
-        Result<(SodiumSecureMemoryHandle SessionKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure>
+        byte[] serverMac = state.ServerMac!;
+        if (Log.IsDebugEnabled)
+        {
+            byte[] clientMacBytes = @event.Request.ClientMac.ToByteArray();
+            Log.Debug(
+                "[OPAQUE-SIGNIN-FINAL] ConnectId: {0}, MembershipId: {1}, ClientMacLen: {2}, ClientMac: {3}, ServerMacLen: {4}, ServerMac: {5}",
+                @event.ConnectId,
+                state.MembershipId,
+                clientMacBytes.Length,
+                clientMacBytes.Length > 0 ? Convert.ToHexString(clientMacBytes) : string.Empty,
+                serverMac.Length,
+                serverMac.Length > 0 ? Convert.ToHexString(serverMac) : string.Empty);
+        }
+
+        Result<(SodiumSecureMemoryHandle SessionKeyHandle, SodiumSecureMemoryHandle MasterKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure>
             opaqueResult =
-                _opaqueProtocolService.CompleteSignIn(@event.Request, state.ServerMac);
+                _opaqueProtocolService.CompleteSignInWithMasterKey(@event.Request, serverMac, state.OpaqueKeyVersion);
 
         if (opaqueResult.IsErr)
         {
@@ -830,7 +1035,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             return;
         }
 
-        (SodiumSecureMemoryHandle sessionKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) =
+        (SodiumSecureMemoryHandle sessionKeyHandle, SodiumSecureMemoryHandle masterKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) =
             opaqueResult.Unwrap();
 
         if (!sessionKeyHandle.IsInvalid)
@@ -845,7 +1050,7 @@ public sealed class MembershipActor : ReceivePersistentActor
         else
         {
             Log.Warning(
-                "[SERVER-OPAQUE-EXPORTKEY] Session key handle is null or invalid. MembershipId: {0}",
+                "[SERVER-OPAQUE-SESSIONKEY] Session key handle is null or invalid. MembershipId: {0}",
                 state.MembershipId);
         }
 
@@ -853,7 +1058,22 @@ public sealed class MembershipActor : ReceivePersistentActor
             sessionKeyHandle != null &&
             !sessionKeyHandle.IsInvalid)
         {
-            await EnsureMasterKeySharesExist(state.MembershipId);
+            if (state.ActiveAccountId.HasValue)
+            {
+                await StoreMasterKeyIfNeeded(state.ActiveAccountId.Value, masterKeyHandle);
+            }
+            else
+            {
+                Log.Error(
+                    "[MASTER-KEY-STORE] ActiveAccountId missing for MembershipId {0}. Master key shares not stored.",
+                    state.MembershipId);
+                masterKeyHandle?.Dispose();
+            }
+        }
+        else
+        {
+
+            masterKeyHandle?.Dispose();
         }
 
         RemovePendingSignIn(@event.ConnectId);
@@ -1002,7 +1222,8 @@ public sealed class MembershipActor : ReceivePersistentActor
             ActivityStatus = evt.ActivityStatus,
             CreationStatus = evt.CreationStatus,
             CreatedAt = evt.CreatedAt,
-            ServerMac = (byte[])evt.ServerMac.Clone(),
+            ServerMac = evt.ServerMac is null ? null : (byte[])evt.ServerMac.Clone(),
+            OpaqueKeyVersion = evt.OpaqueKeyVersion,
             AvailableAccounts = evt.AvailableAccounts?.Select(CloneAccountInfo).ToList(),
             ActiveAccountId = evt.ActiveAccountId
         };
@@ -1019,30 +1240,30 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private void Apply(RegistrationMaskingKeyStoredEvent evt)
     {
-        StoreMaskingKey(evt.MembershipId, evt.MaskingKey);
+        StoreMaskingKey(evt.MembershipId, evt.MaskingKey, evt.OpaqueKeyVersion);
     }
 
     private void Apply(RegistrationMaskingKeyRemovedEvent evt)
     {
-        if (_pendingMaskingKeys.TryGetValue(evt.MembershipId, out byte[]? maskingKey))
+        if (_pendingMaskingKeys.TryGetValue(evt.MembershipId, out PendingOpaqueContext? maskingKey))
         {
-            CryptographicOperations.ZeroMemory(maskingKey);
+            CryptographicOperations.ZeroMemory(maskingKey.AccountIdBytes);
             _pendingMaskingKeys.Remove(evt.MembershipId);
         }
     }
 
     private void Apply(RecoverySessionStartedEvent evt)
     {
-        StoreMaskingKey(evt.MembershipId, evt.MaskingKey);
+        StoreMaskingKey(evt.MembershipId, evt.MaskingKey, evt.OpaqueKeyVersion);
         StoreSessionKey(evt.MembershipId, evt.SessionKey);
         _pendingRecoveryTimestamps[evt.MembershipId] = evt.StartedAt;
     }
 
     private void Apply(RecoverySessionClearedEvent evt)
     {
-        if (_pendingMaskingKeys.TryGetValue(evt.MembershipId, out byte[]? maskingKey))
+        if (_pendingMaskingKeys.TryGetValue(evt.MembershipId, out PendingOpaqueContext? maskingKey))
         {
-            CryptographicOperations.ZeroMemory(maskingKey);
+            CryptographicOperations.ZeroMemory(maskingKey.AccountIdBytes);
             _pendingMaskingKeys.Remove(evt.MembershipId);
         }
 
@@ -1059,6 +1280,14 @@ public sealed class MembershipActor : ReceivePersistentActor
     {
         StoreSessionKey(snapshot.MembershipId, snapshot.SessionKey);
         _pendingRecoveryTimestamps[snapshot.MembershipId] = snapshot.StartedAt;
+        if (_pendingMaskingKeys.TryGetValue(snapshot.MembershipId, out PendingOpaqueContext? context))
+        {
+            _pendingMaskingKeys[snapshot.MembershipId] = new PendingOpaqueContext
+            {
+                AccountIdBytes = context.AccountIdBytes,
+                OpaqueKeyVersion = snapshot.OpaqueKeyVersion
+            };
+        }
     }
 
     private void RestoreSnapshot(MembershipActorSnapshot snapshot)
@@ -1118,17 +1347,19 @@ public sealed class MembershipActor : ReceivePersistentActor
                 kvp.Value.ActivityStatus,
                 kvp.Value.CreationStatus,
                 kvp.Value.CreatedAt,
-                kvp.Value.ServerMac.AsSpan().ToArray(),
+                kvp.Value.ServerMac is { } mac ? mac.AsSpan().ToArray() : null,
                 accountsCopy,
-                kvp.Value.ActiveAccountId));
+                kvp.Value.ActiveAccountId,
+                kvp.Value.OpaqueKeyVersion));
         }
 
         List<RegistrationMaskingKeyStoredEvent> pendingMaskingKeys = new(_pendingMaskingKeys.Count);
-        foreach (KeyValuePair<Guid, byte[]> kvp in _pendingMaskingKeys)
+        foreach (KeyValuePair<Guid, PendingOpaqueContext> kvp in _pendingMaskingKeys)
         {
             pendingMaskingKeys.Add(new RegistrationMaskingKeyStoredEvent(
                 kvp.Key,
-                kvp.Value.AsSpan().ToArray()));
+                kvp.Value.AccountIdBytes.AsSpan().ToArray(),
+                kvp.Value.OpaqueKeyVersion));
         }
 
         List<RecoverySessionSnapshot> recoverySessions = new();
@@ -1139,7 +1370,10 @@ public sealed class MembershipActor : ReceivePersistentActor
                 byte[]? sessionKeyBytes = TryReadSessionKeyBytes(handle);
                 if (sessionKeyBytes != null)
                 {
-                    recoverySessions.Add(new RecoverySessionSnapshot(membershipId, sessionKeyBytes, startedAt));
+                    int opaqueKeyVersion = _pendingMaskingKeys.TryGetValue(membershipId, out PendingOpaqueContext? context)
+                        ? context.OpaqueKeyVersion
+                        : 1;
+                    recoverySessions.Add(new RecoverySessionSnapshot(membershipId, sessionKeyBytes, startedAt, opaqueKeyVersion));
                 }
             }
         }
@@ -1157,16 +1391,59 @@ public sealed class MembershipActor : ReceivePersistentActor
             source.Status);
     }
 
-    private void StoreMaskingKey(Guid membershipId, byte[] source)
+    private static Guid? ResolveOpaqueAccountId(MembershipQueryRecord record)
     {
-        if (_pendingMaskingKeys.TryGetValue(membershipId, out byte[]? existing))
+        if (record.CredentialsAccountId.HasValue)
         {
-            CryptographicOperations.ZeroMemory(existing);
+            return record.CredentialsAccountId.Value;
+        }
+
+        if (record.ActiveAccountId.HasValue)
+        {
+            return record.ActiveAccountId.Value;
+        }
+
+        if (record.AvailableAccounts is { Count: > 0 })
+        {
+            AccountInfo? defaultAccount = record.AvailableAccounts.FirstOrDefault(a => a.IsDefault);
+            return defaultAccount?.AccountId ?? record.AvailableAccounts[0].AccountId;
+        }
+
+        return null;
+    }
+
+    private static Guid? TryParseAccountId(byte[] pendingAccountIdBytes)
+    {
+        if (pendingAccountIdBytes.Length != OpaqueAccountIdLength)
+        {
+            return null;
+        }
+
+        try
+        {
+            Guid accountId = new Guid(pendingAccountIdBytes);
+            return accountId == Guid.Empty ? null : accountId;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private void StoreMaskingKey(Guid membershipId, byte[] source, int opaqueKeyVersion)
+    {
+        if (_pendingMaskingKeys.TryGetValue(membershipId, out PendingOpaqueContext? existing))
+        {
+            CryptographicOperations.ZeroMemory(existing.AccountIdBytes);
         }
 
         byte[] copy = new byte[source.Length];
         Buffer.BlockCopy(source, 0, copy, 0, source.Length);
-        _pendingMaskingKeys[membershipId] = copy;
+        _pendingMaskingKeys[membershipId] = new PendingOpaqueContext
+        {
+            AccountIdBytes = copy,
+            OpaqueKeyVersion = opaqueKeyVersion
+        };
         CryptographicOperations.ZeroMemory(source);
     }
 
@@ -1241,9 +1518,9 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         _pendingSignIns.Clear();
 
-        foreach (byte[] maskingKey in _pendingMaskingKeys.Values)
+        foreach (PendingOpaqueContext context in _pendingMaskingKeys.Values)
         {
-            CryptographicOperations.ZeroMemory(maskingKey);
+            CryptographicOperations.ZeroMemory(context.AccountIdBytes);
         }
 
         _pendingMaskingKeys.Clear();
@@ -1257,20 +1534,84 @@ public sealed class MembershipActor : ReceivePersistentActor
         _pendingRecoveryTimestamps.Clear();
     }
 
-    private async Task EnsureMasterKeySharesExist(Guid membershipId)
+    private async Task EnsureMasterKeySharesExist(Guid accountId)
     {
-        Result<bool, FailureBase> ensureResult = await _masterKeyService.EnsureMasterKeyExistsAsync(membershipId);
+        Result<bool, FailureBase> ensureResult = await _masterKeyService.EnsureMasterKeyExistsAsync(accountId);
 
         if (ensureResult.IsErr)
         {
             Log.Error(
-                "[MASTER-KEY-ENSURE] Failed to ensure master key shares exist for membership {0}: {1}",
-                membershipId,
+                "[MASTER-KEY-ENSURE] Failed to ensure master key shares exist for account {0}: {1}",
+                accountId,
                 ensureResult.UnwrapErr().Message);
             return;
         }
 
-        Log.Debug("[MASTER-KEY-ENSURE] Master key shares verified for membership {0}", membershipId);
+        Log.Debug("[MASTER-KEY-ENSURE] Master key shares verified for account {0}", accountId);
+    }
+
+    private async Task StoreMasterKeyIfNeeded(Guid accountId, SodiumSecureMemoryHandle masterKeyHandle)
+    {
+        try
+        {
+            if (masterKeyHandle == null || masterKeyHandle.IsInvalid)
+            {
+                Log.Warning("[MASTER-KEY-STORE] Master key handle is null or invalid for account {0}", accountId);
+                return;
+            }
+
+            Result<byte[], SodiumFailure> readResult = masterKeyHandle.ReadBytes(masterKeyHandle.Length);
+            if (readResult.IsErr)
+            {
+                Log.Error("[MASTER-KEY-STORE] Failed to read master key bytes for account {0}: {1}",
+                    accountId, readResult.UnwrapErr().Message);
+                return;
+            }
+
+            byte[] masterKeyBytes = readResult.Unwrap();
+            try
+            {
+                Result<bool, FailureBase> sharesExistResult = await _masterKeyService.CheckSharesExistAsync(accountId);
+                if (sharesExistResult.IsErr)
+                {
+                    Log.Error("[MASTER-KEY-STORE] Failed to check master key shares for account {0}: {1}",
+                        accountId, sharesExistResult.UnwrapErr().Message);
+                    return;
+                }
+
+                bool allowOverwrite = sharesExistResult.Unwrap();
+
+                if (allowOverwrite)
+                {
+                    Log.Info("[MASTER-KEY-STORE] Rotating OPAQUE master key for account {0}", accountId);
+                }
+                else
+                {
+                    Log.Info("[MASTER-KEY-STORE] Storing OPAQUE master key for account {0}", accountId);
+                }
+
+                Result<dynamic, FailureBase> splitResult = await _masterKeyService.SplitAndStoreMasterKeyAsync(
+                    masterKeyBytes, accountId, allowOverwrite);
+
+                if (splitResult.IsErr)
+                {
+                    Log.Error("[MASTER-KEY-STORE] Failed to split/store master key for account {0}: {1}",
+                        accountId, splitResult.UnwrapErr().Message);
+                }
+                else
+                {
+                    Log.Info("[MASTER-KEY-STORE] Successfully stored master key shares for account {0}", accountId);
+                }
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(masterKeyBytes);
+            }
+        }
+        finally
+        {
+            masterKeyHandle?.Dispose();
+        }
     }
 
 }

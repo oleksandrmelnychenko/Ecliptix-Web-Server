@@ -1,3 +1,4 @@
+using System;
 using System.Data;
 using System.Data.Common;
 using Akka.Actor;
@@ -45,6 +46,10 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         ReceivePersistorCommand<GetDefaultAccountIdEvent, Option<Guid>>(
             GetDefaultAccountIdAsync,
             "GetDefaultAccountId");
+
+        ReceivePersistorCommand<GetAccountsByMembershipIdEvent, List<AccountInfo>>(
+            GetAccountsByMembershipIdAsync,
+            "GetAccountsByMembershipId");
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
@@ -114,6 +119,13 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
                 account = accountOpt.Value!;
             }
 
+            if (account.MembershipId != membership.UniqueId)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return Result<AccountSecureKeyUpdateResult, AccountFailure>.Err(
+                    AccountFailure.ValidationFailed("Account does not belong to membership"));
+            }
+
             Option<AccountSecureKeyAuthEntity> authOpt =
                 await AccountSecureKeyAuthQueries.GetPrimaryForAccount(ctx, account.UniqueId);
 
@@ -128,6 +140,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
                         .SetProperty(a => a.SecureKey, cmd.SecureKey)
                         .SetProperty(a => a.MaskingKey, cmd.MaskingKey)
                         .SetProperty(a => a.CredentialsVersion, a => a.CredentialsVersion + 1)
+                        .SetProperty(a => a.OpaqueKeyVersion, cmd.OpaqueKeyVersion)
                         .SetProperty(a => a.UpdatedAt, DateTimeOffset.UtcNow), cancellationToken);
 
                 newCredentialsVersion = existingAuth.CredentialsVersion + 1;
@@ -140,6 +153,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
                     SecureKey = cmd.SecureKey,
                     MaskingKey = cmd.MaskingKey,
                     CredentialsVersion = 1,
+                    OpaqueKeyVersion = cmd.OpaqueKeyVersion,
                     IsPrimary = true,
                     IsEnabled = true
                 };
@@ -155,6 +169,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
                     account.UniqueId,
                     cmd.MembershipIdentifier,
                     newCredentialsVersion,
+                    cmd.OpaqueKeyVersion,
                     cmd.SecureKey,
                     cmd.MaskingKey));
         }
@@ -179,6 +194,11 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
                 Status = Protobuf.Account.AccountStatus.Active,
                 IsDefaultAccount = true
             };
+
+            if (cmd.AccountId.HasValue && cmd.AccountId.Value != Guid.Empty)
+            {
+                personalAccount.UniqueId = cmd.AccountId.Value;
+            }
 
             ctx.Accounts.Add(personalAccount);
 
@@ -223,6 +243,23 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         {
             Log.Error(ex, "Failed to get default account for MembershipId: {MembershipId}", cmd.MembershipId);
             return Result<Option<Guid>, AccountFailure>.Err(
+                AccountFailure.QueryFailed(ex));
+        }
+    }
+
+    private static async Task<Result<List<AccountInfo>, AccountFailure>> GetAccountsByMembershipIdAsync(
+        EcliptixSchemaContext ctx, GetAccountsByMembershipIdEvent cmd, CancellationToken cancellationToken)
+    {
+        try
+        {
+            List<AccountInfo> accounts =
+                await AccountQueries.GetAccountsByMembershipId(ctx, cmd.MembershipId, cancellationToken);
+            return Result<List<AccountInfo>, AccountFailure>.Ok(accounts);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to get accounts for MembershipId: {MembershipId}", cmd.MembershipId);
+            return Result<List<AccountInfo>, AccountFailure>.Err(
                 AccountFailure.QueryFailed(ex));
         }
     }

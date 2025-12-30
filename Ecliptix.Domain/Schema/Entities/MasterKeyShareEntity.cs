@@ -2,7 +2,7 @@ namespace Ecliptix.Domain.Schema.Entities;
 
 public class MasterKeyShareEntity : EntityBase
 {
-    public Guid MembershipUniqueId { get; set; }
+    public Guid AccountUniqueId { get; set; }
 
     public int ShareIndex { get; set; }
     public byte[] EncryptedShare { get; set; } = null!;
@@ -10,5 +10,5 @@ public class MasterKeyShareEntity : EntityBase
     public string StorageLocation { get; set; } = null!;
     public int CredentialsVersion { get; set; }
 
-    public MembershipEntity Membership { get; set; } = null!;
+    public AccountEntity Account { get; set; } = null!;
 }

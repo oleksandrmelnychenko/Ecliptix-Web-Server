@@ -6,13 +6,13 @@ namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
 public static class MasterKeyShareQueries
 {
-    public static async Task<List<MasterKeyShareEntity>> GetByMembershipUniqueId(
+    public static async Task<List<MasterKeyShareEntity>> GetByAccountUniqueId(
         EcliptixSchemaContext ctx,
-        Guid membershipUniqueId,
+        Guid accountUniqueId,
         CancellationToken cancellationToken = default)
     {
         return await ctx.MasterKeyShares
-            .Where(s => s.MembershipUniqueId == membershipUniqueId && !s.IsDeleted)
+            .Where(s => s.AccountUniqueId == accountUniqueId && !s.IsDeleted)
             .OrderBy(s => s.ShareIndex)
             .AsNoTracking()
             .ToListAsync(cancellationToken);

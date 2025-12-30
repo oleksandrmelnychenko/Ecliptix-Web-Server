@@ -8,6 +8,8 @@ using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
 using Google.Protobuf;
+using System.Buffers;
+using System.IO;
 
 namespace Ecliptix.Core.Infrastructure.SecureChannel;
 
@@ -75,35 +77,58 @@ public class RsaSecureChannelEstablisher(
             }
 
             PubKeyExchange responsePubKeyExchange = protocolResult.Unwrap().PubKeyExchange;
-            byte[] responseData = responsePubKeyExchange.ToByteArray();
+            byte[]? responseBuffer = null;
+            int responseSize = 0;
+            ReadOnlyMemory<byte> responseMemory = ReadOnlyMemory<byte>.Empty;
 
-            Result<byte[], CertificatePinningFailure> encryptResult = await rsaChunkProcessor.EncryptChunkedAsync(
-                responseData,
-                cancellationToken);
-
-            if (encryptResult.IsErr)
+            try
             {
-                CertificatePinningFailure failure = encryptResult.UnwrapErr();
-                return Result<SecureEnvelope, SecureChannelFailure>.Err(
-                    SecureChannelFailure.FromCertificateFailure(failure));
+                responseSize = responsePubKeyExchange.CalculateSize();
+                if (responseSize > 0)
+                {
+                    responseBuffer = ArrayPool<byte>.Shared.Rent(responseSize);
+                    using MemoryStream stream = new(responseBuffer, 0, responseSize, writable: true, publiclyVisible: true);
+                    using CodedOutputStream output = new(stream, leaveOpen: true);
+                    responsePubKeyExchange.WriteTo(output);
+                    output.Flush();
+                    responseMemory = new ReadOnlyMemory<byte>(responseBuffer, 0, responseSize);
+                }
+
+                Result<byte[], CertificatePinningFailure> encryptResult = await rsaChunkProcessor.EncryptChunkedAsync(
+                    responseMemory,
+                    cancellationToken);
+
+                if (encryptResult.IsErr)
+                {
+                    CertificatePinningFailure failure = encryptResult.UnwrapErr();
+                    return Result<SecureEnvelope, SecureChannelFailure>.Err(
+                        SecureChannelFailure.FromCertificateFailure(failure));
+                }
+
+                byte[] encryptedPayload = encryptResult.Unwrap();
+                SecureEnvelope responseEnvelope = CreateSecureResponseEnvelope(connectId, encryptedPayload);
+
+                Result<byte[], CertificatePinningFailure> signResult = certificatePinningService.Sign(
+                    encryptedPayload.AsMemory());
+
+                if (signResult.IsErr)
+                {
+                    return Result<SecureEnvelope, SecureChannelFailure>.Err(
+                        SecureChannelFailure.SigningFailed(
+                            $"Failed to sign response: {signResult.UnwrapErr().Message}"));
+                }
+
+                responseEnvelope.AuthenticationTag = ByteString.CopyFrom(signResult.Unwrap());
+
+                return Result<SecureEnvelope, SecureChannelFailure>.Ok(responseEnvelope);
             }
-
-            byte[] encryptedPayload = encryptResult.Unwrap();
-            SecureEnvelope responseEnvelope = CreateSecureResponseEnvelope(connectId, encryptedPayload);
-
-            Result<byte[], CertificatePinningFailure> signResult = certificatePinningService.Sign(
-                encryptedPayload.AsMemory());
-
-            if (signResult.IsErr)
+            finally
             {
-                return Result<SecureEnvelope, SecureChannelFailure>.Err(
-                    SecureChannelFailure.SigningFailed(
-                        $"Failed to sign response: {signResult.UnwrapErr().Message}"));
+                if (responseBuffer != null)
+                {
+                    ArrayPool<byte>.Shared.Return(responseBuffer, clearArray: true);
+                }
             }
-
-            responseEnvelope.AuthenticationTag = ByteString.CopyFrom(signResult.Unwrap());
-
-            return Result<SecureEnvelope, SecureChannelFailure>.Ok(responseEnvelope);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

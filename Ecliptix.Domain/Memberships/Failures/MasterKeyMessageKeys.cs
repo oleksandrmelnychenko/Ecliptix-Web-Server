@@ -28,6 +28,7 @@ public static class MasterKeyMessageKeys
     public const string AllocationFailed = "master_key_allocation_failed";
     public const string MemoryReadFailed = "master_key_memory_read_failed";
     public const string MemoryWriteFailed = "master_key_memory_write_failed";
+    public const string MasterKeyMismatch = "master_key_mismatch";
 
     public const string MembershipNotFoundOrInactive = "master_key_membership_not_found_or_inactive";
     public const string DefaultAccountNotFound = "master_key_default_account_not_found";

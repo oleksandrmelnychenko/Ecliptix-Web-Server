@@ -7,6 +7,7 @@ using Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Domain.Schema;
 using Ecliptix.Domain.Schema.Entities;
+using Ecliptix.Protobuf.Account;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Configuration;
@@ -172,8 +173,10 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
         Membership.Types.ActivityStatus activityStatus,
         ProtoMembership.Types.CreationStatus creationStatus,
         int credentialsVersion,
+        int opaqueKeyVersion,
         IEnumerable<AccountInfo>? accounts = null,
         Guid? activeAccountId = null,
+        Guid? credentialsAccountId = null,
         byte[]? secureKey = null,
         byte[]? maskingKey = null)
     {
@@ -185,8 +188,10 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 ActivityStatus = activityStatus,
                 CreationStatus = creationStatus,
                 CredentialsVersion = credentialsVersion,
+                OpaqueKeyVersion = opaqueKeyVersion,
                 SecureKey = secureKey ?? [],
                 MaskingKey = maskingKey ?? [],
+                CredentialsAccountId = credentialsAccountId,
                 AvailableAccounts = MaterializeAccounts(accounts),
                 ActiveAccountId = activeAccountId
             });
@@ -414,7 +419,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             }
 
             AccountSecureKeyAuthEntity auth = authOpt.Value!;
-            CredentialsRecord credentials = new(auth.SecureKey, auth.MaskingKey, auth.CredentialsVersion);
+            CredentialsRecord credentials = new(auth.SecureKey, auth.MaskingKey, auth.CredentialsVersion, auth.OpaqueKeyVersion);
             return BuildMembershipResult(
                 membership.UniqueId,
                 membership.AppDeviceId,
@@ -426,8 +431,10 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 },
                 ProtoMembership.Types.CreationStatus.OtpVerified,
                 credentials.Version,
+                credentials.OpaqueKeyVersion,
                 accounts,
                 deviceContext?.ActiveAccountId,
+                auth.AccountId,
                 credentials.SecureKey,
                 credentials.MaskingKey);
         }
@@ -566,6 +573,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                     },
                     existingCreationStatus,
                     existingCredentialsOpt.IsSome ? existingCredentialsOpt.Value!.Version : 0,
+                    existingCredentialsOpt.IsSome ? existingCredentialsOpt.Value!.OpaqueKeyVersion : 0,
                     secureKey: existingCredentialsOpt.IsSome ? existingCredentialsOpt.Value!.SecureKey : null,
                     maskingKey: existingCredentialsOpt.IsSome ? existingCredentialsOpt.Value!.MaskingKey : null);
             }
@@ -586,6 +594,15 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             };
             ctx.Memberships.Add(newMembership);
             await ctx.SaveChangesAsync(cancellationToken);
+
+            AccountEntity defaultAccount = new()
+            {
+                MembershipId = newMembership.UniqueId,
+                AccountType = AccountType.Personal,
+                Status = AccountStatus.Active,
+                IsDefaultAccount = true
+            };
+            ctx.Accounts.Add(defaultAccount);
 
             await ctx.OtpCodes
                 .Where(o => o.UniqueId == cmd.OtpIdentifier && o.VerificationFlowId == flow.Id && !o.IsDeleted)
@@ -638,6 +655,16 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 _ => ProtoMembership.Types.CreationStatus.OtpVerified
             };
 
+            List<AccountInfo> accounts =
+            [
+                new(
+                    defaultAccount.UniqueId,
+                    newMembership.UniqueId,
+                    defaultAccount.AccountType,
+                    defaultAccount.IsDefaultAccount,
+                    defaultAccount.Status)
+            ];
+
             return BuildMembershipResult(
                 newMembership.UniqueId,
                 newMembership.AppDeviceId,
@@ -648,7 +675,11 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                     _ => Membership.Types.ActivityStatus.Active
                 },
                 newMembershipCreationStatus,
-                credentialsVersion: 0);
+                credentialsVersion: 0,
+                opaqueKeyVersion: 0,
+                accounts: accounts,
+                activeAccountId: defaultAccount.UniqueId,
+                credentialsAccountId: defaultAccount.UniqueId);
         }
         catch (OperationCanceledException)
         {
@@ -727,6 +758,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 },
                 creationStatus,
                 credentialsOpt.IsSome ? credentialsOpt.Value!.Version : 0,
+                credentialsOpt.IsSome ? credentialsOpt.Value!.OpaqueKeyVersion : 0,
                 secureKey: credentialsOpt.IsSome ? credentialsOpt.Value!.SecureKey : null,
                 maskingKey: credentialsOpt.IsSome ? credentialsOpt.Value!.MaskingKey : null);
         }
@@ -777,6 +809,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 },
                 creationStatus,
                 credentialsOpt.IsSome ? credentialsOpt.Value!.Version : 0,
+                credentialsOpt.IsSome ? credentialsOpt.Value!.OpaqueKeyVersion : 0,
                 secureKey: credentialsOpt.IsSome ? credentialsOpt.Value!.SecureKey : null,
                 maskingKey: credentialsOpt.IsSome ? credentialsOpt.Value!.MaskingKey : null);
         }

@@ -72,4 +72,13 @@ public static class ActorConstants
         public const string ChainKeysMissing = "Chain keys missing from recovered state";
         public const string NonceCounterOverflow = "Nonce counter near overflow";
     }
+
+    public static class RecoveryLogMessages
+    {
+        public const string NoStateAvailable = "[Recovery] No state available for system recreation for connectId {0}";
+        public const string PeerHandshakeMessageNull = "[Recovery] State exists but PeerHandshakeMessage is null - clearing state for connectId {0}";
+        public const string AttemptingSystemRecreation = "[Recovery] Attempting system recreation (attempt {0}/{1}) for connectId {2}";
+        public const string FailedToRecreateSystem = "[Recovery] Failed to recreate protocol system for connectId {0} (attempt {1}/{2}): {3}";
+        public const string MaxRetriesExceeded = "[Recovery] Max recovery retries exceeded for connectId {0}. Clearing corrupted state to allow fresh handshake.";
+    }
 }

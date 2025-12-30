@@ -442,7 +442,7 @@ public sealed class CertificatePinningService : IDisposable
             return $"Error retrieving native error message: {ex.Message}";
         }
 
-        return "Error occurred";
+        return NativeResolver.CertificatePinningConfigurationConstants.ErrorMessages.GenericError;
     }
 
     private static unsafe string GetSafeNativeErrorString(byte* errorPtr)

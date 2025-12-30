@@ -17,6 +17,8 @@ message EcliptixSessionState {
 
   // Optional: MembershipId for authenticated sessions (empty for anonymous sessions)
   bytes membership_id = 6;
+  // Optional: AccountId used for key derivation in authenticated sessions
+  bytes account_id = 11;
 
   // Native protocol serialized state (preferred for hybrid/PQ) and deterministic identity seed.
   bytes native_state = 7;

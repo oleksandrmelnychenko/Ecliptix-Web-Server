@@ -216,7 +216,23 @@ public class GrpcSecurityService
             {
                 activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, false);
 
-                return new SecureEnvelope();
+                FailureBase failure = encryptResult.UnwrapErr();
+                if (failure is EcliptixProtocolFailure protocolFailure)
+                {
+                    Log.Warning("[GRPC-ENCRYPT] Response encryption skipped due to protocol state error. ConnectId: {ConnectId}, Error: {Error}",
+                        connectId, protocolFailure.Message);
+                    context.Status = protocolFailure.ToGrpcStatus();
+                    return new SecureEnvelope();
+                }
+
+                GrpcErrorDescriptor descriptor = new(
+                    ErrorCode.InternalError,
+                    StatusCode.Internal,
+                    ErrorI18NKeys.EncryptionFailed);
+
+                throw new GrpcFailureException(
+                    descriptor.CreateStatus(GrpcServiceConstants.ErrorMessages.EncryptionFailed),
+                    descriptor);
             }
 
             activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, true);

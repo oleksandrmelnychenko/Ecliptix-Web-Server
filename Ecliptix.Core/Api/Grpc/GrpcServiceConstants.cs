@@ -33,6 +33,7 @@ public static class GrpcServiceConstants
     {
         public const string FailedToParseDecryptedRequest = "Failed to parse decrypted request";
         public const string ConnectionIdOutOfRange = "Connection ID out of valid range";
+        public const string EncryptionFailed = "Response encryption failed";
     }
 
     public static class ChannelOptions

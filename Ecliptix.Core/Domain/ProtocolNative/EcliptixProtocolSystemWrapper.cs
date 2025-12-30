@@ -90,7 +90,7 @@ public sealed class EcliptixProtocolSystemWrapper : IDisposable
             new EcliptixProtocolSystemWrapper(handle, identityKeys));
     }
 
-    public void SetEventHandler(Action<uint>? onProtocolStateChanged)
+    public Result<Unit, EcliptixProtocolFailure> SetEventHandler(Action<uint>? onProtocolStateChanged)
     {
         ThrowIfDisposed();
 
@@ -120,7 +120,8 @@ public sealed class EcliptixProtocolSystemWrapper : IDisposable
                 string errorMessage = error.GetMessage();
                 EcliptixNativeInterop.ecliptix_error_free(ref error);
                 _callbackHandle.Free();
-                throw new InvalidOperationException($"Failed to set callbacks: {errorMessage}");
+                return Result<Unit, EcliptixProtocolFailure>.Err(
+                    EcliptixProtocolFailure.Generic($"Failed to set callbacks: {errorMessage}"));
             }
         }
         else
@@ -136,6 +137,8 @@ public sealed class EcliptixProtocolSystemWrapper : IDisposable
                 in _callbacks,
                 out _);
         }
+
+        return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
     public Result<byte[], EcliptixProtocolFailure> SendMessage(byte[] plaintext)
@@ -265,11 +268,6 @@ public sealed class EcliptixProtocolSystemWrapper : IDisposable
         }
     }
 
-    /// <summary>
-    /// Begins handshake with encapsulation to peer's Kyber public key.
-    /// Use this when you have the peer's Kyber key (e.g., from their bundle).
-    /// The resulting handshake message will include kyber_ciphertext for peer to decapsulate.
-    /// </summary>
     public Result<byte[], EcliptixProtocolFailure> BeginHandshakeWithPeerKyber(
         uint connectionId,
         byte exchangeType,
@@ -690,26 +688,26 @@ public sealed class EcliptixIdentityKeysWrapper : IDisposable
 
     public static Result<EcliptixIdentityKeysWrapper, EcliptixProtocolFailure> CreateFromSeed(
         byte[] seed,
-        string membershipId)
+        string accountId)
     {
         if (seed == null)
         {
             return Result<EcliptixIdentityKeysWrapper, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("Seed is null"));
         }
-        if (string.IsNullOrWhiteSpace(membershipId))
+        if (string.IsNullOrWhiteSpace(accountId))
         {
             return Result<EcliptixIdentityKeysWrapper, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Membership id is missing"));
+                EcliptixProtocolFailure.InvalidInput("Account id is missing"));
         }
 
-        byte[] membershipBytes = System.Text.Encoding.UTF8.GetBytes(membershipId);
+        byte[] accountBytes = System.Text.Encoding.UTF8.GetBytes(accountId);
 
         EcliptixErrorCode result = EcliptixNativeInterop.ecliptix_identity_keys_create_from_seed_with_context(
             seed,
             (nuint)seed.Length,
-            membershipId,
-            (nuint)membershipBytes.Length,
+            accountId,
+            (nuint)accountBytes.Length,
             out IntPtr handle,
             out EcliptixError error);
 

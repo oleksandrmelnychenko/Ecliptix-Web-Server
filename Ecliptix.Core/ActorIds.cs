@@ -12,8 +12,6 @@ public static class ActorIds
     public const int LogoutAuditPersistorActor = 8;
     public const int AccountPersistorActor = 9;
     public const int PasswordRecoveryPersistorActor = 10;
-    public const int MembershipRelationPersistorActor = 11;
-    public const int MembershipRelationActor = 12;
     public const int AccountProfileActor = 13;
     public const int AccountProfilePersistorActor = 14;
 }
@@ -32,8 +30,6 @@ public static class ActorTypeMap
         { ActorIds.LogoutAuditPersistorActor, "LogoutAuditPersistorActor" },
         { ActorIds.AccountPersistorActor, "AccountPersistorActor" },
         { ActorIds.PasswordRecoveryPersistorActor, "PasswordRecoveryPersistorActor" },
-        { ActorIds.MembershipRelationPersistorActor, "MembershipRelationPersistorActor" },
-        { ActorIds.MembershipRelationActor, "MembershipRelationActor" },
         { ActorIds.AccountProfileActor, "AccountProfileActor" },
         { ActorIds.AccountProfilePersistorActor, "AccountProfilePersistorActor" },
     };

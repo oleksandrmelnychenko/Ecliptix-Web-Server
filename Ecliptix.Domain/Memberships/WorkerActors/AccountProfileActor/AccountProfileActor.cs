@@ -1,4 +1,4 @@
-﻿using Akka.Actor;
+using Akka.Actor;
 using Ecliptix.Domain.Memberships.ActorEvents.AccountProfile;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
@@ -86,7 +86,6 @@ public class AccountProfileActor : ReceiveActor
     {
         IActorRef replyTo = Sender;
 
-            //TODO temporaly logic, Add real business logic
         try
         {
             if (string.IsNullOrWhiteSpace(evt.ProfileName))

@@ -88,8 +88,8 @@ public static class EcliptixNativeInterop
     public static extern EcliptixErrorCode ecliptix_identity_keys_create_from_seed_with_context(
         [In] byte[] seed,
         nuint seedLength,
-        string membershipId,
-        nuint membershipIdLength,
+        string accountId,
+        nuint accountIdLength,
         out IntPtr outHandle,
         out EcliptixError outError);
 

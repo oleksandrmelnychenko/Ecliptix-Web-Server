@@ -15,7 +15,7 @@ public static class RatchetStateHasher
         if (state?.RatchetState == null)
         {
             uint connectId = state?.ConnectId ?? 0;
-            Log.Warning(LogMessageEmptyState, LogTag, connectId);
+            Log.Debug(LogMessageEmptyState, LogTag, connectId);
             return [];
         }
 

@@ -30,5 +30,7 @@ message RestoreChannelResponse {
 message AuthenticatedEstablishRequest {
   bytes membership_unique_id = 1;
   ecliptix.proto.protocol.PubKeyExchange client_pub_key_exchange = 2;
+  bytes master_key_fingerprint = 3;
+  bytes account_unique_id = 4;
 }
   

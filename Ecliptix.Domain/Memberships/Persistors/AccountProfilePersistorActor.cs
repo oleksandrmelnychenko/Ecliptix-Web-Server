@@ -1,4 +1,4 @@
-﻿using System.Data.Common;
+using System.Data.Common;
 using Akka.Actor;
 using Akka.Persistence;
 using Ecliptix.Domain.Memberships.ActorEvents.Account;
@@ -14,7 +14,6 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace Ecliptix.Domain.Memberships.Persistors;
-
 
 public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
 {
@@ -122,8 +121,7 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
     {
         try
         {
-            // 1. Пробуємо знайти існуючий профіль
-            // Важливо: тут використовуємо Tracking (без AsNoTracking), щоб могти редагувати
+
             Option<AccountProfileEntity> profileOpt =
                 await AccountProfileQueries.GetByAccountIdTracking(ctx, cmd.AccountId);
 

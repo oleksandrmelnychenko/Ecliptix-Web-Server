@@ -28,6 +28,9 @@ public class AccountSecureKeyAuthConfiguration : EntityBaseMap<AccountSecureKeyA
         builder.Property(e => e.CredentialsVersion)
             .HasDefaultValue(1);
 
+        builder.Property(e => e.OpaqueKeyVersion)
+            .HasDefaultValue(1);
+
         builder.Property(e => e.IsPrimary)
             .HasDefaultValue(false);
 

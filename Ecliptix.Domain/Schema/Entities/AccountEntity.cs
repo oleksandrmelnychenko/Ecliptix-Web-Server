@@ -25,6 +25,12 @@ public class AccountEntity : EntityBase
         set;
     }
 
+    public List<MasterKeyShareEntity> MasterKeyShares
+    {
+        get => field ??= [];
+        set;
+    }
+
     public List<LogoutAuditEntity> LogoutAudits
     {
         get => field ??= [];

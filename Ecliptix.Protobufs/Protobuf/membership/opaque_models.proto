@@ -28,7 +28,8 @@ message OpaqueRegistrationInitResponse {
 message OpaqueRegistrationCompleteRequest {
   bytes peer_registration_record = 1;
   bytes membership_identifier = 2;
-  bytes master_key = 3;
+  // master_key removed - now computed during authentication, not transmitted
+  reserved 3;
 }
 
 message OpaqueRegistrationCompleteResponse {
@@ -111,7 +112,8 @@ message OpaqueRecoverySecureKeyInitResponse {
 message OpaqueRecoverySecretKeyCompleteRequest {
   bytes peer_recovery_record = 1;
   bytes membership_identifier = 2;
-  bytes master_key = 3;
+  // master_key removed - now computed during authentication, not transmitted
+  reserved 3;
 }
 
 message OpaqueRecoverySecretKeyCompleteResponse {

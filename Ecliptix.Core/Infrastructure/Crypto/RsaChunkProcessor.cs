@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Runtime.CompilerServices;
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.Security.Certificate.Pinning.Services;
@@ -84,7 +83,7 @@ public sealed class RsaChunkProcessor(
                     $"Chunk size {chunk.Length} exceeds maximum {configuration.OptimalChunkSize}")));
         }
 
-        return ValueTask.FromResult(certificatePinningService.Encrypt(chunk.ToArray()));
+        return ValueTask.FromResult(certificatePinningService.Encrypt(chunk));
     }
 
     private ValueTask<Result<byte[], CertificatePinningFailure>> ProcessDecryptChunkAsync(
@@ -97,7 +96,7 @@ public sealed class RsaChunkProcessor(
                     $"Encrypted chunk size {chunk.Length} does not match expected {configuration.EncryptedBlockSize}")));
         }
 
-        return ValueTask.FromResult(certificatePinningService.Decrypt(chunk.ToArray()));
+        return ValueTask.FromResult(certificatePinningService.Decrypt(chunk));
     }
 
     private static async ValueTask<Result<byte[], CertificatePinningFailure>> ProcessChunksAsync(
@@ -110,7 +109,8 @@ public sealed class RsaChunkProcessor(
         int totalChunks = (input.Length + inputChunkSize - 1) / inputChunkSize;
         int estimatedOutputSize = totalChunks * maxOutputChunkSize;
 
-        ArrayBufferWriter<byte> outputWriter = new(estimatedOutputSize);
+        byte[] outputBuffer = new byte[estimatedOutputSize];
+        int outputOffset = 0;
 
         await foreach (ReadOnlyMemory<byte> chunk in GetChunksAsync(input, inputChunkSize, cancellationToken))
         {
@@ -122,12 +122,20 @@ public sealed class RsaChunkProcessor(
             }
 
             byte[] processedData = chunkResult.Unwrap();
-            outputWriter.Write(processedData);
+            processedData.CopyTo(outputBuffer.AsSpan(outputOffset));
+            outputOffset += processedData.Length;
 
             cancellationToken.ThrowIfCancellationRequested();
         }
 
-        return Result<byte[], CertificatePinningFailure>.Ok(outputWriter.WrittenMemory.ToArray());
+        if (outputOffset == outputBuffer.Length)
+        {
+            return Result<byte[], CertificatePinningFailure>.Ok(outputBuffer);
+        }
+
+        byte[] trimmed = new byte[outputOffset];
+        outputBuffer.AsSpan(0, outputOffset).CopyTo(trimmed);
+        return Result<byte[], CertificatePinningFailure>.Ok(trimmed);
     }
 
     private static async IAsyncEnumerable<ReadOnlyMemory<byte>> GetChunksAsync(

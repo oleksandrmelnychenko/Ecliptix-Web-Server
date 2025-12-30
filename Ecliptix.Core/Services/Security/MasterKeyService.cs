@@ -29,6 +29,7 @@ internal sealed class MasterKeyService(
     private readonly int _askTimeoutSeconds = securityConfig.CurrentValue.Cryptography.AskTimeoutSeconds;
 
     private const string RootKeyInfo = "ecliptix-protocol-root-key";
+    private const string MasterKeyFingerprintInfo = "ecliptix-master-key-fingerprint";
 
     private const string ErrorMessageInsufficientShares = "Insufficient shares: found {0}, need at least 3";
     private const string ErrorMessageMetadataDeserializationFailed = "Failed to deserialize share metadata";
@@ -47,13 +48,13 @@ internal sealed class MasterKeyService(
 
     private const string ErrorMessageSharesCheckFailed = "Unexpected error checking shares";
 
-    public async Task<Result<dynamic, FailureBase>> GenerateRandomMasterKeyAndSplitAsync(Guid membershipId)
+    public async Task<Result<dynamic, FailureBase>> GenerateRandomMasterKeyAndSplitAsync(Guid accountId)
     {
         SodiumSecureMemoryHandle? masterKeyHandle = null;
 
         try
         {
-            Result<bool, FailureBase> sharesExistResult = await CheckSharesExistAsync(membershipId);
+            Result<bool, FailureBase> sharesExistResult = await CheckSharesExistAsync(accountId);
             if (sharesExistResult.IsOk && sharesExistResult.Unwrap())
             {
                 return Result<dynamic, FailureBase>.Err(
@@ -113,7 +114,7 @@ internal sealed class MasterKeyService(
             KeySplitResult keySplitResult = splitResult.Unwrap();
 
             Result<InsertMasterKeySharesResult, KeySplittingFailure> persistResult =
-                await PersistSharesAsync(membershipId, keySplitResult);
+                await PersistSharesAsync(accountId, keySplitResult);
 
             if (persistResult.IsErr)
             {
@@ -136,7 +137,7 @@ internal sealed class MasterKeyService(
     }
 
     public async Task<Result<dynamic, FailureBase>> SplitAndStoreMasterKeyAsync(byte[] masterKeyBytes,
-        Guid membershipId, bool allowOverwrite = false)
+        Guid accountId, bool allowOverwrite = false)
     {
         if (masterKeyBytes.Length != _masterKeySize)
         {
@@ -148,17 +149,17 @@ internal sealed class MasterKeyService(
 
         try
         {
-            Result<bool, FailureBase> sharesExistResult = await CheckSharesExistAsync(membershipId);
+            Result<bool, FailureBase> sharesExistResult = await CheckSharesExistAsync(accountId);
 
             if (sharesExistResult.IsOk && sharesExistResult.Unwrap())
             {
                 if (!allowOverwrite)
                 {
                     return Result<dynamic, FailureBase>.Err(
-                        KeySplittingFailure.KeySplittingFailed("Master key shares already exist for this membership"));
+                        KeySplittingFailure.KeySplittingFailed("Master key shares already exist for this account"));
                 }
 
-                Result<Unit, KeySplittingFailure> deleteResult = await DeleteExistingSharesAsync(membershipId);
+                Result<Unit, KeySplittingFailure> deleteResult = await DeleteExistingSharesAsync(accountId);
 
                 if (deleteResult.IsErr)
                 {
@@ -203,7 +204,7 @@ internal sealed class MasterKeyService(
             KeySplitResult keySplitResult = splitResult.Unwrap();
 
             Result<InsertMasterKeySharesResult, KeySplittingFailure> persistResult =
-                await PersistSharesAsync(membershipId, keySplitResult);
+                await PersistSharesAsync(accountId, keySplitResult);
 
             if (persistResult.IsErr)
             {
@@ -211,8 +212,8 @@ internal sealed class MasterKeyService(
                 return Result<dynamic, FailureBase>.Err(error);
             }
 
-            Log.Information("[SERVER-MASTERKEY-SPLIT] Master key shares persisted successfully. MembershipId: {MembershipId}",
-                membershipId);
+            Log.Information("[SERVER-MASTERKEY-SPLIT] Master key shares persisted successfully. AccountId: {AccountId}",
+                accountId);
 
             return Result<dynamic, FailureBase>.Ok(keySplitResult);
         }
@@ -228,11 +229,11 @@ internal sealed class MasterKeyService(
         }
     }
 
-    public async Task<Result<bool, FailureBase>> EnsureMasterKeyExistsAsync(Guid membershipId)
+    public async Task<Result<bool, FailureBase>> EnsureMasterKeyExistsAsync(Guid accountId)
     {
         try
         {
-            Result<bool, FailureBase> sharesExistResult = await CheckSharesExistAsync(membershipId);
+            Result<bool, FailureBase> sharesExistResult = await CheckSharesExistAsync(accountId);
             if (sharesExistResult.IsErr)
             {
                 return Result<bool, FailureBase>.Err(sharesExistResult.UnwrapErr());
@@ -243,7 +244,7 @@ internal sealed class MasterKeyService(
                 return Result<bool, FailureBase>.Ok(true);
             }
 
-            Result<dynamic, FailureBase> generateResult = await GenerateRandomMasterKeyAndSplitAsync(membershipId);
+            Result<dynamic, FailureBase> generateResult = await GenerateRandomMasterKeyAndSplitAsync(accountId);
 
             return generateResult.IsErr
                 ? Result<bool, FailureBase>.Err(generateResult.UnwrapErr())
@@ -258,9 +259,9 @@ internal sealed class MasterKeyService(
     }
 
     public async Task<Result<(dynamic IdentityKeys, byte[] RootKey), FailureBase>> DeriveIdentityKeysAsync(
-        Guid membershipId)
+        Guid accountId)
     {
-        Result<byte[], FailureBase> rootResult = await DeriveRootKeyAsync(membershipId);
+        Result<byte[], FailureBase> rootResult = await DeriveRootKeyAsync(accountId);
         if (rootResult.IsErr)
         {
             return Result<(dynamic IdentityKeys, byte[] RootKey), FailureBase>.Err(rootResult.UnwrapErr());
@@ -270,7 +271,7 @@ internal sealed class MasterKeyService(
         SodiumSecureMemoryHandle? masterKeyHandle = null;
         try
         {
-            Result<dynamic, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(membershipId);
+            Result<dynamic, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(accountId);
             if (reconstructResult.IsErr)
             {
                 FailureBase error = reconstructResult.UnwrapErr();
@@ -280,7 +281,7 @@ internal sealed class MasterKeyService(
             masterKeyHandle = (SodiumSecureMemoryHandle)reconstructResult.Unwrap();
 
             Result<EcliptixSystemIdentityKeys, KeySplittingFailure> deriveResult =
-                await identityKeyDerivationService.DeriveIdentityKeysFromMasterKeyAsync(masterKeyHandle, membershipId);
+                await identityKeyDerivationService.DeriveIdentityKeysFromMasterKeyAsync(masterKeyHandle, accountId);
 
             if (deriveResult.IsErr)
             {
@@ -310,15 +311,32 @@ internal sealed class MasterKeyService(
         }
     }
 
-    public async Task<Result<byte[], FailureBase>> DeriveRootKeyAsync(Guid membershipId)
+    public async Task<Result<byte[], FailureBase>> DeriveRootKeyAsync(Guid accountId)
+    {
+        Result<(byte[] RootKey, byte[] MasterKeyFingerprint), FailureBase> deriveResult =
+            await DeriveRootKeyAndFingerprintAsync(accountId);
+        if (deriveResult.IsErr)
+        {
+            return Result<byte[], FailureBase>.Err(deriveResult.UnwrapErr());
+        }
+
+        (byte[] rootKey, byte[] fingerprint) = deriveResult.Unwrap();
+        CryptographicOperations.ZeroMemory(fingerprint);
+        return Result<byte[], FailureBase>.Ok(rootKey);
+    }
+
+    public async Task<Result<(byte[] RootKey, byte[] MasterKeyFingerprint), FailureBase>>
+        DeriveRootKeyAndFingerprintAsync(Guid accountId)
     {
         SodiumSecureMemoryHandle? masterKeyHandle = null;
+        byte[]? masterKeyBytes = null;
         try
         {
-            Result<dynamic, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(membershipId);
+            Result<dynamic, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(accountId);
             if (reconstructResult.IsErr)
             {
-                return Result<byte[], FailureBase>.Err(reconstructResult.UnwrapErr());
+                return Result<(byte[] RootKey, byte[] MasterKeyFingerprint), FailureBase>.Err(
+                    reconstructResult.UnwrapErr());
             }
 
             masterKeyHandle = (SodiumSecureMemoryHandle)reconstructResult.Unwrap();
@@ -327,22 +345,29 @@ internal sealed class MasterKeyService(
             if (masterKeyReadResult.IsErr)
             {
                 SodiumFailure error = masterKeyReadResult.UnwrapErr();
-                return Result<byte[], FailureBase>.Err(
+                return Result<(byte[] RootKey, byte[] MasterKeyFingerprint), FailureBase>.Err(
                     KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageMasterKeyReadFailed}: {error.Message}"));
             }
 
-            byte[] masterKeyBytes = masterKeyReadResult.Unwrap();
+            masterKeyBytes = masterKeyReadResult.Unwrap();
             try
             {
                 byte[] rootKeyBytes = new byte[_masterKeySize];
+
+                byte[] saltBytes = accountId.ToByteArray();
+                byte[] infoBytes = System.Text.Encoding.UTF8.GetBytes($"{RootKeyInfo}:v1:{accountId}");
+
                 HKDF.DeriveKey(
-                    HashAlgorithmName.SHA256,
+                    HashAlgorithmName.SHA512,
                     ikm: masterKeyBytes,
                     output: rootKeyBytes,
-                    salt: null,
-                    info: System.Text.Encoding.UTF8.GetBytes(RootKeyInfo));
+                    salt: saltBytes,
+                    info: infoBytes);
 
-                return Result<byte[], FailureBase>.Ok(rootKeyBytes);
+                byte[] fingerprintBytes = DeriveMasterKeyFingerprint(masterKeyBytes, accountId);
+
+                return Result<(byte[] RootKey, byte[] MasterKeyFingerprint), FailureBase>.Ok(
+                    (rootKeyBytes, fingerprintBytes));
             }
             finally
             {
@@ -351,21 +376,32 @@ internal sealed class MasterKeyService(
         }
         catch (Exception ex)
         {
-            return Result<byte[], FailureBase>.Err(
+            return Result<(byte[] RootKey, byte[] MasterKeyFingerprint), FailureBase>.Err(
                 KeySplittingFailure.KeyDerivationFailed(ErrorMessageUnexpectedIdentityKeyDerivationError, ex));
         }
         finally
         {
             masterKeyHandle?.Dispose();
+            if (masterKeyBytes != null)
+            {
+                CryptographicOperations.ZeroMemory(masterKeyBytes);
+            }
         }
     }
 
-    public async Task<Result<bool, FailureBase>> CheckSharesExistAsync(Guid membershipId)
+    private static byte[] DeriveMasterKeyFingerprint(byte[] masterKeyBytes, Guid accountId)
+    {
+        byte[] infoBytes = System.Text.Encoding.UTF8.GetBytes($"{MasterKeyFingerprintInfo}:v1:{accountId}");
+        using HMACSHA256 hmac = new(masterKeyBytes);
+        return hmac.ComputeHash(infoBytes);
+    }
+
+    public async Task<Result<bool, FailureBase>> CheckSharesExistAsync(Guid accountId)
     {
         try
         {
             Result<MasterKeyShareQueryRecord[], KeySplittingFailure> sharesResult =
-                await RetrieveSharesAsync(membershipId);
+                await RetrieveSharesAsync(accountId);
 
             if (sharesResult.IsOk)
             {
@@ -388,12 +424,12 @@ internal sealed class MasterKeyService(
         }
     }
 
-    private async Task<Result<dynamic, FailureBase>> ReconstructMasterKeyAsync(Guid membershipId)
+    private async Task<Result<dynamic, FailureBase>> ReconstructMasterKeyAsync(Guid accountId)
     {
         try
         {
             Result<MasterKeyShareQueryRecord[], KeySplittingFailure> sharesResult =
-                await RetrieveSharesAsync(membershipId);
+                await RetrieveSharesAsync(accountId);
 
             if (sharesResult.IsErr)
             {
@@ -452,7 +488,7 @@ internal sealed class MasterKeyService(
     }
 
     private async Task<Result<InsertMasterKeySharesResult, KeySplittingFailure>> PersistSharesAsync(
-        Guid membershipId, KeySplitResult keySplitResult)
+        Guid accountId, KeySplitResult keySplitResult)
     {
         try
         {
@@ -470,7 +506,7 @@ internal sealed class MasterKeyService(
                 select new ShareData(share.ShareIndex, share.ShareData, metadata, share.Location.ToString()));
 
             InsertMasterKeySharesEvent insertEvent = new(
-                membershipId,
+                accountId,
                 shareDataList
             );
 
@@ -497,12 +533,12 @@ internal sealed class MasterKeyService(
         }
     }
 
-    private async Task<Result<MasterKeyShareQueryRecord[], KeySplittingFailure>> RetrieveSharesAsync(Guid membershipId)
+    private async Task<Result<MasterKeyShareQueryRecord[], KeySplittingFailure>> RetrieveSharesAsync(Guid accountId)
     {
         try
         {
             IActorRef masterKeySharePersistor = actorRegistry.Get(ActorIds.MasterKeySharePersistorActor);
-            GetMasterKeySharesEvent getEvent = new(membershipId);
+            GetMasterKeySharesEvent getEvent = new(accountId);
 
             Result<MasterKeyShareQueryRecord[], MasterKeyFailure> result =
                 await masterKeySharePersistor.Ask<Result<MasterKeyShareQueryRecord[], MasterKeyFailure>>(
@@ -511,9 +547,13 @@ internal sealed class MasterKeyService(
 
             return result.Match(
                 ok => Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Ok(ok),
-                err => Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Err(
-                    KeySplittingFailure.KeyReconstructionFailed($"{ErrorMessageRetrieveSharesFailed}: {err.Message}",
-                        err.InnerException)));
+                err => err.Message.Contains(MasterKeyMessageKeys.SharesNotFound)
+                    ? Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Ok(
+                        System.Array.Empty<MasterKeyShareQueryRecord>())
+                    : Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Err(
+                        KeySplittingFailure.KeyReconstructionFailed(
+                            $"{ErrorMessageRetrieveSharesFailed}: {err.Message}",
+                            err.InnerException)));
         }
         catch (TimeoutException)
         {
@@ -527,12 +567,12 @@ internal sealed class MasterKeyService(
         }
     }
 
-    private async Task<Result<Unit, KeySplittingFailure>> DeleteExistingSharesAsync(Guid membershipId)
+    private async Task<Result<Unit, KeySplittingFailure>> DeleteExistingSharesAsync(Guid accountId)
     {
         try
         {
             IActorRef masterKeySharePersistor = actorRegistry.Get(ActorIds.MasterKeySharePersistorActor);
-            DeleteMasterKeySharesEvent deleteEvent = new(membershipId);
+            DeleteMasterKeySharesEvent deleteEvent = new(accountId);
 
             Result<Unit, MasterKeyFailure> result =
                 await masterKeySharePersistor.Ask<Result<Unit, MasterKeyFailure>>(
@@ -557,11 +597,11 @@ internal sealed class MasterKeyService(
         }
     }
 
-    public async Task<Result<dynamic, FailureBase>> GetMasterKeyHandleAsync(Guid membershipId)
+    public async Task<Result<dynamic, FailureBase>> GetMasterKeyHandleAsync(Guid accountId)
     {
         try
         {
-            Result<dynamic, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(membershipId);
+            Result<dynamic, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(accountId);
             if (reconstructResult.IsErr)
             {
                 FailureBase error = reconstructResult.UnwrapErr();

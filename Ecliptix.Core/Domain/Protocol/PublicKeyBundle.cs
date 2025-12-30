@@ -176,6 +176,23 @@ public record PublicKeyBundle(
                 EcliptixProtocolFailure.Decode($"SignedPreKeySignature must be {Constants.Ed25519SignatureSize} bytes."));
         }
 
+        Result<bool, Ecliptix.Utilities.Failures.Sodium.SodiumFailure> signatureVerificationResult =
+            SodiumInterop.VerifyDetached(signedPreKeySignature, signedPreKeyPublic, identityEd25519);
+
+        if (signatureVerificationResult.IsErr)
+        {
+            Ecliptix.Utilities.Failures.Sodium.SodiumFailure sodiumError = signatureVerificationResult.UnwrapErr();
+            return errorResultType(
+                EcliptixProtocolFailure.Decode($"SPK signature verification failed: {sodiumError.Message}"));
+        }
+
+        bool isSignatureValid = signatureVerificationResult.Unwrap();
+        if (!isSignatureValid)
+        {
+            return errorResultType(
+                EcliptixProtocolFailure.Decode("SPK signature is invalid - signed pre-key was not signed by the identity key"));
+        }
+
         return Result<(byte[], byte[], byte[], byte[]), EcliptixProtocolFailure>.Ok(
             (identityEd25519, identityX25519, signedPreKeyPublic, signedPreKeySignature));
     }

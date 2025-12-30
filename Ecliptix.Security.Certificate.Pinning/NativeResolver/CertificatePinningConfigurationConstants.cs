@@ -13,4 +13,9 @@ public static class CertificatePinningConfigurationConstants
     public const int RsaEncryptedBlockSize = 256;
     public const int RsaMaxPlaintextSize = 214;
     public const int RsaOptimalChunkSize = 200;
+
+    public static class ErrorMessages
+    {
+        public const string GenericError = "Error occurred";
+    }
 }

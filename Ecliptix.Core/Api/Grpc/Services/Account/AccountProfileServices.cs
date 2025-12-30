@@ -1,4 +1,4 @@
-﻿using Akka.Actor;
+using Akka.Actor;
 using Ecliptix.Core.Api.Grpc.Base;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Domain.Memberships.ActorEvents.AccountProfile;
@@ -119,9 +119,6 @@ internal sealed class AccountProfileServices : AccountServices.AccountServicesBa
 
                     GetAccountProfileRequest.SearchCriteriaOneofCase.ByAccountId =>
                         new SearchById(Helpers.FromByteStringToGuid(message.ByAccountId)),
-
-                    // GetAccountProfileRequest.SearchCriteriaOneofCase.ByUsername =>
-                    //     new SearchByUsername(message.ByUsername),
 
                     _ => throw new RpcException(new Status(StatusCode.InvalidArgument, "Search criteria not specified"))
                 };

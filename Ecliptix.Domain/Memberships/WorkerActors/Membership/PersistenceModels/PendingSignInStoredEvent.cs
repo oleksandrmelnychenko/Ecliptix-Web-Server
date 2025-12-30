@@ -11,6 +11,7 @@ internal sealed record PendingSignInStoredEvent(
     ProtoMembership.Types.ActivityStatus ActivityStatus,
     ProtoMembership.Types.CreationStatus CreationStatus,
     DateTimeOffset CreatedAt,
-    byte[] ServerMac,
+    byte[]? ServerMac,
     List<AccountInfo>? AvailableAccounts,
-    Guid? ActiveAccountId);
+    Guid? ActiveAccountId,
+    int OpaqueKeyVersion = 1);

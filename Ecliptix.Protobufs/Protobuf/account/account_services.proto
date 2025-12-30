@@ -1,6 +1,5 @@
 syntax = "proto3";
 
-import "account/account.proto";
 import "common/secure_envelope.proto";
 
 package ecliptix.proto.account;

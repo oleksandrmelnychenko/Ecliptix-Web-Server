@@ -10,7 +10,7 @@ public record ShareData(
 );
 
 public record InsertMasterKeySharesEvent(
-    Guid MembershipUniqueId,
+    Guid AccountUniqueId,
     IReadOnlyList<ShareData> Shares,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;

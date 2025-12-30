@@ -8,10 +8,6 @@ public sealed class SecurityConfiguration
 
     public CryptographicParameters Cryptography { get; set; } = new();
 
-    public AuthenticationTimeouts Authentication { get; set; } = new();
-
-    public OtpHashingConfiguration OtpHashing { get; set; } = new();
-
     public GrpcSecurityParameters GrpcSecurity { get; set; } = new();
 
     public VerificationFlowLimitsConfiguration VerificationFlowLimits { get; set; } = new();

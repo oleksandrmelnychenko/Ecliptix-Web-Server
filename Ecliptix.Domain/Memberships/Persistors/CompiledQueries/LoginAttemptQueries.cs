@@ -104,4 +104,3 @@ public static class LoginAttemptQueries
             : Option<DateTimeOffset>.None;
     }
 }
-

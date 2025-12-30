@@ -7,6 +7,7 @@ public class AccountSecureKeyAuthEntity : EntityBase
     public byte[] SecureKey { get; set; } = null!;
     public byte[] MaskingKey { get; set; } = null!;
     public int CredentialsVersion { get; set; } = 1;
+    public int OpaqueKeyVersion { get; set; } = 1;
 
     public bool IsPrimary { get; set; }
     public bool IsEnabled { get; set; } = true;

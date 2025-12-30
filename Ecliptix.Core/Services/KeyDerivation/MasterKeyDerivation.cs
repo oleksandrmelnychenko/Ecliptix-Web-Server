@@ -33,23 +33,23 @@ public static class MasterKeyDerivation
     private const string MasterKeyDerivationFailedMessage = "Failed to derive master key: {0}";
 
     private const string PersonalParameterSizeMismatchMessage =
-        "Personal parameter (membershipId) must be exactly {0} bytes, got {1}";
+        "Personal parameter (accountId) must be exactly {0} bytes, got {1}";
 
-    public static byte[] DeriveMasterKey(byte[] exportKey, ByteString membershipId)
+    public static byte[] DeriveMasterKey(byte[] exportKey, ByteString accountId)
     {
-        Span<byte> membershipBytes = membershipId.Length <= SharedConstants.StackAllocationThreshold
-            ? stackalloc byte[membershipId.Length]
-            : new byte[membershipId.Length];
+        Span<byte> accountBytes = accountId.Length <= SharedConstants.StackAllocationThreshold
+            ? stackalloc byte[accountId.Length]
+            : new byte[accountId.Length];
 
-        byte[] membershipArray = membershipId.ToByteArray();
-        membershipArray.CopyTo(membershipBytes);
+        byte[] accountArray = accountId.ToByteArray();
+        accountArray.CopyTo(accountBytes);
 
         Span<byte> versionBytes = stackalloc byte[sizeof(int)];
         BitConverter.TryWriteBytes(versionBytes, CurrentVersion);
 
         ReadOnlySpan<byte> domainBytes = Encoding.UTF8.GetBytes(DomainContext);
 
-        byte[] argonSalt = CreateArgonSalt(membershipBytes, versionBytes, domainBytes);
+        byte[] argonSalt = CreateArgonSalt(accountBytes, versionBytes, domainBytes);
         byte[]? stretchedKey = null;
 
         ReadOnlySpan<byte> masterSaltBytes = Encoding.UTF8.GetBytes(MasterSalt);
@@ -59,7 +59,7 @@ public static class MasterKeyDerivation
             stretchedKey = DeriveWithArgon2Id(exportKey, argonSalt);
 
             byte[] salt16 = AdjustBlake2BSaltParameter(masterSaltBytes, ServerBlake2BSaltLogTag);
-            byte[] personal16 = ValidateBlake2BPersonalParameter(membershipBytes);
+            byte[] personal16 = ValidateBlake2BPersonalParameter(accountBytes);
 
             Result<byte[], SodiumFailure> hashResult = SodiumInterop.Blake2bHashSaltPersonal(
                 message: stretchedKey,
@@ -87,14 +87,14 @@ public static class MasterKeyDerivation
             }
 
             CryptographicOperations.ZeroMemory(argonSalt);
-            CryptographicOperations.ZeroMemory(membershipArray);
-            CryptographicOperations.ZeroMemory(membershipBytes);
+            CryptographicOperations.ZeroMemory(accountArray);
+            CryptographicOperations.ZeroMemory(accountBytes);
             CryptographicOperations.ZeroMemory(versionBytes);
         }
     }
 
     public static Result<SodiumSecureMemoryHandle, SodiumFailure> DeriveMasterKeyHandle(
-        SodiumSecureMemoryHandle exportKeyHandle, ByteString membershipId)
+        SodiumSecureMemoryHandle exportKeyHandle, ByteString accountId)
     {
         byte[]? exportKeyBytes = null;
         byte[]? stretchedKey = null;
@@ -110,26 +110,26 @@ public static class MasterKeyDerivation
 
             exportKeyBytes = readResult.Unwrap();
 
-            Span<byte> membershipBytes = membershipId.Length <= SharedConstants.StackAllocationThreshold
-                ? stackalloc byte[membershipId.Length]
-                : new byte[membershipId.Length];
+            Span<byte> accountBytes = accountId.Length <= SharedConstants.StackAllocationThreshold
+                ? stackalloc byte[accountId.Length]
+                : new byte[accountId.Length];
 
-            byte[] membershipArray = membershipId.ToByteArray();
-            membershipArray.CopyTo(membershipBytes);
+            byte[] accountArray = accountId.ToByteArray();
+            accountArray.CopyTo(accountBytes);
 
             Span<byte> versionBytes = stackalloc byte[sizeof(int)];
             BitConverter.TryWriteBytes(versionBytes, CurrentVersion);
 
             ReadOnlySpan<byte> domainBytes = Encoding.UTF8.GetBytes(DomainContext);
 
-            argonSalt = CreateArgonSalt(membershipBytes, versionBytes, domainBytes);
+            argonSalt = CreateArgonSalt(accountBytes, versionBytes, domainBytes);
 
             ReadOnlySpan<byte> masterSaltBytes = Encoding.UTF8.GetBytes(MasterSalt);
 
             stretchedKey = DeriveWithArgon2Id(exportKeyBytes, argonSalt);
 
             byte[] salt16 = AdjustBlake2BSaltParameter(masterSaltBytes, ServerBlake2BSaltHandleLogTag);
-            Result<byte[], SodiumFailure> personalResult = TryValidateBlake2BPersonalParameter(membershipBytes);
+            Result<byte[], SodiumFailure> personalResult = TryValidateBlake2BPersonalParameter(accountBytes);
             if (personalResult.IsErr)
             {
                 return Result<SodiumSecureMemoryHandle, SodiumFailure>.Err(personalResult.UnwrapErr());
@@ -239,10 +239,10 @@ public static class MasterKeyDerivation
         return Result<byte[], SodiumFailure>.Ok(personal16);
     }
 
-    private static byte[] CreateArgonSalt(ReadOnlySpan<byte> membershipBytes, ReadOnlySpan<byte> versionBytes,
+    private static byte[] CreateArgonSalt(ReadOnlySpan<byte> accountBytes, ReadOnlySpan<byte> versionBytes,
         ReadOnlySpan<byte> domainBytes)
     {
-        int totalLength = membershipBytes.Length + versionBytes.Length + domainBytes.Length;
+        int totalLength = accountBytes.Length + versionBytes.Length + domainBytes.Length;
 
         Span<byte> combinedInput = totalLength <= SharedConstants.LargeStackAllocationThreshold
             ? stackalloc byte[totalLength]
@@ -251,8 +251,8 @@ public static class MasterKeyDerivation
         try
         {
             int offset = 0;
-            membershipBytes.CopyTo(combinedInput[offset..]);
-            offset += membershipBytes.Length;
+            accountBytes.CopyTo(combinedInput[offset..]);
+            offset += accountBytes.Length;
 
             versionBytes.CopyTo(combinedInput[offset..]);
             offset += versionBytes.Length;
@@ -282,33 +282,33 @@ public static class MasterKeyDerivation
         return argon2.GetBytes(KeySize);
     }
 
-    public static byte[] DeriveEd25519Seed(byte[] masterKey, string membershipId)
+    public static byte[] DeriveEd25519Seed(byte[] masterKey, string accountId)
     {
-        return DeriveSeedForContext(masterKey, membershipId, Ed25519Context);
+        return DeriveSeedForContext(masterKey, accountId, Ed25519Context);
     }
 
-    public static byte[] DeriveX25519Seed(byte[] masterKey, string membershipId)
+    public static byte[] DeriveX25519Seed(byte[] masterKey, string accountId)
     {
-        return DeriveSeedForContext(masterKey, membershipId, X25519Context);
+        return DeriveSeedForContext(masterKey, accountId, X25519Context);
     }
 
-    public static byte[] DeriveSignedPreKeySeed(byte[] masterKey, string membershipId)
+    public static byte[] DeriveSignedPreKeySeed(byte[] masterKey, string accountId)
     {
-        return DeriveSeedForContext(masterKey, membershipId, SpkX25519Context);
+        return DeriveSeedForContext(masterKey, accountId, SpkX25519Context);
     }
 
-    private static byte[] DeriveSeedForContext(byte[] masterKey, string membershipId, string context)
+    private static byte[] DeriveSeedForContext(byte[] masterKey, string accountId, string context)
     {
         Span<byte> versionBytes = stackalloc byte[sizeof(int)];
         BitConverter.TryWriteBytes(versionBytes, CurrentVersion);
 
         ReadOnlySpan<byte> contextBytes = Encoding.UTF8.GetBytes(context);
 
-        int memberBytesLength = Encoding.UTF8.GetByteCount(membershipId);
+        int memberBytesLength = Encoding.UTF8.GetByteCount(accountId);
         Span<byte> memberBytes = memberBytesLength <= SharedConstants.StackAllocationThreshold
             ? stackalloc byte[memberBytesLength]
             : new byte[memberBytesLength];
-        Encoding.UTF8.GetBytes(membershipId, memberBytes);
+        Encoding.UTF8.GetBytes(accountId, memberBytes);
 
         int totalLength = versionBytes.Length + contextBytes.Length + memberBytes.Length;
         Span<byte> combinedContext = totalLength <= SharedConstants.LargeStackAllocationThreshold

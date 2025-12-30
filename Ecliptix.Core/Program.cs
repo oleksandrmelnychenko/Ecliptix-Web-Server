@@ -9,7 +9,6 @@ using Ecliptix.Core.Api.Grpc.Services.Account;
 using Ecliptix.Core.Api.Grpc.Services.Authentication;
 using Ecliptix.Core.Api.Grpc.Services.Device;
 using Ecliptix.Core.Api.Grpc.Services.Membership;
-using Ecliptix.Core.Api.Grpc.Services.MembershipRelation;
 using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Configuration.Settings;
 using Ecliptix.Core.Infrastructure.Crypto;
@@ -56,7 +55,7 @@ try
 
     WebApplication app = builder.Build();
 
-    bool migrateOnly = Environment.GetEnvironmentVariable("MIGRATE_ONLY") == "true";
+    bool migrateOnly = Environment.GetEnvironmentVariable(EnvironmentVariableNames.MigrateOnly) == "true";
 
     if (migrateOnly)
     {
@@ -160,7 +159,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
                    .ConfigureWarnings(warnings =>
                        warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         }
-    }, poolSize: 128); // FIXED: Reduced from 1024 to 128 (realistic actor concurrency)
+    }, poolSize: 128);
 
     builder.Services.AddDbContextFactory<EcliptixSchemaContext>(options =>
     {
@@ -248,8 +247,8 @@ static void ConfigureServices(WebApplicationBuilder builder)
 
     builder.Services.AddSingleton<IOpaqueProtocolService>(serviceProvider =>
     {
-        INativeOpaqueProtocolService nativeService = serviceProvider.GetRequiredService<INativeOpaqueProtocolService>();
-        return new OpaqueProtocolAdapter(nativeService);
+        IOpaqueKeyRingService keyRingService = serviceProvider.GetRequiredService<IOpaqueKeyRingService>();
+        return new OpaqueProtocolAdapter(keyRingService);
     });
 
     builder.Services.AddSingleton<CertificatePinningService>();
@@ -316,7 +315,6 @@ static void ConfigureEndpoints(WebApplication app)
     app.MapGrpcService<DeviceService>();
     app.MapGrpcService<VerificationFlowServices>();
     app.MapGrpcService<MembershipServices>();
-    app.MapGrpcService<MembershipRelationService>();
     app.MapGrpcService<AccountProfileServices>();
 
     app.MapHealthChecks(AppConstants.Endpoints.Health);
@@ -454,8 +452,8 @@ static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
                     };
                 });
 
-            string? otlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
-            string? consoleExporter = Environment.GetEnvironmentVariable("OTEL_CONSOLE_EXPORTER_ENABLED");
+            string? otlpEndpoint = Environment.GetEnvironmentVariable(EnvironmentVariableNames.OtelExporterOtlpEndpoint);
+            string? consoleExporter = Environment.GetEnvironmentVariable(EnvironmentVariableNames.OtelConsoleExporterEnabled);
 
             if (!string.IsNullOrEmpty(otlpEndpoint))
             {
@@ -473,10 +471,28 @@ static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
 
 static void InitializeOpaqueService(WebApplication app)
 {
-    INativeOpaqueProtocolService opaqueService = app.Services.GetRequiredService<INativeOpaqueProtocolService>();
+    IOpaqueKeyRingService opaqueService = app.Services.GetRequiredService<IOpaqueKeyRingService>();
     SecurityKeysSettings securityKeysSettings = app.Services.GetRequiredService<IOptions<SecurityKeysSettings>>().Value;
+    Dictionary<int, string> keyRing = securityKeysSettings.OpaqueKeyRing ?? new Dictionary<int, string>();
+    int activeKeyVersion = securityKeysSettings.OpaqueActiveKeyVersion;
+
+    if (keyRing.Count == 0)
+    {
+        if (string.IsNullOrWhiteSpace(securityKeysSettings.OpaqueSecretKeySeed))
+        {
+            Log.Error("OPAQUE key ring is empty and OpaqueSecretKeySeed is missing");
+            throw new InvalidOperationException("OPAQUE key ring is empty");
+        }
+
+        keyRing = new Dictionary<int, string>
+        {
+            { 1, securityKeysSettings.OpaqueSecretKeySeed }
+        };
+        activeKeyVersion = 1;
+    }
+
     Result<Unit, OpaqueServerFailure> initializationResult =
-        opaqueService.Initialize(securityKeysSettings.OpaqueSecretKeySeed);
+        opaqueService.Initialize(keyRing, activeKeyVersion);
     if (!initializationResult.IsErr)
     {
         return;

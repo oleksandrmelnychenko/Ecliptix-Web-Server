@@ -1,4 +1,4 @@
-﻿using Ecliptix.Domain.Memberships.ActorEvents.Common;
+using Ecliptix.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Utilities;
 
@@ -15,4 +15,3 @@ public record GetAccountProfileActorEvent(
 ) : ICancellableActorEvent;
 
 public record GetAccountProfileResult(Result<Option<AccountProfileInfo>, FailureBase> Result);
-

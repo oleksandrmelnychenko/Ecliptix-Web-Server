@@ -45,7 +45,7 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntit
             "status IN ('pending', 'verified', 'expired', 'failed')"));
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_VerificationFlows_Purpose",
-            "purpose IN ('unspecified', 'registration', 'login', 'password_recovery', 'update_phone')"));
+            "purpose IN ('unspecified', 'registration', 'login', 'password_recovery', 'secure_key_recovery', 'update_phone')"));
 
         builder.HasIndex(e => e.MobileNumberId)
             .HasDatabaseName("IX_VerificationFlows_MobileNumberId");

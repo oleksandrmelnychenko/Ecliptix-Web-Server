@@ -23,29 +23,29 @@
         <NativeProtoDir Condition="'$(NativeProtoDir)'=='' and Exists('/Users/oleksandrmelnychenko/CLionProjects/Ecliptix.Protocol.System/build')">/Users/oleksandrmelnychenko/CLionProjects/Ecliptix.Protocol.System/build</NativeProtoDir>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="Akka" Version="1.5.56" />
-        <PackageReference Include="Akka.Cluster" Version="1.5.56" />
-        <PackageReference Include="Akka.Cluster.Hosting" Version="1.5.55.1" />
-        <PackageReference Include="Akka.Cluster.Metrics" Version="1.5.56" />
-        <PackageReference Include="Akka.Cluster.Sharding" Version="1.5.56" />
-        <PackageReference Include="Akka.Cluster.Tools" Version="1.5.56" />
-        <PackageReference Include="Akka.DependencyInjection" Version="1.5.56" />
-        <PackageReference Include="Akka.Discovery" Version="1.5.56" />
-        <PackageReference Include="Akka.Discovery.KubernetesApi" Version="1.5.55" />
-        <PackageReference Include="Akka.Hosting" Version="1.5.55.1" />
-        <PackageReference Include="Akka.Management" Version="1.5.55" />
-        <PackageReference Include="Akka.Persistence" Version="1.5.56" />
-        <PackageReference Include="Akka.Persistence.Hosting" Version="1.5.55.1" />
+        <PackageReference Include="Akka" Version="1.5.57" />
+        <PackageReference Include="Akka.Cluster" Version="1.5.57" />
+        <PackageReference Include="Akka.Cluster.Hosting" Version="1.5.57" />
+        <PackageReference Include="Akka.Cluster.Metrics" Version="1.5.57" />
+        <PackageReference Include="Akka.Cluster.Sharding" Version="1.5.57" />
+        <PackageReference Include="Akka.Cluster.Tools" Version="1.5.57" />
+        <PackageReference Include="Akka.DependencyInjection" Version="1.5.57" />
+        <PackageReference Include="Akka.Discovery" Version="1.5.57" />
+        <PackageReference Include="Akka.Discovery.KubernetesApi" Version="1.5.57" />
+        <PackageReference Include="Akka.Hosting" Version="1.5.57" />
+        <PackageReference Include="Akka.Management" Version="1.5.57" />
+        <PackageReference Include="Akka.Persistence" Version="1.5.57" />
+        <PackageReference Include="Akka.Persistence.Hosting" Version="1.5.57" />
         <PackageReference Include="Akka.Persistence.Sql" Version="1.5.55.1" />
         <PackageReference Include="Akka.Persistence.Sql.Hosting" Version="1.5.55.1" />
-        <PackageReference Include="Akka.Remote" Version="1.5.56" />
+        <PackageReference Include="Akka.Remote" Version="1.5.57" />
         <PackageReference Include="Dapper" Version="2.1.66" />
         <PackageReference Include="dbup" Version="5.0.41" />
-        <PackageReference Include="Grpc.AspNetCore.Server" Version="2.71.0" />
-        <PackageReference Include="Grpc.Core.Api" Version="2.71.0" />
-        <PackageReference Include="Grpc.Net.Common" Version="2.71.0" />
-        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0">
+        <PackageReference Include="Grpc.AspNetCore.Server" Version="2.76.0" />
+        <PackageReference Include="Grpc.Core.Api" Version="2.76.0" />
+        <PackageReference Include="Grpc.Net.Common" Version="2.76.0" />
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.1" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.1">
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
           <PrivateAssets>all</PrivateAssets>
         </PackageReference>

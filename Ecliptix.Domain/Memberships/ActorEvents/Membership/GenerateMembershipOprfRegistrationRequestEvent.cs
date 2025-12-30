@@ -4,5 +4,5 @@ namespace Ecliptix.Domain.Memberships.ActorEvents.Membership;
 
 public record GenerateMembershipOprfRegistrationRequestEvent(
     Guid MembershipIdentifier,
-    byte[] OprfRequest,
+    byte[]? OprfRequest,
     CancellationToken CancellationToken = default) : ICancellableActorEvent;

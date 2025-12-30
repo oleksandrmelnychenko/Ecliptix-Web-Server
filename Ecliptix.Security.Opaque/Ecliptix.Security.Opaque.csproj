@@ -12,26 +12,13 @@
     <LangVersion>14</LangVersion>
   </PropertyGroup>
 
-  <!-- Native OPAQUE server library - Optional -->
-  <ItemGroup>
-    <Content Include="NativeLibraries\linux\libopaque_server.so" Condition="$([MSBuild]::IsOSPlatform('Linux')) AND Exists('NativeLibraries\linux\libopaque_server.so')">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <TargetPath>libopaque_server.so</TargetPath>
-    </Content>
-    <Content Include="NativeLibraries\windows\libopaque_server.dll" Condition="$([MSBuild]::IsOSPlatform('Windows')) AND Exists('NativeLibraries\windows\libopaque_server.dll')">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <TargetPath>libopaque_server.dll</TargetPath>
-    </Content>
-    <Content Include="NativeLibraries\dependencies\libsodium.dll" Condition="('$(RuntimeIdentifier)' == 'win-x64' OR ('$(RuntimeIdentifier)' == '' AND $([MSBuild]::IsOSPlatform('Windows')))) AND Exists('NativeLibraries\windows\libopaque_server.dll')">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <TargetPath>libsodium.dll</TargetPath>
-    </Content>
-  </ItemGroup>
+  <!-- Native libraries provided by Ecliptix.OPAQUE.Server NuGet package -->
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Ecliptix.OPAQUE.Server" Version="1.0.0-ci.16" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.1" />
     <PackageReference Include="Serilog" Version="4.3.0" />
-    <PackageReference Include="Google.Protobuf" Version="3.33.1" />
+    <PackageReference Include="Google.Protobuf" Version="3.33.2" />
     <PackageReference Include="Grpc.Tools" Version="2.76.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -46,16 +33,5 @@
   </ItemGroup>
 
 
-  <ItemGroup>
-    <Folder Include="NativeLibraries\linux\" />
-    <Folder Include="NativeLibraries\windows\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="NativeLibraries\macos\libopaque_server.dylib" Condition="$([MSBuild]::IsOSPlatform('OSX')) AND Exists('NativeLibraries\macos\libopaque_server.dylib')">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <TargetPath>runtimes/osx-arm64/native/libopaque_server.dylib</TargetPath>
-    </Content>
-  </ItemGroup>
 
 </Project>

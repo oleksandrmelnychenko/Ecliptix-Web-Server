@@ -1,3 +1,3 @@
 namespace Ecliptix.Domain.Memberships.WorkerActors.Membership.PersistenceModels;
 
-internal sealed record RecoverySessionSnapshot(Guid MembershipId, byte[] SessionKey, DateTimeOffset StartedAt);
+internal sealed record RecoverySessionSnapshot(Guid MembershipId, byte[] SessionKey, DateTimeOffset StartedAt, int OpaqueKeyVersion = 1);

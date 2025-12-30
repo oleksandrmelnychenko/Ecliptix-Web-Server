@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Ecliptix.Utilities;
 
 namespace Ecliptix.Core.Domain.Protocol;
@@ -132,17 +133,7 @@ public static class DhValidator
 
     private static bool ConstantTimeEquals(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
     {
-        if (a.Length != b.Length)
-        {
-            return false;
-        }
 
-        int result = 0;
-        for (int i = 0; i < a.Length; i++)
-        {
-            result |= a[i] ^ b[i];
-        }
-
-        return result == 0;
+        return CryptographicOperations.FixedTimeEquals(a, b);
     }
 }

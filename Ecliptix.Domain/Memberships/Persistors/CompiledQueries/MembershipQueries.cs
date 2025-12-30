@@ -87,4 +87,3 @@ public static class MembershipQueries
         return result is not null ? Option<MembershipEntity>.Some(result) : Option<MembershipEntity>.None;
     }
 }
-

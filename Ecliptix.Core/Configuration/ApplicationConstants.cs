@@ -20,8 +20,6 @@ public static class ApplicationConstants
         public const string LogoutAuditPersistorActor = "LogoutAuditPersistorActor";
         public const string AccountPersistorActor = "AccountPersistorActor";
         public const string PasswordRecoveryPersistorActor = "PasswordRecoveryPersistorActor";
-        public const string MembershipRelationPersistorActor = "MembershipRelationPersistorActor";
-        public const string MembershipRelationActor = "MembershipRelationActor";
         public const string AccountProfileActor = "AccountProfileActor";
         public const string AccountProfilePersistorActor = "AccountProfilePersistorActor";
     }

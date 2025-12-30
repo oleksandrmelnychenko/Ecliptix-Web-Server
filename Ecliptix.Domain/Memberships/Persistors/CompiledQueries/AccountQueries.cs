@@ -60,4 +60,3 @@ public static class AccountQueries
         return result is not null ? Option<AccountEntity>.Some(result) : Option<AccountEntity>.None;
     }
 }
-

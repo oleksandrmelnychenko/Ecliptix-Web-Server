@@ -1,10 +1,11 @@
+using System;
 using System.Security.Cryptography;
+using Ecliptix.OPAQUE.Server;
 using Ecliptix.Security.Opaque.Constants;
 using Ecliptix.Security.Opaque.Failures;
-using Ecliptix.Security.Opaque.Models;
 using Ecliptix.Security.Opaque.Models.AuthenticationMessages;
 using Ecliptix.Security.Opaque.Models.RegistrationMessages;
-using Ecliptix.Security.Opaque.Native;
+using static Ecliptix.OPAQUE.Server.OpaqueServerNative;
 using Ecliptix.Utilities;
 using Ecliptix.Utilities.Failures.Sodium;
 
@@ -28,7 +29,7 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
 
             _serverKeys = keyResult.Unwrap();
 
-            OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_create_with_keys(
+            OpaqueResult result = (OpaqueResult)opaque_server_create_with_keys(
                 _serverKeys.PrivateKey, (nuint)_serverKeys.PrivateKey.Length,
                 _serverKeys.PublicKey, (nuint)_serverKeys.PublicKey.Length,
                 out _server);
@@ -69,21 +70,20 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
         }
     }
 
-    public Result<(RegistrationResponse Response, byte[] ServerCredentials), OpaqueServerFailure>
-        CreateRegistrationResponse(RegistrationRequest request)
+    public Result<RegistrationResponse, OpaqueServerFailure>
+        CreateRegistrationResponse(RegistrationRequest request, Guid accountId)
     {
         byte[] responseBuffer = new byte[OpaqueConstants.REGISTRATION_RESPONSE_LENGTH];
-        byte[] credentialsBuffer = new byte[OpaqueConstants.ENVELOPE_LENGTH + OpaqueConstants.PRIVATE_KEY_LENGTH +
-                                            OpaqueConstants.PUBLIC_KEY_LENGTH];
+        byte[] accountIdBytes = accountId.ToByteArray();
 
-        OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_create_registration_response(
+        OpaqueResult result = (OpaqueResult)opaque_server_create_registration_response(
             _server, request.Data, (nuint)request.Data.Length,
-            responseBuffer, (nuint)responseBuffer.Length,
-            credentialsBuffer, (nuint)credentialsBuffer.Length);
+            accountIdBytes, (nuint)accountIdBytes.Length,
+            responseBuffer, (nuint)responseBuffer.Length);
 
         if (result != OpaqueResult.Success)
         {
-            return Result<(RegistrationResponse, byte[]), OpaqueServerFailure>.Err(
+            return Result<RegistrationResponse, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.RegistrationFailed(
                     $"{OpaqueServerConstants.ErrorMessages.FailedToCreateRegistrationResponse}: {result}"));
         }
@@ -92,18 +92,18 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
             RegistrationResponse.Create(responseBuffer);
         if (registrationResult.IsErr)
         {
-            return Result<(RegistrationResponse, byte[]), OpaqueServerFailure>.Err(registrationResult.UnwrapErr());
+            return Result<RegistrationResponse, OpaqueServerFailure>.Err(registrationResult.UnwrapErr());
         }
 
-        return Result<(RegistrationResponse, byte[]), OpaqueServerFailure>.Ok((registrationResult.Unwrap(),
-            credentialsBuffer));
+        return Result<RegistrationResponse, OpaqueServerFailure>.Ok(registrationResult.Unwrap());
     }
 
-    public Result<KE2, OpaqueServerFailure> GenerateKe2(KE1 ke1, byte[] registrationRecord)
+    public Result<KE2, OpaqueServerFailure> GenerateKe2(KE1 ke1, Guid accountId, byte[] registrationRecord)
     {
         byte[] ke2Buffer = new byte[OpaqueConstants.KE2_LENGTH];
+        byte[] accountIdBytes = accountId.ToByteArray();
 
-        OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_state_create(out _currentServerState);
+        OpaqueResult result = (OpaqueResult)opaque_server_state_create(out _currentServerState);
         if (result != OpaqueResult.Success)
         {
             return Result<KE2, OpaqueServerFailure>.Err(
@@ -111,14 +111,15 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
                     $"{OpaqueServerConstants.ErrorMessages.FailedToCreateServerState}: {result}"));
         }
 
-        result = (OpaqueResult)OpaqueServerNative.opaque_server_generate_ke2(
+        result = (OpaqueResult)opaque_server_generate_ke2(
             _server, ke1.Data, (nuint)ke1.Data.Length,
+            accountIdBytes, (nuint)accountIdBytes.Length,
             registrationRecord, (nuint)registrationRecord.Length,
             ke2Buffer, (nuint)ke2Buffer.Length, _currentServerState);
 
         if (result != OpaqueResult.Success)
         {
-            OpaqueServerNative.opaque_server_state_destroy(_currentServerState);
+            opaque_server_state_destroy(_currentServerState);
             _currentServerState = 0;
             return Result<KE2, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.KeyExchangeFailed(
@@ -133,48 +134,89 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
 
     public Result<SodiumSecureMemoryHandle, OpaqueServerFailure> FinishAuthentication(KE3 ke3)
     {
+        Result<(SodiumSecureMemoryHandle SessionKey, SodiumSecureMemoryHandle MasterKey), OpaqueServerFailure> result =
+            FinishAuthenticationWithMasterKey(ke3);
+
+        if (result.IsErr)
+        {
+            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(result.UnwrapErr());
+        }
+
+        (SodiumSecureMemoryHandle sessionKey, SodiumSecureMemoryHandle masterKey) = result.Unwrap();
+        masterKey.Dispose();
+        return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Ok(sessionKey);
+    }
+
+    public Result<(SodiumSecureMemoryHandle SessionKey, SodiumSecureMemoryHandle MasterKey), OpaqueServerFailure>
+        FinishAuthenticationWithMasterKey(KE3 ke3)
+    {
         byte[] sessionKeyBuffer = new byte[OpaqueConstants.HASH_LENGTH];
+        byte[] masterKeyBuffer = new byte[OpaqueConstants.MASTER_KEY_LENGTH];
 
         try
         {
-            OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_finish(
+            OpaqueResult result = (OpaqueResult)opaque_server_finish(
                 _server, ke3.Data, (nuint)ke3.Data.Length, _currentServerState,
-                sessionKeyBuffer, (nuint)sessionKeyBuffer.Length);
+                sessionKeyBuffer, (nuint)sessionKeyBuffer.Length,
+                masterKeyBuffer, (nuint)masterKeyBuffer.Length);
 
-            OpaqueServerNative.opaque_server_state_destroy(_currentServerState);
+            opaque_server_state_destroy(_currentServerState);
             _currentServerState = 0;
 
             if (result != OpaqueResult.Success)
             {
-                return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
+                return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
                     OpaqueServerFailure.AuthenticationFailed(
                         $"{OpaqueServerConstants.ErrorMessages.FailedToFinishAuthentication}: {result}"));
             }
 
-            Result<SodiumSecureMemoryHandle, SodiumFailure> handleResult =
+            Result<SodiumSecureMemoryHandle, SodiumFailure> sessionHandleResult =
                 SodiumSecureMemoryHandle.Allocate(OpaqueConstants.HASH_LENGTH);
 
-            if (handleResult.IsErr)
+            if (sessionHandleResult.IsErr)
             {
-                return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
-                    OpaqueServerFailure.MemoryAllocationFailed(handleResult.UnwrapErr().Message));
+                return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
+                    OpaqueServerFailure.MemoryAllocationFailed(sessionHandleResult.UnwrapErr().Message));
             }
 
-            SodiumSecureMemoryHandle handle = handleResult.Unwrap();
+            SodiumSecureMemoryHandle sessionHandle = sessionHandleResult.Unwrap();
 
-            Result<Unit, SodiumFailure> writeResult = handle.Write(sessionKeyBuffer);
+            Result<Unit, SodiumFailure> writeResult = sessionHandle.Write(sessionKeyBuffer);
             if (writeResult.IsErr)
             {
-                handle.Dispose();
-                return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
+                sessionHandle.Dispose();
+                return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
                     OpaqueServerFailure.MemoryWriteFailed(writeResult.UnwrapErr().Message));
             }
 
-            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Ok(handle);
+            Result<SodiumSecureMemoryHandle, SodiumFailure> masterHandleResult =
+                SodiumSecureMemoryHandle.Allocate(OpaqueConstants.MASTER_KEY_LENGTH);
+
+            if (masterHandleResult.IsErr)
+            {
+                sessionHandle.Dispose();
+                return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
+                    OpaqueServerFailure.MemoryAllocationFailed(masterHandleResult.UnwrapErr().Message));
+            }
+
+            SodiumSecureMemoryHandle masterHandle = masterHandleResult.Unwrap();
+
+            writeResult = masterHandle.Write(masterKeyBuffer);
+            if (writeResult.IsErr)
+            {
+                sessionHandle.Dispose();
+                masterHandle.Dispose();
+                return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
+                    OpaqueServerFailure.MemoryWriteFailed(writeResult.UnwrapErr().Message));
+            }
+
+            return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Ok(
+                (sessionHandle, masterHandle));
         }
         finally
         {
             CryptographicOperations.ZeroMemory(sessionKeyBuffer);
+            CryptographicOperations.ZeroMemory(masterKeyBuffer);
         }
     }
 
@@ -197,13 +239,13 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
 
         if (_currentServerState != 0)
         {
-            OpaqueServerNative.opaque_server_state_destroy(_currentServerState);
+            opaque_server_state_destroy(_currentServerState);
             _currentServerState = 0;
         }
 
         if (_server != 0)
         {
-            OpaqueServerNative.opaque_server_destroy(_server);
+            opaque_server_destroy(_server);
             _server = 0;
         }
     }
@@ -217,7 +259,7 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
             PublicKey = new byte[OpaqueConstants.PUBLIC_KEY_LENGTH]
         };
 
-        OpaqueResult result = (OpaqueResult)OpaqueServerNative.opaque_server_derive_keypair_from_seed(
+        OpaqueResult result = (OpaqueResult)opaque_server_derive_keypair_from_seed(
             keyMaterialBytes, (nuint)keyMaterialBytes.Length,
             keys.PrivateKey, (nuint)keys.PrivateKey.Length,
             keys.PublicKey, (nuint)keys.PublicKey.Length);

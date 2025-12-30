@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Ecliptix.Domain.Memberships.Persistors.CompiledQueries;
 
-public record CredentialsRecord(byte[] SecureKey, byte[] MaskingKey, int Version);
+public record CredentialsRecord(byte[] SecureKey, byte[] MaskingKey, int Version, int OpaqueKeyVersion);
 
 public static class AccountSecureKeyAuthQueries
 {
@@ -112,7 +112,8 @@ public static class AccountSecureKeyAuthQueries
         return Option<CredentialsRecord>.Some(new CredentialsRecord(
             auth.SecureKey,
             auth.MaskingKey,
-            auth.CredentialsVersion));
+            auth.CredentialsVersion,
+            auth.OpaqueKeyVersion));
     }
 
     private static readonly Func<EcliptixSchemaContext, Guid, Task<AccountSecureKeyAuthEntity?>>
@@ -137,7 +138,8 @@ public static class AccountSecureKeyAuthQueries
             ? Option<CredentialsRecord>.Some(new CredentialsRecord(
                 auth.SecureKey,
                 auth.MaskingKey,
-                auth.CredentialsVersion))
+                auth.CredentialsVersion,
+                auth.OpaqueKeyVersion))
             : Option<CredentialsRecord>.None;
     }
 }

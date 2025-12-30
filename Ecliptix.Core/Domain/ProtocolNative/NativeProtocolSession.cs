@@ -90,7 +90,7 @@ public sealed class NativeProtocolSession : IDisposable
     public Result<(uint SendingIndex, uint ReceivingIndex), EcliptixProtocolFailure> GetChainIndices() =>
         _wrapper.GetChainIndices();
 
-    public void SetEventHandler(Action<uint>? onProtocolStateChanged) => _wrapper.SetEventHandler(onProtocolStateChanged);
+    public Result<Unit, EcliptixProtocolFailure> SetEventHandler(Action<uint>? onProtocolStateChanged) => _wrapper.SetEventHandler(onProtocolStateChanged);
 
     public void Dispose()
     {

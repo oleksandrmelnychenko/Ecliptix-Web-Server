@@ -1,3 +1,4 @@
+using Ecliptix.OPAQUE.Server;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Utilities;
 

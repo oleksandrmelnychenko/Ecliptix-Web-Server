@@ -3,9 +3,6 @@ using System.Security.Cryptography;
 
 namespace Ecliptix.Utilities;
 
-/// <summary>
-/// Small helper to ensure sensitive byte buffers are wiped as soon as they leave scope.
-/// </summary>
 public sealed class SecureBytes : IDisposable
 {
     private byte[]? _buffer;

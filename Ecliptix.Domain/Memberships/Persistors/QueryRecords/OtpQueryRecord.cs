@@ -10,4 +10,5 @@ public record OtpQueryRecord
     public required DateTimeOffset ExpiresAt { get; init; }
     public required OtpStatus Status { get; init; }
     public required bool IsActive { get; init; }
+    public short AttemptCount { get; init; }
 }

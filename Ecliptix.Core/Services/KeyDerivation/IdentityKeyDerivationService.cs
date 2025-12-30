@@ -11,7 +11,7 @@ public interface IIdentityKeyDerivationService
 {
     Task<Result<EcliptixSystemIdentityKeys, KeySplittingFailure>> DeriveIdentityKeysFromMasterKeyAsync(
         SodiumSecureMemoryHandle masterKeyHandle,
-        Guid membershipId);
+        Guid accountId);
 }
 
 internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationService
@@ -49,7 +49,7 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
 
     public async Task<Result<EcliptixSystemIdentityKeys, KeySplittingFailure>> DeriveIdentityKeysFromMasterKeyAsync(
         SodiumSecureMemoryHandle masterKeyHandle,
-        Guid membershipId)
+        Guid accountId)
     {
         byte[]? masterKeyBytes = null;
         byte[]? ed25519Seed = null;
@@ -68,10 +68,10 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
             }
 
             masterKeyBytes = readResult.Unwrap();
-            string membershipIdString = membershipId.ToString();
+            string accountIdString = accountId.ToString();
 
-            ed25519Seed = await Task.Run(() => MasterKeyDerivation.DeriveEd25519Seed(masterKeyBytes, membershipIdString));
-            x25519Seed = await Task.Run(() => MasterKeyDerivation.DeriveX25519Seed(masterKeyBytes, membershipIdString));
+            ed25519Seed = await Task.Run(() => MasterKeyDerivation.DeriveEd25519Seed(masterKeyBytes, accountIdString));
+            x25519Seed = await Task.Run(() => MasterKeyDerivation.DeriveX25519Seed(masterKeyBytes, accountIdString));
 
             Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> ed25519Result =
                 GenerateEd25519KeyPairFromSeed(ed25519Seed);
@@ -96,7 +96,7 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
             (x25519SkHandle, byte[] x25519Pk) = x25519Result.Unwrap();
 
             Result<(uint id, SodiumSecureMemoryHandle sk, byte[] pk, byte[] sig), EcliptixProtocolFailure> spkResult =
-                GenerateSignedPreKey(ed25519SkHandle, masterKeyBytes, membershipIdString);
+                GenerateSignedPreKey(ed25519SkHandle, masterKeyBytes, accountIdString);
             if (spkResult.IsErr)
             {
                 EcliptixProtocolFailure error = spkResult.UnwrapErr();
@@ -277,7 +277,7 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
     private static Result<(uint id, SodiumSecureMemoryHandle sk, byte[] pk, byte[] sig), EcliptixProtocolFailure> GenerateSignedPreKey(
         SodiumSecureMemoryHandle ed25519SkHandle,
         byte[] masterKey,
-        string membershipId)
+        string accountId)
     {
         byte[]? spkSeed = null;
         byte[]? spkPrivateKey = null;
@@ -285,7 +285,7 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
 
         try
         {
-            spkSeed = MasterKeyDerivation.DeriveSignedPreKeySeed(masterKey, membershipId);
+            spkSeed = MasterKeyDerivation.DeriveSignedPreKeySeed(masterKey, accountId);
             uint spkId = BitConverter.ToUInt32(spkSeed, 0);
 
             spkPrivateKey = new byte[Constants.X25519PrivateKeySize];
@@ -380,7 +380,14 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
         {
             for (uint i = 0; i < count; i++)
             {
-                uint opkId = (uint)Random.Shared.Next(RandomIdMinValue, int.MaxValue);
+
+                byte[] randomBytes = RandomNumberGenerator.GetBytes(sizeof(uint));
+                uint opkId = BitConverter.ToUInt32(randomBytes, 0);
+
+                if (opkId < RandomIdMinValue)
+                {
+                    opkId = RandomIdMinValue;
+                }
 
                 Result<(SodiumSecureMemoryHandle skHandle, byte[] pk), EcliptixProtocolFailure> keyPairResult =
                     SodiumInterop.GenerateX25519KeyPair(string.Format(OneTimePreKeyIdFormat, opkId));
