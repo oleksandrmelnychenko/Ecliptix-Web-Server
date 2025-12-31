@@ -9,6 +9,7 @@ public static class VerificationFlowMessageKeys
     public const string FlowNotFoundOrInvalid = "flow_not_found_or_invalid";
 
     public const string InvalidOtp = "otp_invalid";
+    public const string OtpExpired = "otp_expired";
     public const string OtpNotFound = "otp_not_found";
     public const string OtpNotFoundForAttemptIncrement = "otp_not_found_for_attempt_increment";
     public const string OtpNotFoundForLogging = "otp_not_found_for_logging";

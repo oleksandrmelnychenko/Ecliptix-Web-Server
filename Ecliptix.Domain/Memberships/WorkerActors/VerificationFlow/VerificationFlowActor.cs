@@ -26,6 +26,7 @@ namespace Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow;
 
 public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 {
+    private const int OtpCodeLength = 6;
     private readonly VerificationFlowTimeouts _timeouts;
     private readonly IOptionsMonitor<SecurityConfiguration> _securityConfig;
 
@@ -146,7 +147,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                             SecondsRemaining = 0,
                             SessionIdentifier = ByteString.Empty,
                             Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Failed,
-                            Message = message
+                            Message = message,
+                            MessageKey = verificationFlowFailure.Message
                         }));
                 }
 
@@ -227,6 +229,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             if (failure.IsUserFacing)
             {
                 string message;
+                string messageKey = failure.Message;
 
                 if (failure.FailureType == VerificationFlowFailureType.RateLimitExceeded
                     && uint.TryParse(failure.Message, out uint minutes))
@@ -235,6 +238,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                         VerificationFlowMessageKeys.MobileOtpLimitExhausted,
                         _cultureName);
                     message = string.Format(messageTemplate, minutes);
+                    messageKey = VerificationFlowMessageKeys.MobileOtpLimitExhausted;
                 }
                 else
                 {
@@ -249,7 +253,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                             ? Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier)
                             : ByteString.Empty,
                         Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Failed,
-                        Message = message
+                        Message = message,
+                        MessageKey = messageKey
                     }));
             }
 
@@ -319,7 +324,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         CommandAsync<VerifyFlowActorEvent>(actorEvent =>
         {
             string message =
-                _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidOtp, actorEvent.CultureName);
+                _localizationProvider.Localize(VerificationFlowMessageKeys.OtpExpired, actorEvent.CultureName);
             Sender.Tell(CreateVerifyResponse(VerificationResult.Expired, message));
             return Task.CompletedTask;
         });
@@ -338,7 +343,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             if (_activeOtp?.IsActive != true)
             {
                 string message =
-                    _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidOtp, actorEvent.CultureName);
+                    _localizationProvider.Localize(VerificationFlowMessageKeys.OtpExpired, actorEvent.CultureName);
                 Sender.Tell(CreateVerifyResponse(VerificationResult.Expired, message));
                 return;
             }
@@ -347,7 +352,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             if (_activeOtp.ExpiresAt <= utcNow)
             {
                 string message =
-                    _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidOtp, actorEvent.CultureName);
+                    _localizationProvider.Localize(VerificationFlowMessageKeys.OtpExpired, actorEvent.CultureName);
                 await ExpireCurrentOtp();
                 Become(OtpExpiredWaitingForSession);
                 Sender.Tell(CreateVerifyResponse(VerificationResult.Expired, message));
@@ -369,7 +374,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                             ? Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier)
                             : ByteString.Empty,
                         Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.MaxAttemptsReached,
-                        Message = message
+                        Message = message,
+                        MessageKey = VerificationFlowMessageKeys.OtpMaxAttemptsReached
                     }));
 
                 Sender.Tell(CreateVerifyResponse(VerificationResult.Expired, message));
@@ -392,7 +398,14 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             bool verificationSucceeded;
             try
             {
-                verificationSucceeded = _activeOtp.Verify(actorEvent.OneTimePassword);
+                string normalizedOtp = NormalizeOtpCode(actorEvent.OneTimePassword);
+                if (normalizedOtp.Length != OtpCodeLength)
+                {
+                    await HandleFailedVerification(actorEvent.CultureName);
+                    return;
+                }
+
+                verificationSucceeded = _activeOtp.Verify(normalizedOtp);
             }
             catch (Exception ex)
             {
@@ -600,7 +613,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                         SecondsRemaining = 0,
                         SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
                         Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.MaxAttemptsReached,
-                        Message = maxAttemptsMessage
+                        Message = maxAttemptsMessage,
+                        MessageKey = VerificationFlowMessageKeys.OtpMaxAttemptsReached
                     }));
             }
 
@@ -655,30 +669,56 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 (string cooldownOutcome, uint cooldownRemainingSeconds) = cooldownCheckResult.Unwrap();
                 if (cooldownOutcome != VerificationFlowMessageKeys.ResendAllowed)
                 {
+                    if (_writer != null && !_writerCompleted)
+                    {
+                        CompleteWriter();
+                    }
+
+                    _writer = actorEvent.ChannelWriter;
+                    _writerCompleted = false;
+
+                    VerificationCountdownUpdate.Types.CountdownUpdateStatus status;
+                    string message;
+                    string messageKey;
+                    uint secondsRemaining = 0;
+
                     switch (cooldownOutcome)
                     {
                         case VerificationFlowMessageKeys.OtpMaxAttemptsReached:
                             {
-                                string message = _localizationProvider.Localize(
+                                status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.MaxAttemptsReached;
+                                messageKey = VerificationFlowMessageKeys.OtpMaxAttemptsReached;
+                                message = _localizationProvider.Localize(
                                     VerificationFlowMessageKeys.OtpMaxAttemptsReached, actorEvent.CultureName);
-                                Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
-                                    VerificationFlowFailure.RateLimitExceeded(message)));
                             }
                             break;
                         case VerificationFlowMessageKeys.ResendCooldown:
                             {
-                                string message = _localizationProvider.Localize(VerificationFlowMessageKeys.ResendCooldown);
-                                Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
-                                    VerificationFlowFailure.RateLimitExceeded($"{message} ({cooldownRemainingSeconds}s)")));
+                                status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.ResendCooldown;
+                                messageKey = VerificationFlowMessageKeys.ResendCooldown;
+                                message = _localizationProvider.Localize(
+                                    VerificationFlowMessageKeys.ResendCooldown, actorEvent.CultureName);
+                                secondsRemaining = cooldownRemainingSeconds;
                             }
                             break;
                         default:
                             await CompleteWithError(
                                 VerificationFlowFailure.Generic(
                                     $"Unknown outcome from RequestResendOtp: {cooldownOutcome}"));
-                            break;
+                            return;
                     }
 
+                    await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                        new VerificationCountdownUpdate
+                        {
+                            SecondsRemaining = secondsRemaining,
+                            SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
+                            Status = status,
+                            Message = message,
+                            MessageKey = messageKey
+                        }));
+
+                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
                     return;
                 }
 
@@ -727,15 +767,43 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
             if (failure.IsUserFacing)
             {
-                string message = _localizationProvider.Localize(failure.Message, _cultureName);
+                string message;
+                string messageKey = failure.Message;
+
+                if (failure.FailureType == VerificationFlowFailureType.RateLimitExceeded
+                    && uint.TryParse(failure.Message, out uint minutes))
+                {
+                    string messageTemplate = _localizationProvider.Localize(
+                        VerificationFlowMessageKeys.MobileOtpLimitExhausted,
+                        _cultureName);
+                    message = string.Format(messageTemplate, minutes);
+                    messageKey = VerificationFlowMessageKeys.MobileOtpLimitExhausted;
+                }
+                else
+                {
+                    message = _localizationProvider.Localize(failure.Message, _cultureName);
+                }
+
+                if (_writer != null && !_writerCompleted)
+                {
+                    CompleteWriter();
+                }
+
+                _writer = actorEvent.ChannelWriter;
+                _writerCompleted = false;
+
                 await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
                     new VerificationCountdownUpdate
                     {
                         SecondsRemaining = 0,
                         SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
                         Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Failed,
-                        Message = message
+                        Message = message,
+                        MessageKey = messageKey
                     }));
+
+                Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
+                return;
             }
 
             Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(failure));
@@ -762,17 +830,50 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 break;
             case VerificationFlowMessageKeys.OtpMaxAttemptsReached:
                 {
+                    if (_writer != null && !_writerCompleted)
+                    {
+                        CompleteWriter();
+                    }
+
+                    _writer = actorEvent.ChannelWriter;
+                    _writerCompleted = false;
+
                     string message = _localizationProvider.Localize(
                         VerificationFlowMessageKeys.OtpMaxAttemptsReached, actorEvent.CultureName);
-                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.RateLimitExceeded(message)));
+                    await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                        new VerificationCountdownUpdate
+                        {
+                            SecondsRemaining = 0,
+                            SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
+                            Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.MaxAttemptsReached,
+                            Message = message,
+                            MessageKey = VerificationFlowMessageKeys.OtpMaxAttemptsReached
+                        }));
+                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
                 }
                 break;
             case VerificationFlowMessageKeys.ResendCooldown:
                 {
-                    string message = _localizationProvider.Localize(VerificationFlowMessageKeys.ResendCooldown);
-                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
-                        VerificationFlowFailure.RateLimitExceeded($"{message} ({remainingSeconds}s)")));
+                    if (_writer != null && !_writerCompleted)
+                    {
+                        CompleteWriter();
+                    }
+
+                    _writer = actorEvent.ChannelWriter;
+                    _writerCompleted = false;
+
+                    string message = _localizationProvider.Localize(
+                        VerificationFlowMessageKeys.ResendCooldown, actorEvent.CultureName);
+                    await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
+                        new VerificationCountdownUpdate
+                        {
+                            SecondsRemaining = remainingSeconds,
+                            SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
+                            Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.ResendCooldown,
+                            Message = message,
+                            MessageKey = VerificationFlowMessageKeys.ResendCooldown
+                        }));
+                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
                 }
                 break;
             default:
@@ -1000,7 +1101,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                     SessionIdentifier = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
                     Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired,
                     Message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowExpired,
-                        actorEvent.CultureName)
+                        actorEvent.CultureName),
+                    MessageKey = VerificationFlowMessageKeys.VerificationFlowExpired
                 }));
 
             CompleteWriter();
@@ -1130,13 +1232,47 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                     ? phoneNumberQueryRecord.MobileNumber[^4..]
                     : "****");
 
-            _activeOtp = null;
-            _activeOtpRecord = Option<OtpQueryRecord>.None;
+            try
+            {
+                if (_activeOtp?.IsActive == true)
+                {
+                    await UpdateOtpStatus(OtpStatus.Invalid);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "[verification.otp.cancelled.status-update-failed] ConnectId {ConnectId}", _connectId);
+            }
+
+            ClearActiveOtpState();
 
             PersistState();
 
             return Result<Unit, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Generic(VerificationFlowMessageKeys.Generic));
+        }
+        catch (Exception ex)
+        {
+            VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
+            Serilog.Log.Warning(ex, "[verification.otp.send.exception] ConnectId {ConnectId}", _connectId);
+
+            try
+            {
+                if (_activeOtp?.IsActive == true)
+                {
+                    await UpdateOtpStatus(OtpStatus.Invalid);
+                }
+            }
+            catch (Exception updateEx)
+            {
+                Log.Warning(updateEx, "[verification.otp.send.status-update-failed] ConnectId {ConnectId}", _connectId);
+            }
+
+            ClearActiveOtpState();
+            PersistState();
+
+            return Result<Unit, VerificationFlowFailure>.Err(
+                VerificationFlowFailure.SmsSendFailed(innerException: ex));
         }
 
         if (smsResult?.IsSuccess != true)
@@ -1159,9 +1295,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 smsResult?.ErrorMessage.Match(err => err, () => "unknown") ?? "unknown");
             _activity?.AddEvent(new ActivityEvent("verification.otp.failed"));
 
-            _activeOtp = null;
-            _activeOtpRecord = Option<OtpQueryRecord>.None;
-
+            ClearActiveOtpState();
             PersistState();
 
             return Result<Unit, VerificationFlowFailure>.Err(
@@ -1420,6 +1554,26 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     private static uint CalculateRemainingSeconds(DateTimeOffset expiresAt)
     {
         return (uint)Math.Max(0, Math.Ceiling((expiresAt - DateTimeOffset.UtcNow).TotalSeconds));
+    }
+
+    private static string NormalizeOtpCode(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return string.Empty;
+        }
+
+        Span<char> buffer = code.Length <= 64 ? stackalloc char[code.Length] : new char[code.Length];
+        int length = 0;
+        foreach (char character in code)
+        {
+            if (char.IsDigit(character))
+            {
+                buffer[length++] = character;
+            }
+        }
+
+        return length == 0 ? string.Empty : new string(buffer[..length]);
     }
 
     private static Result<VerifyCodeResponse, VerificationFlowFailure> CreateVerifyResponse(VerificationResult result,
@@ -1707,7 +1861,9 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     private void HandleSessionValidityCheck(CheckFlowValidityQuery _)
     {
         TimeSpan remaining = _sessionDeadline - DateTimeOffset.UtcNow;
-        bool isValid = remaining > TimeSpan.Zero && _activeOtp != null;
+        bool otpActive = _activeOtp?.IsActive == true &&
+                         CalculateRemainingSeconds(_activeOtp.ExpiresAt) > 0;
+        bool isValid = remaining > TimeSpan.Zero && otpActive;
         uint remainingSeconds = (uint)Math.Max(0, remaining.TotalSeconds);
 
         Sender.Tell(new FlowValidityResponse(isValid, remainingSeconds));
@@ -1729,20 +1885,48 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         _writer = cmd.NewWriter;
         _writerCompleted = false;
 
-        TimeSpan remaining = _sessionDeadline - DateTimeOffset.UtcNow;
-        uint remainingSeconds = (uint)Math.Max(0, remaining.TotalSeconds);
+        bool sessionExpired = _sessionDeadline != default && DateTimeOffset.UtcNow >= _sessionDeadline;
+        uint remainingSeconds = _activeOtp?.IsActive == true
+            ? CalculateRemainingSeconds(_activeOtp.ExpiresAt)
+            : 0;
         _activeOtpRemainingSeconds = remainingSeconds;
 
-        await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(
-            new VerificationCountdownUpdate
-            {
-                SecondsRemaining = remainingSeconds,
-                SessionIdentifier = _verificationFlow.IsSome
-                    ? Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier)
-                    : ByteString.Empty,
-                Status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Active,
-                Message = string.Empty
-            }));
+        VerificationCountdownUpdate.Types.CountdownUpdateStatus status;
+        string message = string.Empty;
+        string? messageKey = null;
+        if (sessionExpired)
+        {
+            status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.SessionExpired;
+            message = _localizationProvider.Localize(VerificationFlowMessageKeys.VerificationFlowExpired, _cultureName);
+            messageKey = VerificationFlowMessageKeys.VerificationFlowExpired;
+        }
+        else if (remainingSeconds > 0)
+        {
+            status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Active;
+        }
+        else
+        {
+            status = VerificationCountdownUpdate.Types.CountdownUpdateStatus.Expired;
+            message = _localizationProvider.Localize(VerificationFlowMessageKeys.OtpExpired, _cultureName);
+            messageKey = VerificationFlowMessageKeys.OtpExpired;
+        }
+
+        VerificationCountdownUpdate update = new()
+        {
+            SecondsRemaining = remainingSeconds,
+            SessionIdentifier = _verificationFlow.IsSome
+                ? Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier)
+                : ByteString.Empty,
+            Status = status
+        };
+
+        if (!string.IsNullOrEmpty(message))
+        {
+            update.Message = message;
+            update.MessageKey = messageKey ?? string.Empty;
+        }
+
+        await SafeWriteToChannelAsync(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Ok(update));
 
         Serilog.Log.Information(
             "[verification.flow.resumed] ConnectId {ConnectId} - Stream resumed at {RemainingSeconds}s",

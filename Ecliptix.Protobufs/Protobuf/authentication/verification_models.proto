@@ -54,6 +54,7 @@ message VerificationCountdownUpdate {
 
   CountdownUpdateStatus status = 4;
   optional string message = 5;
+  optional string message_key = 6;
 }
 
 message VerifyCodeRequest {

@@ -56,6 +56,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="Memberships\Persistors\Extensions\" />
+      <Folder Include="Contexts\IdentityAccess\Infrastructure\Persistors\Extensions\" />
     </ItemGroup>
 </Project>

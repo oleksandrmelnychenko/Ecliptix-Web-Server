@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using Ecliptix.Domain.Memberships.Failures;
 using Ecliptix.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.Utilities;
+using Serilog;
 
 namespace Ecliptix.Domain.Memberships;
 
@@ -57,8 +58,12 @@ public sealed class OneTimePassword
             () =>
             {
                 string otp = GenerateOtpCode();
-
-                Console.WriteLine("\n\n\nGenerated OTP: " + otp+"\n\n\n");
+#if DEBUG
+                Log.Debug("[verification.otp.generated] Otp {Otp}", otp);
+                Console.WriteLine();
+                Console.WriteLine($"Generated OTP: {otp}");
+                Console.WriteLine();
+#endif
 
                 DateTimeOffset expiresAt = _utcNow().Add(_timeToLive);
 
