@@ -41,8 +41,8 @@ builder.Services.AddPooledDbContextFactory<EcliptixSchemaContext>(
 
 ### 2. **Audit Interceptor Pattern** ✅
 **Files:**
-- `Ecliptix.Domain/Schema/Interceptors/AuditInterceptor.cs` (new)
-- `Ecliptix.Domain/Schema/EcliptixSchemaContext.cs` (modified)
+- `src/Contexts/IdentityAccess/Domain/Schema/Interceptors/AuditInterceptor.cs` (new)
+- `src/Contexts/IdentityAccess/Domain/Schema/EcliptixSchemaContext.cs` (modified)
 
 **Before:**
 ```csharp
@@ -76,10 +76,10 @@ public class AuditInterceptor : SaveChangesInterceptor
 
 ### 3. **Compiled Queries** ✅
 **Files:**
-- `LoginAttemptQueries.cs` - 4 queries compiled
-- `MembershipRelationQueries.cs` - 2 queries compiled + N+1 eliminated
-- `MembershipQueries.cs` - 4 queries compiled
-- `AccountQueries.cs` - 2 queries compiled
+- `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/CompiledQueries/LoginAttemptQueries.cs` - 4 queries compiled
+- `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/CompiledQueries/MembershipRelationQueries.cs` - 2 queries compiled + N+1 eliminated
+- `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/CompiledQueries/MembershipQueries.cs` - 4 queries compiled
+- `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/CompiledQueries/AccountQueries.cs` - 2 queries compiled
 
 **Impact per Query:**
 - **Query plan caching** - compiled once, reused forever
@@ -223,7 +223,7 @@ builder.HasIndex(e => new { e.MembershipUniqueId, e.Outcome, e.AttemptedAt })
 
 ## Migration Created
 
-**File:** `Ecliptix.Domain/Migrations/*_OptimizeIndexesAndQueries.cs`
+**File:** `src/Contexts/IdentityAccess/Infrastructure/Migrations/*_OptimizeIndexesAndQueries.cs` (regenerate in the new context layout when reapplying)
 
 **Contains:**
 - Drop old inefficient indexes
@@ -256,20 +256,20 @@ dotnet ef database update --context EcliptixSchemaContext
 
 ### Core Changes
 1. ✅ `Ecliptix.Core/Program.cs` - DbContext pooling
-2. ✅ `Ecliptix.Domain/Schema/EcliptixSchemaContext.cs` - Interceptor integration
-3. ✅ `Ecliptix.Domain/Schema/Interceptors/AuditInterceptor.cs` - NEW FILE
-4. ✅ `Ecliptix.Domain/Schema/Design/EcliptixSchemaContextFactory.cs` - NEW FILE
+2. ✅ `src/Contexts/IdentityAccess/Domain/Schema/EcliptixSchemaContext.cs` - Interceptor integration
+3. ✅ `src/Contexts/IdentityAccess/Domain/Schema/Interceptors/AuditInterceptor.cs` - NEW FILE
+4. ✅ `src/Contexts/IdentityAccess/Domain/Schema/Design/EcliptixSchemaContextFactory.cs` - NEW FILE
 
 ### Query Optimizations
-5. ✅ `Ecliptix.Domain/Memberships/Persistors/CompiledQueries/LoginAttemptQueries.cs`
-6. ✅ `Ecliptix.Domain/Memberships/Persistors/CompiledQueries/MembershipRelationQueries.cs`
-7. ✅ `Ecliptix.Domain/Memberships/Persistors/CompiledQueries/MembershipQueries.cs`
-8. ✅ `Ecliptix.Domain/Memberships/Persistors/CompiledQueries/AccountQueries.cs`
+5. ✅ `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/CompiledQueries/LoginAttemptQueries.cs`
+6. ✅ `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/CompiledQueries/MembershipRelationQueries.cs`
+7. ✅ `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/CompiledQueries/MembershipQueries.cs`
+8. ✅ `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/CompiledQueries/AccountQueries.cs`
 
 ### Index Optimizations
-9. ✅ `Ecliptix.Domain/Schema/EntityBaseMap.cs`
-10. ✅ `Ecliptix.Domain/Schema/Configurations/MembershipRelationConfiguration.cs`
-11. ✅ `Ecliptix.Domain/Schema/Configurations/LoginAttemptConfiguration.cs`
+9. ✅ `src/Contexts/IdentityAccess/Domain/Schema/EntityBaseMap.cs`
+10. ✅ `src/Contexts/IdentityAccess/Domain/Schema/Configurations/MembershipRelationConfiguration.cs`
+11. ✅ `src/Contexts/IdentityAccess/Domain/Schema/Configurations/LoginAttemptConfiguration.cs`
 
 ---
 

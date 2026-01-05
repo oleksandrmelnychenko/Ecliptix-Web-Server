@@ -2,7 +2,7 @@ using System.Buffers;
 using System.Security.Cryptography;
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.Security.Certificate.Pinning.NativeResolver;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
 
 namespace Ecliptix.Security.Certificate.Pinning.Services;
 

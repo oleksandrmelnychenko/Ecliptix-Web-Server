@@ -1,6 +1,6 @@
 using Ecliptix.Core.Domain.Actors;
 using Ecliptix.Protobuf.ProtocolState;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
 
 namespace Ecliptix.Core.Domain.Protocol.Handlers;
 

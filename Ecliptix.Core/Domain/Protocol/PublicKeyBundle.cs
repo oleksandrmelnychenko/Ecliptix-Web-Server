@@ -1,4 +1,4 @@
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
 using Google.Protobuf;
 
 namespace Ecliptix.Core.Domain.Protocol;
@@ -176,12 +176,12 @@ public record PublicKeyBundle(
                 EcliptixProtocolFailure.Decode($"SignedPreKeySignature must be {Constants.Ed25519SignatureSize} bytes."));
         }
 
-        Result<bool, Ecliptix.Utilities.Failures.Sodium.SodiumFailure> signatureVerificationResult =
+        Result<bool, Ecliptix.SharedKernel.Failures.Sodium.SodiumFailure> signatureVerificationResult =
             SodiumInterop.VerifyDetached(signedPreKeySignature, signedPreKeyPublic, identityEd25519);
 
         if (signatureVerificationResult.IsErr)
         {
-            Ecliptix.Utilities.Failures.Sodium.SodiumFailure sodiumError = signatureVerificationResult.UnwrapErr();
+            Ecliptix.SharedKernel.Failures.Sodium.SodiumFailure sodiumError = signatureVerificationResult.UnwrapErr();
             return errorResultType(
                 EcliptixProtocolFailure.Decode($"SPK signature verification failed: {sodiumError.Message}"));
         }

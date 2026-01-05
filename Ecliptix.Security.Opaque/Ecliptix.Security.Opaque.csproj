@@ -28,8 +28,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Ecliptix.Utilities\Ecliptix.Utilities.csproj" />
     <ProjectReference Include="..\Ecliptix.Protobufs\Ecliptix.Protobufs.csproj" />
+    <ProjectReference Include="..\src\Shared\Ecliptix.SharedKernel\Ecliptix.SharedKernel.csproj" />
   </ItemGroup>
 
 

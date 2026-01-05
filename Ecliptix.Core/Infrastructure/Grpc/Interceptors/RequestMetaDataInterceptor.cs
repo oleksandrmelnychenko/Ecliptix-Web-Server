@@ -1,5 +1,5 @@
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 

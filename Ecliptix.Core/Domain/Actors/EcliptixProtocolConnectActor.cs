@@ -1,16 +1,16 @@
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
-using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Domain.ProtocolNative;
-using Ecliptix.Domain.Memberships.ActorEvents.VerificationFlow;
+using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.ProtocolState;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Actors;
 using Google.Protobuf;
 using System.Security.Cryptography;
-using Unit = Ecliptix.Utilities.Unit;
+using Unit = Ecliptix.SharedKernel.Unit;
 
 namespace Ecliptix.Core.Domain.Actors;
 

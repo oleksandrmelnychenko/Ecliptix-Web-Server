@@ -1,42 +1,40 @@
 using Akka.Actor;
 using Ecliptix.Core.Configuration;
-using Ecliptix.Core.Domain.Actors;
-using Ecliptix.Domain;
-using Ecliptix.Domain.AppDevices.Persistors;
-using Ecliptix.Domain.Memberships.Persistors;
-using Ecliptix.Domain.Memberships.WorkerActors.AccountProfileActor;
-using Ecliptix.Domain.Memberships.WorkerActors.Membership;
-using Ecliptix.Domain.Memberships.WorkerActors.VerificationFlow;
-using Ecliptix.Domain.Providers.Twilio;
-using Ecliptix.Domain.Schema;
-using Ecliptix.Domain.Services.Security;
-using Ecliptix.Security.Opaque.Contracts;
-using Ecliptix.Utilities;
-using Ecliptix.Utilities.Configuration;
+using Ecliptix.DeviceProvisioning.Infrastructure.Persistors;
+using Ecliptix.IdentityAccess.Domain;
+using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.AccountProfileActor;
+using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.Membership;
+using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.VerificationFlow;
+using Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
+using Ecliptix.IdentityAccess.Domain.Providers.Twilio;
+using Ecliptix.IdentityAccess.Domain.Schema;
+using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Actors;
+using Ecliptix.SharedKernel.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Ecliptix.Security.Opaque.Contracts;
+using Ecliptix.IdentityAccess.Domain.Services.Security;
 
 namespace Ecliptix.Core.Services;
 
+/// <summary>
+/// Bootstraps the core actor system and registers all actor refs in the shared registry.
+/// </summary>
 public sealed class ActorSystemInitializationHost(
     ActorSystem actorSystem,
     IEcliptixActorRegistry registry,
-    IServiceProvider serviceProvider)
-    : IHostedService
+    IDbContextFactory<EcliptixSchemaContext> dbContextFactory,
+    IOpaqueProtocolService opaqueProtocolService,
+    ILocalizationProvider localizationProvider,
+    IMasterKeyService masterKeyService,
+    ISmsProvider smsProvider,
+    IOptionsMonitor<SecurityConfiguration> securityConfig) : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        IDbContextFactory<EcliptixSchemaContext> dbContextFactory =
-            serviceProvider.GetRequiredService<IDbContextFactory<EcliptixSchemaContext>>();
-        IOpaqueProtocolService opaqueProtocolService = serviceProvider.GetRequiredService<IOpaqueProtocolService>();
-        ISmsProvider smsProvider = serviceProvider.GetRequiredService<ISmsProvider>();
-        ILocalizationProvider localizationProvider = serviceProvider.GetRequiredService<ILocalizationProvider>();
-        IMasterKeyService masterKeyService = serviceProvider.GetRequiredService<IMasterKeyService>();
-        IOptionsMonitor<SecurityConfiguration> securityConfig =
-            serviceProvider.GetRequiredService<IOptionsMonitor<SecurityConfiguration>>();
-
         IActorRef protocolSystemActor = actorSystem.ActorOf(
-            EcliptixProtocolSystemActor.Build(),
+            Props.Create(() => new Domain.Actors.EcliptixProtocolSystemActor()),
             ApplicationConstants.ActorNames.ProtocolSystem);
 
         IActorRef appDevicePersistor = actorSystem.ActorOf(
@@ -47,10 +45,13 @@ public sealed class ActorSystemInitializationHost(
             MembershipPersistorActor.Build(dbContextFactory, securityConfig),
             ApplicationConstants.ActorNames.MembershipPersistorActor);
 
-        IActorRef verificationFlowPersistorActor = actorSystem.ActorOf(
-            VerificationFlowPersistorActor.Build(dbContextFactory, securityConfig,
-                Option<IActorRef>.Some(membershipPersistorActor)),
-            ApplicationConstants.ActorNames.VerificationFlowPersistorActor);
+        IActorRef accountPersistorActor = actorSystem.ActorOf(
+            AccountPersistorActor.Build(dbContextFactory),
+            ApplicationConstants.ActorNames.AccountPersistorActor);
+
+        IActorRef passwordRecoveryPersistorActor = actorSystem.ActorOf(
+            PasswordRecoveryPersistorActor.Build(dbContextFactory, securityConfig),
+            ApplicationConstants.ActorNames.PasswordRecoveryPersistorActor);
 
         IActorRef masterKeySharePersistorActor = actorSystem.ActorOf(
             MasterKeySharePersistorActor.Build(dbContextFactory),
@@ -60,13 +61,9 @@ public sealed class ActorSystemInitializationHost(
             LogoutAuditPersistorActor.Build(dbContextFactory),
             ApplicationConstants.ActorNames.LogoutAuditPersistorActor);
 
-        IActorRef accountPersistorActor = actorSystem.ActorOf(
-            AccountPersistorActor.Build(dbContextFactory),
-            ApplicationConstants.ActorNames.AccountPersistorActor);
-
-        IActorRef passwordRecoveryPersistorActor = actorSystem.ActorOf(
-            PasswordRecoveryPersistorActor.Build(dbContextFactory, securityConfig),
-            ApplicationConstants.ActorNames.PasswordRecoveryPersistorActor);
+        IActorRef accountProfilePersistorActor = actorSystem.ActorOf(
+            AccountProfilePersistorActor.Build(dbContextFactory),
+            ApplicationConstants.ActorNames.AccountProfilePersistorActor);
 
         IActorRef membershipActor = actorSystem.ActorOf(
             MembershipActor.Build(
@@ -79,6 +76,10 @@ public sealed class ActorSystemInitializationHost(
                 securityConfig),
             ApplicationConstants.ActorNames.MembershipActor);
 
+        IActorRef verificationFlowPersistorActor = actorSystem.ActorOf(
+            VerificationFlowPersistorActor.Build(dbContextFactory, securityConfig, Option<IActorRef>.Some(membershipPersistorActor)),
+            ApplicationConstants.ActorNames.VerificationFlowPersistorActor);
+
         IActorRef verificationFlowManagerActor = actorSystem.ActorOf(
             VerificationFlowManagerActor.Build(
                 verificationFlowPersistorActor,
@@ -88,30 +89,25 @@ public sealed class ActorSystemInitializationHost(
                 securityConfig),
             ApplicationConstants.ActorNames.VerificationFlowManagerActor);
 
-        IActorRef accountProfilePersistorActor = actorSystem.ActorOf(
-            AccountProfilePersistorActor.Build(dbContextFactory),
-            ApplicationConstants.ActorNames.AccountProfilePersistorActor);
-
-        IActorRef accountProfileActor = actorSystem.ActorOf(AccountProfileActor.Build(accountProfilePersistorActor), ApplicationConstants.ActorNames.AccountProfileActor);
+        IActorRef accountProfileActor = actorSystem.ActorOf(
+            AccountProfileActor.Build(accountProfilePersistorActor),
+            ApplicationConstants.ActorNames.AccountProfileActor);
 
         registry.Register(ActorIds.EcliptixProtocolSystemActor, protocolSystemActor);
         registry.Register(ActorIds.AppDevicePersistorActor, appDevicePersistor);
         registry.Register(ActorIds.VerificationFlowPersistorActor, verificationFlowPersistorActor);
         registry.Register(ActorIds.VerificationFlowManagerActor, verificationFlowManagerActor);
         registry.Register(ActorIds.MembershipPersistorActor, membershipPersistorActor);
+        registry.Register(ActorIds.MembershipActor, membershipActor);
         registry.Register(ActorIds.MasterKeySharePersistorActor, masterKeySharePersistorActor);
         registry.Register(ActorIds.LogoutAuditPersistorActor, logoutAuditPersistorActor);
         registry.Register(ActorIds.AccountPersistorActor, accountPersistorActor);
         registry.Register(ActorIds.PasswordRecoveryPersistorActor, passwordRecoveryPersistorActor);
-        registry.Register(ActorIds.MembershipActor, membershipActor);
-        registry.Register(ActorIds.AccountProfileActor, accountProfileActor);
         registry.Register(ActorIds.AccountProfilePersistorActor, accountProfilePersistorActor);
+        registry.Register(ActorIds.AccountProfileActor, accountProfileActor);
 
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

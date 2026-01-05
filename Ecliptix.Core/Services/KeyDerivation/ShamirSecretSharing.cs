@@ -1,7 +1,7 @@
 using System.Numerics;
 using System.Security.Cryptography;
-using Ecliptix.Utilities;
-using Ecliptix.Utilities.Failures;
+using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Failures;
 
 namespace Ecliptix.Core.Services.KeyDerivation;
 
@@ -512,7 +512,7 @@ public sealed class ShamirSecretSharing : ISecretSharingService
 
         try
         {
-            Result<byte[], Ecliptix.Utilities.Failures.Sodium.SodiumFailure> readResult =
+            Result<byte[], Ecliptix.SharedKernel.Failures.Sodium.SodiumFailure> readResult =
                 keyHandle.ReadBytes(keyHandle.Length);
             if (readResult.IsErr)
             {
@@ -527,7 +527,7 @@ public sealed class ShamirSecretSharing : ISecretSharingService
                 return await SplitKeyAsync(keyBytes, threshold, totalShares, hmacKeyBytes);
             }
 
-            Result<byte[], Ecliptix.Utilities.Failures.Sodium.SodiumFailure> hmacReadResult =
+            Result<byte[], Ecliptix.SharedKernel.Failures.Sodium.SodiumFailure> hmacReadResult =
                 hmacKeyHandle.ReadBytes(hmacKeyHandle.Length);
             if (hmacReadResult.IsErr)
             {
@@ -563,7 +563,7 @@ public sealed class ShamirSecretSharing : ISecretSharingService
         {
             if (hmacKeyHandle is { IsInvalid: false })
             {
-                Result<byte[], Ecliptix.Utilities.Failures.Sodium.SodiumFailure> hmacReadResult =
+                Result<byte[], Ecliptix.SharedKernel.Failures.Sodium.SodiumFailure> hmacReadResult =
                     hmacKeyHandle.ReadBytes(hmacKeyHandle.Length);
                 if (hmacReadResult.IsErr)
                 {
@@ -585,7 +585,7 @@ public sealed class ShamirSecretSharing : ISecretSharingService
 
             try
             {
-                Result<SodiumSecureMemoryHandle, Ecliptix.Utilities.Failures.Sodium.SodiumFailure> allocateResult =
+                Result<SodiumSecureMemoryHandle, Ecliptix.SharedKernel.Failures.Sodium.SodiumFailure> allocateResult =
                     SodiumSecureMemoryHandle.Allocate(reconstructedKey.Length);
                 if (allocateResult.IsErr)
                 {
@@ -595,7 +595,7 @@ public sealed class ShamirSecretSharing : ISecretSharingService
 
                 SodiumSecureMemoryHandle handle = allocateResult.Unwrap();
 
-                Result<Unit, Ecliptix.Utilities.Failures.Sodium.SodiumFailure> writeResult =
+                Result<Unit, Ecliptix.SharedKernel.Failures.Sodium.SodiumFailure> writeResult =
                     handle.Write(reconstructedKey);
                 if (!writeResult.IsErr)
                 {

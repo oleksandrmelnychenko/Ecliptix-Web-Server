@@ -1,5 +1,5 @@
-using Ecliptix.Utilities;
-using Ecliptix.Utilities.Failures.Sodium;
+using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Failures.Sodium;
 
 namespace Ecliptix.Core.Domain.Protocol;
 

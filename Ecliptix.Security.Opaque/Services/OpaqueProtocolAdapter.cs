@@ -7,7 +7,7 @@ using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Models;
 using Ecliptix.Security.Opaque.Models.AuthenticationMessages;
 using Ecliptix.Security.Opaque.Models.RegistrationMessages;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
 using Google.Protobuf;
 using Serilog;
 using Serilog.Events;

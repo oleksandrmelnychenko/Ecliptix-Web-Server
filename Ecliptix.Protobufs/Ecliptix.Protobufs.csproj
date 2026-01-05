@@ -27,27 +27,30 @@
     <!-- Core proto files -->
     <Protobuf Include="Protobuf\common\secure_envelope.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
     <Protobuf Include="Protobuf\common\health_check.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\protocol\key_exchange.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\protocol\protocol_state.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\protocol\key_materials.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\contexts\secure_protocol\key_exchange.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\contexts\secure_protocol\protocol_state.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\contexts\secure_protocol\key_materials.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
 
-    <!-- Device proto files -->
-    <Protobuf Include="Protobuf\device\device_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\device\device_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <!-- Context: IdentityAccess -->
+    <Protobuf Include="Protobuf\contexts\identity_access\account.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\contexts\identity_access\account_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\contexts\identity_access\auth_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\contexts\identity_access\membership_core.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\contexts\identity_access\membership_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\contexts\identity_access\opaque_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\contexts\identity_access\verification_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
 
-    <!-- Authentication proto files -->
-    <Protobuf Include="Protobuf\authentication\verification_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\authentication\auth_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <!-- Context: DeviceProvisioning -->
+    <Protobuf Include="Protobuf\contexts\device_provisioning\device_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\contexts\device_provisioning\device_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
 
-    <!-- Membership proto files -->
-    <Protobuf Include="Protobuf\membership\membership_core.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\membership\opaque_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\membership\membership_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+  </ItemGroup>
 
-    <!-- Account proto files -->
-    <Protobuf Include="Protobuf\account\account.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-      <Protobuf Include="Protobuf\account\account_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-
+  <ItemGroup>
+    <!-- Transport envelope + context-specific transport services -->
+    <Protobuf Include="Protobuf\transport\common\event_envelope.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\transport\identity_access.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
+    <Protobuf Include="Protobuf\transport\device_provisioning.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
   </ItemGroup>
 
 </Project>

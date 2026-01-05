@@ -86,7 +86,7 @@ public List<LoginAttemptEntity> LoginAttempts
 
 ### 3. **Bulk Operation Extensions** ✅
 
-**File:** `Ecliptix.Domain/Memberships/Persistors/Extensions/BulkOperationExtensions.cs`
+**File:** `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/Extensions/BulkOperationExtensions.cs`
 
 Created high-performance bulk operations using `ExecuteUpdate` and `ExecuteDelete` (EF Core 7+). These execute SQL directly **without loading entities into memory**.
 
@@ -315,11 +315,11 @@ await ctx.LoginAttempts
 
 ## Files Modified (Phase 2)
 
-1. ✅ `Ecliptix.Domain/Schema/Entities/MembershipEntity.cs`
-2. ✅ `Ecliptix.Domain/Schema/Entities/AccountEntity.cs`
-3. ✅ `Ecliptix.Domain/Schema/Entities/MembershipRelationEntity.cs`
-4. ✅ `Ecliptix.Domain/Schema/Entities/LoginAttempt.cs`
-5. ✅ `Ecliptix.Domain/Memberships/Persistors/Extensions/BulkOperationExtensions.cs` (NEW)
+1. ✅ `src/Contexts/IdentityAccess/Domain/Schema/Entities/MembershipEntity.cs`
+2. ✅ `src/Contexts/IdentityAccess/Domain/Schema/Entities/AccountEntity.cs`
+3. ✅ `src/Contexts/IdentityAccess/Domain/Schema/Entities/MembershipRelationEntity.cs`
+4. ✅ `src/Contexts/IdentityAccess/Domain/Schema/Entities/LoginAttempt.cs`
+5. ✅ `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/Extensions/BulkOperationExtensions.cs` (NEW)
 6. ✅ `Ecliptix.Core/Program.cs`
 
 ---

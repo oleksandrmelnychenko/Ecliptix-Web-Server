@@ -94,7 +94,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Ecliptix.Domain\Ecliptix.Domain.csproj" />
+      <ProjectReference Include="..\src\Shared\Ecliptix.SharedKernel\Ecliptix.SharedKernel.csproj" />
     </ItemGroup>
 
     <ItemGroup>

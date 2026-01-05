@@ -1,5 +1,5 @@
 using System;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
 
 namespace Ecliptix.Core.Domain.ProtocolNative;
 

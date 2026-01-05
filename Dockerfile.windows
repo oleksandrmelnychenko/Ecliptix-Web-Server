@@ -27,9 +27,14 @@ WORKDIR /src
 
 # Copy project files
 COPY ["Ecliptix.Core/Ecliptix.Core.csproj", "Ecliptix.Core/"]
-COPY ["Ecliptix.Domain/Ecliptix.Domain.csproj", "Ecliptix.Domain/"]
-COPY ["Ecliptix.Security.SSL.Native/Ecliptix.Security.SSL.Native.csproj", "Ecliptix.Security.SSL.Native/"]
+COPY ["src/Shared/Ecliptix.SharedKernel/Ecliptix.SharedKernel.csproj", "src/Shared/Ecliptix.SharedKernel/"]
+COPY ["src/Contexts/IdentityAccess/Domain/Ecliptix.IdentityAccess.Domain.csproj", "src/Contexts/IdentityAccess/Domain/"]
+COPY ["src/Contexts/IdentityAccess/Infrastructure/Ecliptix.IdentityAccess.Infrastructure.csproj", "src/Contexts/IdentityAccess/Infrastructure/"]
+COPY ["src/Contexts/DeviceProvisioning/Domain/Ecliptix.DeviceProvisioning.Domain.csproj", "src/Contexts/DeviceProvisioning/Domain/"]
+COPY ["src/Contexts/DeviceProvisioning/Infrastructure/Ecliptix.DeviceProvisioning.Infrastructure.csproj", "src/Contexts/DeviceProvisioning/Infrastructure/"]
 COPY ["Ecliptix.Security.Opaque/Ecliptix.Security.Opaque.csproj", "Ecliptix.Security.Opaque/"]
+COPY ["Ecliptix.Security.Certificate.Pinning/Ecliptix.Security.Certificate.Pinning.csproj", "Ecliptix.Security.Certificate.Pinning/"]
+COPY ["Ecliptix.Protobufs/Ecliptix.Protobufs.csproj", "Ecliptix.Protobufs/"]
 
 # Restore packages with retry logic
 RUN dotnet restore "Ecliptix.Core/Ecliptix.Core.csproj" --verbosity minimal
@@ -47,16 +52,6 @@ ARG BUILD_CONFIGURATION=Release
 
 # Publish with Windows runtime targeting
 RUN dotnet publish "./Ecliptix.Core.csproj" -c %BUILD_CONFIGURATION% -o /app/publish --runtime win-x64 --self-contained false --verbosity normal
-
-# Verify native library exists and copy to multiple locations for redundancy
-RUN dir /src/Ecliptix.Security.SSL.Native/
-RUN if exist "/src/Ecliptix.Security.SSL.Native/ecliptix.server.dll" ( \
-        copy "/src/Ecliptix.Security.SSL.Native/ecliptix.server.dll" "/app/publish/ecliptix.server.dll" && \
-        echo "Primary library copied" \
-    ) else ( \
-        echo "WARNING: ecliptix.server.dll not found in source directory" && \
-        dir "/src/Ecliptix.Security.SSL.Native/" \
-    )
 
 # Create redundant copies in multiple locations
 RUN mkdir /app/publish/native 2>nul || echo "native directory exists"

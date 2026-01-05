@@ -1,5 +1,5 @@
-using Ecliptix.Utilities;
-using Ecliptix.Utilities.Failures;
+using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Failures;
 
 namespace Ecliptix.Core.Services.KeyDerivation;
 

@@ -1,6 +1,6 @@
 using Ecliptix.OPAQUE.Server;
 using Ecliptix.Security.Opaque.Failures;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
 
 namespace Ecliptix.Security.Opaque.Models.AuthenticationMessages;
 

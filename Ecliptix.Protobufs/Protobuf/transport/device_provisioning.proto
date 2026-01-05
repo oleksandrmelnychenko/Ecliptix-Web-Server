@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package ecliptix.transport.device_provisioning;
+option csharp_namespace = "Ecliptix.Protobuf.Transport.DeviceProvisioning";
+
+import "contexts/device_provisioning/device_services.proto";
+import "transport/common/event_envelope.proto";
+
+// Typed transport service for DeviceProvisioning context.
+service DeviceProvisioningEvents {
+  // Requires idempotency_key (mutating)
+  rpc RegisterDevice(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  // Requires idempotency_key (mutating)
+  rpc EstablishSecureChannel(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  // Requires idempotency_key (mutating)
+  rpc RestoreSecureChannel(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  // Requires idempotency_key (mutating)
+  rpc AuthenticatedEstablish(ecliptix.proto.device.AuthenticatedEstablishRequest) returns (ecliptix.transport.common.EventEnvelope);
+  // Streaming variants (delivery_kind set accordingly by server)
+  rpc EventClientStream(stream ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  rpc EventServerStream(ecliptix.transport.common.EventEnvelope) returns (stream ecliptix.transport.common.EventEnvelope);
+  rpc EventBidiStream(stream ecliptix.transport.common.EventEnvelope) returns (stream ecliptix.transport.common.EventEnvelope);
+}
+
+enum DeviceProvisioningEventType {
+  DEVICE_PROVISIONING_EVENT_TYPE_UNSPECIFIED = 0;
+  DEVICE_PROVISIONING_REGISTER_DEVICE = 1;
+  DEVICE_PROVISIONING_SECURE_CHANNEL_ESTABLISH = 2;
+  DEVICE_PROVISIONING_SECURE_CHANNEL_RESTORE = 3;
+  DEVICE_PROVISIONING_SECURE_CHANNEL_AUTH_ESTABLISH = 4;
+}

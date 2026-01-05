@@ -6,8 +6,8 @@ using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Models.AuthenticationMessages;
 using Ecliptix.Security.Opaque.Models.RegistrationMessages;
 using static Ecliptix.OPAQUE.Server.OpaqueServerNative;
-using Ecliptix.Utilities;
-using Ecliptix.Utilities.Failures.Sodium;
+using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Failures.Sodium;
 
 namespace Ecliptix.Security.Opaque.Services;
 

@@ -1,6 +1,6 @@
 using Akka.Actor;
-using Ecliptix.Core.Domain.Events;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Actors;
 
 namespace Ecliptix.Core.Domain.Actors;
 

@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package ecliptix.transport.identity;
+option csharp_namespace = "Ecliptix.Protobuf.Transport.Identity";
+
+import "transport/common/event_envelope.proto";
+
+// Typed transport service for IdentityAccess context. Uses EventEnvelope for routing + typed payloads.
+service IdentityAccessEvents {
+rpc RegistrationInit(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  // Requires idempotency_key (mutating)
+  rpc RegistrationComplete(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  // Requires idempotency_key (mutating)
+  rpc RecoveryInit(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  // Requires idempotency_key (mutating)
+  rpc RecoveryComplete(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  // Requires idempotency_key (mutating)
+  rpc SignInInit(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  // Requires idempotency_key (mutating)
+  rpc SignInComplete(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  // Requires idempotency_key (mutating)
+  rpc Logout(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  // Requires idempotency_key (mutating)
+  rpc LogoutAnonymous(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  // Requires idempotency_key (mutating)
+  rpc GetMasterKeyShares(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  rpc VerifyOtp(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  rpc ValidateMobileNumber(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  rpc CheckMobileAvailability(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  rpc RecoveryMobileVerification(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  // Streaming variants (delivery_kind set accordingly by server)
+  rpc EventClientStream(stream ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
+  rpc EventServerStream(ecliptix.transport.common.EventEnvelope) returns (stream ecliptix.transport.common.EventEnvelope);
+  rpc EventBidiStream(stream ecliptix.transport.common.EventEnvelope) returns (stream ecliptix.transport.common.EventEnvelope);
+}
+
+// Event type catalog for IdentityAccess to avoid stringly-typed names.
+enum IdentityAccessEventType {
+  IDENTITY_ACCESS_EVENT_TYPE_UNSPECIFIED = 0;
+  IDENTITY_ACCESS_REGISTRATION_INIT = 1;
+  IDENTITY_ACCESS_REGISTRATION_COMPLETE = 2;
+  IDENTITY_ACCESS_RECOVERY_INIT = 3;
+  IDENTITY_ACCESS_RECOVERY_COMPLETE = 4;
+  IDENTITY_ACCESS_SIGN_IN_INIT = 5;
+  IDENTITY_ACCESS_SIGN_IN_COMPLETE = 6;
+  IDENTITY_ACCESS_LOGOUT = 7;
+  IDENTITY_ACCESS_LOGOUT_ANONYMOUS = 8;
+  IDENTITY_ACCESS_GET_MASTER_KEY_SHARES = 9;
+  IDENTITY_ACCESS_VERIFY_OTP = 10;
+  IDENTITY_ACCESS_VALIDATE_MOBILE_NUMBER = 11;
+  IDENTITY_ACCESS_CHECK_MOBILE_AVAILABILITY = 12;
+  IDENTITY_ACCESS_RECOVERY_MOBILE_VERIFICATION = 13;
+}

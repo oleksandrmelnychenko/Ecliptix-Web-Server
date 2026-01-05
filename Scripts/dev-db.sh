@@ -3,7 +3,7 @@
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-DOMAIN_PROJECT="$PROJECT_ROOT/Ecliptix.Domain/Ecliptix.Domain.csproj"
+DOMAIN_PROJECT="$PROJECT_ROOT/src/Contexts/IdentityAccess/Infrastructure/Ecliptix.IdentityAccess.Infrastructure.csproj"
 STARTUP_PROJECT="$PROJECT_ROOT/Ecliptix.Core/Ecliptix.Core.csproj"
 BACKUP_DIR="$PROJECT_ROOT/Backups"
 

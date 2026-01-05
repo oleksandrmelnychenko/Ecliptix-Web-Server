@@ -160,16 +160,16 @@ dotnet user-secrets clear
 cd /Users/oleksandrmelnychenko/RiderProjects/Ecliptix
 
 # Install Npgsql Entity Framework Core Provider
-dotnet add Ecliptix.Domain/Ecliptix.Domain.csproj package Npgsql.EntityFrameworkCore.PostgreSQL --version 9.0.0
+dotnet add src/Contexts/IdentityAccess/Infrastructure/Ecliptix.IdentityAccess.Infrastructure.csproj package Npgsql.EntityFrameworkCore.PostgreSQL --version 9.0.0
 
 # Install EF Core Design Tools (if not already installed)
-dotnet add Ecliptix.Domain/Ecliptix.Domain.csproj package Microsoft.EntityFrameworkCore.Design --version 9.0.0
+dotnet add src/Contexts/IdentityAccess/Infrastructure/Ecliptix.IdentityAccess.Infrastructure.csproj package Microsoft.EntityFrameworkCore.Design --version 9.0.0
 
 # Install Npgsql for snake_case naming convention
-dotnet add Ecliptix.Domain/Ecliptix.Domain.csproj package EFCore.NamingConventions --version 9.0.0
+dotnet add src/Contexts/IdentityAccess/Infrastructure/Ecliptix.IdentityAccess.Infrastructure.csproj package EFCore.NamingConventions --version 9.0.0
 
 # Verify installations
-dotnet list Ecliptix.Domain/Ecliptix.Domain.csproj package | grep -E "Npgsql|EntityFrameworkCore"
+dotnet list src/Contexts/IdentityAccess/Infrastructure/Ecliptix.IdentityAccess.Infrastructure.csproj package | grep -E "Npgsql|EntityFrameworkCore"
 ```
 
 ### Step 2: Update Program.cs for PostgreSQL
@@ -266,7 +266,7 @@ Add this property:
 
 ### Step 4: Update EntityBaseMap for PostgreSQL
 
-**File:** `Ecliptix.Domain/Schema/EntityBaseMap.cs`
+**File:** `src/Contexts/IdentityAccess/Domain/Schema/EntityBaseMap.cs`
 
 The current code uses SQL Server specific functions. Update it to be database-agnostic:
 
@@ -318,17 +318,17 @@ dotnet tool update --global dotnet-ef
 cd /Users/oleksandrmelnychenko/RiderProjects/Ecliptix
 
 # Remove existing SQL Server migrations (optional - if starting fresh with PostgreSQL)
-# rm -rf Ecliptix.Domain/Migrations/*
+# rm -rf src/Contexts/IdentityAccess/Infrastructure/Migrations/*
 
 # Create new migration for PostgreSQL
 dotnet ef migrations add InitialPostgreSQLMigration \
-  --project Ecliptix.Domain/Ecliptix.Domain.csproj \
+  --project src/Contexts/IdentityAccess/Infrastructure/Ecliptix.IdentityAccess.Infrastructure.csproj \
   --startup-project Ecliptix.Core/Ecliptix.Core.csproj \
   --context EcliptixSchemaContext \
   --output-dir Migrations/PostgreSQL
 
 # Review the generated migration
-cat Ecliptix.Domain/Migrations/PostgreSQL/*_InitialPostgreSQLMigration.cs
+cat src/Contexts/IdentityAccess/Infrastructure/Migrations/PostgreSQL/*_InitialPostgreSQLMigration.cs
 ```
 
 ### Step 3: Apply Migration to PostgreSQL
@@ -339,7 +339,7 @@ docker-compose ps | grep postgres
 
 # Apply migration
 dotnet ef database update \
-  --project Ecliptix.Domain/Ecliptix.Domain.csproj \
+  --project src/Contexts/IdentityAccess/Infrastructure/Ecliptix.IdentityAccess.Infrastructure.csproj \
   --startup-project Ecliptix.Core/Ecliptix.Core.csproj \
   --context EcliptixSchemaContext
 
@@ -376,7 +376,7 @@ SELECT * FROM "__EFMigrationsHistory";
 ```bash
 # Generate SQL script from migrations
 dotnet ef migrations script \
-  --project Ecliptix.Domain/Ecliptix.Domain.csproj \
+  --project src/Contexts/IdentityAccess/Infrastructure/Ecliptix.IdentityAccess.Infrastructure.csproj \
   --startup-project Ecliptix.Core/Ecliptix.Core.csproj \
   --context EcliptixSchemaContext \
   --output Scripts/migrations-postgres.sql \
@@ -408,7 +408,7 @@ param(
 )
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$DomainProject = Join-Path $ProjectRoot "Ecliptix.Domain/Ecliptix.Domain.csproj"
+$DomainProject = Join-Path $ProjectRoot "src/Contexts/IdentityAccess/Infrastructure/Ecliptix.IdentityAccess.Infrastructure.csproj"
 $StartupProject = Join-Path $ProjectRoot "Ecliptix.Core/Ecliptix.Core.csproj"
 $BackupDir = Join-Path $ProjectRoot "Backups"
 
@@ -574,7 +574,7 @@ switch ($Command) {
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-DOMAIN_PROJECT="$PROJECT_ROOT/Ecliptix.Domain/Ecliptix.Domain.csproj"
+DOMAIN_PROJECT="$PROJECT_ROOT/src/Contexts/IdentityAccess/Infrastructure/Ecliptix.IdentityAccess.Infrastructure.csproj"
 STARTUP_PROJECT="$PROJECT_ROOT/Ecliptix.Core/Ecliptix.Core.csproj"
 BACKUP_DIR="$PROJECT_ROOT/Backups"
 

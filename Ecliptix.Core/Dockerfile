@@ -10,11 +10,14 @@ ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 
 COPY ["Ecliptix.Core/Ecliptix.Core.csproj", "Ecliptix.Core/"]
-COPY ["Ecliptix.Domain/Ecliptix.Domain.csproj", "Ecliptix.Domain/"]
+COPY ["src/Shared/Ecliptix.SharedKernel/Ecliptix.SharedKernel.csproj", "src/Shared/Ecliptix.SharedKernel/"]
+COPY ["src/Contexts/IdentityAccess/Domain/Ecliptix.IdentityAccess.Domain.csproj", "src/Contexts/IdentityAccess/Domain/"]
+COPY ["src/Contexts/IdentityAccess/Infrastructure/Ecliptix.IdentityAccess.Infrastructure.csproj", "src/Contexts/IdentityAccess/Infrastructure/"]
+COPY ["src/Contexts/DeviceProvisioning/Domain/Ecliptix.DeviceProvisioning.Domain.csproj", "src/Contexts/DeviceProvisioning/Domain/"]
+COPY ["src/Contexts/DeviceProvisioning/Infrastructure/Ecliptix.DeviceProvisioning.Infrastructure.csproj", "src/Contexts/DeviceProvisioning/Infrastructure/"]
 COPY ["Ecliptix.Protobufs/Ecliptix.Protobufs.csproj", "Ecliptix.Protobufs/"]
 COPY ["Ecliptix.Security.Certificate.Pinning/Ecliptix.Security.Certificate.Pinning.csproj", "Ecliptix.Security.Certificate.Pinning/"]
 COPY ["Ecliptix.Security.Opaque/Ecliptix.Security.Opaque.csproj", "Ecliptix.Security.Opaque/"]
-COPY ["Ecliptix.Utilities/Ecliptix.Utilities.csproj", "Ecliptix.Utilities/"]
 
 COPY . .
 

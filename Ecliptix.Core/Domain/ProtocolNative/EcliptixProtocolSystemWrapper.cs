@@ -1,6 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
 
 namespace Ecliptix.Core.Domain.ProtocolNative;
 

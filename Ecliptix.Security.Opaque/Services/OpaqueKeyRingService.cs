@@ -4,7 +4,7 @@ using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Models.AuthenticationMessages;
 using Ecliptix.Security.Opaque.Models.RegistrationMessages;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
 
 namespace Ecliptix.Security.Opaque.Services;
 

@@ -85,11 +85,14 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Ecliptix.Domain\Ecliptix.Domain.csproj" />
         <ProjectReference Include="..\Ecliptix.Security.Certificate.Pinning\Ecliptix.Security.Certificate.Pinning.csproj" />
         <ProjectReference Include="..\Ecliptix.Security.Opaque\Ecliptix.Security.Opaque.csproj" />
-        <ProjectReference Include="..\Ecliptix.Utilities\Ecliptix.Utilities.csproj" />
-        <ProjectReference Include="..\Ecliptix.Protobufs\Ecliptix.Protobufs.csproj" />
+    <ProjectReference Include="..\Ecliptix.Protobufs\Ecliptix.Protobufs.csproj" />
+        <ProjectReference Include="..\src\Shared\Ecliptix.SharedKernel\Ecliptix.SharedKernel.csproj" />
+        <ProjectReference Include="..\src\Contexts\IdentityAccess\Domain\Ecliptix.IdentityAccess.Domain.csproj" />
+    <ProjectReference Include="..\src\Contexts\IdentityAccess\Infrastructure\Ecliptix.IdentityAccess.Infrastructure.csproj" />
+        <ProjectReference Include="..\src\Contexts\DeviceProvisioning\Domain\Ecliptix.DeviceProvisioning.Domain.csproj" />
+        <ProjectReference Include="..\src\Contexts\DeviceProvisioning\Infrastructure\Ecliptix.DeviceProvisioning.Infrastructure.csproj" />
     </ItemGroup>
 
     <ItemGroup>

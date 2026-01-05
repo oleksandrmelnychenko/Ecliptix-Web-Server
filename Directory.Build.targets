@@ -1,0 +1,6 @@
+<Project>
+  <Target Name="PruneBuildHost" AfterTargets="Build">
+    <RemoveDir Directories="$(OutputPath)BuildHost-net472" />
+    <RemoveDir Directories="$(OutputPath)BuildHost-netcore" />
+  </Target>
+</Project>

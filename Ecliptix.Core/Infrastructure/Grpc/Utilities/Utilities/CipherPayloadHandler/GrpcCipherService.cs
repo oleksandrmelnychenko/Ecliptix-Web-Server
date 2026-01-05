@@ -1,9 +1,10 @@
 using Akka.Actor;
-using Ecliptix.Core.Domain.Events;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
-using Ecliptix.Utilities;
-using Ecliptix.Utilities.Configuration;
+using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Configuration;
+using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
+using Ecliptix.SharedKernel.Actors;
 using Grpc.Core;
 using Serilog;
 

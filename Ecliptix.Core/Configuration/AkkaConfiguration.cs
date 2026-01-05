@@ -9,8 +9,8 @@ using Akka.Persistence.Sql.Hosting;
 using Akka.Remote.Hosting;
 using Ecliptix.Core.Configuration.Settings;
 using Ecliptix.Core.Services;
-using Ecliptix.Domain.Schema;
-using Ecliptix.Utilities.Configuration;
+using Ecliptix.IdentityAccess.Domain.Schema;
+using Ecliptix.SharedKernel.Configuration;
 using LinqToDB;
 
 namespace Ecliptix.Core.Configuration;
@@ -102,6 +102,7 @@ internal static class AkkaConfiguration
             }
 
             configurationBuilder
+                // Actor wiring is handled by ActorSystemInitializationHost; no extra registrations here.
                 .WithActors((_, _) => { })
                 .AddHocon($@"
                     akka {{
@@ -181,6 +182,5 @@ internal static class AkkaConfiguration
                 ", HoconAddMode.Prepend);
         });
 
-        builder.Services.AddHostedService<ActorSystemInitializationHost>();
     }
 }

@@ -16,9 +16,9 @@ Successfully implemented **ALL CRITICAL** fixes from the comprehensive code revi
 ### Phase 1: MembershipRelationPersistorActor Refactoring ✅
 
 **Files Modified:**
-1. `ContactProjection.cs` (NEW) - 644 bytes
-2. `MembershipRelationQueries.cs` (UPDATED)
-3. `MembershipRelationPersistorActor.cs` (REFACTORED - 24K)
+1. `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/QueryRecords/ContactProjection.cs` (NEW) - 644 bytes
+2. `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/CompiledQueries/MembershipRelationQueries.cs` (UPDATED)
+3. `src/Contexts/IdentityAccess/Domain/Memberships/Persistors/MembershipRelationPersistorActor.cs` (REFACTORED - 24K)
 
 **Critical Fixes:**
 1. ✅ **N+1 Query Problem** - 99.8% reduction in database queries
@@ -157,10 +157,10 @@ await ctx.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellati
 ## 🏗️ Build Status
 
 ```
-✅ Ecliptix.Utilities compiled successfully
+✅ Ecliptix.SharedKernel compiled successfully
 ✅ Ecliptix.Protobufs compiled successfully
 ✅ Ecliptix.Security.Opaque compiled successfully
-✅ Ecliptix.Domain compiled successfully
+✅ Ecliptix.IdentityAccess.Domain & Infrastructure compiled successfully
 ✅ Ecliptix.Core compiled successfully
 
 Build succeeded.
@@ -290,9 +290,8 @@ Total Build Time: 51.13 seconds
 If issues are detected in production:
 
 ```bash
-# Rollback Step 1: Restore MembershipRelationPersistorActor
-cp Ecliptix.Domain/Memberships/Persistors/MembershipRelationPersistorActor.cs.backup \
-   Ecliptix.Domain/Memberships/Persistors/MembershipRelationPersistorActor.cs
+# Rollback Step 1: Restore MembershipRelationPersistorActor (from previous commit/backup)
+#   Path in new layout: src/Contexts/IdentityAccess/Domain/Persistors/MembershipRelationPersistorActor.cs
 
 # Rollback Step 2: Restore Program.cs pool size
 sed -i '' 's/poolSize: 128/poolSize: 1024/g' Ecliptix.Core/Program.cs

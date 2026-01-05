@@ -1,6 +1,6 @@
 using Akka.Actor;
-using Ecliptix.Core.Domain.Events;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
+using Ecliptix.SharedKernel.Actors;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 

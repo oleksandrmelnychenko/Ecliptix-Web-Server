@@ -1,6 +1,6 @@
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.Security.Certificate.Pinning.Services;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
 
 namespace Ecliptix.Core.Services;
 

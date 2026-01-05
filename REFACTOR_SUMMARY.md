@@ -29,9 +29,9 @@ This document summarizes the comprehensive refactoring of `MembershipRelationPer
 - Single database query retrieves all data at once
 
 **Files Modified:**
-- `Ecliptix.Domain/Memberships/Persistors/QueryRecords/ContactProjection.cs` (NEW)
-- `Ecliptix.Domain/Memberships/Persistors/CompiledQueries/MembershipRelationQueries.cs`
-- `Ecliptix.Domain/Memberships/Persistors/MembershipRelationPersistorActor.cs`
+- `src/Contexts/IdentityAccess/Domain/Persistors/QueryRecords/ContactProjection.cs` (NEW)
+- `src/Contexts/IdentityAccess/Domain/Persistors/CompiledQueries/MembershipRelationQueries.cs`
+- `src/Contexts/IdentityAccess/Domain/Persistors/MembershipRelationPersistorActor.cs`
 
 **Code Changes:**
 ```csharp
@@ -70,7 +70,7 @@ List<ContactProjection> allContacts = MembershipRelationQueries.ListContacts(
 - Prevents race conditions, phantom reads, and lost updates
 
 **Files Modified:**
-- `Ecliptix.Domain/Memberships/Persistors/MembershipRelationPersistorActor.cs`
+- `src/Contexts/IdentityAccess/Domain/Persistors/MembershipRelationPersistorActor.cs`
 
 **Code Changes:**
 ```csharp
@@ -120,8 +120,8 @@ if (transaction.GetDbTransaction() is DbTransaction dbTransaction)
 - Better performance (index seek vs table scan)
 
 **Files Modified:**
-- `Ecliptix.Domain/Memberships/Persistors/CompiledQueries/MembershipRelationQueries.cs`
-- `Ecliptix.Domain/Memberships/Persistors/MembershipRelationPersistorActor.cs`
+- `src/Contexts/IdentityAccess/Domain/Persistors/CompiledQueries/MembershipRelationQueries.cs`
+- `src/Contexts/IdentityAccess/Domain/Persistors/MembershipRelationPersistorActor.cs`
 
 **Code Changes:**
 ```csharp

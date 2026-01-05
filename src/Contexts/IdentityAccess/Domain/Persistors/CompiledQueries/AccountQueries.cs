@@ -1,0 +1,62 @@
+using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Schema;
+using Ecliptix.IdentityAccess.Domain.Schema.Entities;
+using Ecliptix.SharedKernel;
+using Microsoft.EntityFrameworkCore;
+
+namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors.CompiledQueries;
+
+public static class AccountQueries
+{
+
+    public static async Task<List<AccountInfo>> GetAccountsByMembershipId(
+        EcliptixSchemaContext ctx,
+        Guid membershipId,
+        CancellationToken cancellationToken = default)
+    {
+        return await ctx.Accounts
+            .AsNoTracking()
+            .Where(a => a.MembershipId == membershipId && !a.IsDeleted)
+            .OrderByDescending(a => a.IsDefaultAccount)
+            .ThenBy(a => a.AccountType)
+            .Select(a => new AccountInfo(
+                a.UniqueId,
+                a.MembershipId,
+                a.AccountType,
+                a.IsDefaultAccount,
+                a.Status))
+            .ToListAsync(cancellationToken);
+    }
+
+    private static readonly Func<EcliptixSchemaContext, Guid, Task<AccountEntity?>>
+        GetDefaultAccountByMembershipIdCompiled = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, Guid membershipId) =>
+                ctx.Accounts
+                    .AsNoTracking()
+                    .FirstOrDefault(a => a.MembershipId == membershipId &&
+                                        a.IsDefaultAccount &&
+                                        !a.IsDeleted));
+
+    public static async Task<Option<AccountEntity>> GetDefaultAccountByMembershipId(
+        EcliptixSchemaContext ctx,
+        Guid membershipId)
+    {
+        AccountEntity? result = await GetDefaultAccountByMembershipIdCompiled(ctx, membershipId);
+        return result is not null ? Option<AccountEntity>.Some(result) : Option<AccountEntity>.None;
+    }
+
+    private static readonly Func<EcliptixSchemaContext, Guid, Task<AccountEntity?>>
+        GetAccountByIdCompiled = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, Guid accountId) =>
+                ctx.Accounts
+                    .AsNoTracking()
+                    .FirstOrDefault(a => a.UniqueId == accountId && !a.IsDeleted));
+
+    public static async Task<Option<AccountEntity>> GetAccountById(
+        EcliptixSchemaContext ctx,
+        Guid accountId)
+    {
+        AccountEntity? result = await GetAccountByIdCompiled(ctx, accountId);
+        return result is not null ? Option<AccountEntity>.Some(result) : Option<AccountEntity>.None;
+    }
+}

@@ -1,7 +1,7 @@
 using System;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Security.Opaque.Models;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
 
 namespace Ecliptix.Security.Opaque.Contracts;
 

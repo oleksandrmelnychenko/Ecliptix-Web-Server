@@ -1,9 +1,9 @@
 using System.Reflection;
 using System.Security.Cryptography;
 using Ecliptix.Core.Domain.Protocol;
-using Ecliptix.Utilities;
-using Ecliptix.Utilities.Failures;
-using Ecliptix.Utilities.Failures.Sodium;
+using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Failures;
+using Ecliptix.SharedKernel.Failures.Sodium;
 
 namespace Ecliptix.Core.Services.KeyDerivation;
 

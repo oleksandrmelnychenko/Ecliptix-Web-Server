@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using Ecliptix.Protobuf.Common;
-using Ecliptix.Utilities;
+using Ecliptix.SharedKernel;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 

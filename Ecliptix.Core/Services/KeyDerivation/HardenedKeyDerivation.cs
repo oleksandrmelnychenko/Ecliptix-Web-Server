@@ -1,9 +1,9 @@
 using System.Buffers;
 using System.Security.Cryptography;
 using System.Text;
-using Ecliptix.Utilities;
-using Ecliptix.Utilities.Failures;
-using Ecliptix.Utilities.Failures.Sodium;
+using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Failures;
+using Ecliptix.SharedKernel.Failures.Sodium;
 using Konscious.Security.Cryptography;
 
 namespace Ecliptix.Core.Services.KeyDerivation;

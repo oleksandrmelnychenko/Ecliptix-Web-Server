@@ -1,7 +1,7 @@
 using System.Collections.Frozen;
 using System.Globalization;
-using Ecliptix.Domain;
-using Ecliptix.Utilities;
+using Ecliptix.IdentityAccess.Domain;
+using Ecliptix.SharedKernel;
 
 namespace Ecliptix.Core.Resources;
 

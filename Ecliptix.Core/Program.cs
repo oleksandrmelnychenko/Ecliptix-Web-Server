@@ -5,32 +5,37 @@ using System.Threading.RateLimiting;
 using Akka;
 using Akka.Actor;
 using Ecliptix.Core;
-using Ecliptix.Core.Api.Grpc.Services.Account;
-using Ecliptix.Core.Api.Grpc.Services.Authentication;
-using Ecliptix.Core.Api.Grpc.Services.Device;
-using Ecliptix.Core.Api.Grpc.Services.Membership;
+using Ecliptix.Core.Api.Grpc.Services.Transport;
 using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Configuration.Settings;
-using Ecliptix.Core.Infrastructure.Crypto;
 using Ecliptix.Core.Infrastructure.Grpc.Interceptors;
+using Ecliptix.Core.Infrastructure.Grpc.Routing;
+using Ecliptix.Core.Infrastructure.Grpc.Routing.Handlers;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
-using Ecliptix.Core.Infrastructure.SecureChannel;
 using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
-using Ecliptix.Domain;
-using Ecliptix.Domain.Memberships.MobileNumberValidation;
-using Ecliptix.Domain.Providers.Twilio;
-using Ecliptix.Domain.Schema;
+using Ecliptix.IdentityAccess.Domain;
+using Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
+using Ecliptix.IdentityAccess.Domain.Providers.Twilio;
+using Ecliptix.IdentityAccess.Domain.Schema;
+using Ecliptix.Core.Infrastructure.Grpc.Routing.Providers;
 using Ecliptix.Protobuf.Account;
 using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Security.Opaque;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Services;
-using Ecliptix.Utilities;
-using Ecliptix.Utilities.Configuration;
+using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Configuration;
+using Ecliptix.SharedKernel.Grpc.Utilities;
+using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
+using Ecliptix.SharedKernel.Actors;
+using Ecliptix.DeviceProvisioning.Infrastructure.Crypto;
+using Ecliptix.DeviceProvisioning.Infrastructure.SecureChannel;
+using DP = Ecliptix.DeviceProvisioning.Infrastructure.Grpc;
+using IA = Ecliptix.IdentityAccess.Infrastructure.Grpc;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -137,7 +142,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
                    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
                    .EnableSensitiveDataLogging(isDevelopment)
                    .EnableDetailedErrors(isDevelopment)
-                   .AddInterceptors(new Ecliptix.Domain.Schema.Interceptors.AuditInterceptor())
+                   .AddInterceptors(new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor())
                    .ConfigureWarnings(warnings =>
                        warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         }
@@ -155,7 +160,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
                    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
                    .EnableSensitiveDataLogging(false)
                    .EnableDetailedErrors(false)
-                   .AddInterceptors(new Ecliptix.Domain.Schema.Interceptors.AuditInterceptor())
+                   .AddInterceptors(new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor())
                    .ConfigureWarnings(warnings =>
                        warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         }
@@ -171,7 +176,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
                    })
                    .UseSnakeCaseNamingConvention()
                    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
-                   .AddInterceptors(new Ecliptix.Domain.Schema.Interceptors.AuditInterceptor())
+                   .AddInterceptors(new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor())
                    .ConfigureWarnings(warnings =>
                        warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         }
@@ -182,7 +187,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
                        sqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
                    })
                    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
-                   .AddInterceptors(new Ecliptix.Domain.Schema.Interceptors.AuditInterceptor())
+                   .AddInterceptors(new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor())
                    .ConfigureWarnings(warnings =>
                        warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         }
@@ -193,6 +198,19 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<FailureHandlingInterceptor>();
     builder.Services.AddSingleton<RequestMetaDataInterceptor>();
     builder.Services.AddSingleton<ThreadCultureInterceptor>();
+    builder.Services.AddSingleton<IEventRouteResolver, EventRouteResolver>();
+    builder.Services.AddSingleton<IEventRouteProvider, IdentityAccessEventRouteProvider>();
+    builder.Services.AddSingleton<IEventRouteProvider, DeviceProvisioningEventRouteProvider>();
+    builder.Services.AddSingleton<EventEnvelopeDispatcher>();
+    builder.Services.AddSingleton<IEventHandler<Ecliptix.Protobuf.Common.SecureEnvelope>, IdentityAccessSecureEnvelopeHandler>();
+    builder.Services.AddSingleton<IEventHandler<Ecliptix.Protobuf.Common.SecureEnvelope>, DeviceProvisioningSecureEnvelopeHandler>();
+    builder.Services.AddSingleton<IEventHandler<Ecliptix.Protobuf.Device.AuthenticatedEstablishRequest>, DeviceProvisioningAuthenticatedEstablishHandler>();
+    builder.Services.AddTransient<IA.MembershipServices>();
+    builder.Services.AddTransient<IA.VerificationFlowServices>();
+    builder.Services.AddTransient<IA.AccountProfileServices>();
+    builder.Services.AddTransient<DP.DeviceService>();
+    builder.Services.AddTransient<IdentityAccessEventsService>();
+    builder.Services.AddTransient<DeviceProvisioningEventsService>();
 
     NetworkConfiguration networkConfig = new();
     builder.Configuration.GetSection(NetworkConfiguration.SectionName).Bind(networkConfig);
@@ -256,7 +274,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IHardenedKeyDerivation, Ecliptix.Core.Services.KeyDerivation.HardenedKeyDerivation>();
     builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.ISecretSharingService, Ecliptix.Core.Services.KeyDerivation.ShamirSecretSharing>();
     builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IIdentityKeyDerivationService, Ecliptix.Core.Services.KeyDerivation.IdentityKeyDerivationService>();
-    builder.Services.AddSingleton<Ecliptix.Domain.Services.Security.IMasterKeyService, Ecliptix.Core.Services.Security.MasterKeyService>();
+    builder.Services.AddSingleton<Ecliptix.IdentityAccess.Domain.Services.Security.IMasterKeyService, Ecliptix.Core.Services.Security.MasterKeyService>();
 
     builder.Services.AddSingleton<IRsaConfiguration, RsaConfiguration>();
     builder.Services.AddSingleton<IRsaChunkProcessor, RsaChunkProcessor>();
@@ -312,10 +330,12 @@ static void ConfigureMiddleware(WebApplication app)
 
 static void ConfigureEndpoints(WebApplication app)
 {
-    app.MapGrpcService<DeviceService>();
-    app.MapGrpcService<VerificationFlowServices>();
-    app.MapGrpcService<MembershipServices>();
-    app.MapGrpcService<AccountProfileServices>();
+    app.MapGrpcService<DP.DeviceService>();
+    app.MapGrpcService<IA.VerificationFlowServices>();
+    app.MapGrpcService<IA.MembershipServices>();
+    app.MapGrpcService<IA.AccountProfileServices>();
+    app.MapGrpcService<IdentityAccessEventsService>();
+    app.MapGrpcService<DeviceProvisioningEventsService>();
 
     app.MapHealthChecks(AppConstants.Endpoints.Health);
 
