@@ -23,7 +23,6 @@ using Ecliptix.SharedKernel.Grpc;
 using Ecliptix.SharedKernel.Grpc.Utilities;
 using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
 using Ecliptix.SharedKernel.KeyDerivation;
-using Ecliptix.SharedKernel.Protocol;
 using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Options;
@@ -429,44 +428,11 @@ public sealed class MembershipEventHandler
                $"{request.Timestamp}:{request.Scope}:{request.LogoutReason}";
     }
 
-    private async Task<byte[]> CaptureRatchetFingerprintAsync(uint connectId)
+    private Task<byte[]> CaptureRatchetFingerprintAsync(uint connectId)
     {
-        try
-        {
-            Log.Information("[LOGOUT-RATCHET] Capturing ratchet fingerprint for ConnectId: {ConnectId}", connectId);
-
-            GetProtocolStateActorEvent queryEvent = new(connectId);
-            ForwardToConnectActorEvent forwardEvent = new(connectId, queryEvent);
-
-            Task<GetProtocolStateReply> queryTask =
-                _protocolActor.Ask<GetProtocolStateReply>(
-                    forwardEvent,
-                    TimeoutConfiguration.Actor.AskTimeout);
-
-            GetProtocolStateReply reply = await queryTask.ConfigureAwait(false);
-
-            if (reply.SessionState == null)
-            {
-                Log.Debug(
-                    "[LOGOUT-RATCHET] No session state found for ConnectId: {ConnectId}, returning empty fingerprint",
-                    connectId);
-                return [];
-            }
-
-            byte[] fingerprint = RatchetStateHasher.ComputeRatchetFingerprint(reply.SessionState);
-
-            Log.Information(
-                "[LOGOUT-RATCHET] Ratchet fingerprint captured for ConnectId: {ConnectId}, FingerprintSize: {Size} bytes",
-                connectId, fingerprint.Length);
-
-            return fingerprint;
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "[LOGOUT-RATCHET] Failed to capture ratchet fingerprint for ConnectId: {ConnectId}",
-                connectId);
-            return [];
-        }
+        // RatchetState is now a legacy placeholder - fingerprinting disabled
+        Log.Debug("[LOGOUT-RATCHET] Ratchet fingerprinting disabled for ConnectId: {ConnectId}", connectId);
+        return Task.FromResult<byte[]>([]);
     }
 
     private async Task<byte[]> GenerateHmacRevocationProofAsync(
@@ -959,7 +925,6 @@ public sealed class MembershipEventHandler
         return response;
     }
 
-    // Placeholder for gateway mode; not implemented yet.
     public Task<SecureEnvelope> GetMasterKeyShares(SecureEnvelope _, ServerCallContext __) =>
         Task.FromException<SecureEnvelope>(new RpcException(new Status(StatusCode.Unimplemented,
             "GetMasterKeyShares is not implemented in gateway mode")));

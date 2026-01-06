@@ -1,9 +1,8 @@
-using System;
 using Ecliptix.Protobuf.Protocol;
+using Ecliptix.SecureProtocol.Domain.ProtocolNative;
 using Ecliptix.SharedKernel;
-using Ecliptix.Core.Domain.ProtocolNative;
 
-namespace Ecliptix.Core.Domain.Protocol;
+namespace Ecliptix.SecureProtocol.Domain.Protocol;
 
 /// <summary>
 /// Abstraction over the protocol server (NuGet interop) to keep actors decoupled from P/Invoke.
@@ -16,6 +15,7 @@ public interface IProtocolServer : IDisposable
     Result<ProtocolIdentity, EcliptixProtocolFailure> CreateIdentity(byte[]? seed = null, Guid? accountId = null);
     Result<byte[], EcliptixProtocolFailure> GetPublicEd25519(ProtocolIdentity identity);
     Result<byte[], EcliptixProtocolFailure> GetPublicX25519(ProtocolIdentity identity);
+    Result<byte[], EcliptixProtocolFailure> GetPublicKyber(ProtocolIdentity identity);
 
     Result<ProtocolSession, EcliptixProtocolFailure> CreateSession(
         ProtocolIdentity identity,
@@ -57,6 +57,7 @@ public interface IProtocolServer : IDisposable
 
     Result<bool, EcliptixProtocolFailure> HasConnection(ProtocolSession session);
     Result<uint, EcliptixProtocolFailure> GetConnectionId(ProtocolSession session);
+    Result<uint?, EcliptixProtocolFailure> GetSelectedOpkId(ProtocolSession session);
 
     Result<byte[], EcliptixProtocolFailure> ExportState(ProtocolSession session);
 

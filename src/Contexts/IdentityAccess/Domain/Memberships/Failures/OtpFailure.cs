@@ -17,7 +17,7 @@ public sealed record OtpFailure(
         _ => false
     };
 
-    public bool IsUserFacing => FailureType switch
+    public override bool IsUserFacing => FailureType switch
     {
         OtpFailureType.Invalid => true,
         OtpFailureType.Expired => true,
@@ -28,6 +28,36 @@ public sealed record OtpFailure(
         OtpFailureType.ValidationFailed => true,
         _ => false
     };
+
+    public override bool Retryable => FailureType switch
+    {
+        OtpFailureType.PersistorAccess or
+        OtpFailureType.GenerationFailed => true,
+        _ => false
+    };
+
+    public override ErrorSurface Surface => FailureType switch
+    {
+        OtpFailureType.PersistorAccess or
+        OtpFailureType.GenerationFailed or
+        OtpFailureType.InternalError => ErrorSurface.System,
+        _ => ErrorSurface.User
+    };
+
+    public override string PublicErrorCode => FailureType switch
+    {
+        OtpFailureType.Invalid => "otp.invalid",
+        OtpFailureType.Expired => "otp.expired",
+        OtpFailureType.MaxAttemptsReached => "otp.max_attempts",
+        OtpFailureType.AlreadyUsed => "otp.already_used",
+        OtpFailureType.NotFound => "otp.not_found",
+        OtpFailureType.GenerationFailed => "otp.generation_failed",
+        OtpFailureType.ValidationFailed => "otp.validation_failed",
+        OtpFailureType.PersistorAccess => "otp.persistence",
+        _ => "otp.internal"
+    };
+
+    public override string? UserMessageKey => GetDefaultI18NKey(FailureType);
 
     public static OtpFailure Invalid(string? details = null)
     {
@@ -157,7 +187,7 @@ public sealed record OtpFailure(
 
     public override GrpcErrorDescriptor ToGrpcDescriptor()
     {
-        string i18NKey = string.IsNullOrWhiteSpace(Message) ? GetDefaultI18NKey(FailureType) : Message;
+        string i18NKey = string.IsNullOrWhiteSpace(UserMessageKey) ? GetDefaultI18NKey(FailureType) : UserMessageKey!;
 
         return FailureType switch
         {
@@ -230,7 +260,10 @@ public sealed record OtpFailure(
             InnerException,
             Timestamp,
             IsRecoverable,
-            IsUserFacing
+            IsUserFacing,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 }

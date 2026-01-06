@@ -12,16 +12,6 @@
         <RuntimeIdentifier Condition="'$(RuntimeIdentifier)'==''">$([System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier)</RuntimeIdentifier>
     </PropertyGroup>
 
-    <!-- Native protocol payload resolution for server build -->
-    <PropertyGroup>
-        <NativeProtoBase Condition="'$(NativeProtoBase)'=='' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">ecliptix_protocol_server</NativeProtoBase>
-        <NativeProtoBase Condition="'$(NativeProtoBase)'=='' and !$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">libecliptix_protocol</NativeProtoBase>
-        <NativeProtoExt Condition="'$(NativeProtoExt)'=='' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))">.dll</NativeProtoExt>
-        <NativeProtoExt Condition="'$(NativeProtoExt)'=='' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx'))">.dylib</NativeProtoExt>
-        <NativeProtoExt Condition="'$(NativeProtoExt)'==''">.so</NativeProtoExt>
-        <NativeProtoDir Condition="'$(NativeProtoDir)'=='' and Exists('/Users/oleksandrmelnychenko/CLionProjects/Ecliptix.Protocol.System/build/$(RuntimeIdentifier)')">/Users/oleksandrmelnychenko/CLionProjects/Ecliptix.Protocol.System/build/$(RuntimeIdentifier)</NativeProtoDir>
-        <NativeProtoDir Condition="'$(NativeProtoDir)'=='' and Exists('/Users/oleksandrmelnychenko/CLionProjects/Ecliptix.Protocol.System/build')">/Users/oleksandrmelnychenko/CLionProjects/Ecliptix.Protocol.System/build</NativeProtoDir>
-    </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Akka" Version="1.5.57" />
         <PackageReference Include="Akka.Cluster" Version="1.5.57" />
@@ -60,6 +50,7 @@
         <PackageReference Include="Serilog.Sinks.AwsCloudWatch" Version="4.4.42" />
         <PackageReference Include="Sodium.Core" Version="1.4.0" />
         <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
+        <PackageReference Include="Ecliptix.Protocol.Server" Version="1.0.0-ci.29" />
     </ItemGroup>
 
 
@@ -85,7 +76,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Ecliptix.Security.Certificate.Pinning\Ecliptix.Security.Certificate.Pinning.csproj" />
+    <ProjectReference Include="..\Ecliptix.Security.Certificate.Pinning\Ecliptix.Security.Certificate.Pinning.csproj" />
         <ProjectReference Include="..\Ecliptix.Security.Opaque\Ecliptix.Security.Opaque.csproj" />
     <ProjectReference Include="..\Ecliptix.Protobufs\Ecliptix.Protobufs.csproj" />
         <ProjectReference Include="..\src\Shared\Ecliptix.SharedKernel\Ecliptix.SharedKernel.csproj" />
@@ -93,6 +84,8 @@
     <ProjectReference Include="..\src\Contexts\IdentityAccess\Infrastructure\Ecliptix.IdentityAccess.Infrastructure.csproj" />
         <ProjectReference Include="..\src\Contexts\DeviceProvisioning\Domain\Ecliptix.DeviceProvisioning.Domain.csproj" />
         <ProjectReference Include="..\src\Contexts\DeviceProvisioning\Infrastructure\Ecliptix.DeviceProvisioning.Infrastructure.csproj" />
+        <ProjectReference Include="..\src\Contexts\SecureProtocol\Domain\Ecliptix.SecureProtocol.Domain.csproj" />
+        <ProjectReference Include="..\src\Contexts\SecureProtocol\Infrastructure\Ecliptix.SecureProtocol.Infrastructure.csproj" />
     </ItemGroup>
 
     <ItemGroup>
@@ -101,17 +94,10 @@
 
     <ItemGroup>
       <Compile Remove="Configuration\AkkaConfiguration_Draft.cs" />
+      <Compile Remove="Domain\Protocol\**\*.cs" />
+      <Compile Remove="Domain\ProtocolNative\**\*.cs" />
     </ItemGroup>
 
-    <!-- Copy native protocol library into the server output -->
-    <Target Name="CopyNativeProtocolLibrary" AfterTargets="Build">
-        <PropertyGroup>
-            <_NativeProtoPath>$(NativeProtoDir)/$(NativeProtoBase)$(NativeProtoExt)</_NativeProtoPath>
-        </PropertyGroup>
-        <Message Importance="High" Text="Copying native protocol library from $(_NativeProtoPath) to $(OutDir)" Condition="Exists('$(_NativeProtoPath)')" />
-        <Copy SourceFiles="$(_NativeProtoPath)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="Exists('$(_NativeProtoPath)')" />
-        <Warning Text="Native protocol library not found at $(_NativeProtoPath). Set NativeProtoDir/NativeProtoBase/NativeProtoExt or build the native target for $(RuntimeIdentifier)." Condition="!Exists('$(_NativeProtoPath)')" />
-    </Target>
 
     <!-- Commented out: Using AOT-safe hardcoded FrozenDictionary instead of ResourceManager
     <ItemGroup>

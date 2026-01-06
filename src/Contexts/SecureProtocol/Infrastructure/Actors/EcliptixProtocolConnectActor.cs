@@ -1,7 +1,6 @@
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
-using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
@@ -11,6 +10,7 @@ using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Actors;
 using Google.Protobuf;
 using System.Security.Cryptography;
+using Ecliptix.SecureProtocol.Domain.Protocol;
 using Unit = Ecliptix.SharedKernel.Unit;
 
 namespace Ecliptix.SecureProtocol.Infrastructure.Actors;

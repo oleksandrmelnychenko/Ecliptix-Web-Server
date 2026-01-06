@@ -9,7 +9,8 @@ public sealed record EventRoute(
     string Context,
     Func<ReadOnlyMemory<byte>, object> Deserialize,
     Func<object, ReadOnlyMemory<byte>> Serialize,
-    Func<object, EventMetadata, CancellationToken, Task<Result<object, FailureBase>>> HandleAsync);
+    Func<object, EventMetadata, CancellationToken, Task<Result<object, FailureBase>>> HandleAsync,
+    bool IdempotencyRequired);
 
 public interface IEventRouteProvider
 {

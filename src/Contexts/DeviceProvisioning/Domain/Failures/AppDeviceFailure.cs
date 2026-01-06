@@ -12,6 +12,35 @@ public sealed record AppDeviceFailure(
     private bool IsRecoverable =>
         FailureType is AppDeviceFailureType.InfrastructureFailure;
 
+    public override bool IsUserFacing => FailureType switch
+    {
+        _ => false
+    };
+
+    public override bool Retryable => FailureType switch
+    {
+        AppDeviceFailureType.InfrastructureFailure => true,
+        _ => false
+    };
+
+    public override ErrorSurface Surface => FailureType switch
+    {
+        AppDeviceFailureType.InfrastructureFailure or AppDeviceFailureType.InternalError => ErrorSurface.System,
+        _ => ErrorSurface.System
+    };
+
+    public override string PublicErrorCode => FailureType switch
+    {
+        AppDeviceFailureType.InfrastructureFailure => "device.infrastructure",
+        _ => "device.internal"
+    };
+
+    public override string? UserMessageKey => FailureType switch
+    {
+        AppDeviceFailureType.InfrastructureFailure => ErrorI18NKeys.ServiceUnavailable,
+        _ => ErrorI18NKeys.Internal
+    };
+
     public static AppDeviceFailure InfrastructureFailure(string msgKey = AppDeviceMessageKeys.DataAccess,
         Exception? ex = null)
     {
@@ -29,12 +58,12 @@ public sealed record AppDeviceFailure(
             AppDeviceFailureType.InfrastructureFailure => new GrpcErrorDescriptor(
                 ErrorCode.ServiceUnavailable,
                 StatusCode.Unavailable,
-                ErrorI18NKeys.ServiceUnavailable,
+                UserMessageKey ?? ErrorI18NKeys.ServiceUnavailable,
                 Retryable: true),
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18NKeys.Internal)
+                UserMessageKey ?? ErrorI18NKeys.Internal)
         };
 
     public override object ToStructuredLog()
@@ -45,7 +74,11 @@ public sealed record AppDeviceFailure(
             Message,
             InnerException,
             Timestamp,
-            IsRecoverable
+            IsRecoverable,
+            IsUserFacing,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 }

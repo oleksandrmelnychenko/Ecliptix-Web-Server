@@ -29,9 +29,23 @@ public static class DeviceIdResolver
                 StatusCode.InvalidArgument,
                 ErrorI18NKeys.Validation);
 
+            ClientErrorInfo clientError = new(
+                descriptor.ErrorCode,
+                ErrorI18NKeys.Validation,
+                Retryable: false,
+                ErrorSurface.User,
+                PublicErrorCode: "device_id.invalid");
+
             throw new GrpcFailureException(
-                descriptor.CreateStatus("Missing or invalid d-identifier header"),
-                descriptor);
+                descriptor.CreateStatus(clientError.MessageKey),
+                descriptor,
+                structuredLogPayload: new
+                {
+                    DeviceId = deviceIdStr ?? "null",
+                    IpAddress = ipAddress ?? "unknown",
+                    UserAgent = userAgent ?? "unknown",
+                    Method = context.Method
+                });
         }
 
         return deviceId;

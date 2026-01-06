@@ -1,21 +1,22 @@
 # Solution layout (active)
 
 - Shared: `src/Shared/Ecliptix.SharedKernel` (cross-cutting primitives).
-- Contexts: IdentityAccess, DeviceProvisioning, SecureProtocol (Domain + Infrastructure per context).
+- Contexts: IdentityAccess, DeviceProvisioning, SecureProtocol (adapter/wrappers over `Ecliptix.Protocol.Server` via NuGet).
+- SecureProtocol libraries isolate the protocol interop (`Ecliptix.SecureProtocol.Domain`) from the host (`Ecliptix.Core`), keeping protocol code out of the host assembly.
 - Legacy monolith projects (`Ecliptix.Domain`, `Ecliptix.Utilities`, etc.) were removed; code now flows through the context projects referenced by `Ecliptix.Core`.
 
 ## Transport envelope contract
 
-- gRPC entrypoints are context-scoped: `IdentityAccessEvents` and `DeviceProvisioningEvents` in `Ecliptix.Protobufs/Protobuf/transport/*.proto`.
-- Event types are enums in proto (`IdentityAccessEventType`, `DeviceProvisioningEventType`); server services set `metadata.event_type` accordingly.
+- gRPC entrypoint is unified: `EventGateway` in `Ecliptix.Protobufs/Protobuf/transport/gateway.proto` with Unary/ServerStream/ClientStream/BidiStream methods. Legacy typed services (e.g., DeviceService transport surface) are removed from the host; all flows go through the gateway.
+- Event types are enums in proto (`IdentityAccessEventType`, `DeviceProvisioningEventType`); clients set `metadata.event_type` and the server routes via the registry. Deprecated typed context services have been removed; only the gateway surface is active.
 - Required metadata for secure contexts: `connect_id` (or `partition_key` parseable as connect_id). Dispatcher will fail fast if missing and will auto-fill `partition_key` from `connect_id`.
 - Optional metadata carried through responses: `app_device_id`, `application_instance_id`, `request_id`, `idempotency_key`, `platform`, `version`, `key_exchange_context`, plus correlation/causation ids.
 - Responses mirror request correlation and set `status` (`OK`/`ERR`) and `error_code`; payload is serialized by the routed handler.
-- Transport RPC shapes per context (`IdentityAccessEvents`, `DeviceProvisioningEvents`):
-  - Unary endpoints (typed per operation).
-  - `EventClientStream` (client-stream -> unary response, `delivery_kind=CLIENT_STREAM`).
-  - `EventServerStream` (unary request -> server-stream response, `delivery_kind=SERVER_STREAM`).
-  - `EventBidiStream` (full duplex, `delivery_kind=BIDI_STREAM`).
+- Transport RPC shapes:
+  - `Unary` (EventEnvelope -> EventEnvelope).
+  - `ClientStream` (stream -> unary).
+  - `ServerStream` (unary -> stream).
+  - `BidiStream` (stream <-> stream).
 - Idempotency: required for mutating transport events. If `idempotency_key` is missing for these, the dispatcher returns `idempotency_required`; invalid format (`[A-Za-z0-9._:-]`, 1–128 chars) returns `idempotency_invalid`.
   - Metadata hardening: server rejects missing `event_type` and overly long fields (event_id/event_type/request_id/context/app_device_id/application_instance_id/platform/version/locale/tenant).
 
@@ -29,6 +30,13 @@
   | identity_access      | IdentityAccessSignInComplete               |
   | identity_access      | IdentityAccessLogout                       |
   | identity_access      | IdentityAccessLogoutAnonymous              |
+  | identity_access      | IdentityAccessVerifyOtp                    |
+  | identity_access      | IdentityAccessValidateMobileNumber         |
+  | identity_access      | IdentityAccessCheckMobileAvailability      |
+  | identity_access      | IdentityAccessRecoveryMobileVerification   |
+  | identity_access      | IdentityAccessCheckProfileName             |
+  | identity_access      | IdentityAccessUpsertProfile                |
+  | identity_access      | IdentityAccessGetProfile                   |
   | device_provisioning  | DeviceProvisioningRegisterDevice           |
   | device_provisioning  | DeviceProvisioningSecureChannelEstablish   |
   | device_provisioning  | DeviceProvisioningSecureChannelRestore     |
@@ -43,6 +51,8 @@
   - IdentityAccess: `Protobuf/contexts/identity_access/*` (account, membership/opaque, verification/auth).
   - DeviceProvisioning: `Protobuf/contexts/device_provisioning/*` (device models/services).
   - SecureProtocol: `Protobuf/contexts/secure_protocol/*` (key exchange/materials, protocol state).
+
+See `src/TransportEventCatalog.md` for the canonical event list and payload types.
 
 Example envelope (IdentityAccess RegistrationInit, unary):
 

@@ -26,4 +26,5 @@ message DeviceRegistrationResponse {
   Status status = 1;
   bytes server_public_key = 2;
   string message = 3;
+  bytes server_kyber_public_key = 4;
 }

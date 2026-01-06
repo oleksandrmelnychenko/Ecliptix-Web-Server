@@ -4,32 +4,12 @@ using System.Text.RegularExpressions;
 using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.SharedKernel;
 using Google.Protobuf;
-using Microsoft.Extensions.Logging;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Routing;
 
-/// <summary>
-/// Centralizes envelope routing: resolve route, deserialize payload, invoke handler, serialize response.
-/// </summary>
 public sealed class EventEnvelopeDispatcher
 {
     private readonly IEventRouteResolver _resolver;
-    private readonly ILogger<EventEnvelopeDispatcher> _logger;
-    private static readonly HashSet<string> IdempotencyRequiredEvents = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "IdentityAccessRegistrationInit",
-        "IdentityAccessRegistrationComplete",
-        "IdentityAccessRecoveryInit",
-        "IdentityAccessRecoveryComplete",
-        "IdentityAccessSignInInit",
-        "IdentityAccessSignInComplete",
-        "IdentityAccessLogout",
-        "IdentityAccessLogoutAnonymous",
-        "DeviceProvisioningRegisterDevice",
-        "DeviceProvisioningSecureChannelEstablish",
-        "DeviceProvisioningSecureChannelRestore",
-        "DeviceProvisioningSecureChannelAuthEstablish"
-    };
     private static readonly Regex IdempotencyPattern = new("^[A-Za-z0-9._:-]{1,128}$", RegexOptions.Compiled);
     private const int MaxEventIdLength = 128;
     private const int MaxEventTypeLength = 128;
@@ -42,10 +22,9 @@ public sealed class EventEnvelopeDispatcher
     private const int MaxLocaleLength = 16;
     private const int MaxTenantLength = 64;
 
-    public EventEnvelopeDispatcher(IEventRouteResolver resolver, ILogger<EventEnvelopeDispatcher> logger)
+    public EventEnvelopeDispatcher(IEventRouteResolver resolver)
     {
         _resolver = resolver;
-        _logger = logger;
     }
 
     public async Task<EventEnvelope> DispatchAsync(EventEnvelope envelope, CancellationToken cancellationToken)
@@ -60,12 +39,7 @@ public sealed class EventEnvelopeDispatcher
 
         if (!_resolver.TryGetRoute(metadata.EventType, out EventRoute route))
         {
-            return BuildErrorEnvelope(metadata, "route_not_found", $"No route registered for eventType '{metadata.EventType}'");
-        }
-
-        if (string.IsNullOrWhiteSpace(metadata.Context))
-        {
-            metadata.Context = route.Context;
+            return BuildErrorEnvelope(metadata, "route_not_found");
         }
 
         EventEnvelope? missingRequired = EnsureRequiredTransportMetadata(metadata, route);
@@ -74,23 +48,20 @@ public sealed class EventEnvelopeDispatcher
             return missingRequired;
         }
 
-        EventEnvelope? idempotencyError = EnsureIdempotency(metadata);
+        EventEnvelope? idempotencyError = EnsureIdempotency(metadata, route);
         if (idempotencyError is not null)
         {
             return idempotencyError;
         }
-
-        LogIdempotencyIfMissing(metadata);
 
         object message;
         try
         {
             message = route.Deserialize(envelope.Payload.Memory);
         }
-        catch (Exception ex)
+        catch
         {
-            _logger.LogError(ex, "Failed to deserialize payload for eventType {EventType}", metadata.EventType);
-            return BuildErrorEnvelope(metadata, "deserialize_failed", "Could not deserialize payload");
+            return BuildErrorEnvelope(metadata, "deserialize_failed");
         }
 
         Result<object, FailureBase> result;
@@ -98,10 +69,9 @@ public sealed class EventEnvelopeDispatcher
         {
             result = await route.HandleAsync(message, metadata, cancellationToken);
         }
-        catch (Exception ex)
+        catch
         {
-            _logger.LogError(ex, "Unhandled exception in handler for eventType {EventType}", metadata.EventType);
-            return BuildErrorEnvelope(metadata, "handler_failed", "An error occurred while handling the request");
+            return BuildErrorEnvelope(metadata, "handler_failed");
         }
 
         if (result.IsOk)
@@ -113,26 +83,22 @@ public sealed class EventEnvelopeDispatcher
                 ReadOnlyMemory<byte> serialized = route.Serialize(response);
                 return new EventEnvelope
                 {
-                    Metadata = BuildResponseMetadata(metadata, status: "OK", errorCode: string.Empty, userMessage: string.Empty),
+                    Metadata = BuildResponseMetadata(metadata, status: "OK", errorCode: string.Empty),
                     Payload = ByteString.CopyFrom(serialized.Span)
                 };
             }
-            catch (Exception ex)
+            catch
             {
-                _logger.LogError(ex, "Failed to serialize response for eventType {EventType}", metadata.EventType);
-                return BuildErrorEnvelope(metadata, "serialize_failed", "Could not serialize response payload");
+                return BuildErrorEnvelope(metadata, "serialize_failed");
             }
         }
 
         FailureBase failure = result.UnwrapErr();
         GrpcErrorDescriptor descriptor = failure.ToGrpcDescriptor();
-        _logger.LogWarning("Route failed for eventType {EventType}: {ErrorCode} - {Message}", metadata.EventType,
-            descriptor.ErrorCode, failure.Message);
 
         return new EventEnvelope
         {
-            Metadata = BuildResponseMetadata(metadata, status: "ERR", errorCode: descriptor.ErrorCode.ToString(),
-                userMessage: failure.Message),
+            Metadata = BuildResponseMetadata(metadata, status: "ERR", errorCode: descriptor.ErrorCode.ToString()),
             Payload = ByteString.Empty
         };
     }
@@ -152,57 +118,63 @@ public sealed class EventEnvelopeDispatcher
     {
         if (string.IsNullOrWhiteSpace(metadata.EventType))
         {
-            return BuildErrorEnvelope(metadata, "route_missing_event_type", "EventType is required");
+            return BuildErrorEnvelope(metadata, "route_missing_event_type");
+        }
+
+        if (metadata.DeliveryKind == DeliveryKind.Unspecified)
+        {
+            return BuildErrorEnvelope(metadata, "delivery_kind_required");
         }
 
         if (metadata.EventId?.Length > MaxEventIdLength)
         {
-            return BuildErrorEnvelope(metadata, "event_id_too_long", $"event_id must be <= {MaxEventIdLength} chars");
+            return BuildErrorEnvelope(metadata, "event_id_too_long");
         }
 
         if (metadata.EventType?.Length > MaxEventTypeLength)
         {
-            return BuildErrorEnvelope(metadata, "event_type_too_long", $"event_type must be <= {MaxEventTypeLength} chars");
+            return BuildErrorEnvelope(metadata, "event_type_too_long");
         }
 
         if (!string.IsNullOrWhiteSpace(metadata.Context) && metadata.Context.Length > MaxContextLength)
         {
-            return BuildErrorEnvelope(metadata, "context_too_long", $"context must be <= {MaxContextLength} chars");
+            return BuildErrorEnvelope(metadata, "context_too_long");
         }
 
         if (!string.IsNullOrWhiteSpace(metadata.RequestId) && metadata.RequestId.Length > MaxRequestIdLength)
         {
-            return BuildErrorEnvelope(metadata, "request_id_too_long", $"request_id must be <= {MaxRequestIdLength} chars");
+            return BuildErrorEnvelope(metadata, "request_id_too_long");
         }
 
         if (!string.IsNullOrWhiteSpace(metadata.Platform) && metadata.Platform.Length > MaxPlatformLength)
         {
-            return BuildErrorEnvelope(metadata, "platform_too_long", $"platform must be <= {MaxPlatformLength} chars");
+            return BuildErrorEnvelope(metadata, "platform_too_long");
         }
 
         if (!string.IsNullOrWhiteSpace(metadata.Version) && metadata.Version.Length > MaxVersionLength)
         {
-            return BuildErrorEnvelope(metadata, "version_too_long", $"version must be <= {MaxVersionLength} chars");
+            return BuildErrorEnvelope(metadata, "version_too_long");
         }
 
         if (!string.IsNullOrWhiteSpace(metadata.AppDeviceId) && metadata.AppDeviceId.Length > MaxAppDeviceLength)
         {
-            return BuildErrorEnvelope(metadata, "app_device_id_too_long", $"app_device_id must be <= {MaxAppDeviceLength} chars");
+            return BuildErrorEnvelope(metadata, "app_device_id_too_long");
         }
 
-        if (!string.IsNullOrWhiteSpace(metadata.ApplicationInstanceId) && metadata.ApplicationInstanceId.Length > MaxApplicationInstanceLength)
+        if (!string.IsNullOrWhiteSpace(metadata.ApplicationInstanceId) &&
+            metadata.ApplicationInstanceId.Length > MaxApplicationInstanceLength)
         {
-            return BuildErrorEnvelope(metadata, "application_instance_id_too_long", $"application_instance_id must be <= {MaxApplicationInstanceLength} chars");
+            return BuildErrorEnvelope(metadata, "application_instance_id_too_long");
         }
 
         if (!string.IsNullOrWhiteSpace(metadata.Locale) && metadata.Locale.Length > MaxLocaleLength)
         {
-            return BuildErrorEnvelope(metadata, "locale_too_long", $"locale must be <= {MaxLocaleLength} chars");
+            return BuildErrorEnvelope(metadata, "locale_too_long");
         }
 
         if (!string.IsNullOrWhiteSpace(metadata.Tenant) && metadata.Tenant.Length > MaxTenantLength)
         {
-            return BuildErrorEnvelope(metadata, "tenant_too_long", $"tenant must be <= {MaxTenantLength} chars");
+            return BuildErrorEnvelope(metadata, "tenant_too_long");
         }
 
         return null;
@@ -210,9 +182,18 @@ public sealed class EventEnvelopeDispatcher
 
     private EventEnvelope? EnsureRequiredTransportMetadata(EventMetadata metadata, EventRoute route)
     {
+        if (string.IsNullOrWhiteSpace(metadata.Context))
+        {
+            return BuildErrorEnvelope(metadata, "context_required");
+        }
+
+        if (!metadata.Context.Equals(route.Context, StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildErrorEnvelope(metadata, "context_mismatch");
+        }
+
         if (RequiresConnectId(route.Context))
         {
-            // Prefer explicit connect_id, fallback to partition_key if present.
             if (metadata.ConnectId == 0 && uint.TryParse(metadata.PartitionKey, out uint parsed))
             {
                 metadata.ConnectId = parsed;
@@ -220,8 +201,7 @@ public sealed class EventEnvelopeDispatcher
 
             if (metadata.ConnectId == 0)
             {
-                return BuildErrorEnvelope(metadata, "connect_id_required",
-                    $"connect_id is required for context '{route.Context}'");
+                return BuildErrorEnvelope(metadata, "connect_id_required");
             }
 
             if (string.IsNullOrWhiteSpace(metadata.PartitionKey))
@@ -238,48 +218,28 @@ public sealed class EventEnvelopeDispatcher
         (context.Equals("identity_access", StringComparison.OrdinalIgnoreCase) ||
          context.Equals("device_provisioning", StringComparison.OrdinalIgnoreCase));
 
-    private EventEnvelope? EnsureIdempotency(EventMetadata metadata)
+    private EventEnvelope? EnsureIdempotency(EventMetadata metadata, EventRoute route)
     {
-        if (RequiresIdempotency(metadata.EventType) && string.IsNullOrWhiteSpace(metadata.IdempotencyKey))
+        if (route.IdempotencyRequired && string.IsNullOrWhiteSpace(metadata.IdempotencyKey))
         {
-            return BuildErrorEnvelope(metadata, "idempotency_required",
-                $"idempotency_key is required for eventType '{metadata.EventType}'");
+            return BuildErrorEnvelope(metadata, "idempotency_required");
         }
 
         if (!string.IsNullOrWhiteSpace(metadata.IdempotencyKey) && !IdempotencyPattern.IsMatch(metadata.IdempotencyKey))
         {
-            return BuildErrorEnvelope(metadata, "idempotency_invalid",
-                "idempotency_key must be 1-128 chars of [A-Za-z0-9._:-]");
+            return BuildErrorEnvelope(metadata, "idempotency_invalid");
         }
 
         return null;
     }
 
-    private static bool RequiresIdempotency(string? eventType)
-    {
-        return !string.IsNullOrWhiteSpace(eventType) && IdempotencyRequiredEvents.Contains(eventType);
-    }
 
-    private void LogIdempotencyIfMissing(EventMetadata metadata)
-    {
-        if (string.IsNullOrWhiteSpace(metadata.IdempotencyKey))
-        {
-            _logger.LogDebug("No idempotency key provided for eventType {EventType} in context {Context}", metadata.EventType, metadata.Context);
-        }
-    }
-
-    private static EventMetadata BuildResponseMetadata(EventMetadata requestMetadata, string status, string errorCode,
-        string userMessage)
+    private static EventMetadata BuildResponseMetadata(EventMetadata requestMetadata, string status, string errorCode)
     {
         return new EventMetadata
         {
-            EventId = requestMetadata.EventId ?? Guid.NewGuid().ToString("N"),
-            EventType = !string.IsNullOrWhiteSpace(requestMetadata.ResponseType)
-                ? requestMetadata.ResponseType
-                : requestMetadata.EventType,
-            EventVersion = requestMetadata.ResponseVersion != 0
-                ? requestMetadata.ResponseVersion
-                : requestMetadata.EventVersion,
+            EventId = requestMetadata.EventId,
+            EventType = requestMetadata.EventType,
             Context = requestMetadata.Context,
             CorrelationId = string.IsNullOrWhiteSpace(requestMetadata.CorrelationId)
                 ? requestMetadata.EventId
@@ -288,13 +248,8 @@ public sealed class EventEnvelopeDispatcher
             PartitionKey = requestMetadata.PartitionKey,
             Locale = requestMetadata.Locale,
             Tenant = requestMetadata.Tenant,
-            TypeUrl = requestMetadata.TypeUrl,
-            RoutingHint = requestMetadata.RoutingHint ?? ByteString.Empty,
-            ResponseType = requestMetadata.ResponseType,
-            ResponseVersion = requestMetadata.ResponseVersion,
             Status = status,
             ErrorCode = errorCode,
-            UserMessage = userMessage,
             ConnectId = requestMetadata.ConnectId,
             AppDeviceId = requestMetadata.AppDeviceId,
             ApplicationInstanceId = requestMetadata.ApplicationInstanceId,
@@ -307,11 +262,11 @@ public sealed class EventEnvelopeDispatcher
         };
     }
 
-    private EventEnvelope BuildErrorEnvelope(EventMetadata metadata, string errorCode, string userMessage)
+    private EventEnvelope BuildErrorEnvelope(EventMetadata metadata, string errorCode)
     {
         return new EventEnvelope
         {
-            Metadata = BuildResponseMetadata(metadata, status: "ERR", errorCode: errorCode, userMessage: userMessage),
+            Metadata = BuildResponseMetadata(metadata, status: "ERR", errorCode: errorCode),
             Payload = ByteString.Empty
         };
     }

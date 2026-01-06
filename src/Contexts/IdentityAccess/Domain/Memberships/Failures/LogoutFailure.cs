@@ -16,6 +16,36 @@ public sealed record LogoutFailure(
         _ => false
     };
 
+    public override bool IsUserFacing => FailureType switch
+    {
+        LogoutFailureType.NotFound => true,
+        LogoutFailureType.ValidationFailed => true,
+        _ => false
+    };
+
+    public override bool Retryable => FailureType switch
+    {
+        LogoutFailureType.PersistorAccess or LogoutFailureType.QueryFailed => true,
+        _ => false
+    };
+
+    public override ErrorSurface Surface => FailureType switch
+    {
+        LogoutFailureType.PersistorAccess or LogoutFailureType.QueryFailed or LogoutFailureType.InternalError => ErrorSurface.System,
+        _ => ErrorSurface.User
+    };
+
+    public override string PublicErrorCode => FailureType switch
+    {
+        LogoutFailureType.NotFound => "logout.not_found",
+        LogoutFailureType.ValidationFailed => "logout.validation_failed",
+        LogoutFailureType.PersistorAccess => "logout.persistence",
+        LogoutFailureType.QueryFailed => "logout.query_failed",
+        _ => "logout.internal"
+    };
+
+    public override string? UserMessageKey => GetDefaultI18NKey(FailureType);
+
     public static LogoutFailure RecordFailed(string? details = null, Exception? ex = null)
     {
         return new LogoutFailure(LogoutFailureType.RecordFailed,
@@ -114,7 +144,7 @@ public sealed record LogoutFailure(
 
     public override GrpcErrorDescriptor ToGrpcDescriptor()
     {
-        string i18NKey = string.IsNullOrWhiteSpace(Message) ? GetDefaultI18NKey(FailureType) : Message;
+        string i18NKey = string.IsNullOrWhiteSpace(UserMessageKey) ? GetDefaultI18NKey(FailureType) : UserMessageKey!;
 
         return FailureType switch
         {
@@ -167,7 +197,11 @@ public sealed record LogoutFailure(
             Message,
             InnerException,
             Timestamp,
-            IsRecoverable
+            IsRecoverable,
+            IsUserFacing,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 }

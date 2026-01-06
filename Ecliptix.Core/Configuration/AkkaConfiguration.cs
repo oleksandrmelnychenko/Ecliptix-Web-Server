@@ -102,7 +102,6 @@ internal static class AkkaConfiguration
             }
 
             configurationBuilder
-                // Actor wiring is handled by ActorSystemInitializationHost; no extra registrations here.
                 .WithActors((_, _) => { })
                 .AddHocon($@"
                     akka {{
@@ -114,10 +113,7 @@ internal static class AkkaConfiguration
 
                         persistence {{
                             journal {{
-                                # Max batch size for batched writes - set to 1 to prevent sequence collisions
-                                # This ensures events are written one at a time to avoid unique constraint violations
                                 max-batch-size = 1
-                                # Disable parallelism to enforce sequential writes
                                 parallelism = 1
                             }}
                             sql-store {{
@@ -134,13 +130,9 @@ internal static class AkkaConfiguration
                             }}
                             recovery {{
                                 replay-filter {{
-                                    # Changed from 'repair-by-discard-old' to 'warn' to prevent silent event discarding
-                                    # 'warn' mode will log warnings about potential issues but recover all events
-                                    # This prevents the issue where event #11 was silently discarded during recovery
                                     mode = warn
                                     window-size = 100
                                     max-old-writers = 10
-                                    # Enable debug to see detailed recovery information
                                     debug = true
                                 }}
                             }}

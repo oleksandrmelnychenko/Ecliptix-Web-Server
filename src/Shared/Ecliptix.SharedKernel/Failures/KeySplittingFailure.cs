@@ -26,6 +26,48 @@ public enum KeySplittingFailureType
 
 public sealed record KeySplittingFailure(KeySplittingFailureType Type, string Message, Exception? InnerException = null) : FailureBase(Message, InnerException)
 {
+    public override bool IsUserFacing => Type switch
+    {
+        KeySplittingFailureType.InvalidThreshold or
+        KeySplittingFailureType.InvalidShareCount or
+        KeySplittingFailureType.InvalidKeyLength or
+        KeySplittingFailureType.InvalidKeyData or
+        KeySplittingFailureType.InvalidShareData or
+        KeySplittingFailureType.InvalidIdentifier or
+        KeySplittingFailureType.ShareValidationFailed or
+        KeySplittingFailureType.InsufficientShares => true,
+        _ => false
+    };
+
+    public override bool Retryable => Type switch
+    {
+        KeySplittingFailureType.AllocationFailed => true,
+        _ => false
+    };
+
+    public override ErrorSurface Surface => Type switch
+    {
+        KeySplittingFailureType.AllocationFailed => ErrorSurface.System,
+        _ => ErrorSurface.User
+    };
+
+    public override string PublicErrorCode => Type switch
+    {
+        KeySplittingFailureType.InvalidThreshold => "keysplitting.invalid_threshold",
+        KeySplittingFailureType.InvalidShareCount => "keysplitting.invalid_share_count",
+        KeySplittingFailureType.InvalidKeyLength => "keysplitting.invalid_key_length",
+        KeySplittingFailureType.InvalidKeyData => "keysplitting.invalid_key_data",
+        KeySplittingFailureType.InvalidShareData => "keysplitting.invalid_share_data",
+        KeySplittingFailureType.InvalidIdentifier => "keysplitting.invalid_identifier",
+        KeySplittingFailureType.ShareValidationFailed => "keysplitting.share_validation_failed",
+        KeySplittingFailureType.InsufficientShares => "keysplitting.insufficient_shares",
+        KeySplittingFailureType.HmacKeyMissing => "keysplitting.hmac_missing",
+        KeySplittingFailureType.AllocationFailed => "keysplitting.allocation_failed",
+        _ => "keysplitting.internal"
+    };
+
+    public override string? UserMessageKey => GetDefaultI18NKey(Type);
+
     public static KeySplittingFailure InvalidThreshold(int threshold, int totalShares) =>
         new(KeySplittingFailureType.InvalidThreshold, $"Invalid threshold: {threshold} for {totalShares} shares");
 
@@ -113,7 +155,23 @@ public sealed record KeySplittingFailure(KeySplittingFailureType Type, string Me
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18NKeys.Internal)
+                UserMessageKey ?? ErrorI18NKeys.Internal)
+        };
+
+    private static string GetDefaultI18NKey(KeySplittingFailureType type) =>
+        type switch
+        {
+            KeySplittingFailureType.InvalidThreshold => ErrorI18NKeys.Validation,
+            KeySplittingFailureType.InvalidShareCount => ErrorI18NKeys.Validation,
+            KeySplittingFailureType.InvalidKeyLength => ErrorI18NKeys.Validation,
+            KeySplittingFailureType.InvalidKeyData => ErrorI18NKeys.Validation,
+            KeySplittingFailureType.InvalidShareData => ErrorI18NKeys.Validation,
+            KeySplittingFailureType.InvalidIdentifier => ErrorI18NKeys.Validation,
+            KeySplittingFailureType.ShareValidationFailed => ErrorI18NKeys.Validation,
+            KeySplittingFailureType.InsufficientShares => ErrorI18NKeys.PreconditionFailed,
+            KeySplittingFailureType.HmacKeyMissing => ErrorI18NKeys.NotFound,
+            KeySplittingFailureType.AllocationFailed => ErrorI18NKeys.ResourceExhausted,
+            _ => ErrorI18NKeys.Internal
         };
 
     public override object ToStructuredLog()
@@ -123,7 +181,11 @@ public sealed record KeySplittingFailure(KeySplittingFailureType Type, string Me
             KeySplittingFailureType = Type.ToString(),
             Message,
             InnerException,
-            Timestamp
+            Timestamp,
+            IsUserFacing,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 }

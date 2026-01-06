@@ -10,6 +10,35 @@ public sealed record SecureChannelFailure(
     Exception? InnerException = null)
     : FailureBase(Message, InnerException)
 {
+    public override bool IsUserFacing => FailureType switch
+    {
+        SecureChannelFailureType.InvalidPayload => true,
+        _ => false
+    };
+
+    public override bool Retryable => FailureType switch
+    {
+        SecureChannelFailureType.CryptographicError or SecureChannelFailureType.ActorCommunicationError => true,
+        _ => false
+    };
+
+    public override ErrorSurface Surface => ErrorSurface.System;
+
+    public override string PublicErrorCode => FailureType switch
+    {
+        SecureChannelFailureType.InvalidPayload => "secure_channel.invalid_payload",
+        SecureChannelFailureType.CryptographicError => "secure_channel.crypto_error",
+        SecureChannelFailureType.ActorCommunicationError => "secure_channel.actor_error",
+        _ => "secure_channel.internal"
+    };
+
+    public override string? UserMessageKey => FailureType switch
+    {
+        SecureChannelFailureType.InvalidPayload => ErrorI18NKeys.Validation,
+        SecureChannelFailureType.CryptographicError => ErrorI18NKeys.DependencyUnavailable,
+        SecureChannelFailureType.ActorCommunicationError => ErrorI18NKeys.ServiceUnavailable,
+        _ => ErrorI18NKeys.Internal
+    };
     public static SecureChannelFailure ProtocolError(string message)
         => new(SecureChannelFailureType.ProtocolError, message);
 
@@ -31,21 +60,21 @@ public sealed record SecureChannelFailure(
             SecureChannelFailureType.InvalidPayload => new GrpcErrorDescriptor(
                 ErrorCode.ValidationFailed,
                 StatusCode.InvalidArgument,
-                ErrorI18NKeys.Validation),
+                UserMessageKey ?? ErrorI18NKeys.Validation),
             SecureChannelFailureType.CryptographicError => new GrpcErrorDescriptor(
                 ErrorCode.DependencyUnavailable,
                 StatusCode.Unavailable,
-                ErrorI18NKeys.DependencyUnavailable,
+                UserMessageKey ?? ErrorI18NKeys.DependencyUnavailable,
                 Retryable: true),
             SecureChannelFailureType.ActorCommunicationError => new GrpcErrorDescriptor(
                 ErrorCode.ServiceUnavailable,
                 StatusCode.Unavailable,
-                ErrorI18NKeys.ServiceUnavailable,
+                UserMessageKey ?? ErrorI18NKeys.ServiceUnavailable,
                 Retryable: true),
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18NKeys.Internal)
+                UserMessageKey ?? ErrorI18NKeys.Internal)
         };
 
     public override object ToStructuredLog()
@@ -55,7 +84,11 @@ public sealed record SecureChannelFailure(
             FailureType = FailureType.ToString(),
             Message,
             InnerException,
-            Timestamp
+            Timestamp,
+            IsUserFacing,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 }

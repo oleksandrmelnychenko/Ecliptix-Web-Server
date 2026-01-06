@@ -7,4 +7,5 @@ internal sealed class SecurityKeysSettings
     public string OpaqueSecretKeySeed { get; set; } = string.Empty;
     public Dictionary<int, string> OpaqueKeyRing { get; set; } = new();
     public int OpaqueActiveKeyVersion { get; set; } = 1;
+    public string? ProtocolIdentitySeed { get; set; }
 }

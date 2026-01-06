@@ -14,6 +14,8 @@ message SecureEnvelope {
   optional bytes error_details = 6;
   bytes header_nonce = 7;                   // Nonce for header decryption (12 bytes)
   optional bytes dh_public_key = 8;         // DH public key for ratchet (not encrypted, receiver needs this before decrypting metadata)
+  optional bytes kyber_ciphertext = 9;       // Kyber ciphertext for PQ hybrid ratchet rotation (not encrypted)
+  optional uint64 ratchet_epoch = 10;        // Monotonic ratchet epoch set by sender; used to detect stale state
 }
 
 message EnvelopeMetadata{
@@ -28,8 +30,8 @@ message EnvelopeMetadata{
 message EnvelopeError {
   string error_code = 1;                    // Machine-readable error code
   string error_message = 2;                 // Human-readable message
-  optional uint32 retry_after_seconds = 3; 
-  google.protobuf.Timestamp occurred_at = 4; 
+  optional uint32 retry_after_seconds = 3;
+  google.protobuf.Timestamp occurred_at = 4;
 }
 
 enum EnvelopeResultCode {

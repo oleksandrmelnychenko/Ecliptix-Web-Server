@@ -10,7 +10,6 @@ using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Configuration.Settings;
 using Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 using Ecliptix.Core.Infrastructure.Grpc.Routing;
-using Ecliptix.Core.Infrastructure.Grpc.Routing.Handlers;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware;
@@ -27,6 +26,8 @@ using Ecliptix.Security.Opaque;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Services;
+using Ecliptix.SecureProtocol.Domain.Protocol;
+using Ecliptix.SecureProtocol.Domain.ProtocolNative;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel.Grpc.Utilities;
@@ -34,8 +35,6 @@ using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
 using Ecliptix.SharedKernel.Actors;
 using Ecliptix.DeviceProvisioning.Infrastructure.Crypto;
 using Ecliptix.DeviceProvisioning.Infrastructure.SecureChannel;
-using DP = Ecliptix.DeviceProvisioning.Infrastructure.Grpc;
-using IA = Ecliptix.IdentityAccess.Infrastructure.Grpc;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -71,6 +70,8 @@ try
     }
 
     InitializeOpaqueService(app);
+    InitializeEcliptixProtocol();
+    InitializeProtocolKeyService(app);
 
     ConfigureMiddleware(app);
     ConfigureEndpoints(app);
@@ -202,15 +203,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<IEventRouteProvider, IdentityAccessEventRouteProvider>();
     builder.Services.AddSingleton<IEventRouteProvider, DeviceProvisioningEventRouteProvider>();
     builder.Services.AddSingleton<EventEnvelopeDispatcher>();
-    builder.Services.AddSingleton<IEventHandler<Ecliptix.Protobuf.Common.SecureEnvelope>, IdentityAccessSecureEnvelopeHandler>();
-    builder.Services.AddSingleton<IEventHandler<Ecliptix.Protobuf.Common.SecureEnvelope>, DeviceProvisioningSecureEnvelopeHandler>();
-    builder.Services.AddSingleton<IEventHandler<Ecliptix.Protobuf.Device.AuthenticatedEstablishRequest>, DeviceProvisioningAuthenticatedEstablishHandler>();
-    builder.Services.AddTransient<IA.MembershipServices>();
-    builder.Services.AddTransient<IA.VerificationFlowServices>();
-    builder.Services.AddTransient<IA.AccountProfileServices>();
-    builder.Services.AddTransient<DP.DeviceService>();
-    builder.Services.AddTransient<IdentityAccessEventsService>();
-    builder.Services.AddTransient<DeviceProvisioningEventsService>();
+    builder.Services.AddTransient<EventGatewayService>();
 
     NetworkConfiguration networkConfig = new();
     builder.Configuration.GetSection(NetworkConfiguration.SectionName).Bind(networkConfig);
@@ -270,6 +263,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
     });
 
     builder.Services.AddSingleton<CertificatePinningService>();
+    builder.Services.AddSingleton<IProtocolKeyService, ProtocolKeyService>();
 
     builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IHardenedKeyDerivation, Ecliptix.Core.Services.KeyDerivation.HardenedKeyDerivation>();
     builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.ISecretSharingService, Ecliptix.Core.Services.KeyDerivation.ShamirSecretSharing>();
@@ -330,12 +324,7 @@ static void ConfigureMiddleware(WebApplication app)
 
 static void ConfigureEndpoints(WebApplication app)
 {
-    app.MapGrpcService<DP.DeviceService>();
-    app.MapGrpcService<IA.VerificationFlowServices>();
-    app.MapGrpcService<IA.MembershipServices>();
-    app.MapGrpcService<IA.AccountProfileServices>();
-    app.MapGrpcService<IdentityAccessEventsService>();
-    app.MapGrpcService<DeviceProvisioningEventsService>();
+    app.MapGrpcService<EventGatewayService>();
 
     app.MapHealthChecks(AppConstants.Endpoints.Health);
 
@@ -515,6 +504,8 @@ static void InitializeOpaqueService(WebApplication app)
         opaqueService.Initialize(keyRing, activeKeyVersion);
     if (!initializationResult.IsErr)
     {
+        Log.Information("OPAQUE protocol initialized successfully with {KeyCount} key(s), active version: {ActiveVersion}",
+            keyRing.Count, activeKeyVersion);
         return;
     }
 
@@ -524,57 +515,86 @@ static void InitializeOpaqueService(WebApplication app)
 
 }
 
-internal class ActorSystemHostedService(ActorSystem actorSystem) : IHostedService
+static void InitializeEcliptixProtocol()
 {
-    public Task StartAsync(CancellationToken cancellationToken)
+    try
     {
+        Result<EcliptixIdentityKeys, EcliptixProtocolFailure> keysResult = EcliptixIdentityKeys.Create();
+        if (keysResult.IsErr)
+        {
+            EcliptixProtocolFailure failure = keysResult.UnwrapErr();
+            Log.Error("Ecliptix Protocol initialization failed: {Error}", failure.Message);
+            throw new InvalidOperationException($"Ecliptix Protocol initialization failed: {failure.Message}");
+        }
 
-        RegisterShutdownHooks();
+        using EcliptixIdentityKeys testKeys = keysResult.Unwrap();
 
-        return Task.CompletedTask;
+        Result<EcliptixProtocolSystem, EcliptixProtocolFailure> systemResult = EcliptixProtocolSystem.Create(testKeys);
+        if (systemResult.IsErr)
+        {
+            EcliptixProtocolFailure failure = systemResult.UnwrapErr();
+            Log.Error("Ecliptix Protocol System creation failed: {Error}", failure.Message);
+            throw new InvalidOperationException($"Ecliptix Protocol System creation failed: {failure.Message}");
+        }
+
+        using EcliptixProtocolSystem testSystem = systemResult.Unwrap();
+
+        Log.Information("Ecliptix Protocol native library initialized successfully");
+    }
+    catch (DllNotFoundException ex)
+    {
+        Log.Error(ex, "Ecliptix Protocol native library 'libecliptix_protocol' not found");
+        throw new InvalidOperationException($"Ecliptix Protocol native library not found: {ex.Message}", ex);
+    }
+    catch (BadImageFormatException ex)
+    {
+        Log.Error(ex, "Ecliptix Protocol native library failed to load (architecture mismatch)");
+        throw new InvalidOperationException($"Ecliptix Protocol native library failed to load: {ex.Message}", ex);
+    }
+    catch (EntryPointNotFoundException ex)
+    {
+        Log.Error(ex, "Ecliptix Protocol native library entry point missing");
+        throw new InvalidOperationException($"Ecliptix Protocol native library entry point missing: {ex.Message}", ex);
+    }
+}
+
+static void InitializeProtocolKeyService(WebApplication app)
+{
+    IProtocolKeyService protocolKeyService = app.Services.GetRequiredService<IProtocolKeyService>();
+    SecurityKeysSettings securityKeysSettings = app.Services.GetRequiredService<IOptions<SecurityKeysSettings>>().Value;
+
+    // Use the protocol identity seed from configuration, falling back to OPAQUE seed
+    string? seedString = securityKeysSettings.ProtocolIdentitySeed ?? securityKeysSettings.OpaqueSecretKeySeed;
+    if (string.IsNullOrWhiteSpace(seedString))
+    {
+        Log.Error("Protocol identity seed is not configured (ProtocolIdentitySeed or OpaqueSecretKeySeed required)");
+        throw new InvalidOperationException("Protocol identity seed is not configured");
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken)
+    // ProtocolIdentitySeed is Base64-encoded, but OpaqueSecretKeySeed may be hex-encoded
+    // Detect format: 64-char hex string vs Base64
+    byte[] seed;
+    if (securityKeysSettings.ProtocolIdentitySeed != null)
     {
-        try
-        {
-            using CancellationTokenSource timeoutCts =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeoutConfiguration.Network.ShutdownGracefulTimeout);
+        seed = Convert.FromBase64String(seedString);
+    }
+    else if (seedString.Length == 64 && seedString.All(c => Uri.IsHexDigit(c)))
+    {
+        // OpaqueSecretKeySeed is hex-encoded (64 hex chars = 32 bytes)
+        seed = Convert.FromHexString(seedString);
+    }
+    else
+    {
+        seed = Convert.FromBase64String(seedString);
+    }
+    Result<Unit, EcliptixProtocolFailure> initResult = protocolKeyService.Initialize(seed);
 
-            CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(actorSystem);
-            await coordinatedShutdown.Run(CoordinatedShutdown.ClrExitReason.Instance);
-        }
-        catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
-        {
-            Log.Debug(ex, "Actor system shutdown cancelled, forcing termination");
-            await actorSystem.Terminate();
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Error during actor system shutdown, forcing termination");
-            await actorSystem.Terminate();
-        }
+    if (initResult.IsErr)
+    {
+        EcliptixProtocolFailure failure = initResult.UnwrapErr();
+        Log.Error("Protocol key service initialization failed: {Error}", failure.Message);
+        throw new InvalidOperationException($"Protocol key service initialization failed: {failure.Message}");
     }
 
-    private void RegisterShutdownHooks()
-    {
-        CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(actorSystem);
-
-        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeServiceUnbind,
-            AppConstants.ActorSystemTasks.StopAcceptingNewConnections,
-            () => Task.FromResult(Done.Instance));
-
-        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone,
-            AppConstants.ActorSystemTasks.DrainActiveRequests, async () =>
-            {
-
-                await Task.Delay(TimeoutConfiguration.Network.DrainActiveRequests);
-
-                return Done.Instance;
-            });
-
-        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate,
-            AppConstants.ActorSystemTasks.CleanupResources, () => Task.FromResult(Done.Instance));
-    }
+    Log.Information("Protocol key service initialized successfully");
 }

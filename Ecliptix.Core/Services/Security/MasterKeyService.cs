@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using Akka.Actor;
-using Ecliptix.Core.Domain.Protocol;
 using Ecliptix.Core.Services.KeyDerivation;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.MasterKeyShares;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;

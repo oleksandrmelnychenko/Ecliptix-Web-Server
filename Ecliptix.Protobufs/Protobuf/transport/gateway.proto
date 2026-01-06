@@ -5,18 +5,9 @@ option csharp_namespace = "Ecliptix.Protobuf.Transport.Gateway";
 
 import "transport/common/event_envelope.proto";
 
-// Unified transport surface for all contexts. The payload is wrapped in EventEnvelope
-// and routed by metadata (event_type/context/delivery_kind).
 service EventGateway {
-  // Unary request/response.
   rpc Unary(ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
-
-  // Server streaming (single request -> stream of responses).
   rpc ServerStream(ecliptix.transport.common.EventEnvelope) returns (stream ecliptix.transport.common.EventEnvelope);
-
-  // Client streaming (stream of requests -> single response).
   rpc ClientStream(stream ecliptix.transport.common.EventEnvelope) returns (ecliptix.transport.common.EventEnvelope);
-
-  // Bidirectional streaming.
   rpc BidiStream(stream ecliptix.transport.common.EventEnvelope) returns (stream ecliptix.transport.common.EventEnvelope);
 }

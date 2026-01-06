@@ -181,9 +181,9 @@ public static class GrpcMetadataHandler
         return requestHeaders.GetValueAsResult(LocaleKey).Unwrap();
     }
 
-    public static string GetConnectionContextId(Metadata requestHeaders)
+    public static Option<string> GetConnectionContextId(Metadata requestHeaders)
     {
-        return requestHeaders.GetValueAsResult(ConnectionContextId).Unwrap();
+        return requestHeaders.GetValueAsResult(ConnectionContextId).ToOption();
     }
 
     public static Option<string> GetLocalIpAddress(Metadata requestHeaders)

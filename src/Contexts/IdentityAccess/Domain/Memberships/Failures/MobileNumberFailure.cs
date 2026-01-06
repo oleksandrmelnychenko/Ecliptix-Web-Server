@@ -15,7 +15,7 @@ public sealed record MobileNumberFailure(
         _ => false
     };
 
-    public bool IsUserFacing => FailureType switch
+    public override bool IsUserFacing => FailureType switch
     {
         MobileNumberFailureType.Invalid => true,
         MobileNumberFailureType.TooShort => true,
@@ -25,6 +25,34 @@ public sealed record MobileNumberFailure(
         MobileNumberFailureType.AlreadyExists => true,
         _ => false
     };
+
+    public override bool Retryable => FailureType switch
+    {
+        MobileNumberFailureType.PersistorAccess => true,
+        _ => false
+    };
+
+    public override ErrorSurface Surface => FailureType switch
+    {
+        MobileNumberFailureType.PersistorAccess or MobileNumberFailureType.InternalError => ErrorSurface.System,
+        _ => ErrorSurface.User
+    };
+
+    public override string PublicErrorCode => FailureType switch
+    {
+        MobileNumberFailureType.Invalid => "mobile.invalid",
+        MobileNumberFailureType.TooShort => "mobile.too_short",
+        MobileNumberFailureType.TooLong => "mobile.too_long",
+        MobileNumberFailureType.InvalidCountryCode => "mobile.invalid_country",
+        MobileNumberFailureType.ParsingFailed => "mobile.parsing_failed",
+        MobileNumberFailureType.ValidationFailed => "mobile.validation_failed",
+        MobileNumberFailureType.NotFound => "mobile.not_found",
+        MobileNumberFailureType.AlreadyExists => "mobile.already_exists",
+        MobileNumberFailureType.PersistorAccess => "mobile.persistence",
+        _ => "mobile.internal"
+    };
+
+    public override string? UserMessageKey => GetDefaultI18NKey(FailureType);
 
     public static MobileNumberFailure Invalid(string? details = null, Exception? ex = null)
     {
@@ -166,7 +194,7 @@ public sealed record MobileNumberFailure(
 
     public override GrpcErrorDescriptor ToGrpcDescriptor()
     {
-        string i18NKey = string.IsNullOrWhiteSpace(Message) ? GetDefaultI18NKey(FailureType) : Message;
+        string i18NKey = string.IsNullOrWhiteSpace(UserMessageKey) ? GetDefaultI18NKey(FailureType) : UserMessageKey!;
 
         return FailureType switch
         {
@@ -229,7 +257,10 @@ public sealed record MobileNumberFailure(
             InnerException,
             Timestamp,
             IsRecoverable,
-            IsUserFacing
+            IsUserFacing,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 }

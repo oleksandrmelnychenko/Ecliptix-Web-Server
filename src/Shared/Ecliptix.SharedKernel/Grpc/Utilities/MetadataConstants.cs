@@ -9,6 +9,9 @@ public static class MetadataConstants
         public const string PublicIpAddress = "public-ip-address";
         public const string Platform = "platform";
         public const string Locale = "lang";
+        public const string CorrelationId = "correlation-id";
+        public const string Version = "version";
+        public const string Tenant = "tenant";
         public const string LinkId = "fetch-link";
         public const string ApplicationInstanceId = "application-identifier";
         public const string AppDeviceId = "d-identifier";

@@ -8,18 +8,8 @@ using Grpc.Core;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Transport;
 
-/// <summary>
-/// Unified transport entry point. Clients set metadata.event_type/context and the dispatcher routes accordingly.
-/// </summary>
-public sealed class EventGatewayService : EventGateway.EventGatewayBase
+public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : EventGateway.EventGatewayBase
 {
-    private readonly EventEnvelopeDispatcher _dispatcher;
-
-    public EventGatewayService(EventEnvelopeDispatcher dispatcher)
-    {
-        _dispatcher = dispatcher;
-    }
-
     public override Task<EventEnvelope> Unary(EventEnvelope request, ServerCallContext context)
     {
         if (string.IsNullOrWhiteSpace(request.Metadata?.EventType))
@@ -28,7 +18,7 @@ public sealed class EventGatewayService : EventGateway.EventGatewayBase
         }
 
         EventEnvelope normalized = NormalizeMetadata(request, DeliveryKind.Unary, context);
-        return _dispatcher.DispatchAsync(normalized, context.CancellationToken);
+        return dispatcher.DispatchAsync(normalized, context.CancellationToken);
     }
 
     public override async Task ServerStream(
@@ -43,7 +33,7 @@ public sealed class EventGatewayService : EventGateway.EventGatewayBase
         }
 
         EventEnvelope normalized = NormalizeMetadata(request, DeliveryKind.ServerStream, context);
-        EventEnvelope response = await _dispatcher.DispatchAsync(normalized, context.CancellationToken);
+        EventEnvelope response = await dispatcher.DispatchAsync(normalized, context.CancellationToken);
         await responseStream.WriteAsync(response);
     }
 
@@ -61,7 +51,7 @@ public sealed class EventGatewayService : EventGateway.EventGatewayBase
             }
 
             EventEnvelope normalized = NormalizeMetadata(request, DeliveryKind.ClientStream, context);
-            lastResponse = await _dispatcher.DispatchAsync(normalized, context.CancellationToken);
+            lastResponse = await dispatcher.DispatchAsync(normalized, context.CancellationToken);
         }
 
         return lastResponse ?? new EventEnvelope
@@ -70,7 +60,6 @@ public sealed class EventGatewayService : EventGateway.EventGatewayBase
             {
                 Status = "ERR",
                 ErrorCode = "empty_stream",
-                UserMessage = "No messages received",
                 DeliveryKind = DeliveryKind.ClientStream
             }
         };
@@ -90,7 +79,7 @@ public sealed class EventGatewayService : EventGateway.EventGatewayBase
             }
 
             EventEnvelope normalized = NormalizeMetadata(request, DeliveryKind.BidiStream, context);
-            EventEnvelope response = await _dispatcher.DispatchAsync(normalized, context.CancellationToken);
+            EventEnvelope response = await dispatcher.DispatchAsync(normalized, context.CancellationToken);
             await responseStream.WriteAsync(response);
         }
     }
@@ -117,7 +106,6 @@ public sealed class EventGatewayService : EventGateway.EventGatewayBase
             }
             catch
             {
-                // leave as 0 if not available
             }
         }
 
@@ -199,7 +187,6 @@ public sealed class EventGatewayService : EventGateway.EventGatewayBase
         {
             Status = "ERR",
             ErrorCode = "missing_event_type",
-            UserMessage = "metadata.event_type is required",
             DeliveryKind = deliveryKind
         },
         Payload = ByteString.Empty

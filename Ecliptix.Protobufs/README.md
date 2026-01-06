@@ -1,7 +1,7 @@
 # Protobuf layout (context-first)
 
 - Common primitives: `Protobuf/common/*` (secure envelope, health).
-- Transport contracts: `Protobuf/transport/*` (envelope metadata + context-scoped transport services).
+- Transport contracts: `Protobuf/transport/*` (envelope metadata + unified gateway surface). `gateway.proto` exposes Unary/ServerStream/ClientStream/BidiStream on `EventGateway`. Legacy typed device RPCs are removed; DeviceProvisioning flows are routed via the gateway using `DeviceProvisioningEventType` names.
 - Contexts:
   - IdentityAccess: `Protobuf/contexts/identity_access/*` (account, membership/opaque, verification/auth).
   - DeviceProvisioning: `Protobuf/contexts/device_provisioning/*` (device models/services).

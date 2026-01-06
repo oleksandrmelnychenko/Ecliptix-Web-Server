@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -91,12 +92,16 @@ internal static unsafe class CertificatePinningNativeLibrary
     {
         List<string> paths = [];
         string runtimeId = GetRuntimeIdentifier();
+        IEnumerable<string> runtimeIds = ExpandRuntimeIdentifiers(runtimeId);
 
         foreach (string fileName in fileNames)
         {
             paths.Add(Path.Combine(AppContext.BaseDirectory, fileName));
-            paths.Add(Path.Combine(AppContext.BaseDirectory, "runtimes", runtimeId, "native", fileName));
             paths.Add(Path.Combine(Path.GetDirectoryName(assembly.Location) ?? "", fileName));
+            foreach (string rid in runtimeIds)
+            {
+                paths.Add(Path.Combine(AppContext.BaseDirectory, "runtimes", rid, "native", fileName));
+            }
         }
 
         return paths.ToArray();
@@ -167,6 +172,16 @@ internal static unsafe class CertificatePinningNativeLibrary
         catch
         {
             return false;
+        }
+    }
+
+    private static IEnumerable<string> ExpandRuntimeIdentifiers(string runtimeId)
+    {
+        yield return runtimeId;
+
+        if (runtimeId.Contains("-musl", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return runtimeId.Replace("-musl", "", StringComparison.OrdinalIgnoreCase);
         }
     }
 

@@ -1,14 +1,10 @@
-using System;
-using Ecliptix.Core.Domain.ProtocolNative;
 using Ecliptix.Protobuf.Protocol;
+using Ecliptix.SecureProtocol.Domain.ProtocolNative;
 using Ecliptix.SharedKernel;
-using Native = Ecliptix.Protocol.Server;
+using Native = Ecliptix.SecureProtocol.Domain.ProtocolNative.NativeInterop;
 
-namespace Ecliptix.Core.Domain.Protocol;
+namespace Ecliptix.SecureProtocol.Domain.Protocol;
 
-/// <summary>
-/// Adapter over the NuGet protocol interop to keep actors free from P/Invoke details.
-/// </summary>
 public sealed class ProtocolServerAdapter : IProtocolServer
 {
     private bool _initialized;
@@ -20,12 +16,12 @@ public sealed class ProtocolServerAdapter : IProtocolServer
             return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
         }
 
-        Native.EcliptixErrorCode result = Native.EcliptixNativeInterop.ecliptix_initialize();
+        Native.EcliptixErrorCode result = Native.ecliptix_initialize();
         if (result != Native.EcliptixErrorCode.Success)
         {
             return Result<Unit, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Generic(
-                    $"Failed to initialize native protocol: {Native.EcliptixNativeInterop.ErrorCodeToString(result)}"));
+                    $"Failed to initialize native protocol: {Native.ErrorCodeToString(result)}"));
         }
 
         _initialized = true;
@@ -36,7 +32,7 @@ public sealed class ProtocolServerAdapter : IProtocolServer
     {
         if (_initialized)
         {
-            Native.EcliptixNativeInterop.ecliptix_shutdown();
+            Native.ecliptix_shutdown();
             _initialized = false;
         }
 
@@ -80,6 +76,17 @@ public sealed class ProtocolServerAdapter : IProtocolServer
         }
 
         return identity.Handle.GetPublicX25519();
+    }
+
+    public Result<byte[], EcliptixProtocolFailure> GetPublicKyber(ProtocolIdentity identity)
+    {
+        if (identity.IsDisposed)
+        {
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.ObjectDisposed(nameof(ProtocolIdentity)));
+        }
+
+        return identity.Handle.GetPublicKyber();
     }
 
     public Result<ProtocolSession, EcliptixProtocolFailure> CreateSession(
@@ -225,6 +232,11 @@ public sealed class ProtocolServerAdapter : IProtocolServer
     public Result<uint, EcliptixProtocolFailure> GetConnectionId(ProtocolSession session)
     {
         return EnsureSessionActive(session, () => session.Handle.GetConnectionId());
+    }
+
+    public Result<uint?, EcliptixProtocolFailure> GetSelectedOpkId(ProtocolSession session)
+    {
+        return EnsureSessionActive(session, () => session.Handle.GetSelectedOpkId());
     }
 
     public Result<byte[], EcliptixProtocolFailure> ExportState(ProtocolSession session)

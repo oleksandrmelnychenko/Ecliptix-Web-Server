@@ -22,9 +22,10 @@ public sealed class GrpcFailureException : Exception
 
     public static GrpcFailureException FromDomainFailure(FailureBase failure)
     {
+        ClientErrorInfo clientError = failure.ToClientError();
         GrpcErrorDescriptor descriptor = failure.ToGrpcDescriptor();
         return new GrpcFailureException(
-            descriptor.CreateStatus(failure.Message),
+            descriptor.CreateStatus(clientError.MessageKey),
             descriptor,
             failure.ToStructuredLog(),
             failure.InnerException);

@@ -6,6 +6,8 @@ using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
 using Ecliptix.SharedKernel.Actors;
 using Grpc.Core;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 using Serilog;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
@@ -16,10 +18,11 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
 
     private static PubKeyExchangeType GetExchangeTypeFromMetadata(ServerCallContext context)
     {
-        string connectionContextId = GrpcMetadataHandler.GetConnectionContextId(context.RequestHeaders);
+        Option<string> connectionContextIdOpt = GrpcMetadataHandler.GetConnectionContextId(context.RequestHeaders);
 
-        if (Enum.TryParse(connectionContextId, true, out PubKeyExchangeType exchangeType) &&
-            Enum.IsDefined(exchangeType))
+        if (connectionContextIdOpt.IsSome &&
+            System.Enum.TryParse(connectionContextIdOpt.Value, true, out PubKeyExchangeType exchangeType) &&
+            System.Enum.IsDefined(typeof(PubKeyExchangeType), exchangeType))
         {
             return exchangeType;
         }
@@ -100,8 +103,38 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
     public async Task<SecureEnvelope> CreateFailureResponse(FailureBase failure, uint connectId,
         ServerCallContext context)
     {
-        context.Status = failure.ToGrpcStatus();
+        ClientErrorInfo clientError = failure.ToClientError();
+        GrpcErrorDescriptor descriptor = failure.ToGrpcDescriptor();
+
+        // Expose sanitized message key to the client and keep details only in logs.
+        context.Status = descriptor.CreateStatus(clientError.MessageKey);
+
+        EnvelopeError errorPayload = new()
+        {
+            ErrorCode = clientError.PublicErrorCode,
+            ErrorMessage = clientError.MessageKey,
+            OccurredAt = Timestamp.FromDateTime(DateTime.UtcNow)
+        };
+
+        if (clientError.Retryable)
+        {
+            errorPayload.RetryAfterSeconds = 0; // caller can decide backoff policy
+        }
+
+        byte[] errorBytes = errorPayload.ToByteArray();
+
         Result<SecureEnvelope, FailureBase> encryptResult = await EncryptEnvelop([], connectId, context);
-        return encryptResult.IsErr ? new SecureEnvelope() : encryptResult.Unwrap();
+        if (encryptResult.IsErr)
+        {
+            // If we cannot encrypt, still return an envelope with plaintext error details.
+            return new SecureEnvelope
+            {
+                ErrorDetails = ByteString.CopyFrom(errorBytes)
+            };
+        }
+
+        SecureEnvelope envelope = encryptResult.Unwrap();
+        envelope.ErrorDetails = ByteString.CopyFrom(errorBytes);
+        return envelope;
     }
 }

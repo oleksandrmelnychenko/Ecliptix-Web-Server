@@ -1,56 +1,52 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>Ecliptix.Protobufs</AssemblyName>
-    <RootNamespace>Ecliptix.Protobufs</RootNamespace>
     <LangVersion>14</LangVersion>
+    <RootNamespace>Ecliptix.Protobuf</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Grpc.AspNetCore.Server" Version="2.76.0" />
-    <PackageReference Include="libphonenumber-csharp" Version="9.0.21" />
-    <PackageReference Include="protobuf-net" Version="3.2.56" />
-    <PackageReference Include="protobuf-net.Grpc" Version="1.2.2" />
-    <PackageReference Include="Protobuf.Grpc" Version="1.0.170" />
-    <PackageReference Include="Google.Protobuf" Version="3.33.2" />
+    <!-- Transport proto files -->
+    <Protobuf Include="Protobuf\transport\common\event_envelope.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\transport\gateway.proto" GrpcServices="Server" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\transport\identity_access.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\transport\device_provisioning.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+
+    <!-- Common proto files (removed pub_key_exchange.proto and protocol_state.proto - superseded by contexts/secure_protocol) -->
+    <Protobuf Include="Protobuf\common\secure_envelope.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\common\health_check.proto" GrpcServices="Client" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\common\types.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+
+    <!-- Identity Access context proto files -->
+    <Protobuf Include="Protobuf\contexts\identity_access\membership_core.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\contexts\identity_access\account.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\contexts\identity_access\opaque_models.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\contexts\identity_access\verification_models.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+
+    <!-- Device Provisioning context proto files -->
+    <Protobuf Include="Protobuf\contexts\device_provisioning\device_models.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+
+    <!-- Secure Protocol context proto files -->
+    <Protobuf Include="Protobuf\contexts\secure_protocol\key_exchange.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\contexts\secure_protocol\key_materials.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\contexts\secure_protocol\protocol_state.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.33.0" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
+    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.71.0" />
     <PackageReference Include="Grpc.Tools" Version="2.76.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="protobuf-net.Grpc.AspNetCore" Version="1.2.2" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Core proto files -->
-    <Protobuf Include="Protobuf\common\secure_envelope.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\common\health_check.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\contexts\secure_protocol\key_exchange.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\contexts\secure_protocol\protocol_state.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\contexts\secure_protocol\key_materials.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-
-    <!-- Context: IdentityAccess -->
-    <Protobuf Include="Protobuf\contexts\identity_access\account.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\contexts\identity_access\account_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\contexts\identity_access\auth_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\contexts\identity_access\membership_core.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\contexts\identity_access\membership_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\contexts\identity_access\opaque_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\contexts\identity_access\verification_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-
-    <!-- Context: DeviceProvisioning -->
-    <Protobuf Include="Protobuf\contexts\device_provisioning\device_models.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\contexts\device_provisioning\device_services.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Transport envelope + context-specific transport services -->
-    <Protobuf Include="Protobuf\transport\common\event_envelope.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\transport\identity_access.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-    <Protobuf Include="Protobuf\transport\device_provisioning.proto" GrpcServices="Server" ProtoRoot="Protobuf/" OutputDir="$(BaseIntermediateOutputPath)" />
-  </ItemGroup>
+  <PropertyGroup>
+    <EnableRequestGrpcPrecompile>true</EnableRequestGrpcPrecompile>
+  </PropertyGroup>
 
 </Project>

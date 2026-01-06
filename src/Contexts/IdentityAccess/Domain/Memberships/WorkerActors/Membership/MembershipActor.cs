@@ -58,7 +58,7 @@ internal sealed class PendingOpaqueContext
 
 public sealed class MembershipActor : ReceivePersistentActor
 {
-    private const string PersistenceIdValue = "membership-actor";
+    private const string PersistenceIdValue = "membership-actor-v2";
     private static readonly TimeSpan PendingPasswordRecoveryTimeout = TimeSpan.FromMinutes(15);
     private const int OpaqueAccountIdLength = 16;
     private const int OpaqueMaskingKeyLength = 32;
@@ -712,7 +712,6 @@ public sealed class MembershipActor : ReceivePersistentActor
             "[PASSWORD-RECOVERY-INIT] OPRF generated for membership {0}. Credentials stored in pending state (persisted).",
             @event.MembershipIdentifier);
 
-        // ReSharper disable once MethodHasAsyncOverload
         Persist(
             new RecoverySessionStartedEvent(
                 @event.MembershipIdentifier,
@@ -800,7 +799,6 @@ public sealed class MembershipActor : ReceivePersistentActor
         Log.Info("[MEMBERSHIP-PERSIST] Persisting pending account id for MembershipId: {0}. Current LastSequenceNr: {1}",
             @event.MembershipIdentifier, LastSequenceNr);
 
-        // ReSharper disable once MethodHasAsyncOverload
         Persist(
             new RegistrationMaskingKeyStoredEvent(@event.MembershipIdentifier, accountIdBytes, keyVersion),
             evt =>
@@ -956,7 +954,6 @@ public sealed class MembershipActor : ReceivePersistentActor
         List<AccountInfo> availableAccounts = record.AvailableAccounts ?? new List<AccountInfo>();
         List<AccountInfo> accountsCopy = availableAccounts.Select(CloneAccountInfo).ToList();
 
-        // ReSharper disable once MethodHasAsyncOverload
         Persist(
             new PendingSignInStoredEvent(
                 @event.ConnectId,

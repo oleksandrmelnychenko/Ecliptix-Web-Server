@@ -17,7 +17,7 @@ public sealed record SecretKeyRecoveryFailure(
         _ => false
     };
 
-    public bool IsUserFacing => FailureType switch
+    public override bool IsUserFacing => FailureType switch
     {
         SecretKeyRecoveryFailureType.TokenNotFound => true,
         SecretKeyRecoveryFailureType.TokenExpired => true,
@@ -26,6 +26,38 @@ public sealed record SecretKeyRecoveryFailure(
         SecretKeyRecoveryFailureType.ValidationFailed => true,
         _ => false
     };
+
+    public override bool Retryable => FailureType switch
+    {
+        SecretKeyRecoveryFailureType.PersistorAccess or
+        SecretKeyRecoveryFailureType.InitiationFailed or
+        SecretKeyRecoveryFailureType.ResetFailed => true,
+        _ => false
+    };
+
+    public override ErrorSurface Surface => FailureType switch
+    {
+        SecretKeyRecoveryFailureType.PersistorAccess or
+        SecretKeyRecoveryFailureType.InitiationFailed or
+        SecretKeyRecoveryFailureType.ResetFailed or
+        SecretKeyRecoveryFailureType.InternalError => ErrorSurface.System,
+        _ => ErrorSurface.User
+    };
+
+    public override string PublicErrorCode => FailureType switch
+    {
+        SecretKeyRecoveryFailureType.TokenNotFound => "recovery.token_not_found",
+        SecretKeyRecoveryFailureType.TokenExpired => "recovery.token_expired",
+        SecretKeyRecoveryFailureType.TokenInvalid => "recovery.token_invalid",
+        SecretKeyRecoveryFailureType.TokenAlreadyUsed => "recovery.token_already_used",
+        SecretKeyRecoveryFailureType.ValidationFailed => "recovery.validation_failed",
+        SecretKeyRecoveryFailureType.InitiationFailed => "recovery.initiation_failed",
+        SecretKeyRecoveryFailureType.ResetFailed => "recovery.reset_failed",
+        SecretKeyRecoveryFailureType.PersistorAccess => "recovery.persistence",
+        _ => "recovery.internal"
+    };
+
+    public override string? UserMessageKey => GetDefaultI18NKey(FailureType);
 
     public static SecretKeyRecoveryFailure TokenExpired(string? details = null)
     {
@@ -235,7 +267,7 @@ public sealed record SecretKeyRecoveryFailure(
 
     public override GrpcErrorDescriptor ToGrpcDescriptor()
     {
-        string i18NKey = string.IsNullOrWhiteSpace(Message) ? GetDefaultI18NKey(FailureType) : Message;
+        string i18NKey = string.IsNullOrWhiteSpace(UserMessageKey) ? GetDefaultI18NKey(FailureType) : UserMessageKey!;
 
         return FailureType switch
         {
@@ -304,7 +336,10 @@ public sealed record SecretKeyRecoveryFailure(
             InnerException,
             Timestamp,
             IsRecoverable,
-            IsUserFacing
+            IsUserFacing,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 }

@@ -230,10 +230,11 @@ public class GrpcSecurityService
         if (encryptionResult.IsErr)
         {
             FailureBase encryptionFailure = encryptionResult.UnwrapErr();
+            ClientErrorInfo clientError = encryptionFailure.ToClientError();
             GrpcErrorDescriptor descriptor = encryptionFailure.ToGrpcDescriptor();
             activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, false);
             throw new RpcException(
-                descriptor.CreateStatus(GrpcServiceConstants.ErrorMessages.EncryptionFailed));
+                descriptor.CreateStatus(clientError.MessageKey));
         }
 
         activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, true);
@@ -258,7 +259,6 @@ public class GrpcSecurityService
 
     private Result<Unit, FailureBase> ValidateTimestamp(SecureEnvelope encryptedRequest, uint connectId)
     {
-        // If request is older than T+delta: should be allowed if the actor system stores the request and associates it with the connect ID.
         if (encryptedRequest.Timestamp.Seconds == 0 || encryptedRequest.Timestamp.Seconds == long.MinValue ||
             encryptedRequest.Timestamp.Seconds == long.MaxValue)
         {

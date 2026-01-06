@@ -3,33 +3,42 @@ syntax = "proto3";
 package ecliptix.transport.common;
 option csharp_namespace = "Ecliptix.Protobuf.Transport.Common";
 
-// Metadata used for routing and correlation; payload stays opaque (encrypted or clear).
 message EventMetadata {
-  string event_id = 1;              // Unique id for this envelope
-  string event_type = 2;            // e.g. membership.sign_in_init
-  int32 event_version = 3;          // Increment when payload shape changes
-  string context = 4;               // e.g. identity_access, device_provisioning
-  string correlation_id = 5;        // Set to request event_id on responses
-  string causation_id = 6;          // Optional causal link
-  string partition_key = 7;         // Used for sharding (membershipId/deviceId)
-  string locale = 8;
-  string tenant = 9;
-  string type_url = 10;             // Optional proto type hint
-  bytes routing_hint = 11;          // Optional hashed partition key
-  string response_type = 12;        // e.g. membership.sign_in_init.result
-  int32 response_version = 13;      // Increment when response payload changes
-  string status = 14;               // OK | ERR
-  string error_code = 15;           // Machine readable
-  string user_message = 16;         // Localized, user facing if applicable
-  uint32 connect_id = 17;           // Required for secure envelope flows (maps to transport partition key)
-  string app_device_id = 18;        // Device identifier used in secure channel setup
-  string application_instance_id = 19; // App instance id (used in existing metadata for connect id derivation)
-  string request_id = 20;           // Optional per-request id
-  string idempotency_key = 21;      // Idempotency key to reuse retries (1-128 chars of [A-Za-z0-9._:-])
-  string platform = 22;             // client platform identifier
-  string version = 23;              // client app version
-  string key_exchange_context = 24; // e.g. data_center_ephemeral_connect
-  DeliveryKind delivery_kind = 25;  // Unary/server-stream/client-stream/bidi
+  EventIdentity identity = 1;
+  ClientContext client = 2;
+  SecurityContext security = 3;
+  EventOutcome outcome = 4;
+}
+
+message EventIdentity {
+  string event_id = 1;                    // Unique id for this envelope
+  string event_type = 2;                  // e.g. membership.sign_in_init
+  string context = 3;                     // e.g. identity_access, device_provisioning
+  string correlation_id = 4;              // Set to request event_id on responses
+  string causation_id = 5;                // Optional causal link
+  string partition_key = 6;               // Used for sharding (membershipId/deviceId)
+  DeliveryKind delivery_kind = 7;         // Unary/server-stream/client-stream/bidi
+}
+
+message ClientContext {
+  string locale = 1;                      // Client locale
+  string tenant = 2;                      // Tenant identifier
+  string request_id = 3;                  // Optional per-request id
+  string idempotency_key = 4;             // Idempotency key to reuse retries (1-128 chars of [A-Za-z0-9._:-])
+  string platform = 5;                    // Client platform identifier
+  string version = 6;                     // Client app version
+  string app_device_id = 7;               // Device identifier used in secure channel setup
+  string application_instance_id = 8;     // App instance id (used in existing metadata for connect id derivation)
+}
+
+message SecurityContext {
+  uint32 connect_id = 1;                  // Required for secure envelope flows (maps to transport partition key)
+  string key_exchange_context = 2;        // e.g. data_center_ephemeral_connect
+}
+
+message EventOutcome {
+  string status = 1;                      // OK | ERR
+  string error_code = 2;                  // Machine readable
 }
 
 // Declares how the request is delivered over gRPC.

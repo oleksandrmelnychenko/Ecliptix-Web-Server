@@ -14,13 +14,36 @@ public sealed record AccountProfileFailure(AccountProfileFailureType FailureType
         _ => false
     };
 
-    public bool IsUserFacing => FailureType switch
+    public override bool IsUserFacing => FailureType switch
     {
         AccountProfileFailureType.NotFound => true,
         AccountProfileFailureType.AlreadyExists => true,
         AccountProfileFailureType.ValidationFailed => true,
         _ => false
     };
+
+    public override bool Retryable => FailureType switch
+    {
+        AccountProfileFailureType.PersistorAccess => true,
+        _ => false
+    };
+
+    public override ErrorSurface Surface => FailureType switch
+    {
+        AccountProfileFailureType.PersistorAccess or AccountProfileFailureType.InternalError => ErrorSurface.System,
+        _ => ErrorSurface.User
+    };
+
+    public override string PublicErrorCode => FailureType switch
+    {
+        AccountProfileFailureType.NotFound => "account_profile.not_found",
+        AccountProfileFailureType.AlreadyExists => "account_profile.already_exists",
+        AccountProfileFailureType.ValidationFailed => "account_profile.validation_failed",
+        AccountProfileFailureType.PersistorAccess => "account_profile.persistence",
+        _ => "account_profile.internal"
+    };
+
+    public override string? UserMessageKey => GetDefaultI18NKey(FailureType);
 
     public static AccountProfileFailure NotFound(string? details = null)
     {
@@ -66,7 +89,7 @@ public sealed record AccountProfileFailure(AccountProfileFailureType FailureType
 
     public override GrpcErrorDescriptor ToGrpcDescriptor()
     {
-        string i18NKey = string.IsNullOrWhiteSpace(Message) ? GetDefaultI18NKey(FailureType) : Message;
+        string i18NKey = string.IsNullOrWhiteSpace(UserMessageKey) ? GetDefaultI18NKey(FailureType) : UserMessageKey!;
 
         return FailureType switch
         {
@@ -118,7 +141,10 @@ public sealed record AccountProfileFailure(AccountProfileFailureType FailureType
             InnerException,
             Timestamp,
             IsRecoverable,
-            IsUserFacing
+            IsUserFacing,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 }

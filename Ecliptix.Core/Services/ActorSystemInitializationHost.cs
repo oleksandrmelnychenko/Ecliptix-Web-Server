@@ -1,3 +1,4 @@
+using Akka;
 using Akka.Actor;
 using Ecliptix.Core.Configuration;
 using Ecliptix.DeviceProvisioning.Infrastructure.Persistors;
@@ -11,16 +12,15 @@ using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Actors;
 using Ecliptix.SharedKernel.Configuration;
+using Ecliptix.SecureProtocol.Infrastructure.Actors;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.IdentityAccess.Domain.Services.Security;
+using Serilog;
 
 namespace Ecliptix.Core.Services;
 
-/// <summary>
-/// Bootstraps the core actor system and registers all actor refs in the shared registry.
-/// </summary>
 public sealed class ActorSystemInitializationHost(
     ActorSystem actorSystem,
     IEcliptixActorRegistry registry,
@@ -34,7 +34,7 @@ public sealed class ActorSystemInitializationHost(
     public Task StartAsync(CancellationToken cancellationToken)
     {
         IActorRef protocolSystemActor = actorSystem.ActorOf(
-            Props.Create(() => new Domain.Actors.EcliptixProtocolSystemActor()),
+            Props.Create(() => new EcliptixProtocolSystemActor()),
             ApplicationConstants.ActorNames.ProtocolSystem);
 
         IActorRef appDevicePersistor = actorSystem.ActorOf(
@@ -106,8 +106,51 @@ public sealed class ActorSystemInitializationHost(
         registry.Register(ActorIds.AccountProfilePersistorActor, accountProfilePersistorActor);
         registry.Register(ActorIds.AccountProfileActor, accountProfileActor);
 
+        RegisterShutdownHooks();
+
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    private void RegisterShutdownHooks()
+    {
+        CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(actorSystem);
+
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeServiceUnbind,
+            "stop-accepting-new-connections",
+            () => Task.FromResult(Done.Instance));
+
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseServiceRequestsDone,
+            "drain-active-requests", async () =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5));
+                return Done.Instance;
+            });
+
+        coordinatedShutdown.AddTask(CoordinatedShutdown.PhaseBeforeActorSystemTerminate,
+            "cleanup-resources",
+            () => Task.FromResult(Done.Instance));
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using CancellationTokenSource timeoutCts =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+            CoordinatedShutdown coordinatedShutdown = CoordinatedShutdown.Get(actorSystem);
+            await coordinatedShutdown.Run(CoordinatedShutdown.ClrExitReason.Instance);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Log.Debug("Actor system shutdown cancelled, forcing termination");
+            await actorSystem.Terminate();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error during actor system shutdown, forcing termination");
+            await actorSystem.Terminate();
+        }
+    }
 }

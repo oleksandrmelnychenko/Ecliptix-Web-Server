@@ -17,13 +17,43 @@ public sealed record AccountFailure(
         _ => false
     };
 
-    public bool IsUserFacing => FailureType switch
+    public override bool IsUserFacing => FailureType switch
     {
         AccountFailureType.NotFound => true,
         AccountFailureType.AlreadyExists => true,
         AccountFailureType.ValidationFailed => true,
         _ => false
     };
+
+    public override bool Retryable => FailureType switch
+    {
+        AccountFailureType.PersistorAccess or
+        AccountFailureType.CreationFailed or
+        AccountFailureType.CredentialUpdateFailed => true,
+        _ => false
+    };
+
+    public override ErrorSurface Surface => FailureType switch
+    {
+        AccountFailureType.PersistorAccess or
+        AccountFailureType.CreationFailed or
+        AccountFailureType.CredentialUpdateFailed or
+        AccountFailureType.InternalError => ErrorSurface.System,
+        _ => ErrorSurface.User
+    };
+
+    public override string PublicErrorCode => FailureType switch
+    {
+        AccountFailureType.NotFound => "account.not_found",
+        AccountFailureType.AlreadyExists => "account.already_exists",
+        AccountFailureType.ValidationFailed => "account.validation_failed",
+        AccountFailureType.PersistorAccess => "account.persistence",
+        AccountFailureType.CreationFailed => "account.create_failed",
+        AccountFailureType.CredentialUpdateFailed => "account.credential_update_failed",
+        _ => "account.internal"
+    };
+
+    public override string? UserMessageKey => GetDefaultI18NKey(FailureType);
 
     public static AccountFailure NotFoundById(string? details = null)
     {
@@ -87,7 +117,7 @@ public sealed record AccountFailure(
 
     public override GrpcErrorDescriptor ToGrpcDescriptor()
     {
-        string i18NKey = string.IsNullOrWhiteSpace(Message) ? GetDefaultI18NKey(FailureType) : Message;
+        string i18NKey = string.IsNullOrWhiteSpace(UserMessageKey) ? GetDefaultI18NKey(FailureType) : UserMessageKey!;
 
         return FailureType switch
         {
@@ -146,7 +176,10 @@ public sealed record AccountFailure(
             InnerException,
             Timestamp,
             IsRecoverable,
-            IsUserFacing
+            IsUserFacing,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 }

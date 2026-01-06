@@ -29,7 +29,7 @@ public sealed record VerificationFlowFailure(
         _ => false
     };
 
-    public bool IsUserFacing => FailureType switch
+    public override bool IsUserFacing => FailureType switch
     {
         VerificationFlowFailureType.NotFound => true,
         VerificationFlowFailureType.Expired => true,
@@ -52,6 +52,48 @@ public sealed record VerificationFlowFailure(
         VerificationFlowFailureType.Validation => true,
         _ => false
     };
+
+    public override bool Retryable => FailureType switch
+    {
+        VerificationFlowFailureType.PersistorAccess or
+        VerificationFlowFailureType.OtpGenerationFailed or
+        VerificationFlowFailureType.SmsSendFailed or
+        VerificationFlowFailureType.ConcurrencyConflict => true,
+        _ => false
+    };
+
+    public override ErrorSurface Surface => FailureType switch
+    {
+        VerificationFlowFailureType.PersistorAccess or
+        VerificationFlowFailureType.OtpGenerationFailed or
+        VerificationFlowFailureType.SmsSendFailed or
+        VerificationFlowFailureType.ConcurrencyConflict or
+        VerificationFlowFailureType.InvalidOpaque => ErrorSurface.System,
+        _ => ErrorSurface.User
+    };
+
+    public override string PublicErrorCode => FailureType switch
+    {
+        VerificationFlowFailureType.NotFound => "verification.not_found",
+        VerificationFlowFailureType.Expired => "verification.expired",
+        VerificationFlowFailureType.Conflict => "verification.conflict",
+        VerificationFlowFailureType.InvalidOtp => "verification.invalid_otp",
+        VerificationFlowFailureType.OtpExpired => "verification.otp_expired",
+        VerificationFlowFailureType.OtpMaxAttemptsReached => "verification.otp_max_attempts",
+        VerificationFlowFailureType.OtpGenerationFailed => "verification.otp_generation_failed",
+        VerificationFlowFailureType.SmsSendFailed => "verification.sms_send_failed",
+        VerificationFlowFailureType.MobileNumberInvalid => "verification.mobile_invalid",
+        VerificationFlowFailureType.PersistorAccess => "verification.persistence",
+        VerificationFlowFailureType.ConcurrencyConflict => "verification.concurrency_conflict",
+        VerificationFlowFailureType.RateLimitExceeded => "verification.rate_limited",
+        VerificationFlowFailureType.SuspiciousActivity => "verification.suspicious",
+        VerificationFlowFailureType.Validation => "verification.validation_failed",
+        VerificationFlowFailureType.InvalidOpaque => "verification.invalid_opaque",
+        VerificationFlowFailureType.Unauthorized => "verification.unauthorized",
+        _ => "verification.internal"
+    };
+
+    public override string? UserMessageKey => GetDefaultI18NKey(FailureType);
 
     public static VerificationFlowFailure NotFound(string? details = null)
     {
@@ -396,7 +438,7 @@ public sealed record VerificationFlowFailure(
 
     public override GrpcErrorDescriptor ToGrpcDescriptor()
     {
-        string i18NKey = string.IsNullOrWhiteSpace(Message) ? GetDefaultI18NKey(FailureType) : Message;
+        string i18NKey = string.IsNullOrWhiteSpace(UserMessageKey) ? GetDefaultI18NKey(FailureType) : UserMessageKey!;
 
         return FailureType switch
         {
@@ -502,7 +544,10 @@ public sealed record VerificationFlowFailure(
             Timestamp,
             IsUserFacing,
             IsRecoverable,
-            IsSecurityRelated
+            IsSecurityRelated,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 }

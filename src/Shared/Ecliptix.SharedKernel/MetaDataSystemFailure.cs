@@ -8,6 +8,27 @@ public sealed record MetaDataSystemFailure(
     Exception? InnerException = null)
     : FailureBase(Message, InnerException)
 {
+    public override bool IsUserFacing => FailureType switch
+    {
+        MetaDataSystemFailureType.RequiredComponentNotFound => true,
+        _ => false
+    };
+
+    public override bool Retryable => false;
+
+    public override ErrorSurface Surface => ErrorSurface.System;
+
+    public override string PublicErrorCode => FailureType switch
+    {
+        MetaDataSystemFailureType.RequiredComponentNotFound => "metadata.component_not_found",
+        _ => "metadata.internal"
+    };
+
+    public override string? UserMessageKey => FailureType switch
+    {
+        MetaDataSystemFailureType.RequiredComponentNotFound => ErrorI18NKeys.PreconditionFailed,
+        _ => ErrorI18NKeys.Internal
+    };
     public override object ToStructuredLog()
     {
         return new
@@ -15,7 +36,11 @@ public sealed record MetaDataSystemFailure(
             ProtocolFailureType = FailureType.ToString(),
             Message,
             InnerException,
-            Timestamp
+            Timestamp,
+            IsUserFacing,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 
@@ -26,11 +51,11 @@ public sealed record MetaDataSystemFailure(
             MetaDataSystemFailureType.RequiredComponentNotFound => new GrpcErrorDescriptor(
                 ErrorCode.PreconditionFailed,
                 StatusCode.FailedPrecondition,
-                ErrorI18NKeys.PreconditionFailed),
+                UserMessageKey ?? ErrorI18NKeys.PreconditionFailed),
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
-                ErrorI18NKeys.Internal)
+                UserMessageKey ?? ErrorI18NKeys.Internal)
         };
     }
 

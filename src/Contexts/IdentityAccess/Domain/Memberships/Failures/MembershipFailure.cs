@@ -18,7 +18,7 @@ public sealed record MembershipFailure(
         _ => false
     };
 
-    public bool IsUserFacing => FailureType switch
+    public override bool IsUserFacing => FailureType switch
     {
         MembershipFailureType.NotFound => true,
         MembershipFailureType.AlreadyExists => true,
@@ -26,6 +26,40 @@ public sealed record MembershipFailure(
         MembershipFailureType.InvalidStatus => true,
         _ => false
     };
+
+    public override bool Retryable => FailureType switch
+    {
+        MembershipFailureType.PersistorAccess or
+        MembershipFailureType.CreationFailed or
+        MembershipFailureType.UpdateFailed or
+        MembershipFailureType.StatusUpdateFailed => true,
+        _ => false
+    };
+
+    public override ErrorSurface Surface => FailureType switch
+    {
+        MembershipFailureType.PersistorAccess or
+        MembershipFailureType.CreationFailed or
+        MembershipFailureType.UpdateFailed or
+        MembershipFailureType.StatusUpdateFailed or
+        MembershipFailureType.InternalError => ErrorSurface.System,
+        _ => ErrorSurface.User
+    };
+
+    public override string PublicErrorCode => FailureType switch
+    {
+        MembershipFailureType.NotFound => "membership.not_found",
+        MembershipFailureType.AlreadyExists => "membership.already_exists",
+        MembershipFailureType.ValidationFailed => "membership.validation_failed",
+        MembershipFailureType.InvalidStatus => "membership.invalid_status",
+        MembershipFailureType.PersistorAccess => "membership.persistence",
+        MembershipFailureType.CreationFailed => "membership.create_failed",
+        MembershipFailureType.UpdateFailed => "membership.update_failed",
+        MembershipFailureType.StatusUpdateFailed => "membership.status_update_failed",
+        _ => "membership.internal"
+    };
+
+    public override string? UserMessageKey => GetDefaultI18NKey(FailureType);
 
     public static MembershipFailure NotFound(string? details = null)
     {
@@ -225,7 +259,7 @@ public sealed record MembershipFailure(
 
     public override GrpcErrorDescriptor ToGrpcDescriptor()
     {
-        string i18nKey = string.IsNullOrWhiteSpace(Message) ? GetDefaultI18NKey(FailureType) : Message;
+        string i18nKey = string.IsNullOrWhiteSpace(UserMessageKey) ? GetDefaultI18NKey(FailureType) : UserMessageKey!;
 
         return FailureType switch
         {
@@ -295,7 +329,10 @@ public sealed record MembershipFailure(
             InnerException,
             Timestamp,
             IsRecoverable,
-            IsUserFacing
+            IsUserFacing,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 }

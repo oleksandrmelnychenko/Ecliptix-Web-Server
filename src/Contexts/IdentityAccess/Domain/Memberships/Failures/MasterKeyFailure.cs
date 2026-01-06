@@ -16,7 +16,7 @@ public sealed record MasterKeyFailure(
         _ => false
     };
 
-    public bool IsUserFacing => FailureType switch
+    public override bool IsUserFacing => FailureType switch
     {
         MasterKeyFailureType.InvalidThreshold => true,
         MasterKeyFailureType.InvalidShareCount => true,
@@ -29,6 +29,39 @@ public sealed record MasterKeyFailure(
         MasterKeyFailureType.KeyMismatch => true,
         _ => false
     };
+
+    public override bool Retryable => FailureType switch
+    {
+        MasterKeyFailureType.PersistorAccess or
+        MasterKeyFailureType.AllocationFailed => true,
+        _ => false
+    };
+
+    public override ErrorSurface Surface => FailureType switch
+    {
+        MasterKeyFailureType.PersistorAccess or
+        MasterKeyFailureType.AllocationFailed or
+        MasterKeyFailureType.InternalError => ErrorSurface.System,
+        _ => ErrorSurface.User
+    };
+
+    public override string PublicErrorCode => FailureType switch
+    {
+        MasterKeyFailureType.InvalidThreshold => "master_key.invalid_threshold",
+        MasterKeyFailureType.InvalidShareCount => "master_key.invalid_share_count",
+        MasterKeyFailureType.InvalidKeyLength => "master_key.invalid_key_length",
+        MasterKeyFailureType.InvalidKeyData => "master_key.invalid_key_data",
+        MasterKeyFailureType.InvalidShareData => "master_key.invalid_share_data",
+        MasterKeyFailureType.InvalidIdentifier => "master_key.invalid_identifier",
+        MasterKeyFailureType.ShareValidationFailed => "master_key.share_validation_failed",
+        MasterKeyFailureType.InsufficientShares => "master_key.insufficient_shares",
+        MasterKeyFailureType.KeyMismatch => "master_key.key_mismatch",
+        MasterKeyFailureType.PersistorAccess => "master_key.persistence",
+        MasterKeyFailureType.AllocationFailed => "master_key.allocation_failed",
+        _ => "master_key.internal"
+    };
+
+    public override string? UserMessageKey => GetDefaultI18NKey(FailureType);
 
     public static MasterKeyFailure InvalidIdentifier(string details)
     {
@@ -128,7 +161,7 @@ public sealed record MasterKeyFailure(
 
     public override GrpcErrorDescriptor ToGrpcDescriptor()
     {
-        string i18NKey = GetDefaultI18NKey(FailureType);
+        string i18NKey = string.IsNullOrWhiteSpace(UserMessageKey) ? GetDefaultI18NKey(FailureType) : UserMessageKey!;
 
         return FailureType switch
         {
@@ -213,7 +246,10 @@ public sealed record MasterKeyFailure(
             InnerException,
             Timestamp,
             IsRecoverable,
-            IsUserFacing
+            IsUserFacing,
+            Retryable,
+            Surface = Surface.ToString(),
+            PublicErrorCode
         };
     }
 }
