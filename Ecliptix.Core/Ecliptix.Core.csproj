@@ -13,6 +13,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- Security overrides for transitive dependencies -->
+        <PackageReference Include="Azure.Identity" />
+        <PackageReference Include="Microsoft.Identity.Client" />
+
         <PackageReference Include="Akka" />
         <PackageReference Include="Akka.Cluster" />
         <PackageReference Include="Akka.Cluster.Hosting" />

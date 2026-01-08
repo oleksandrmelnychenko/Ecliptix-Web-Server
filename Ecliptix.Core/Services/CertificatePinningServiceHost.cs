@@ -12,6 +12,11 @@ public sealed class CertificatePinningServiceHost(
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        if (securityService is null)
+        {
+            throw new InvalidOperationException("CertificatePinningService is not configured");
+        }
+
         Result<Unit, CertificatePinningFailure> initResult = securityService.Initialize();
         if (initResult.IsErr)
         {
