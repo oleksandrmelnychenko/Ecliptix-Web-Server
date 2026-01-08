@@ -3,10 +3,6 @@ using Ecliptix.SharedKernel;
 
 namespace Ecliptix.SecureProtocol.Domain.Protocol;
 
-/// <summary>
-/// Provides access to the server's long-term protocol identity keys.
-/// Creates and manages a deterministic server identity based on a seed.
-/// </summary>
 public sealed class ProtocolKeyService : IProtocolKeyService, IDisposable
 {
     private readonly object _lock = new();
@@ -41,7 +37,6 @@ public sealed class ProtocolKeyService : IProtocolKeyService, IDisposable
 
             _identityKeys = createResult.Unwrap();
 
-            // Pre-cache the keys for thread-safe access
             Result<byte[], EcliptixProtocolFailure> kyberResult = _identityKeys.GetPublicKyber();
             if (kyberResult.IsErr)
             {

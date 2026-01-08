@@ -65,7 +65,7 @@ internal static unsafe class CertificatePinningNativeLibrary
             }
             catch
             {
-
+                // ignored
             }
         }
 
@@ -78,14 +78,13 @@ internal static unsafe class CertificatePinningNativeLibrary
         {
             return ("libcertificate.pinning.server.dll", ["certificate.pinning.server.dll"]);
         }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
             return ($"{LibraryName}.dylib", ["certificate.pinning.server.dylib"]);
         }
-        else
-        {
-            return ($"{LibraryName}.so", ["certificate.pinning.server.so"]);
-        }
+
+        return ($"{LibraryName}.so", ["certificate.pinning.server.so"]);
     }
 
     private static string[] GetSearchPaths(Assembly assembly, string[] fileNames)
@@ -217,7 +216,8 @@ internal static unsafe class CertificatePinningNativeLibrary
         byte* data, nuint dataLen,
         byte* signature, nuint* sigLen);
 
-    [DllImport(LibraryName, EntryPoint = "ecliptix_server_generate_ed25519_keypair", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(LibraryName, EntryPoint = "ecliptix_server_generate_ed25519_keypair",
+        CallingConvention = CallingConvention.Cdecl)]
     public static extern CertificatePinningResult GenerateEd25519Keypair(
         byte* publicKey,
         byte* privateKey);

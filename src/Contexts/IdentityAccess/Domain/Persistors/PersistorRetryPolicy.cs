@@ -1,13 +1,13 @@
 using System.Data.Common;
 using Ecliptix.SharedKernel;
-using Microsoft.Data.SqlClient;
 using Polly;
 using Polly.Retry;
 using Polly.Timeout;
 using Polly.Wrap;
+using Npgsql;
 using Serilog;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
+namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
 public static class PersistorRetryPolicy
 {
@@ -95,35 +95,27 @@ public static class PersistorRetryPolicy
 
     private static bool ShouldRetryDbException(DbException exception)
     {
-        if (exception is SqlException sqlException)
+        if (exception is PostgresException pgEx)
         {
-            return sqlException.Number switch
+            return pgEx.SqlState switch
             {
-                2 => true,
-                53 => true,
-                11001 => true,
-                -2 => true,
-                2146893022 => true,
-                40501 => true,
-                40613 => true,
-                49918 => true,
-                49919 => true,
-                49920 => true,
-                1205 => true,
+                PostgresErrorCodes.ConnectionException or PostgresErrorCodes.ConnectionFailure
+                    or PostgresErrorCodes.ConnectionDoesNotExist => true,
+                PostgresErrorCodes.QueryCanceled => true,
+                PostgresErrorCodes.DeadlockDetected => true,
+                PostgresErrorCodes.SerializationFailure => true,
+                PostgresErrorCodes.LockNotAvailable => true,
+                PostgresErrorCodes.TooManyConnections => true,
 
-                18456 => false,
-                18486 => false,
-                4060 => false,
-                547 => false,
-                515 => false,
-                2627 => false,
-                2601 => false,
-                102 => false,
-                156 => false,
-                207 => false,
-                208 => false,
-                824 => false,
-                825 => false,
+                PostgresErrorCodes.InvalidPassword or PostgresErrorCodes.InvalidAuthorizationSpecification => false,
+                PostgresErrorCodes.InvalidCatalogName => false,
+                PostgresErrorCodes.UniqueViolation => false,
+                PostgresErrorCodes.ForeignKeyViolation => false,
+                PostgresErrorCodes.NotNullViolation => false,
+                PostgresErrorCodes.CheckViolation => false,
+                PostgresErrorCodes.SyntaxError or PostgresErrorCodes.UndefinedTable
+                    or PostgresErrorCodes.UndefinedColumn => false,
+                PostgresErrorCodes.DataCorrupted or PostgresErrorCodes.IndexCorrupted => false,
 
                 _ => true
             };

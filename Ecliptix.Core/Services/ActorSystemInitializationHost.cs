@@ -6,7 +6,7 @@ using Ecliptix.IdentityAccess.Domain;
 using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.AccountProfileActor;
 using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.Membership;
 using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.VerificationFlow;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
+using Ecliptix.IdentityAccess.Domain.Persistors;
 using Ecliptix.IdentityAccess.Domain.Providers.Twilio;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.SharedKernel;

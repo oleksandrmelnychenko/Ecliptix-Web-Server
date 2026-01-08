@@ -8,8 +8,8 @@ using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Membership;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.Membership.PersistenceModels;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryResults;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
 using Ecliptix.IdentityAccess.Domain.Services.Security;
 using Ecliptix.OPAQUE.Server;
 using Ecliptix.Protobuf.Membership;
@@ -20,6 +20,7 @@ using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel.Failures.Sodium;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using ByteString = Google.Protobuf.ByteString;
 using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteResponse;
 using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitResponse;
@@ -129,16 +130,16 @@ public sealed class MembershipActor : ReceivePersistentActor
                 LastSequenceNr,
                 PersistenceId);
 
-            if (failure.Cause is Microsoft.Data.SqlClient.SqlException sqlEx)
+            if (failure.Cause is PostgresException pgEx)
             {
                 Log.Error(
-                    "[MEMBERSHIP-PERSIST] SQL Error Number: {0}, State: {1}, Message: {2}",
-                    sqlEx.Number, sqlEx.State, sqlEx.Message);
+                    "[MEMBERSHIP-PERSIST] Postgres SQLSTATE: {0}, Severity: {1}, Message: {2}",
+                    pgEx.SqlState, pgEx.Severity, pgEx.MessageText);
 
-                if (sqlEx.Number == 2627)
+                if (pgEx.SqlState == PostgresErrorCodes.UniqueViolation)
                 {
                     Log.Warning(
-                        "[MEMBERSHIP-PERSIST] Unique constraint violation detected (Error 2627). " +
+                        "[MEMBERSHIP-PERSIST] Unique constraint violation detected (SQLSTATE 23505). " +
                         "This indicates a sequence number collision during concurrent writes. " +
                         "Current LastSequenceNr: {0}. " +
                         "The actor will restart and reload the correct sequence number from the database.",
@@ -1418,7 +1419,7 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         try
         {
-            Guid accountId = new Guid(pendingAccountIdBytes);
+            Guid accountId = new(pendingAccountIdBytes);
             return accountId == Guid.Empty ? null : accountId;
         }
         catch (Exception)
@@ -1587,7 +1588,7 @@ public sealed class MembershipActor : ReceivePersistentActor
                     Log.Info("[MASTER-KEY-STORE] Storing OPAQUE master key for account {0}", accountId);
                 }
 
-                Result<dynamic, FailureBase> splitResult = await _masterKeyService.SplitAndStoreMasterKeyAsync(
+                Result<Unit, FailureBase> splitResult = await _masterKeyService.SplitAndStoreMasterKeyAsync(
                     masterKeyBytes, accountId, allowOverwrite);
 
                 if (splitResult.IsErr)

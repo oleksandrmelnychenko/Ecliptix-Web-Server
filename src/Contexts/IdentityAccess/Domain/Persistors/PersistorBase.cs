@@ -5,7 +5,7 @@ using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
 using Microsoft.EntityFrameworkCore;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
+namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
 public abstract class PersistorBase<TFailure>(IDbContextFactory<EcliptixSchemaContext> dbContextFactory) : ReceiveActor
     where TFailure : IFailureBase

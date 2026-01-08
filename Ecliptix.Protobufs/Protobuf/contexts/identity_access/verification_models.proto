@@ -24,16 +24,8 @@ message InitiateVerificationRequest {
   }
 
   bytes mobile_number_identifier = 1;
-  reserved 2;
   VerificationPurpose purpose = 3;
   Type type = 4;
-}
-
-message InitiateVerificationResponse {
-  VerificationResult result = 1;
-  string message = 2;
-  bytes session_identifier = 3;
-  VerificationPurpose purpose = 4;
 }
 
 message VerificationCountdownUpdate {
@@ -58,7 +50,6 @@ message VerificationCountdownUpdate {
 }
 
 message VerifyCodeRequest {
-  reserved 1;
   string code = 2;
   VerificationPurpose purpose = 3;
   uint32 stream_connect_id = 4;
@@ -72,7 +63,6 @@ message VerifyCodeResponse {
 
 message ValidateMobileNumberRequest {
   string mobile_number = 1;
-  reserved 2;
 }
 
 message ValidateMobileNumberResponse {
@@ -83,7 +73,6 @@ message ValidateMobileNumberResponse {
 
 message CheckMobileNumberAvailabilityRequest {
   bytes mobile_number_id = 1;
-  reserved 2;
 }
 
 message CheckMobileNumberAvailabilityResponse {

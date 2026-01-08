@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Threading.Channels;
 using Akka.Actor;
 using System.Globalization;
@@ -7,7 +6,6 @@ using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.MobileNumber;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
-using Ecliptix.IdentityAccess.Domain.Memberships.Instrumentation;
 using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.VerificationFlow;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Actors;
@@ -25,9 +23,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Ecliptix.IdentityAccess.Infrastructure.EventHandling;
 
-/// <summary>
-/// Internal command handler for verification flows (used via gateway).
-/// </summary>
 public sealed class VerificationFlowHandler
 {
     private readonly GrpcSecurityService _service;
@@ -76,11 +71,6 @@ public sealed class VerificationFlowHandler
                         using IDisposable registration = context.CancellationToken.Register(() =>
                             StopVerificationFlowActor(context, connectId));
 
-                        Activity? flowActivity = VerificationFlowTelemetry.ActivitySource.StartActivity(
-                            "verification.flow.stream",
-                            ActivityKind.Server);
-                        flowActivity?.SetTag("verification.connect_id", connectId);
-                        flowActivity?.SetTag("verification.purpose", initiateRequest.Purpose.ToString());
                         Log.Information("[verification.flow.grpc.start] ConnectId {ConnectId} Purpose {Purpose}",
                             connectId, initiateRequest.Purpose);
 
@@ -99,7 +89,6 @@ public sealed class VerificationFlowHandler
                                     channel.Writer,
                                     _cultureName,
                                     idempotencyKey,
-                                    flowActivity?.Context ?? Activity.Current?.Context ?? default,
                                     linkedCts.Token
                                 ),
                                 TimeoutConfiguration.Actor.StreamingTimeout);
@@ -109,7 +98,6 @@ public sealed class VerificationFlowHandler
 
                         if (initiationResult.IsErr)
                         {
-                            flowActivity?.Dispose();
                             return Result<VerificationCountdownUpdate, FailureBase>.Err(initiationResult.UnwrapErr());
                         }
 
@@ -117,17 +105,11 @@ public sealed class VerificationFlowHandler
                         {
                             await streamingTask.ConfigureAwait(false);
                             Log.Information("[verification.flow.grpc.completed] ConnectId {ConnectId}", connectId);
-                            flowActivity?.SetTag("verification.stream.completed", true);
                         }
                         catch (OperationCanceledException ex)
                         {
                             Log.Information("[verification.flow.grpc.cancelled] ConnectId {ConnectId}", connectId);
                             Log.Debug(ex, "[verification.flow.grpc.cancelled] ConnectId {ConnectId}", connectId);
-                            flowActivity?.SetTag("verification.stream.completed", false);
-                        }
-                        finally
-                        {
-                            flowActivity?.Dispose();
                         }
 
                         return Result<VerificationCountdownUpdate, FailureBase>.Ok(new VerificationCountdownUpdate());

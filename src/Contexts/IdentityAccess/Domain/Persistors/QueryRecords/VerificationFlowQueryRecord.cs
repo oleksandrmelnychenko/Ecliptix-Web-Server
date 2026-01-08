@@ -1,6 +1,7 @@
+using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.SharedKernel;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+namespace Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 
 public record VerificationFlowQueryRecord
 {

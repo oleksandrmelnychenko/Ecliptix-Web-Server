@@ -23,8 +23,12 @@ internal static class AkkaConfiguration
         builder.Configuration.GetSection(nameof(AkkaSettings)).Bind(akkaSettings);
         builder.Services.AddSingleton(akkaSettings);
 
-        string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
-        bool usePostgreSQL = builder.Configuration.GetValue<bool>("UsePostgreSQL", false);
+        DatabaseConfiguration databaseConfig = new();
+        builder.Configuration.GetSection(DatabaseConfiguration.SectionName).Bind(databaseConfig);
+        if (string.IsNullOrWhiteSpace(databaseConfig.ConnectionString))
+        {
+            throw new InvalidOperationException("Database connection string is not configured.");
+        }
 
         string hostname = Environment.GetEnvironmentVariable(EnvironmentVariableNames.PodIp) ?? akkaSettings.Remoting.Hostname;
         int port = int.Parse(Environment.GetEnvironmentVariable(EnvironmentVariableNames.AkkaPort) ?? akkaSettings.Remoting.Port.ToString());
@@ -40,12 +44,14 @@ internal static class AkkaConfiguration
                     setup.DeadLetterOptions = new DeadLetterOptions { LogCount = 10, LogDuringShutdown = false, };
                 })
                 .WithSqlPersistence(
-                    connectionString: connectionString!,
-                    providerName: usePostgreSQL ? ProviderName.PostgreSQL : ProviderName.SqlServer2022,
-                    databaseMapping: usePostgreSQL ? DatabaseMapping.PostgreSql : DatabaseMapping.SqlServer,
+                    connectionString: databaseConfig.ConnectionString,
+                    providerName: ProviderName.PostgreSQL,
+                    databaseMapping: DatabaseMapping.PostgreSql,
                     mode: PersistenceMode.Both,
                     autoInitialize: true,
-                    schemaName: usePostgreSQL ? DatabaseConstants.SchemaNames.PostgreSql : DatabaseConstants.SchemaNames.SqlServer,
+                    schemaName: string.IsNullOrWhiteSpace(databaseConfig.Schema)
+                        ? DatabaseConstants.SchemaNames.PostgreSql
+                        : databaseConfig.Schema,
                     journalBuilder: journalBuilder =>
                     {
                         journalBuilder
@@ -163,11 +169,6 @@ internal static class AkkaConfiguration
                             }}
                             serialization-bindings {{
                                 ""Ecliptix.Protobuf.ProtocolState.EcliptixSessionState, Ecliptix.Protobufs"" = protobuf
-                                ""Ecliptix.Protobuf.ProtocolState.IdentityKeysState, Ecliptix.Protobufs"" = protobuf
-                                ""Ecliptix.Protobuf.ProtocolState.RatchetState, Ecliptix.Protobufs"" = protobuf
-                                ""Ecliptix.Protobuf.ProtocolState.OneTimePreKeySecret, Ecliptix.Protobufs"" = protobuf
-                                ""Ecliptix.Protobuf.ProtocolState.ChainStepState, Ecliptix.Protobufs"" = protobuf
-                                ""Ecliptix.Protobuf.ProtocolState.CachedMessageKey, Ecliptix.Protobufs"" = protobuf
                             }}
                         }}
                     }}

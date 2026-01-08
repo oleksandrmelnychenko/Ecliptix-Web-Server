@@ -1,5 +1,5 @@
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+namespace Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 
 public record ContactQueryRecord
 {

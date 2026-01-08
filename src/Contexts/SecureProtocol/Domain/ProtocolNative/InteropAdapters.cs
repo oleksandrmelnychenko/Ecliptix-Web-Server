@@ -5,12 +5,10 @@ using Native = Ecliptix.SecureProtocol.Domain.ProtocolNative.NativeInterop;
 
 namespace Ecliptix.SecureProtocol.Domain.ProtocolNative;
 
-/// <summary>
-/// SharedKernel-friendly wrappers over the native protocol server interop.
-/// </summary>
 public sealed class EcliptixIdentityKeys : IDisposable
 {
     private IntPtr _handle;
+    private bool _ownsHandle = true;
     private bool _disposed;
 
     private EcliptixIdentityKeys(IntPtr handle)
@@ -33,6 +31,12 @@ public sealed class EcliptixIdentityKeys : IDisposable
             Native.ecliptix_error_free(ref error);
             return Result<EcliptixIdentityKeys, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.KeyGeneration(message));
+        }
+
+        if (handle == IntPtr.Zero)
+        {
+            return Result<EcliptixIdentityKeys, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.KeyGeneration("Identity keys creation returned null handle despite success status"));
         }
 
         return Result<EcliptixIdentityKeys, EcliptixProtocolFailure>.Ok(new EcliptixIdentityKeys(handle));
@@ -61,31 +65,56 @@ public sealed class EcliptixIdentityKeys : IDisposable
                 EcliptixProtocolFailure.KeyGeneration(message));
         }
 
+        if (handle == IntPtr.Zero)
+        {
+            return Result<EcliptixIdentityKeys, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.KeyGeneration("Identity keys creation returned null handle despite success status"));
+        }
+
         return Result<EcliptixIdentityKeys, EcliptixProtocolFailure>.Ok(new EcliptixIdentityKeys(handle));
     }
 
     public static Result<EcliptixIdentityKeys, EcliptixProtocolFailure> CreateFromSeed(byte[] seed)
     {
+        Console.WriteLine($"[IDENTITY-CREATE] Creating identity from seed, seed length: {seed.Length}");
+
         Native.EcliptixErrorCode result = Native.ecliptix_identity_keys_create_from_seed(
             seed,
             (nuint)seed.Length,
             out IntPtr handle,
             out Native.EcliptixError error);
 
+        Console.WriteLine($"[IDENTITY-CREATE] Native call returned: {result}, handle: 0x{handle:X}");
+
         if (result != Native.EcliptixErrorCode.Success)
         {
             string message = error.GetMessage();
+            Console.WriteLine($"[IDENTITY-CREATE] Failed: {message}");
             Native.ecliptix_error_free(ref error);
             return Result<EcliptixIdentityKeys, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.KeyGeneration(message));
         }
 
+        if (handle == IntPtr.Zero)
+        {
+            Console.WriteLine("[IDENTITY-CREATE] ERROR: Success but null handle!");
+            return Result<EcliptixIdentityKeys, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.KeyGeneration("Identity keys creation returned null handle despite success status"));
+        }
+
+        Console.WriteLine($"[IDENTITY-CREATE] Success! Handle: 0x{handle:X}");
         return Result<EcliptixIdentityKeys, EcliptixProtocolFailure>.Ok(new EcliptixIdentityKeys(handle));
     }
 
     public Result<byte[], EcliptixProtocolFailure> GetPublicX25519()
     {
         ThrowIfDisposed();
+
+        if (_handle == IntPtr.Zero)
+        {
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.KeyGeneration("Identity keys handle is zero (not disposed but invalid)"));
+        }
 
         byte[] publicKey = new byte[32];
         Native.EcliptixErrorCode result = Native.ecliptix_identity_keys_get_public_x25519(
@@ -109,6 +138,12 @@ public sealed class EcliptixIdentityKeys : IDisposable
     {
         ThrowIfDisposed();
 
+        if (_handle == IntPtr.Zero)
+        {
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.KeyGeneration("Identity keys handle is zero (not disposed but invalid)"));
+        }
+
         byte[] publicKey = new byte[32];
         Native.EcliptixErrorCode result = Native.ecliptix_identity_keys_get_public_ed25519(
             _handle,
@@ -127,29 +162,52 @@ public sealed class EcliptixIdentityKeys : IDisposable
         return Result<byte[], EcliptixProtocolFailure>.Ok(publicKey);
     }
 
-    /// <summary>
-    /// Gets the identity Kyber (ML-KEM-768) public key (1184 bytes).
-    /// </summary>
     public Result<byte[], EcliptixProtocolFailure> GetPublicKyber()
     {
+        Console.WriteLine($"[GET-KYBER] GetPublicKyber called, disposed: {_disposed}, handle: 0x{_handle:X}");
         ThrowIfDisposed();
 
+        if (_handle == IntPtr.Zero)
+        {
+            Console.WriteLine("[GET-KYBER] ERROR: Handle is zero!");
+            return Result<byte[], EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.KeyGeneration("Identity keys handle is zero (not disposed but invalid)"));
+        }
+
         byte[] publicKey = new byte[1184]; // ML-KEM-768 public key size
+        Console.WriteLine($"[GET-KYBER] Calling native ecliptix_identity_keys_get_public_kyber with handle 0x{_handle:X}");
+
         Native.EcliptixErrorCode result = Native.ecliptix_identity_keys_get_public_kyber(
             _handle,
             publicKey,
             (nuint)publicKey.Length,
             out Native.EcliptixError error);
 
+        Console.WriteLine($"[GET-KYBER] Native call returned: {result}");
+
         if (result != Native.EcliptixErrorCode.Success)
         {
             string message = error.GetMessage();
+            Console.WriteLine($"[GET-KYBER] Failed: {message}");
             Native.ecliptix_error_free(ref error);
             return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.KeyGeneration(message));
         }
 
+        Console.WriteLine($"[GET-KYBER] Success! Key length: {publicKey.Length}");
         return Result<byte[], EcliptixProtocolFailure>.Ok(publicKey);
+    }
+
+    internal void Detach()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _ownsHandle = false;
+        _handle = IntPtr.Zero;
+        _disposed = true;
     }
 
     public void Dispose()
@@ -159,9 +217,9 @@ public sealed class EcliptixIdentityKeys : IDisposable
             return;
         }
 
-        if (_handle != IntPtr.Zero)
+        if (_ownsHandle && _handle != IntPtr.Zero)
         {
-        Native.ecliptix_identity_keys_destroy(_handle);
+            Native.ecliptix_identity_keys_destroy(_handle);
             _handle = IntPtr.Zero;
         }
 
@@ -488,6 +546,26 @@ public sealed class EcliptixProtocolSystem : IDisposable
         }
 
         return Result<uint, EcliptixProtocolFailure>.Ok(connectionId);
+    }
+
+    public Result<(uint Sending, uint Receiving), EcliptixProtocolFailure> GetChainIndices()
+    {
+        ThrowIfDisposed();
+
+        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_get_chain_indices(
+            _handle,
+            out uint sendingIndex,
+            out uint receivingIndex,
+            out Native.EcliptixError error);
+
+        if (result != Native.EcliptixErrorCode.Success)
+        {
+            string message = error.GetMessage();
+            Native.ecliptix_error_free(ref error);
+            return Result<(uint, uint), EcliptixProtocolFailure>.Err(ConvertError(result, message));
+        }
+
+        return Result<(uint, uint), EcliptixProtocolFailure>.Ok((sendingIndex, receivingIndex));
     }
 
     public Result<uint?, EcliptixProtocolFailure> GetSelectedOpkId()

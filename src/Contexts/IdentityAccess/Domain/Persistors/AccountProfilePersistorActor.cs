@@ -1,19 +1,17 @@
 using System.Data.Common;
 using Akka.Actor;
-using Akka.Persistence;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Account;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.AccountProfile;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.CompiledQueries;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.SharedKernel;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
+namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
 public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
 {
@@ -169,7 +167,8 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
 
             return Result<AccountProfileInfo, AccountProfileFailure>.Ok(resultInfo);
         }
-        catch (DbUpdateException dbEx) when (dbEx.InnerException is SqlException { Number: 2601 or 2627 })
+        catch (DbUpdateException dbEx) when (dbEx.InnerException is PostgresException
+                                             { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             return Result<AccountProfileInfo, AccountProfileFailure>.Err(
                 AccountProfileFailure.AlreadyExists($"Profile name '{cmd.ProfileName}' is already taken."));
@@ -182,15 +181,17 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
 
     protected override AccountProfileFailure MapDbException(DbException ex)
     {
-        if (ex is SqlException sqlEx)
+        if (ex is PostgresException pgEx)
         {
-            return sqlEx.Number switch
+            return pgEx.SqlState switch
             {
-                2627 or 2601 => AccountProfileFailure.AlreadyExists($"Duplicate profile detected: {sqlEx.Message}"),
-                547 => AccountProfileFailure.ValidationFailed($"Foreign key constraint violation: {sqlEx.Message}"),
-                1205 => AccountProfileFailure.DatabaseError(sqlEx),
-                -2 => AccountProfileFailure.Timeout(sqlEx),
-                _ => AccountProfileFailure.DatabaseError(sqlEx)
+                PostgresErrorCodes.UniqueViolation =>
+                    AccountProfileFailure.AlreadyExists($"Duplicate profile detected: {pgEx.MessageText}"),
+                PostgresErrorCodes.ForeignKeyViolation =>
+                    AccountProfileFailure.ValidationFailed($"Foreign key constraint violation: {pgEx.MessageText}"),
+                PostgresErrorCodes.DeadlockDetected => AccountProfileFailure.DatabaseError(pgEx),
+                PostgresErrorCodes.QueryCanceled => AccountProfileFailure.Timeout(pgEx),
+                _ => AccountProfileFailure.DatabaseError(pgEx)
             };
         }
 

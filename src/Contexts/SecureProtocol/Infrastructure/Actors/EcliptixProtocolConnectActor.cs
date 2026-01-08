@@ -26,6 +26,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     private readonly IProtocolServer _protocolServer = new ProtocolServerAdapter();
     private ProtocolIdentity? _identity;
     private byte[]? _identitySeed;
+    private byte[]? _cachedKyberPublicKey;
     private int _recoveryRetryCount;
     private bool _savingFinalSnapshot;
     private bool _pendingMessageDeletion;
@@ -42,13 +43,22 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         {
             case SnapshotOffer { Snapshot: EcliptixSessionState state }:
                 _state = state;
+                HydrateIdentitySeedFromState(state);
                 return true;
             case EcliptixSessionState state:
                 _state = state;
+                HydrateIdentitySeedFromState(state);
                 return true;
             case RecoveryCompleted:
                 if (_state != null)
                 {
+                    if (IsIdentitySeedOnlyState(_state))
+                    {
+                        Context.GetLogger()
+                            .Debug("[RECOVERY] Identity seed restored without handshake for ConnectId {0}", connectId);
+                        return true;
+                    }
+
                     AttemptSystemRecreation();
                 }
 
@@ -91,6 +101,9 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 return true;
             case GetProtocolStateActorEvent:
                 HandleGetProtocolState();
+                return true;
+            case GetConnectionKyberPublicKeyActorEvent:
+                HandleGetConnectionKyberPublicKey();
                 return true;
             case KeepAlive:
                 return true;
@@ -209,16 +222,21 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         Option<ProtocolSession> primarySessionOpt = GetPrimarySession();
         if (!primarySessionOpt.IsSome || _state == null || _state.NativeState.IsEmpty)
         {
-            if (!primarySessionOpt.IsSome && _state != null)
+            if (!primarySessionOpt.IsSome && _state != null && !IsIdentitySeedOnlyState(_state))
             {
                 Context.GetLogger().Warning(
                     "[SERVER-RESTORE] Inconsistent state detected (state exists but no DataCenter session). " +
                     "Clearing state for connectId: {0}", connectId);
 
+                byte[]? seedToPreserve = _identitySeed ?? (_state.IdentitySeed.IsEmpty ? null : _state.IdentitySeed.ToByteArray());
                 DisposeAllSessions();
                 _state = null;
                 _currentExchangeType = null;
-                SaveSnapshot(new EcliptixSessionState());
+                SaveSnapshot(new EcliptixSessionState
+                {
+                    ConnectId = connectId,
+                    IdentitySeed = seedToPreserve != null ? ByteString.CopyFrom(seedToPreserve) : ByteString.Empty
+                });
             }
 
             Sender.Tell(
@@ -255,6 +273,57 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         Sender.Tell(reply);
 
         Context.GetLogger().Debug("[GET-PROTOCOL-STATE] Session state retrieved for ConnectId: {ConnectId}", connectId);
+    }
+
+    private void HandleGetConnectionKyberPublicKey()
+    {
+        Context.GetLogger().Info("[GET-KYBER-KEY] Starting for ConnectId {0}, identity exists: {1}",
+            connectId, _identity != null);
+
+        if (_cachedKyberPublicKey is { Length: > 0 })
+        {
+            Context.GetLogger().Info("[GET-KYBER-KEY] Using cached Kyber key for ConnectId {0}, length: {1}",
+                connectId, _cachedKyberPublicKey.Length);
+            string cachedPrefix = FormatKeyPrefix(_cachedKyberPublicKey);
+            Context.GetLogger().Info("[GET-KYBER-KEY] Kyber public key prefix for ConnectId {0}: {1}",
+                connectId, cachedPrefix);
+            PersistIdentitySeedIfNeeded();
+            Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Ok(_cachedKyberPublicKey));
+            return;
+        }
+
+        Result<ProtocolIdentity, EcliptixProtocolFailure> identityResult = EnsureIdentity();
+        if (identityResult.IsErr)
+        {
+            Context.GetLogger().Warning("[GET-KYBER-KEY] EnsureIdentity failed for ConnectId {0}: {1}",
+                connectId, identityResult.UnwrapErr().Message);
+            Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(identityResult.UnwrapErr()));
+            return;
+        }
+
+        Context.GetLogger().Info("[GET-KYBER-KEY] Identity ensured for ConnectId {0}, getting Kyber key",
+            connectId);
+
+        Result<byte[], EcliptixProtocolFailure> kyberResult =
+            _protocolServer.GetPublicKyber(identityResult.Unwrap());
+
+        if (kyberResult.IsErr)
+        {
+            Context.GetLogger().Warning("[GET-KYBER-KEY] GetPublicKyber failed for ConnectId {0}: {1}",
+                connectId, kyberResult.UnwrapErr().Message);
+        }
+        else
+        {
+            _cachedKyberPublicKey = kyberResult.Unwrap();
+            Context.GetLogger().Info("[GET-KYBER-KEY] Got Kyber key for ConnectId {0}, length: {1}",
+                connectId, kyberResult.Unwrap().Length);
+            string prefix = FormatKeyPrefix(kyberResult.Unwrap());
+            Context.GetLogger().Info("[GET-KYBER-KEY] Kyber public key prefix for ConnectId {0}: {1}",
+                connectId, prefix);
+        }
+
+        PersistIdentitySeedIfNeeded();
+        Sender.Tell(kyberResult);
     }
 
     private void HandleNewAnonymousSession(DeriveSharedSecretActorEvent cmd)
@@ -322,6 +391,21 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             DisposeAllSessions();
             _state = null;
             SaveSnapshot(new EcliptixSessionState());
+            return false;
+        }
+
+        if (IsClientHandshakeDifferent(cmd.PubKeyExchange))
+        {
+            Context.GetLogger().Info(
+                "[SESSION-REFRESH] Client initiated fresh handshake with different keys. Disposing old session for ConnectId {0}",
+                cmd.ConnectId);
+            DisposeAllSessions();
+            _state = null;
+            SaveSnapshot(new EcliptixSessionState
+            {
+                ConnectId = connectId,
+                IdentitySeed = ByteString.CopyFrom(_identitySeed ?? [])
+            });
             return false;
         }
 
@@ -408,6 +492,16 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     {
         bool existingSessionFound = _sessions.TryGetValue(cmd.PubKeyExchange.OfType, out ProtocolSession? existingSession)
                                     && _state != null;
+
+        if (existingSessionFound && IsClientHandshakeDifferent(cmd.PubKeyExchange))
+        {
+            Context.GetLogger().Info(
+                "[FRESH-HANDSHAKE] Client keys differ from recovered state for ConnectId {0}",
+                cmd.ConnectId);
+            DisposeAllSessions();
+            _state = null;
+            existingSessionFound = false;
+        }
 
         switch (existingSessionFound)
         {
@@ -762,8 +856,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         Context.GetLogger().Debug(
             "[SNAPSHOT-SAVE] Snapshot saved. ConnectId: {0}, SeqNr: {1}, Sending: {2}, Receiving: {3}",
             connectId, LastSequenceNr,
-            _state.RatchetState?.SendingStep?.CurrentIndex ?? 0,
-            _state.RatchetState?.ReceivingStep?.CurrentIndex ?? 0);
+            _state.SendingChainIndex,
+            _state.ReceivingChainIndex);
     }
 
     private void SaveFinalSnapshot()
@@ -771,6 +865,11 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         if (_state != null &&
             _currentExchangeType == PubKeyExchangeType.DataCenterEphemeralConnect &&
             !_savingFinalSnapshot)
+        {
+            _savingFinalSnapshot = true;
+            SaveSnapshot(_state);
+        }
+        else if (_state != null && IsIdentitySeedOnlyState(_state) && !_savingFinalSnapshot)
         {
             _savingFinalSnapshot = true;
             SaveSnapshot(_state);
@@ -819,13 +918,26 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             return;
         }
 
+        if (IsIdentitySeedOnlyState(_state))
+        {
+            Context.GetLogger()
+                .Debug("[RECOVERY] Identity seed present but no handshake for ConnectId {0}. Skipping recreation.",
+                    connectId);
+            return;
+        }
+
         if (_state.PeerHandshakeMessage == null)
         {
             Context.GetLogger()
                 .Warning(ActorConstants.RecoveryLogMessages.PeerHandshakeMessageNull, connectId);
+            byte[]? seedToPreserve = _identitySeed ?? (_state.IdentitySeed.IsEmpty ? null : _state.IdentitySeed.ToByteArray());
             _state = null;
             _currentExchangeType = null;
-            SaveSnapshot(new EcliptixSessionState());
+            SaveSnapshot(new EcliptixSessionState
+            {
+                ConnectId = connectId,
+                IdentitySeed = seedToPreserve != null ? ByteString.CopyFrom(seedToPreserve) : ByteString.Empty
+            });
             return;
         }
 
@@ -862,6 +974,27 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             _recoveryRetryCount++;
             EcliptixProtocolFailure failure = sessionResult.UnwrapErr();
 
+            if (failure.FailureType == EcliptixProtocolFailureType.StateMismatch)
+            {
+                Context.GetLogger().Warning(
+                    "[RECOVERY] State mismatch detected after restore for ConnectId {0}: {1}. Clearing state.",
+                    connectId,
+                    failure.Message);
+
+                byte[]? seedToPreserve = _identitySeed ?? (_state?.IdentitySeed.IsEmpty == false ? _state.IdentitySeed.ToByteArray() : null);
+                DisposeAllSessions();
+                _state = null;
+                _currentExchangeType = null;
+                _recoveryRetryCount = 0;
+
+                SaveSnapshot(new EcliptixSessionState
+                {
+                    ConnectId = connectId,
+                    IdentitySeed = seedToPreserve != null ? ByteString.CopyFrom(seedToPreserve) : ByteString.Empty
+                });
+                return;
+            }
+
             Context.GetLogger()
                 .Warning(
                     ActorConstants.RecoveryLogMessages.FailedToRecreateSystem,
@@ -883,11 +1016,16 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 Context.GetLogger()
                     .Error(ActorConstants.RecoveryLogMessages.MaxRetriesExceeded, connectId);
 
+                byte[]? seedToPreserve = _identitySeed ?? (_state?.IdentitySeed.IsEmpty == false ? _state.IdentitySeed.ToByteArray() : null);
                 DisposeAllSessions();
                 _state = null;
                 _currentExchangeType = null;
 
-                SaveSnapshot(new EcliptixSessionState());
+                SaveSnapshot(new EcliptixSessionState
+                {
+                    ConnectId = connectId,
+                    IdentitySeed = seedToPreserve != null ? ByteString.CopyFrom(seedToPreserve) : ByteString.Empty
+                });
             }
         }
     }
@@ -1036,6 +1174,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         DisposeAllSessions();
         _state = null;
         _identitySeed = null;
+        _cachedKyberPublicKey = null;
         DisposeIdentity();
         SaveSnapshot(new EcliptixSessionState());
     }
@@ -1050,6 +1189,22 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         };
     }
 
+    private static bool IsIndexDesyncError(EcliptixProtocolFailure error)
+    {
+        string message = error.Message;
+        if (error.InnerException?.Message is { Length: > 0 } innerMessage)
+        {
+            message = $"{message} {innerMessage}";
+        }
+
+        return message.Contains("message index", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("nonce/index", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("index too far", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("index too old", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("index binding failed", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("chain index", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void HandleDecryptionError(EcliptixProtocolFailure error, uint connectId)
     {
         Context.GetLogger().Error(
@@ -1062,9 +1217,11 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             error.Message.Contains("authentication tag verification failed", StringComparison.OrdinalIgnoreCase) ||
             (error.InnerException?.Message?.Contains("authentication tag verification failed", StringComparison.OrdinalIgnoreCase)
              ?? false);
+        bool isIndexDesync = IsIndexDesyncError(error);
         bool clearSession = isHeaderAuthFailure ||
                             error.FailureType == EcliptixProtocolFailureType.SessionAuthenticationFailed ||
-                            error.FailureType == EcliptixProtocolFailureType.StateMismatch;
+                            error.FailureType == EcliptixProtocolFailureType.StateMismatch ||
+                            isIndexDesync;
 
         if ((isHeaderAuthFailure || isMetadataAuthFailure) &&
             _currentExchangeType == PubKeyExchangeType.DataCenterEphemeralConnect)
@@ -1120,8 +1277,16 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 .Err(identityResult.UnwrapErr());
         }
 
+        LogCachedKyberPrefix("HANDSHAKE-KYBER");
+
         Result<ProtocolSession, EcliptixProtocolFailure> sessionResult =
             _protocolServer.CreateSession(identityResult.Unwrap(), OnProtocolStateChanged);
+
+        // CreateSession moves the native identity_keys into the protocol system.
+        // Detach to avoid double-free while allowing a fresh identity for GetPublicKyber if needed.
+        _identity?.Detach();
+        _identity = null;
+
         if (sessionResult.IsErr)
         {
             CryptographicOperations.ZeroMemory(rootKey);
@@ -1201,8 +1366,16 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 .Err(identityResult.UnwrapErr());
         }
 
+        LogCachedKyberPrefix("HANDSHAKE-KYBER");
+
         Result<ProtocolSession, EcliptixProtocolFailure> sessionResult =
             _protocolServer.CreateSession(identityResult.Unwrap(), OnProtocolStateChanged);
+
+        // CreateSession moves the native identity_keys into the protocol system.
+        // Detach to avoid double-free while allowing a fresh identity for GetPublicKyber if needed.
+        _identity?.Detach();
+        _identity = null;
+
         if (sessionResult.IsErr)
         {
             return Result<(ProtocolSession, EcliptixSessionState, PubKeyExchange), EcliptixProtocolFailure>
@@ -1247,6 +1420,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     {
         if (_identity != null)
         {
+            Context.GetLogger().Info("[ENSURE-IDENTITY] Identity already exists for ConnectId {0}",
+                connectId);
             return Result<ProtocolIdentity, EcliptixProtocolFailure>.Ok(_identity);
         }
 
@@ -1254,16 +1429,139 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         {
             _identitySeed = new byte[32];
             RandomNumberGenerator.Fill(_identitySeed);
+            _cachedKyberPublicKey = null;
+            Context.GetLogger().Info("[ENSURE-IDENTITY] Generated new identity seed for ConnectId {0}",
+                connectId);
         }
+        else
+        {
+            Context.GetLogger().Info("[ENSURE-IDENTITY] Using existing identity seed for ConnectId {0}",
+                connectId);
+        }
+
+        Context.GetLogger().Info("[ENSURE-IDENTITY] Creating identity for ConnectId {0}, accountId: {1}",
+            connectId, accountId?.ToString() ?? "null");
 
         Result<ProtocolIdentity, EcliptixProtocolFailure> createResult = _protocolServer.CreateIdentity(_identitySeed, accountId);
 
         if (createResult.IsOk)
         {
             _identity = createResult.Unwrap();
+            Context.GetLogger().Info("[ENSURE-IDENTITY] Identity created successfully for ConnectId {0}",
+                connectId);
+        }
+        else
+        {
+            Context.GetLogger().Warning("[ENSURE-IDENTITY] Failed to create identity for ConnectId {0}: {1}",
+                connectId, createResult.UnwrapErr().Message);
         }
 
         return createResult;
+    }
+
+    private void HydrateIdentitySeedFromState(EcliptixSessionState state)
+    {
+        if (_identitySeed != null && _identitySeed.Length > 0)
+        {
+            return;
+        }
+
+        if (!state.IdentitySeed.IsEmpty)
+        {
+            _identitySeed = state.IdentitySeed.ToByteArray();
+            _cachedKyberPublicKey = null;
+        }
+    }
+
+    private void PersistIdentitySeedIfNeeded()
+    {
+        if (_identitySeed == null || _identitySeed.Length == 0)
+        {
+            return;
+        }
+
+        if (_state is { IdentitySeed: { IsEmpty: false } })
+        {
+            return;
+        }
+
+        EcliptixSessionState seedState = new()
+        {
+            ConnectId = connectId,
+            IdentitySeed = ByteString.CopyFrom(_identitySeed)
+        };
+
+        Persist(seedState, state => { _state = state; });
+    }
+
+    private void LogCachedKyberPrefix(string stage)
+    {
+        if (_cachedKyberPublicKey is not { Length: > 0 })
+        {
+            return;
+        }
+
+        string prefix = FormatKeyPrefix(_cachedKyberPublicKey);
+        Context.GetLogger().Info("[{0}] Kyber public key prefix for ConnectId {1}: {2}", stage, connectId, prefix);
+    }
+
+    private static string FormatKeyPrefix(byte[] key, int prefixLength = 8)
+    {
+        int length = Math.Min(prefixLength, key.Length);
+        return Convert.ToHexString(key.AsSpan(0, length)).ToLowerInvariant();
+    }
+
+    private static bool IsIdentitySeedOnlyState(EcliptixSessionState state)
+    {
+        if (state.IdentitySeed.IsEmpty)
+        {
+            return false;
+        }
+
+        bool hasHandshake = state.PeerHandshakeMessage != null && !state.PeerHandshakeMessage.Payload.IsEmpty;
+        return !hasHandshake && state.NativeState.IsEmpty;
+    }
+
+    private bool IsClientHandshakeDifferent(PubKeyExchange incomingHandshake)
+    {
+        if (_state?.PeerHandshakeMessage == null || _state.PeerHandshakeMessage.Payload.IsEmpty)
+        {
+            return false;
+        }
+
+        try
+        {
+            ProtobufPublicKeyBundle incomingBundle =
+                ProtobufPublicKeyBundle.Parser.ParseFrom(incomingHandshake.Payload);
+
+            ProtobufPublicKeyBundle recoveredBundle =
+                ProtobufPublicKeyBundle.Parser.ParseFrom(_state.PeerHandshakeMessage.Payload);
+
+            if (!incomingBundle.EphemeralX25519PublicKey.Equals(recoveredBundle.EphemeralX25519PublicKey))
+            {
+                Context.GetLogger().Debug(
+                    "[KEY-MISMATCH] Incoming ephemeral: {0}, Recovered ephemeral: {1}",
+                    Convert.ToHexString(incomingBundle.EphemeralX25519PublicKey.Span[..8]),
+                    Convert.ToHexString(recoveredBundle.EphemeralX25519PublicKey.Span[..8]));
+                return true;
+            }
+
+            if (!incomingBundle.KyberCiphertext.IsEmpty && !recoveredBundle.KyberCiphertext.IsEmpty)
+            {
+                if (!incomingBundle.KyberCiphertext.Equals(recoveredBundle.KyberCiphertext))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Context.GetLogger().Warning(
+                "[KEY-COMPARE-ERROR] Failed to compare handshake bundles: {0}", ex.Message);
+            return true;
+        }
     }
 
     private Result<EcliptixSessionState, EcliptixProtocolFailure> ExportSessionState(
@@ -1316,6 +1614,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         }
 
         _identitySeed = _state.IdentitySeed.ToByteArray();
+        _cachedKyberPublicKey = null;
         Result<ProtocolIdentity, EcliptixProtocolFailure> identityResult =
             EnsureIdentity(_state.AccountId.IsEmpty ? null : Helpers.FromByteStringToGuid(_state.AccountId));
         if (identityResult.IsErr)
@@ -1323,10 +1622,69 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             return Result<ProtocolSession, EcliptixProtocolFailure>.Err(identityResult.UnwrapErr());
         }
 
-        return _protocolServer.ImportState(
+        Result<ProtocolSession, EcliptixProtocolFailure> importResult = _protocolServer.ImportState(
             identityResult.Unwrap(),
             _state.NativeState.ToByteArray(),
             OnProtocolStateChanged);
+
+        // ImportState moves the native identity_keys into the protocol system, invalidating the identity handle.
+        // Clear _identity so EnsureIdentity will create a fresh one if needed for GetPublicKyber.
+        _identity?.Dispose();
+        _identity = null;
+
+        if (importResult.IsErr)
+        {
+            return importResult;
+        }
+
+        ProtocolSession session = importResult.Unwrap();
+        Result<Unit, EcliptixProtocolFailure> validationResult = ValidateRestoredSessionIndices(session);
+        if (validationResult.IsErr)
+        {
+            session.Dispose();
+            return Result<ProtocolSession, EcliptixProtocolFailure>.Err(validationResult.UnwrapErr());
+        }
+
+        return Result<ProtocolSession, EcliptixProtocolFailure>.Ok(session);
+    }
+
+    private Result<Unit, EcliptixProtocolFailure> ValidateRestoredSessionIndices(ProtocolSession session)
+    {
+        if (_state == null)
+        {
+            return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
+        }
+
+        Result<(uint Sending, uint Receiving), EcliptixProtocolFailure> indicesResult =
+            _protocolServer.GetChainIndices(session);
+
+        if (indicesResult.IsErr)
+        {
+            EcliptixProtocolFailure failure = indicesResult.UnwrapErr();
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.StateMismatch(
+                    $"Failed to read chain indices after restore: {failure.Message}",
+                    failure.InnerException));
+        }
+
+        (uint sending, uint receiving) = indicesResult.Unwrap();
+
+        if (sending > ActorConstants.Validation.MaxChainIndex ||
+            receiving > ActorConstants.Validation.MaxChainIndex)
+        {
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.StateMismatch(
+                    $"Restored chain indices out of range (sending={sending}, receiving={receiving})"));
+        }
+
+        if (sending != _state.SendingChainIndex || receiving != _state.ReceivingChainIndex)
+        {
+            return Result<Unit, EcliptixProtocolFailure>.Err(
+                EcliptixProtocolFailure.StateMismatch(
+                    $"Restored chain indices mismatch (state {_state.SendingChainIndex}/{_state.ReceivingChainIndex} vs native {sending}/{receiving})"));
+        }
+
+        return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
     private void OnProtocolStateChanged(uint _)

@@ -5,9 +5,6 @@ namespace Ecliptix.SharedKernel.KeyDerivation;
 
 using System.Text;
 
-/// <summary>
-/// HKDF-based derivations used for logout proof/HMAC validation in membership flows.
-/// </summary>
 public static class LogoutKeyDerivation
 {
     private const int KeySize = 32;

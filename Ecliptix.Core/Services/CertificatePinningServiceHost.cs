@@ -5,7 +5,7 @@ using Ecliptix.SharedKernel;
 namespace Ecliptix.Core.Services;
 
 public sealed class CertificatePinningServiceHost(
-    CertificatePinningService securityService)
+    CertificatePinningService? securityService)
     : IHostedService, IDisposable
 {
     private bool _disposed;

@@ -54,15 +54,6 @@ message CreateOrUpdateProfileResponse {
   bool is_success = 2;
 }
 
-message GetCurrentAccountRequest {
-  bytes account_id = 1;
-}
-
-message GetCurrentAccountResponse {
-  Account account = 1;
-  AccountProfile profile = 2;
-}
-
 message GetAccountProfileRequest {
   bytes current_account_id = 1;
   oneof search_criteria {

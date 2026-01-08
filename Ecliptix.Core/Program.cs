@@ -121,77 +121,46 @@ static void ConfigureLogging(WebApplicationBuilder builder)
 static void ConfigureServices(WebApplicationBuilder builder)
 {
 
-    bool usePostgreSQL = builder.Configuration.GetValue("UsePostgreSQL", defaultValue: false);
-    string? connectionString = builder.Configuration.GetConnectionString("EcliptixMemberships");
+    DatabaseConfiguration databaseConfig = new();
+    builder.Configuration.GetSection(DatabaseConfiguration.SectionName).Bind(databaseConfig);
+    if (string.IsNullOrWhiteSpace(databaseConfig.ConnectionString))
+    {
+        throw new InvalidOperationException("Database connection string is not configured.");
+    }
+    string connectionString = databaseConfig.ConnectionString;
     int commandTimeout = (int)TimeoutConfiguration.Database.CommandTimeout.TotalSeconds;
     bool isDevelopment = builder.Environment.IsDevelopment();
 
     builder.Services.AddPooledDbContextFactory<EcliptixSchemaContext>(options =>
     {
-        if (usePostgreSQL)
-        {
-
-            options.UseNpgsql(connectionString, npgsqlOptions =>
-                   {
-                       npgsqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
-
-                       npgsqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
-
-                       npgsqlOptions.UseRelationalNulls(false);
-                   })
-                   .UseSnakeCaseNamingConvention()
-                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
-                   .EnableSensitiveDataLogging(isDevelopment)
-                   .EnableDetailedErrors(isDevelopment)
-                   .AddInterceptors(new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor())
-                   .ConfigureWarnings(warnings =>
-                       warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-        }
-        else
-        {
-
-            options.UseSqlServer(connectionString, sqlOptions =>
-                   {
-                       sqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
-
-                       sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
-
-                       sqlOptions.UseRelationalNulls(false);
-                   })
-                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
-                   .EnableSensitiveDataLogging(false)
-                   .EnableDetailedErrors(false)
-                   .AddInterceptors(new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor())
-                   .ConfigureWarnings(warnings =>
-                       warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-        }
+        options.UseNpgsql(connectionString, npgsqlOptions =>
+               {
+                   npgsqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
+                   npgsqlOptions.MigrationsAssembly(databaseConfig.MigrationsAssembly);
+                   npgsqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+                   npgsqlOptions.UseRelationalNulls(false);
+               })
+               .UseSnakeCaseNamingConvention()
+               .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+               .EnableSensitiveDataLogging(isDevelopment)
+               .EnableDetailedErrors(isDevelopment)
+               .AddInterceptors(new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor())
+               .ConfigureWarnings(warnings =>
+                   warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
     }, poolSize: 128);
 
     builder.Services.AddDbContextFactory<EcliptixSchemaContext>(options =>
     {
-        if (usePostgreSQL)
-        {
-            options.UseNpgsql(connectionString, npgsqlOptions =>
-                   {
-                       npgsqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
-                   })
-                   .UseSnakeCaseNamingConvention()
-                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
-                   .AddInterceptors(new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor())
-                   .ConfigureWarnings(warnings =>
-                       warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-        }
-        else
-        {
-            options.UseSqlServer(connectionString, sqlOptions =>
-                   {
-                       sqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
-                   })
-                   .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
-                   .AddInterceptors(new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor())
-                   .ConfigureWarnings(warnings =>
-                       warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-        }
+        options.UseNpgsql(connectionString, npgsqlOptions =>
+               {
+                   npgsqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
+                   npgsqlOptions.MigrationsAssembly(databaseConfig.MigrationsAssembly);
+               })
+               .UseSnakeCaseNamingConvention()
+               .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+               .AddInterceptors(new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor())
+               .ConfigureWarnings(warnings =>
+                   warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
     });
 
     builder.Services.AddSingleton<SecrecyHandshakeKeepAliveInterceptor>();
@@ -220,6 +189,8 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.Configure<SecurityConfiguration>(
         builder.Configuration.GetSection(SecurityConfiguration.SectionName));
     builder.Services.AddSingleton<IValidateOptions<SecurityConfiguration>, SecurityConfigurationValidator>();
+    builder.Services.Configure<DatabaseConfiguration>(
+        builder.Configuration.GetSection(DatabaseConfiguration.SectionName));
     builder.Services.Configure<NetworkConfiguration>(
         builder.Configuration.GetSection(NetworkConfiguration.SectionName));
 
@@ -265,8 +236,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<CertificatePinningService>();
     builder.Services.AddSingleton<IProtocolKeyService, ProtocolKeyService>();
 
-    builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IHardenedKeyDerivation, Ecliptix.Core.Services.KeyDerivation.HardenedKeyDerivation>();
-    builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.ISecretSharingService, Ecliptix.Core.Services.KeyDerivation.ShamirSecretSharing>();
+    builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.ISecretSharingService, Ecliptix.Core.Services.KeyDerivation.NativeSecretSharingService>();
     builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IIdentityKeyDerivationService, Ecliptix.Core.Services.KeyDerivation.IdentityKeyDerivationService>();
     builder.Services.AddSingleton<Ecliptix.IdentityAccess.Domain.Services.Security.IMasterKeyService, Ecliptix.Core.Services.Security.MasterKeyService>();
 
@@ -387,8 +357,6 @@ static void RegisterSecurity(IServiceCollection services, NetworkConfiguration n
             return ValueTask.CompletedTask;
         };
     });
-
-    services.AddSingleton<CertificatePinningService>();
 
     services.Configure<KestrelServerOptions>(options =>
     {
@@ -543,7 +511,7 @@ static void InitializeEcliptixProtocol()
     }
     catch (DllNotFoundException ex)
     {
-        Log.Error(ex, "Ecliptix Protocol native library 'libecliptix_protocol' not found");
+        Log.Error(ex, "Ecliptix Protocol native library 'epp_relay' not found");
         throw new InvalidOperationException($"Ecliptix Protocol native library not found: {ex.Message}", ex);
     }
     catch (BadImageFormatException ex)
@@ -563,7 +531,6 @@ static void InitializeProtocolKeyService(WebApplication app)
     IProtocolKeyService protocolKeyService = app.Services.GetRequiredService<IProtocolKeyService>();
     SecurityKeysSettings securityKeysSettings = app.Services.GetRequiredService<IOptions<SecurityKeysSettings>>().Value;
 
-    // Use the protocol identity seed from configuration, falling back to OPAQUE seed
     string? seedString = securityKeysSettings.ProtocolIdentitySeed ?? securityKeysSettings.OpaqueSecretKeySeed;
     if (string.IsNullOrWhiteSpace(seedString))
     {
@@ -571,8 +538,6 @@ static void InitializeProtocolKeyService(WebApplication app)
         throw new InvalidOperationException("Protocol identity seed is not configured");
     }
 
-    // ProtocolIdentitySeed is Base64-encoded, but OpaqueSecretKeySeed may be hex-encoded
-    // Detect format: 64-char hex string vs Base64
     byte[] seed;
     if (securityKeysSettings.ProtocolIdentitySeed != null)
     {
@@ -580,7 +545,6 @@ static void InitializeProtocolKeyService(WebApplication app)
     }
     else if (seedString.Length == 64 && seedString.All(c => Uri.IsHexDigit(c)))
     {
-        // OpaqueSecretKeySeed is hex-encoded (64 hex chars = 32 bytes)
         seed = Convert.FromHexString(seedString);
     }
     else

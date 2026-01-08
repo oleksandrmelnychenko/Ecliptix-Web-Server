@@ -1,12 +1,11 @@
-using System.Diagnostics.CodeAnalysis;
 using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.SharedKernel;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Routing;
 
 public sealed record EventRoute(
-    string EventType,
-    string Context,
+    TransportEventType EventType,
+    EventContext Context,
     Func<ReadOnlyMemory<byte>, object> Deserialize,
     Func<object, ReadOnlyMemory<byte>> Serialize,
     Func<object, EventMetadata, CancellationToken, Task<Result<object, FailureBase>>> HandleAsync,
@@ -14,27 +13,19 @@ public sealed record EventRoute(
 
 public interface IEventRouteProvider
 {
-    bool TryGetRoute(string eventType, [NotNullWhen(true)] out EventRoute route);
+    bool TryGetRoute(TransportEventType eventType, out EventRoute route);
 }
 
 public interface IEventRouteResolver
 {
-    bool TryGetRoute(string eventType, [NotNullWhen(true)] out EventRoute route);
+    bool TryGetRoute(TransportEventType eventType, out EventRoute route);
 }
 
-/// <summary>
-/// Resolves event routes by querying all registered providers until a match is found.
-/// </summary>
-public sealed class EventRouteResolver : IEventRouteResolver
+public sealed class EventRouteResolver(IEnumerable<IEventRouteProvider>? providers) : IEventRouteResolver
 {
-    private readonly IEnumerable<IEventRouteProvider> _providers;
+    private readonly IEnumerable<IEventRouteProvider> _providers = providers ?? [];
 
-    public EventRouteResolver(IEnumerable<IEventRouteProvider> providers)
-    {
-        _providers = providers ?? Enumerable.Empty<IEventRouteProvider>();
-    }
-
-    public bool TryGetRoute(string eventType, out EventRoute route)
+    public bool TryGetRoute(TransportEventType eventType, out EventRoute route)
     {
         foreach (IEventRouteProvider provider in _providers)
         {
@@ -44,21 +35,8 @@ public sealed class EventRouteResolver : IEventRouteResolver
             }
         }
 
-        route = default!;
+        route = null!;
         return false;
-    }
-}
-
-[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-public sealed class EventRouteAttribute : Attribute
-{
-    public string EventType { get; }
-    public string Context { get; }
-
-    public EventRouteAttribute(string eventType, string context)
-    {
-        EventType = eventType;
-        Context = context;
     }
 }
 

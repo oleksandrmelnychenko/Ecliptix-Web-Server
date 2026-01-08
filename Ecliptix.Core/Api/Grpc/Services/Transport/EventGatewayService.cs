@@ -1,4 +1,3 @@
-using System.Linq;
 using Ecliptix.Core.Infrastructure.Grpc.Routing;
 using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.Protobuf.Transport.Gateway;
@@ -12,7 +11,7 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
 {
     public override Task<EventEnvelope> Unary(EventEnvelope request, ServerCallContext context)
     {
-        if (string.IsNullOrWhiteSpace(request.Metadata?.EventType))
+        if (request.Metadata is null || request.Metadata.EventType == TransportEventType.Unspecified)
         {
             return Task.FromResult(BuildMissingEventTypeEnvelope(DeliveryKind.Unary));
         }
@@ -26,7 +25,7 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
         IServerStreamWriter<EventEnvelope> responseStream,
         ServerCallContext context)
     {
-        if (string.IsNullOrWhiteSpace(request.Metadata?.EventType))
+        if (request.Metadata is null || request.Metadata.EventType == TransportEventType.Unspecified)
         {
             await responseStream.WriteAsync(BuildMissingEventTypeEnvelope(DeliveryKind.ServerStream));
             return;
@@ -45,7 +44,7 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
 
         await foreach (EventEnvelope request in requestStream.ReadAllAsync(context.CancellationToken))
         {
-            if (string.IsNullOrWhiteSpace(request.Metadata?.EventType))
+            if (request.Metadata is null || request.Metadata.EventType == TransportEventType.Unspecified)
             {
                 return BuildMissingEventTypeEnvelope(DeliveryKind.ClientStream);
             }
@@ -72,7 +71,7 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
     {
         await foreach (EventEnvelope request in requestStream.ReadAllAsync(context.CancellationToken))
         {
-            if (string.IsNullOrWhiteSpace(request.Metadata?.EventType))
+            if (request.Metadata is null || request.Metadata.EventType == TransportEventType.Unspecified)
             {
                 await responseStream.WriteAsync(BuildMissingEventTypeEnvelope(DeliveryKind.BidiStream));
                 continue;
@@ -106,6 +105,7 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
             }
             catch
             {
+                // ignored
             }
         }
 

@@ -3,115 +3,15 @@ syntax = "proto3";
 package ecliptix.proto.protocol;
 option csharp_namespace = "Ecliptix.Protobuf.ProtocolState";
 
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/duration.proto";
 import "contexts/secure_protocol/key_exchange.proto";
 
 message EcliptixSessionState {
   uint32 connect_id = 1;
-  IdentityKeysState identity_keys = 2;
-  ecliptix.proto.protocol.PubKeyExchange peer_handshake_message = 3;
-
-  RatchetState ratchet_state = 4;
-  AdaptiveRatchetState adaptive_ratchet_state = 5;
-
-  // Native hybrid/PQ state for interop clients (serialized protocol state from the native engine).
-  bytes native_state = 6;
-  // For authenticated sessions, store the OPAQUE/master key seed and membership id to re-derive native identity keys.
-  bytes opaque_master_key = 7;
-  bytes membership_id = 8;
-  // Native peer bundle and initiator flag for hybrid ratchet restore.
-  bytes native_peer_bundle = 9;
-  bool native_is_initiator = 10;
-
-  // Chain indices for ratchet state resumption
-  uint32 sending_chain_index = 11;
-  uint32 receiving_chain_index = 12;
-
-  // Identity recreation from deterministic seed
-  bytes identity_seed = 13;
-
-  // Account association (GUID as bytes)
-  bytes account_id = 14;
-}
-
-message IdentityKeysState {
-  bytes ed25519_secret_key = 1;
-  bytes identity_x25519_secret_key = 2;
-  bytes signed_pre_key_secret = 4;
-  repeated OneTimePreKeySecret one_time_pre_keys = 5;
-
-  bytes ed25519_public_key = 10;
-  bytes identity_x25519_public_key = 11;
-  uint32 signed_pre_key_id = 12;
-  bytes signed_pre_key_public = 13;
-  bytes signed_pre_key_signature = 14;
-}
-
-message OneTimePreKeySecret {
-  uint32 pre_key_id = 1;
-  bytes private_key = 2;
-  bytes public_key = 3;
-}
-
-message RatchetState {
-  bool is_initiator = 1;
-  google.protobuf.Timestamp created_at = 2;
-  uint64 nonce_counter = 3;
-  ecliptix.proto.protocol.PublicKeyBundle peer_bundle = 4;
-  bytes peer_dh_public_key = 5;
-  bool is_first_receiving_ratchet = 6;
-  bytes session_id = 7;
-
-  bytes root_key = 10;
-  ChainStepState sending_step = 11;
-  ChainStepState receiving_step = 12;
-  bytes state_mac = 13;
-  bytes initial_sending_dh_public = 14;
-  bytes current_sending_dh_public = 15;
-  // Optional Kyber hybrid ratchet material (always enabled in code, but omitted on legacy persists)
-  bytes peer_kyber_public_key = 16;
-  bytes kyber_ciphertext = 17;
-  bytes kyber_shared_secret = 18;
-  bytes kyber_secret_key = 19;
-  bytes kyber_public_key = 20;
-  bytes kyber_secret_key_nonce = 21;
-  optional uint64 receiving_ratchet_epoch = 22;
-  optional uint64 sending_ratchet_epoch = 23;
-}
-
-message ChainStepState {
-  uint32 current_index = 1;
-  bytes chain_key = 2;
-  bytes dh_private_key = 3;
-  bytes dh_public_key = 4;
-  repeated CachedMessageKey cached_message_keys = 5;
-}
-
-message CachedMessageKey {
-  uint32 index = 1;
-  bytes key_material = 2;
-}
-
-enum LoadLevel {
-  LIGHT = 0;
-  MODERATE = 1;
-  HEAVY = 2;
-  EXTREME = 3;
-}
-
-message AdaptiveRatchetState {
-  LoadLevel current_load = 1;
-  RatchetConfigState current_config = 2;
-  double average_message_rate = 3;
-  google.protobuf.Timestamp last_config_update = 4;
-  repeated google.protobuf.Timestamp recent_message_timestamps = 5;
-}
-
-message RatchetConfigState {
-  uint32 dh_ratchet_every_n_messages = 1;
-  bool enable_per_message_ratchet = 2;
-  bool ratchet_on_new_dh_key = 3;
-  google.protobuf.Duration max_chain_age = 4;
-  uint32 max_messages_without_ratchet = 5;
+  ecliptix.proto.protocol.PubKeyExchange peer_handshake_message = 2;
+  bytes native_state = 3;
+  bytes membership_id = 4;
+  bytes account_id = 5;
+  bytes identity_seed = 6;
+  uint32 sending_chain_index = 7;
+  uint32 receiving_chain_index = 8;
 }

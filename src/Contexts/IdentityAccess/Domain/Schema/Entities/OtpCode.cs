@@ -1,9 +1,7 @@
 using Ecliptix.IdentityAccess.Domain.Memberships;
-using Ecliptix.IdentityAccess.Domain.Schema.Interfaces;
-
 namespace Ecliptix.IdentityAccess.Domain.Schema.Entities;
 
-public class OtpCodeEntity : EntityBase, IExpirable
+public class OtpCodeEntity : EntityBase
 {
     public long VerificationFlowId { get; set; }
 

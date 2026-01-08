@@ -1,9 +1,7 @@
 using Ecliptix.IdentityAccess.Domain.Memberships;
-using Ecliptix.IdentityAccess.Domain.Schema.Interfaces;
-
 namespace Ecliptix.IdentityAccess.Domain.Schema.Entities;
 
-public class VerificationFlowEntity : EntityBase, IExpirable
+public class VerificationFlowEntity : EntityBase
 {
     public Guid MobileNumberId { get; set; }
     public Guid AppDeviceId { get; set; }

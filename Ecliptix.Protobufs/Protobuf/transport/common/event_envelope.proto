@@ -10,44 +10,73 @@ message EventMetadata {
   EventOutcome outcome = 4;
 }
 
+enum TransportEventType {
+  TRANSPORT_EVENT_TYPE_UNSPECIFIED = 0;
+  IDENTITY_ACCESS_REGISTRATION_INIT = 1;
+  IDENTITY_ACCESS_REGISTRATION_COMPLETE = 2;
+  IDENTITY_ACCESS_RECOVERY_INIT = 3;
+  IDENTITY_ACCESS_RECOVERY_COMPLETE = 4;
+  IDENTITY_ACCESS_SIGN_IN_INIT = 5;
+  IDENTITY_ACCESS_SIGN_IN_COMPLETE = 6;
+  IDENTITY_ACCESS_LOGOUT = 7;
+  IDENTITY_ACCESS_LOGOUT_ANONYMOUS = 8;
+  IDENTITY_ACCESS_VERIFY_OTP = 9;
+  IDENTITY_ACCESS_VALIDATE_MOBILE_NUMBER = 10;
+  IDENTITY_ACCESS_CHECK_MOBILE_AVAILABILITY = 11;
+  IDENTITY_ACCESS_RECOVERY_MOBILE_VERIFICATION = 12;
+  IDENTITY_ACCESS_CHECK_PROFILE_NAME = 13;
+  IDENTITY_ACCESS_UPSERT_PROFILE = 14;
+  IDENTITY_ACCESS_GET_PROFILE = 15;
+  DEVICE_PROVISIONING_REGISTER_DEVICE = 101;
+  DEVICE_PROVISIONING_SECURE_CHANNEL_ESTABLISH = 102;
+  DEVICE_PROVISIONING_SECURE_CHANNEL_RESTORE = 103;
+  DEVICE_PROVISIONING_SECURE_CHANNEL_AUTH_ESTABLISH = 104;
+  DEVICE_PROVISIONING_GET_SERVER_PUBLIC_KEYS = 105;
+}
+
 message EventIdentity {
-  string event_id = 1;                    // Unique id for this envelope
-  string event_type = 2;                  // e.g. membership.sign_in_init
-  string context = 3;                     // e.g. identity_access, device_provisioning
-  string correlation_id = 4;              // Set to request event_id on responses
-  string causation_id = 5;                // Optional causal link
-  string partition_key = 6;               // Used for sharding (membershipId/deviceId)
-  DeliveryKind delivery_kind = 7;         // Unary/server-stream/client-stream/bidi
+  string event_id = 1;
+  TransportEventType event_type = 2;
+  EventContext context = 3;
+  string correlation_id = 4;
+  string causation_id = 5;
+  string partition_key = 6;
+  DeliveryKind delivery_kind = 7;
 }
 
 message ClientContext {
-  string locale = 1;                      // Client locale
-  string tenant = 2;                      // Tenant identifier
-  string request_id = 3;                  // Optional per-request id
-  string idempotency_key = 4;             // Idempotency key to reuse retries (1-128 chars of [A-Za-z0-9._:-])
-  string platform = 5;                    // Client platform identifier
-  string version = 6;                     // Client app version
-  string app_device_id = 7;               // Device identifier used in secure channel setup
-  string application_instance_id = 8;     // App instance id (used in existing metadata for connect id derivation)
+  string locale = 1;
+  string tenant = 2;
+  string request_id = 3;
+  string idempotency_key = 4;
+  string platform = 5;
+  string version = 6;
+  string app_device_id = 7;
+  string application_instance_id = 8;
 }
 
 message SecurityContext {
-  uint32 connect_id = 1;                  // Required for secure envelope flows (maps to transport partition key)
-  string key_exchange_context = 2;        // e.g. data_center_ephemeral_connect
+  uint32 connect_id = 1;
+  string key_exchange_context = 2;
 }
 
 message EventOutcome {
-  string status = 1;                      // OK | ERR
-  string error_code = 2;                  // Machine readable
+  string status = 1;
+  string error_code = 2;
 }
 
-// Declares how the request is delivered over gRPC.
 enum DeliveryKind {
   DELIVERY_KIND_UNSPECIFIED = 0;
   DELIVERY_KIND_UNARY = 1;
   DELIVERY_KIND_SERVER_STREAM = 2;
   DELIVERY_KIND_CLIENT_STREAM = 3;
   DELIVERY_KIND_BIDI_STREAM = 4;
+}
+
+enum EventContext {
+  EVENT_CONTEXT_UNSPECIFIED = 0;
+  EVENT_CONTEXT_IDENTITY_ACCESS = 1;
+  EVENT_CONTEXT_DEVICE_PROVISIONING = 2;
 }
 
 message EventEnvelope {

@@ -1,24 +1,22 @@
-using System;
 using System.Data;
 using System.Data.Common;
 using Akka.Actor;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Account;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.AccountProfile;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Common;
-using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.CompiledQueries;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryResults;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Membership;
+using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
+using Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.SharedKernel;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Microsoft.EntityFrameworkCore.Storage;
 using Serilog;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
+namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
 public class AccountPersistorActor : PersistorBase<AccountFailure>
 {
@@ -278,15 +276,17 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
 
     protected override AccountFailure MapDbException(DbException ex)
     {
-        if (ex is SqlException sqlEx)
+        if (ex is PostgresException pgEx)
         {
-            return sqlEx.Number switch
+            return pgEx.SqlState switch
             {
-                2627 or 2601 => AccountFailure.AlreadyExists($"Duplicate account detected: {sqlEx.Message}"),
-                547 => AccountFailure.ValidationFailed($"Foreign key constraint violation: {sqlEx.Message}"),
-                1205 => AccountFailure.DatabaseError(sqlEx),
-                -2 => AccountFailure.Timeout(sqlEx),
-                _ => AccountFailure.DatabaseError(sqlEx)
+                PostgresErrorCodes.UniqueViolation =>
+                    AccountFailure.AlreadyExists($"Duplicate account detected: {pgEx.MessageText}"),
+                PostgresErrorCodes.ForeignKeyViolation =>
+                    AccountFailure.ValidationFailed($"Foreign key constraint violation: {pgEx.MessageText}"),
+                PostgresErrorCodes.DeadlockDetected => AccountFailure.DatabaseError(pgEx),
+                PostgresErrorCodes.QueryCanceled => AccountFailure.Timeout(pgEx),
+                _ => AccountFailure.DatabaseError(pgEx)
             };
         }
 

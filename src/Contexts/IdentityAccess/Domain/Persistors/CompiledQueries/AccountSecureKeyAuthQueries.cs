@@ -3,7 +3,7 @@ using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors.CompiledQueries;
+namespace Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
 
 public record CredentialsRecord(byte[] SecureKey, byte[] MaskingKey, int Version, int OpaqueKeyVersion);
 

@@ -1,163 +1,118 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Ecliptix.Protobuf.Transport.Common;
 
-/// <summary>
-/// Helper shim to expose flattened metadata properties while proto uses grouped sub-messages.
-/// </summary>
 public sealed partial class EventMetadata
 {
-    private EventIdentity EnsureIdentity()
-    {
-        if (Identity == null)
-        {
-            Identity = new EventIdentity();
-        }
-
-        return Identity;
-    }
-
-    private ClientContext EnsureClient()
-    {
-        if (Client == null)
-        {
-            Client = new ClientContext();
-        }
-
-        return Client;
-    }
-
-    private SecurityContext EnsureSecurity()
-    {
-        if (Security == null)
-        {
-            Security = new SecurityContext();
-        }
-
-        return Security;
-    }
-
-    private EventOutcome EnsureOutcome()
-    {
-        if (Outcome == null)
-        {
-            Outcome = new EventOutcome();
-        }
-
-        return Outcome;
-    }
-
     public string EventId
     {
         get => Identity?.EventId ?? string.Empty;
-        set => EnsureIdentity().EventId = value ?? string.Empty;
+        set => (Identity ??= new EventIdentity()).EventId = value;
     }
 
-    public string EventType
+    public TransportEventType EventType
     {
-        get => Identity?.EventType ?? string.Empty;
-        set => EnsureIdentity().EventType = value ?? string.Empty;
+        get => Identity?.EventType ?? TransportEventType.Unspecified;
+        set => (Identity ??= new EventIdentity()).EventType = value;
     }
 
-    public string Context
+    public EventContext Context
     {
-        get => Identity?.Context ?? string.Empty;
-        set => EnsureIdentity().Context = value ?? string.Empty;
+        get => Identity?.Context ?? EventContext.Unspecified;
+        set => (Identity ??= new EventIdentity()).Context = value;
     }
 
     public string CorrelationId
     {
         get => Identity?.CorrelationId ?? string.Empty;
-        set => EnsureIdentity().CorrelationId = value ?? string.Empty;
+        set => (Identity ??= new EventIdentity()).CorrelationId = value;
     }
 
     public string CausationId
     {
         get => Identity?.CausationId ?? string.Empty;
-        set => EnsureIdentity().CausationId = value ?? string.Empty;
+        set => (Identity ??= new EventIdentity()).CausationId = value;
     }
 
     public string PartitionKey
     {
         get => Identity?.PartitionKey ?? string.Empty;
-        set => EnsureIdentity().PartitionKey = value ?? string.Empty;
+        set => (Identity ??= new EventIdentity()).PartitionKey = value;
     }
 
     public DeliveryKind DeliveryKind
     {
         get => Identity?.DeliveryKind ?? DeliveryKind.Unspecified;
-        set => EnsureIdentity().DeliveryKind = value;
+        set => (Identity ??= new EventIdentity()).DeliveryKind = value;
     }
 
     public string Locale
     {
         get => Client?.Locale ?? string.Empty;
-        set => EnsureClient().Locale = value ?? string.Empty;
+        set => (Client ??= new ClientContext()).Locale = value;
     }
 
     public string Tenant
     {
         get => Client?.Tenant ?? string.Empty;
-        set => EnsureClient().Tenant = value ?? string.Empty;
+        set => (Client ??= new ClientContext()).Tenant = value;
     }
 
     public string RequestId
     {
         get => Client?.RequestId ?? string.Empty;
-        set => EnsureClient().RequestId = value ?? string.Empty;
+        set => (Client ??= new ClientContext()).RequestId = value;
     }
 
     public string IdempotencyKey
     {
         get => Client?.IdempotencyKey ?? string.Empty;
-        set => EnsureClient().IdempotencyKey = value ?? string.Empty;
+        set => (Client ??= new ClientContext()).IdempotencyKey = value;
     }
 
     public string Platform
     {
         get => Client?.Platform ?? string.Empty;
-        set => EnsureClient().Platform = value ?? string.Empty;
+        set => (Client ??= new ClientContext()).Platform = value;
     }
 
     public string Version
     {
         get => Client?.Version ?? string.Empty;
-        set => EnsureClient().Version = value ?? string.Empty;
+        set => (Client ??= new ClientContext()).Version = value;
     }
 
     public string AppDeviceId
     {
         get => Client?.AppDeviceId ?? string.Empty;
-        set => EnsureClient().AppDeviceId = value ?? string.Empty;
+        set => (Client ??= new ClientContext()).AppDeviceId = value;
     }
 
     public string ApplicationInstanceId
     {
         get => Client?.ApplicationInstanceId ?? string.Empty;
-        set => EnsureClient().ApplicationInstanceId = value ?? string.Empty;
+        set => (Client ??= new ClientContext()).ApplicationInstanceId = value;
     }
 
     public uint ConnectId
     {
         get => Security?.ConnectId ?? 0;
-        set => EnsureSecurity().ConnectId = value;
+        set => (Security ??= new SecurityContext()).ConnectId = value;
     }
 
     public string KeyExchangeContext
     {
         get => Security?.KeyExchangeContext ?? string.Empty;
-        set => EnsureSecurity().KeyExchangeContext = value ?? string.Empty;
+        set => (Security ??= new SecurityContext()).KeyExchangeContext = value;
     }
 
     public string Status
     {
         get => Outcome?.Status ?? string.Empty;
-        set => EnsureOutcome().Status = value ?? string.Empty;
+        set => (Outcome ??= new EventOutcome()).Status = value;
     }
 
     public string ErrorCode
     {
         get => Outcome?.ErrorCode ?? string.Empty;
-        set => EnsureOutcome().ErrorCode = value ?? string.Empty;
+        set => (Outcome ??= new EventOutcome()).ErrorCode = value;
     }
 }

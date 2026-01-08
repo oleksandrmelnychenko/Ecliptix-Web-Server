@@ -13,57 +13,44 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Akka" Version="1.5.57" />
-        <PackageReference Include="Akka.Cluster" Version="1.5.57" />
-        <PackageReference Include="Akka.Cluster.Hosting" Version="1.5.57" />
-        <PackageReference Include="Akka.Cluster.Metrics" Version="1.5.57" />
-        <PackageReference Include="Akka.Cluster.Sharding" Version="1.5.57" />
-        <PackageReference Include="Akka.Cluster.Tools" Version="1.5.57" />
-        <PackageReference Include="Akka.DependencyInjection" Version="1.5.57" />
-        <PackageReference Include="Akka.Discovery" Version="1.5.57" />
-        <PackageReference Include="Akka.Discovery.KubernetesApi" Version="1.5.57" />
-        <PackageReference Include="Akka.Hosting" Version="1.5.57" />
-        <PackageReference Include="Akka.Management" Version="1.5.57" />
-        <PackageReference Include="Akka.Persistence" Version="1.5.57" />
-        <PackageReference Include="Akka.Persistence.Hosting" Version="1.5.57" />
-        <PackageReference Include="Akka.Persistence.Sql" Version="1.5.55.1" />
-        <PackageReference Include="Akka.Persistence.Sql.Hosting" Version="1.5.55.1" />
-        <PackageReference Include="Akka.Remote" Version="1.5.57" />
-        <PackageReference Include="Dapper" Version="2.1.66" />
-        <PackageReference Include="dbup" Version="5.0.41" />
-        <PackageReference Include="Grpc.AspNetCore.Server" Version="2.76.0" />
-        <PackageReference Include="Grpc.Core.Api" Version="2.76.0" />
-        <PackageReference Include="Grpc.Net.Common" Version="2.76.0" />
-        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.1" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.1">
+        <PackageReference Include="Akka" />
+        <PackageReference Include="Akka.Cluster" />
+        <PackageReference Include="Akka.Cluster.Hosting" />
+        <PackageReference Include="Akka.Cluster.Metrics" />
+        <PackageReference Include="Akka.Cluster.Sharding" />
+        <PackageReference Include="Akka.Cluster.Tools" />
+        <PackageReference Include="Akka.DependencyInjection" />
+        <PackageReference Include="Akka.Discovery" />
+        <PackageReference Include="Akka.Discovery.KubernetesApi" />
+        <PackageReference Include="Akka.Hosting" />
+        <PackageReference Include="Akka.Management" />
+        <PackageReference Include="Akka.Persistence" />
+        <PackageReference Include="Akka.Persistence.Hosting" />
+        <PackageReference Include="Akka.Persistence.Sql" />
+        <PackageReference Include="Akka.Persistence.Sql.Hosting" />
+        <PackageReference Include="Akka.Remote" />
+        <PackageReference Include="Dapper" />
+        <PackageReference Include="dbup" />
+        <PackageReference Include="Grpc.AspNetCore.Server" />
+        <PackageReference Include="Grpc.Core.Api" />
+        <PackageReference Include="Grpc.Net.Common" />
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
           <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.3" />
-        <PackageReference Include="OpenTelemetry" Version="1.14.0" />
-        <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.14.0" />
-        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
-        <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.14.0" />
-        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.14.0" />
-        <PackageReference Include="protobuf-net" Version="3.2.56" />
-        <PackageReference Include="Serilog.Sinks.ApplicationInsights" Version="4.1.0" />
-        <PackageReference Include="Serilog.Sinks.AwsCloudWatch" Version="4.4.42" />
-        <PackageReference Include="Sodium.Core" Version="1.4.0" />
-        <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
-        <PackageReference Include="Ecliptix.Protocol.Server" Version="1.0.0-ci.29" />
+        <PackageReference Include="OpenTelemetry" />
+        <PackageReference Include="OpenTelemetry.Exporter.Console" />
+        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+        <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+        <PackageReference Include="protobuf-net" />
+        <PackageReference Include="Serilog.Sinks.ApplicationInsights" />
+        <PackageReference Include="Serilog.Sinks.AwsCloudWatch" />
+        <PackageReference Include="Sodium.Core" />
+        <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
+        <PackageReference Include="EPP.Relay" />
     </ItemGroup>
-
-
-    <!-- <ItemGroup>
-         <EmbeddedResource Include="Resources\VerificationFlowResource.en-US.resx">
-             <Generator>PublicResXFileCodeGenerator</Generator>
-             <LastGenOutput>VerificationFlowResource.en-US.Designer.cs</LastGenOutput>
-         </EmbeddedResource>
-         <EmbeddedResource Include="Resources\VerificationFlowResource.uk-UA.resx">
-             <Generator>PublicResXFileCodeGenerator</Generator>
-             <LastGenOutput>VerificationFlowResource.uk-UA.Designer.cs</LastGenOutput>
-         </EmbeddedResource>
-     </ItemGroup>-->
 
     <ItemGroup>
         <Content Include="..\.dockerignore">
@@ -97,22 +84,4 @@
       <Compile Remove="Domain\Protocol\**\*.cs" />
       <Compile Remove="Domain\ProtocolNative\**\*.cs" />
     </ItemGroup>
-
-
-    <!-- Commented out: Using AOT-safe hardcoded FrozenDictionary instead of ResourceManager
-    <ItemGroup>
-        <EmbeddedResource Update="Resources\VerificationFlowRes.resx">
-            <Generator>PublicResXFileCodeGenerator</Generator>
-            <LastGenOutput>VerificationFlowRes.Designer.cs</LastGenOutput>
-        </EmbeddedResource>
-    </ItemGroup>
-
-    <ItemGroup>
-        <Compile Update="Resources\VerificationFlowRes.Designer.cs">
-            <DesignTime>True</DesignTime>
-            <AutoGen>True</AutoGen>
-            <DependentUpon>VerificationFlowRes.resx</DependentUpon>
-        </Compile>
-    </ItemGroup>
-    -->
 </Project>

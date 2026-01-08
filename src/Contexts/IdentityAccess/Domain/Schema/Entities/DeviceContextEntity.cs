@@ -1,8 +1,6 @@
-using Ecliptix.IdentityAccess.Domain.Schema.Interfaces;
-
 namespace Ecliptix.IdentityAccess.Domain.Schema.Entities;
 
-public class DeviceContextEntity : EntityBase, IExpirable
+public class DeviceContextEntity : EntityBase
 {
     public Guid MembershipId { get; set; }
     public Guid DeviceId { get; set; }

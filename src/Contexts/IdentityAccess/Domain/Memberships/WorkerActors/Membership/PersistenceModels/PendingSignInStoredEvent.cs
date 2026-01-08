@@ -1,4 +1,4 @@
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
 
 namespace Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.Membership.PersistenceModels;

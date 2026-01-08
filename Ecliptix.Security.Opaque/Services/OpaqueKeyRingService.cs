@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Models.AuthenticationMessages;
@@ -11,13 +9,12 @@ namespace Ecliptix.Security.Opaque.Services;
 public sealed class OpaqueKeyRingService : IOpaqueKeyRingService, IDisposable
 {
     private readonly Dictionary<int, OpaqueProtocolService> _services = new();
-    private int _activeKeyVersion;
 
-    public int ActiveKeyVersion => _activeKeyVersion;
+    public int ActiveKeyVersion { get; private set; }
 
     public Result<Unit, OpaqueServerFailure> Initialize(IReadOnlyDictionary<int, string> keyRing, int activeKeyVersion)
     {
-        if (keyRing == null || keyRing.Count == 0)
+        if (keyRing.Count == 0)
         {
             return Result<Unit, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.InvalidInput("OPAQUE key ring is empty"));
@@ -64,7 +61,7 @@ public sealed class OpaqueKeyRingService : IOpaqueKeyRingService, IDisposable
             _services[entry.Key] = service;
         }
 
-        _activeKeyVersion = activeKeyVersion;
+        ActiveKeyVersion = activeKeyVersion;
         return Result<Unit, OpaqueServerFailure>.Ok(Unit.Value);
     }
 
@@ -73,7 +70,7 @@ public sealed class OpaqueKeyRingService : IOpaqueKeyRingService, IDisposable
         Guid accountId,
         int? keyVersion = null)
     {
-        int version = keyVersion ?? _activeKeyVersion;
+        int version = keyVersion ?? ActiveKeyVersion;
         Result<OpaqueProtocolService, OpaqueServerFailure> serviceResult = GetService(version);
         return serviceResult.IsErr
             ? Result<RegistrationResponse, OpaqueServerFailure>.Err(serviceResult.UnwrapErr())
@@ -105,13 +102,14 @@ public sealed class OpaqueKeyRingService : IOpaqueKeyRingService, IDisposable
     {
         Result<OpaqueProtocolService, OpaqueServerFailure> serviceResult = GetService(keyVersion);
         return serviceResult.IsErr
-            ? Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(serviceResult.UnwrapErr())
+            ? Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
+                serviceResult.UnwrapErr())
             : serviceResult.Unwrap().FinishAuthenticationWithMasterKey(ke3);
     }
 
     public Result<byte[], OpaqueServerFailure> GetServerPublicKey(int? keyVersion = null)
     {
-        int version = keyVersion ?? _activeKeyVersion;
+        int version = keyVersion ?? ActiveKeyVersion;
         Result<OpaqueProtocolService, OpaqueServerFailure> serviceResult = GetService(version);
         return serviceResult.IsErr
             ? Result<byte[], OpaqueServerFailure>.Err(serviceResult.UnwrapErr())

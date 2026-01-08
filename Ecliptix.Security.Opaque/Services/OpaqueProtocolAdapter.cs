@@ -1,4 +1,3 @@
-using System;
 using System.Buffers;
 using Ecliptix.OPAQUE.Server;
 using Ecliptix.Protobuf.Membership;
@@ -112,8 +111,8 @@ public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) 
                         ok.Data.Length,
                         Convert.ToHexString(ok.Data));
                 }
-                byte[] sessionKeyPlaceholder = new byte[SessionKeyLength];
-                return (ok.Data, accountId, sessionKeyPlaceholder, keyVersion);
+                byte[] emptySessionKey = new byte[SessionKeyLength];
+                return (ok.Data, accountId, emptySessionKey, keyVersion);
             },
             err => throw new InvalidOperationException($"OPRF processing failed: {err.Message}")
         );
@@ -250,28 +249,6 @@ public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) 
             _ => Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
                 (null!, null!, BuildFailedFinalizeResponse()))
         );
-    }
-
-    public Result<byte[], OpaqueFailure> CompleteRegistrationWithSessionKey(byte[] peerRegistrationRecord)
-    {
-        try
-        {
-            Result<RegistrationRequest, OpaqueServerFailure> registrationRequestResult =
-                RegistrationRequest.Create(peerRegistrationRecord);
-
-            if (registrationRequestResult.IsErr)
-            {
-                return Result<byte[], OpaqueFailure>.Err(
-                    OpaqueFailure.InvalidInput($"Invalid registration record: {registrationRequestResult.UnwrapErr().Message}"));
-            }
-            return Result<byte[], OpaqueFailure>.Err(
-                OpaqueFailure.InvalidInput("Registration export key is no longer available in OPAQUE registration"));
-        }
-        catch (Exception ex)
-        {
-            return Result<byte[], OpaqueFailure>.Err(
-                OpaqueFailure.InvalidInput($"Registration completion failed: {ex.Message}"));
-        }
     }
 
     private static Result<KE1, OpaqueFailure> ValidateKe1(OpaqueSignInInitRequest request)

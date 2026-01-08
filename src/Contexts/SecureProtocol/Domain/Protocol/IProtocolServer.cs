@@ -4,9 +4,6 @@ using Ecliptix.SharedKernel;
 
 namespace Ecliptix.SecureProtocol.Domain.Protocol;
 
-/// <summary>
-/// Abstraction over the protocol server (NuGet interop) to keep actors decoupled from P/Invoke.
-/// </summary>
 public interface IProtocolServer : IDisposable
 {
     Result<Unit, EcliptixProtocolFailure> Initialize();
@@ -57,6 +54,7 @@ public interface IProtocolServer : IDisposable
 
     Result<bool, EcliptixProtocolFailure> HasConnection(ProtocolSession session);
     Result<uint, EcliptixProtocolFailure> GetConnectionId(ProtocolSession session);
+    Result<(uint Sending, uint Receiving), EcliptixProtocolFailure> GetChainIndices(ProtocolSession session);
     Result<uint?, EcliptixProtocolFailure> GetSelectedOpkId(ProtocolSession session);
 
     Result<byte[], EcliptixProtocolFailure> ExportState(ProtocolSession session);
@@ -77,6 +75,18 @@ public sealed class ProtocolIdentity : IDisposable
     internal EcliptixIdentityKeys Handle { get; }
 
     public bool IsDisposed { get; private set; }
+
+    public void Detach()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        Handle.Detach();
+        IsDisposed = true;
+        GC.SuppressFinalize(this);
+    }
 
     public void Dispose()
     {

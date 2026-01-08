@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Threading.Channels;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
@@ -16,6 +15,5 @@ public record InitiateVerificationFlowActorEvent(
     ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> ChannelWriter,
     string CultureName,
     Option<string> IdempotencyKey,
-    ActivityContext ActivityContext = default,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;

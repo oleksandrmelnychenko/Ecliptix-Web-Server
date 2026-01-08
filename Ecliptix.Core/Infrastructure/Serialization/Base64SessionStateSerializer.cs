@@ -8,11 +8,6 @@ namespace Ecliptix.Core.Infrastructure.Serialization;
 public class Base64SessionStateSerializer : SerializerWithStringManifest
 {
     private const string EcliptixSessionStateManifest = "EcliptixSessionState";
-    private const string IdentityKeysStateManifest = "IdentityKeysState";
-    private const string RatchetStateManifest = "RatchetState";
-    private const string OneTimePreKeySecretManifest = "OneTimePreKeySecret";
-    private const string ChainStepStateManifest = "ChainStepState";
-    private const string CachedMessageKeyManifest = "CachedMessageKey";
 
     public Base64SessionStateSerializer(ExtendedActorSystem system) : base(system)
     {
@@ -25,11 +20,6 @@ public class Base64SessionStateSerializer : SerializerWithStringManifest
         return o switch
         {
             EcliptixSessionState => EcliptixSessionStateManifest,
-            IdentityKeysState => IdentityKeysStateManifest,
-            RatchetState => RatchetStateManifest,
-            OneTimePreKeySecret => OneTimePreKeySecretManifest,
-            ChainStepState => ChainStepStateManifest,
-            CachedMessageKey => CachedMessageKeyManifest,
             _ => throw new ArgumentException($"Unknown type: {o.GetType()}")
         };
     }
@@ -39,11 +29,6 @@ public class Base64SessionStateSerializer : SerializerWithStringManifest
         return obj switch
         {
             EcliptixSessionState state => state.ToByteArray(),
-            IdentityKeysState keys => keys.ToByteArray(),
-            RatchetState ratchet => ratchet.ToByteArray(),
-            OneTimePreKeySecret otpk => otpk.ToByteArray(),
-            ChainStepState chain => chain.ToByteArray(),
-            CachedMessageKey key => key.ToByteArray(),
             _ => throw new ArgumentException($"Cannot serialize unknown type: {obj.GetType()}")
         };
     }
@@ -53,11 +38,6 @@ public class Base64SessionStateSerializer : SerializerWithStringManifest
         return manifest switch
         {
             EcliptixSessionStateManifest => EcliptixSessionState.Parser.ParseFrom(bytes),
-            IdentityKeysStateManifest => IdentityKeysState.Parser.ParseFrom(bytes),
-            RatchetStateManifest => RatchetState.Parser.ParseFrom(bytes),
-            OneTimePreKeySecretManifest => OneTimePreKeySecret.Parser.ParseFrom(bytes),
-            ChainStepStateManifest => ChainStepState.Parser.ParseFrom(bytes),
-            CachedMessageKeyManifest => CachedMessageKey.Parser.ParseFrom(bytes),
             _ => throw new ArgumentException($"Unknown manifest: {manifest}")
         };
     }

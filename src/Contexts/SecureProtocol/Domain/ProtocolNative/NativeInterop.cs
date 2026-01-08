@@ -3,13 +3,9 @@ using System.Runtime.InteropServices;
 
 namespace Ecliptix.SecureProtocol.Domain.ProtocolNative;
 
-/// <summary>
-/// P/Invoke bindings that match the exported symbols from the server native library
-/// (libecliptix_protocol_server).
-/// </summary>
 internal static class NativeInterop
 {
-    private const string LibraryName = "ecliptix_protocol_server";
+    private const string LibraryName = "epp_relay";
 
     internal enum EcliptixErrorCode
     {
@@ -212,6 +208,13 @@ internal static class NativeInterop
         out EcliptixError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_get_chain_indices(
+        IntPtr handle,
+        out uint outSendingIndex,
+        out uint outReceivingIndex,
+        out EcliptixError outError);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern EcliptixErrorCode ecliptix_protocol_server_system_get_selected_opk_id(
         IntPtr handle,
         [MarshalAs(UnmanagedType.I1)] out bool outHasOpkId,
@@ -253,6 +256,29 @@ internal static class NativeInterop
         nuint userContextLength,
         [Out] byte[] outRootKey,
         nuint outRootKeyLength,
+        out EcliptixError outError);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern EcliptixErrorCode ecliptix_secret_sharing_split(
+        [In] byte[] secret,
+        nuint secretLength,
+        byte threshold,
+        byte shareCount,
+        [In] byte[]? authKey,
+        nuint authKeyLength,
+        IntPtr outShares,
+        out nuint outShareLength,
+        out EcliptixError outError);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern EcliptixErrorCode ecliptix_secret_sharing_reconstruct(
+        [In] byte[] shares,
+        nuint sharesLength,
+        nuint shareLength,
+        nuint shareCount,
+        [In] byte[]? authKey,
+        nuint authKeyLength,
+        IntPtr outSecret,
         out EcliptixError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

@@ -1,6 +1,6 @@
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+namespace Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 
 public readonly record struct LoginAttemptMembershipQueryRecord
 {

@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Security.Cryptography;
-using System.Threading;
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.Security.Certificate.Pinning.NativeResolver;
 using Ecliptix.SharedKernel;
@@ -58,7 +57,7 @@ public sealed class CertificatePinningService : IDisposable
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.PlaintextRequired());
         }
 
-        if (!TryEnterOperation(out var enterError))
+        if (!TryEnterOperation(out CertificatePinningFailure? enterError))
         {
             return Result<byte[], CertificatePinningFailure>.Err(enterError!);
         }
@@ -109,7 +108,7 @@ public sealed class CertificatePinningService : IDisposable
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.CiphertextRequired());
         }
 
-        if (!TryEnterOperation(out var enterError))
+        if (!TryEnterOperation(out CertificatePinningFailure? enterError))
         {
             return Result<byte[], CertificatePinningFailure>.Err(enterError!);
         }
@@ -191,7 +190,7 @@ public sealed class CertificatePinningService : IDisposable
             return Result<byte[], CertificatePinningFailure>.Err(CertificatePinningFailure.DataRequired());
         }
 
-        if (!TryEnterOperation(out var enterError))
+        if (!TryEnterOperation(out CertificatePinningFailure? enterError))
         {
             return Result<byte[], CertificatePinningFailure>.Err(enterError!);
         }
@@ -243,7 +242,7 @@ public sealed class CertificatePinningService : IDisposable
 
     private Result<(byte[], byte[]), CertificatePinningFailure> GenerateEd25519KeypairSync()
     {
-        if (!TryEnterOperation(out var enterError))
+        if (!TryEnterOperation(out CertificatePinningFailure? enterError))
         {
             return Result<(byte[], byte[]), CertificatePinningFailure>.Err(enterError!);
         }
@@ -305,7 +304,7 @@ public sealed class CertificatePinningService : IDisposable
             return privateKeyValidation.MapErr(err => err).Map(_ => Array.Empty<byte>());
         }
 
-        if (!TryEnterOperation(out var enterError))
+        if (!TryEnterOperation(out CertificatePinningFailure? enterError))
         {
             return Result<byte[], CertificatePinningFailure>.Err(enterError!);
         }
@@ -370,7 +369,7 @@ public sealed class CertificatePinningService : IDisposable
             return publicKeyValidation.MapErr(err => err).Map(_ => false);
         }
 
-        if (!TryEnterOperation(out var enterError))
+        if (!TryEnterOperation(out CertificatePinningFailure? enterError))
         {
             return Result<bool, CertificatePinningFailure>.Err(enterError!);
         }
@@ -429,7 +428,7 @@ public sealed class CertificatePinningService : IDisposable
             return $"Error retrieving native error message: {ex.Message}";
         }
 
-        return NativeResolver.CertificatePinningConfigurationConstants.ErrorMessages.GenericError;
+        return CertificatePinningConfigurationConstants.ErrorMessages.GenericError;
     }
 
     private static unsafe string GetSafeNativeErrorString(byte* errorPtr)
@@ -482,7 +481,7 @@ public sealed class CertificatePinningService : IDisposable
             }
             catch (Exception)
             {
-
+                // ignored
             }
             finally
             {

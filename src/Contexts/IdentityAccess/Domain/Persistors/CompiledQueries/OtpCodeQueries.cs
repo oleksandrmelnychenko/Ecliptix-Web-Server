@@ -1,9 +1,10 @@
+using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors.CompiledQueries;
+namespace Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
 
 public static class OtpCodeQueries
 {

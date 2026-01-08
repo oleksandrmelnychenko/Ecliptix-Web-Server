@@ -10,7 +10,6 @@ using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Membership;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.IdentityAccess.Domain.Services.Security;
 using Ecliptix.Protobuf.Common;
@@ -39,40 +38,21 @@ using Status = Grpc.Core.Status;
 
 namespace Ecliptix.IdentityAccess.Infrastructure.EventHandling;
 
-/// <summary>
-/// Internal command handler for membership flows (used via gateway).
-/// </summary>
-public sealed class MembershipEventHandler
+public sealed class MembershipEventHandler(
+    IEcliptixActorRegistry actorRegistry,
+    IMobileNumberValidator phoneNumberValidator,
+    IGrpcCipherService grpcCipherService,
+    ActorSystem actorSystem,
+    IMasterKeyService masterKeyService,
+    IOptions<SecurityConfiguration> securityConfig)
 {
-    private readonly GrpcSecurityService _service;
-    private readonly IActorRef _membershipActor;
-    private readonly IActorRef _accountPersistor;
-    private readonly IActorRef _logoutAuditPersistor;
-    private readonly IActorRef _protocolActor;
-    private readonly IMobileNumberValidator _phoneNumberValidator;
-    private readonly IMasterKeyService _masterKeyService;
-    private readonly ActorSystem _actorSystem;
+    private readonly GrpcSecurityService _service = new(grpcCipherService, securityConfig);
+    private readonly IActorRef _membershipActor = actorRegistry.Get(ActorIds.MembershipActor);
+    private readonly IActorRef _accountPersistor = actorRegistry.Get(ActorIds.AccountPersistorActor);
+    private readonly IActorRef _logoutAuditPersistor = actorRegistry.Get(ActorIds.LogoutAuditPersistorActor);
+    private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
-    private readonly SecurityConfiguration _securityConfig;
-
-    public MembershipEventHandler(
-        IEcliptixActorRegistry actorRegistry,
-        IMobileNumberValidator phoneNumberValidator,
-        IGrpcCipherService grpcCipherService,
-        ActorSystem actorSystem,
-        IMasterKeyService masterKeyService,
-        IOptions<SecurityConfiguration> securityConfig)
-    {
-        _service = new GrpcSecurityService(grpcCipherService, securityConfig);
-        _membershipActor = actorRegistry.Get(ActorIds.MembershipActor);
-        _accountPersistor = actorRegistry.Get(ActorIds.AccountPersistorActor);
-        _logoutAuditPersistor = actorRegistry.Get(ActorIds.LogoutAuditPersistorActor);
-        _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
-        _phoneNumberValidator = phoneNumberValidator;
-        _masterKeyService = masterKeyService;
-        _actorSystem = actorSystem;
-        _securityConfig = securityConfig.Value;
-    }
+    private readonly SecurityConfiguration _securityConfig = securityConfig.Value;
 
     public async Task<SecureEnvelope> OpaqueSignInInitRequest(SecureEnvelope request,
         ServerCallContext context)
@@ -82,7 +62,7 @@ public sealed class MembershipEventHandler
             async (message, connectId, _, cancellationToken) =>
             {
                 Result<MobileNumberValidationResult, VerificationFlowFailure> phoneNumberValidationResult =
-                    _phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
+                    phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
 
                 if (phoneNumberValidationResult.IsErr)
                 {
@@ -357,8 +337,8 @@ public sealed class MembershipEventHandler
 
         try
         {
-            Result<dynamic, FailureBase> handleResult =
-                await _masterKeyService.GetMasterKeyHandleAsync(accountId);
+            Result<SodiumSecureMemoryHandle, FailureBase> handleResult =
+                await masterKeyService.GetMasterKeyHandleAsync(accountId);
 
             if (handleResult.IsErr)
             {
@@ -367,7 +347,7 @@ public sealed class MembershipEventHandler
                 return Result<Unit, FailureBase>.Err(handleResult.UnwrapErr());
             }
 
-            masterKeyHandle = (SodiumSecureMemoryHandle)handleResult.Unwrap();
+            masterKeyHandle = handleResult.Unwrap();
 
             Result<byte[], SodiumFailure> hmacKeyResult =
                 LogoutKeyDerivation.DeriveLogoutHmacKey(masterKeyHandle);
@@ -430,7 +410,6 @@ public sealed class MembershipEventHandler
 
     private Task<byte[]> CaptureRatchetFingerprintAsync(uint connectId)
     {
-        // RatchetState is now a legacy placeholder - fingerprinting disabled
         Log.Debug("[LOGOUT-RATCHET] Ratchet fingerprinting disabled for ConnectId: {ConnectId}", connectId);
         return Task.FromResult<byte[]>([]);
     }
@@ -450,8 +429,8 @@ public sealed class MembershipEventHandler
 
         try
         {
-            Result<dynamic, FailureBase> handleResult =
-                await _masterKeyService.GetMasterKeyHandleAsync(accountId);
+            Result<SodiumSecureMemoryHandle, FailureBase> handleResult =
+                await masterKeyService.GetMasterKeyHandleAsync(accountId);
 
             if (handleResult.IsErr)
             {
@@ -460,7 +439,7 @@ public sealed class MembershipEventHandler
                     $"Unable to generate revocation proof without master key handle for AccountId: {accountId}. Error: {failure.Message}");
             }
 
-            masterKeyHandle = (SodiumSecureMemoryHandle)handleResult.Unwrap();
+            masterKeyHandle = handleResult.Unwrap();
 
             Result<byte[], SodiumFailure> proofKeyResult =
                 LogoutKeyDerivation.DeriveLogoutProofKey(masterKeyHandle);
@@ -594,7 +573,7 @@ public sealed class MembershipEventHandler
         }
 
         Result<bool, FailureBase> sharesExistResult =
-            await _masterKeyService.CheckSharesExistAsync(accountId);
+            await masterKeyService.CheckSharesExistAsync(accountId);
 
         if (sharesExistResult.IsErr || !sharesExistResult.Unwrap())
         {
@@ -652,7 +631,7 @@ public sealed class MembershipEventHandler
         _ = Task.Run(async () =>
         {
             await Task.Delay(2000);
-            _actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
+            actorSystem.EventStream.Publish(new ProtocolCleanupRequiredEvent(connectId));
             Log.Information("Protocol cleanup event published for ConnectId: {ConnectId}", connectId);
         });
     }
@@ -701,8 +680,8 @@ public sealed class MembershipEventHandler
 
         try
         {
-            Result<dynamic, FailureBase> handleResult =
-                await _masterKeyService.GetMasterKeyHandleAsync(accountId);
+            Result<SodiumSecureMemoryHandle, FailureBase> handleResult =
+                await masterKeyService.GetMasterKeyHandleAsync(accountId);
 
             if (handleResult.IsErr)
             {
@@ -712,7 +691,7 @@ public sealed class MembershipEventHandler
                 return Result<Unit, FailureBase>.Err(handleResult.UnwrapErr());
             }
 
-            masterKeyHandle = (SodiumSecureMemoryHandle)handleResult.Unwrap();
+            masterKeyHandle = handleResult.Unwrap();
 
             Result<byte[], SodiumFailure> hmacKeyResult =
                 LogoutKeyDerivation.DeriveLogoutHmacKey(masterKeyHandle);
@@ -848,7 +827,7 @@ public sealed class MembershipEventHandler
         }
 
         Result<bool, FailureBase> sharesExistResult =
-            await _masterKeyService.CheckSharesExistAsync(accountId);
+            await masterKeyService.CheckSharesExistAsync(accountId);
 
         if (sharesExistResult.IsErr)
         {

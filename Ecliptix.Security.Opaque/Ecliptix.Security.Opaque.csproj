@@ -1,5 +1,4 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -12,26 +11,21 @@
     <LangVersion>14</LangVersion>
   </PropertyGroup>
 
-  <!-- Native libraries provided by Ecliptix.OPAQUE.Server NuGet package -->
-
   <ItemGroup>
-    <PackageReference Include="Ecliptix.OPAQUE.Server" Version="1.0.0-ci.16" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.1" />
-    <PackageReference Include="Serilog" Version="4.3.0" />
-    <PackageReference Include="Google.Protobuf" Version="3.33.2" />
-    <PackageReference Include="Grpc.Tools" Version="2.76.0">
+    <PackageReference Include="Ecliptix.OPAQUE.Server" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="protobuf-net" Version="3.2.56" />
-    <PackageReference Include="protobuf-net.Grpc" Version="1.2.2" />
+    <PackageReference Include="protobuf-net" />
+    <PackageReference Include="protobuf-net.Grpc" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Ecliptix.Protobufs\Ecliptix.Protobufs.csproj" />
     <ProjectReference Include="..\src\Shared\Ecliptix.SharedKernel\Ecliptix.SharedKernel.csproj" />
   </ItemGroup>
-
-
-
 </Project>

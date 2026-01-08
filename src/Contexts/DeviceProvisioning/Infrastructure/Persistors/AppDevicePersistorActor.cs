@@ -2,8 +2,8 @@ using System.Data.Common;
 using Akka.Actor;
 using Ecliptix.DeviceProvisioning.Domain.Events;
 using Ecliptix.DeviceProvisioning.Domain.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.CompiledQueries;
+using Ecliptix.IdentityAccess.Domain.Persistors;
+using Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.Protobuf.Device;
@@ -46,8 +46,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 await transaction.RollbackAsync(CancellationToken.None);
                 return Result<DeviceRegistrationResponse, AppDeviceFailure>.Ok(new DeviceRegistrationResponse
                 {
-                    Status = DeviceRegistrationResponse.Types.Status.InvalidRequest,
-                    ServerPublicKey = ByteString.Empty
+                    Status = DeviceRegistrationResponse.Types.Status.InvalidRequest
                 });
             }
 
@@ -58,8 +57,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 await transaction.RollbackAsync(CancellationToken.None);
                 return Result<DeviceRegistrationResponse, AppDeviceFailure>.Ok(new DeviceRegistrationResponse
                 {
-                    Status = DeviceRegistrationResponse.Types.Status.AlreadyExists,
-                    ServerPublicKey = ByteString.Empty
+                    Status = DeviceRegistrationResponse.Types.Status.AlreadyExists
                 });
             }
 
@@ -76,8 +74,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
             await transaction.CommitAsync(cancellationToken);
             return Result<DeviceRegistrationResponse, AppDeviceFailure>.Ok(new DeviceRegistrationResponse
             {
-                Status = DeviceRegistrationResponse.Types.Status.NewRegistration,
-                ServerPublicKey = ByteString.Empty
+                Status = DeviceRegistrationResponse.Types.Status.NewRegistration
             });
         }
         catch (Exception ex)

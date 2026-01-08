@@ -1,24 +1,26 @@
 using System.Data.Common;
 using Akka.Actor;
+using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Account;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.CompiledQueries;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.Protobuf.Account;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using Serilog;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
+using VerificationPurpose = Ecliptix.IdentityAccess.Domain.Memberships.VerificationPurpose;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
+namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
 public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 {
@@ -394,7 +396,8 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             }
             catch (DbUpdateException dbEx) when (createdDeviceContext &&
                                                  pendingDeviceContext != null &&
-                                                 dbEx.InnerException is SqlException { Number: 547 })
+                                                 dbEx.InnerException is PostgresException
+                                                     { SqlState: PostgresErrorCodes.ForeignKeyViolation })
             {
                 schemaContext.Entry(pendingDeviceContext).State = EntityState.Detached;
                 deviceContext = null;
@@ -932,15 +935,17 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
     protected override MembershipFailure MapDbException(DbException ex)
     {
-        if (ex is SqlException sqlEx)
+        if (ex is PostgresException pgEx)
         {
-            return sqlEx.Number switch
+            return pgEx.SqlState switch
             {
-                2627 or 2601 => MembershipFailure.AlreadyExists($"Unique constraint violation: {sqlEx.Message}"),
-                547 => MembershipFailure.ValidationFailed($"Foreign key constraint violation: {sqlEx.Message}"),
-                1205 => MembershipFailure.DatabaseError(sqlEx),
-                -2 => MembershipFailure.Timeout(sqlEx),
-                _ => MembershipFailure.DatabaseError(sqlEx)
+                PostgresErrorCodes.UniqueViolation =>
+                    MembershipFailure.AlreadyExists($"Unique constraint violation: {pgEx.MessageText}"),
+                PostgresErrorCodes.ForeignKeyViolation =>
+                    MembershipFailure.ValidationFailed($"Foreign key constraint violation: {pgEx.MessageText}"),
+                PostgresErrorCodes.DeadlockDetected => MembershipFailure.DatabaseError(pgEx),
+                PostgresErrorCodes.QueryCanceled => MembershipFailure.Timeout(pgEx),
+                _ => MembershipFailure.DatabaseError(pgEx)
             };
         }
 

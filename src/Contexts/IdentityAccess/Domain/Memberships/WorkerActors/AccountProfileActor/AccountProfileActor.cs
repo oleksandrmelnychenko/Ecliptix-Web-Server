@@ -1,7 +1,7 @@
 using Akka.Actor;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.AccountProfile;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
 using Serilog;

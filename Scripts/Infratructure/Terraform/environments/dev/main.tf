@@ -217,8 +217,8 @@ module "ecs_task_memberships" {
   environment = [
     { "name" = "DOTNET_ENVIRONMENT", "value" = "Development" },
     {
-      "name"  = "ConnectionStrings__EcliptixMemberships"
-      "value" = "Server=${module.rds.memberships_mssql_address};Database=memberships;User Id=${module.secrets.memberships_username};Password=${module.secrets.memberships_password};Encrypt=True;TrustServerCertificate=True;"
+      "name"  = "Database__ConnectionString"
+      "value" = "Host=${module.rds.memberships_mssql_address};Port=5432;Database=memberships;Username=${module.secrets.memberships_username};Password=${module.secrets.memberships_password};SSL Mode=Require;Trust Server Certificate=true;"
     }
   ]
 

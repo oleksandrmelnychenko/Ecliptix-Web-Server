@@ -1,6 +1,6 @@
 using Ecliptix.Protobuf.Membership;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+namespace Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 
 public record MembershipQueryRecord
 {

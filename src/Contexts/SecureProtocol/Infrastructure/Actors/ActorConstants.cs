@@ -67,7 +67,6 @@ public static class ActorConstants
     {
         public const string FailedToCreateActor = "Failed to create actor for connectId: ";
         public const string Cryptographic = "cryptographic";
-        public const string RatchetStateMissing = "Ratchet state missing";
         public const string RootKeyMissing = "Root key missing from recovered state";
         public const string ChainKeysMissing = "Chain keys missing from recovered state";
         public const string NonceCounterOverflow = "Nonce counter near overflow";

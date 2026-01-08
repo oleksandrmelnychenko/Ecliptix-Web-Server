@@ -5,26 +5,23 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Routing;
 
-/// <summary>
-/// Helper base class to register protobuf-backed event routes without switch statements.
-/// </summary>
-public abstract class ProtobufEventRouteProvider : IEventRouteProvider
+public abstract class ProtobufEventRouteProvider(IServiceProvider services) : IEventRouteProvider
 {
-    private readonly IServiceProvider _services;
-    private readonly Dictionary<string, EventRoute> _routes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<TransportEventType, EventRoute> _routes = new();
 
-    protected ProtobufEventRouteProvider(IServiceProvider services)
-    {
-        _services = services;
-    }
-
-    protected void Register<TMessage>(string eventType, string context, MessageParser<TMessage> parser,
+    protected void Register<TMessage>(TransportEventType eventType, EventContext context, MessageParser<TMessage> parser,
         Func<IServiceProvider, TMessage, EventMetadata, CancellationToken, Task<Result<object, FailureBase>>> handler,
         bool idempotencyRequired = false)
         where TMessage : class, IMessage<TMessage>
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(eventType);
-        ArgumentException.ThrowIfNullOrWhiteSpace(context);
+        if (eventType == TransportEventType.Unspecified)
+        {
+            throw new ArgumentException("eventType is required", nameof(eventType));
+        }
+        if (context == EventContext.Unspecified)
+        {
+            throw new ArgumentException("context is required", nameof(context));
+        }
         ArgumentNullException.ThrowIfNull(parser);
         ArgumentNullException.ThrowIfNull(handler);
 
@@ -59,15 +56,21 @@ public abstract class ProtobufEventRouteProvider : IEventRouteProvider
                     $"Payload type mismatch for {eventType}")));
             }
 
-            return handler(_services, message, metadata, cancellationToken);
+            return handler(services, message, metadata, cancellationToken);
         }
     }
 
-    protected void Register<TMessage>(string eventType, string context, MessageParser<TMessage> parser, bool idempotencyRequired = false)
+    protected void Register<TMessage>(TransportEventType eventType, EventContext context, MessageParser<TMessage> parser, bool idempotencyRequired = false)
         where TMessage : class, IMessage<TMessage>
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(eventType);
-        ArgumentException.ThrowIfNullOrWhiteSpace(context);
+        if (eventType == TransportEventType.Unspecified)
+        {
+            throw new ArgumentException("eventType is required", nameof(eventType));
+        }
+        if (context == EventContext.Unspecified)
+        {
+            throw new ArgumentException("context is required", nameof(context));
+        }
         ArgumentNullException.ThrowIfNull(parser);
 
         _routes[eventType] = new EventRoute(
@@ -101,7 +104,7 @@ public abstract class ProtobufEventRouteProvider : IEventRouteProvider
                     $"Payload type mismatch for {eventType}"));
             }
 
-            IEventHandler<TMessage>? handler = _services.GetService<IEventHandler<TMessage>>();
+            IEventHandler<TMessage>? handler = services.GetService<IEventHandler<TMessage>>();
             if (handler is null)
             {
                 return Result<object, FailureBase>.Err(MetaDataSystemFailure.ComponentNotFound(
@@ -112,7 +115,7 @@ public abstract class ProtobufEventRouteProvider : IEventRouteProvider
         }
     }
 
-    public bool TryGetRoute(string eventType, out EventRoute route)
+    public bool TryGetRoute(TransportEventType eventType, out EventRoute route)
     {
         bool found = _routes.TryGetValue(eventType, out EventRoute? resolved);
         route = resolved ?? default!;

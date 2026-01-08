@@ -7,36 +7,63 @@ namespace Ecliptix.SecureProtocol.Domain.Protocol;
 
 public sealed class ProtocolServerAdapter : IProtocolServer
 {
+    // Native library is process-global; track initialization across adapter instances.
+    private static readonly object InitLock = new();
+    private static int _nativeInitRefCount;
+    private static bool _nativeInitialized;
     private bool _initialized;
 
     public Result<Unit, EcliptixProtocolFailure> Initialize()
     {
-        if (_initialized)
+        lock (InitLock)
         {
+            if (_initialized)
+            {
+                return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
+            }
+
+            if (!_nativeInitialized)
+            {
+                Native.EcliptixErrorCode result = Native.ecliptix_initialize();
+                if (result != Native.EcliptixErrorCode.Success)
+                {
+                    return Result<Unit, EcliptixProtocolFailure>.Err(
+                        EcliptixProtocolFailure.Generic(
+                            $"Failed to initialize native protocol: {Native.ErrorCodeToString(result)}"));
+                }
+
+                _nativeInitialized = true;
+            }
+
+            _nativeInitRefCount++;
+            _initialized = true;
             return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
         }
-
-        Native.EcliptixErrorCode result = Native.ecliptix_initialize();
-        if (result != Native.EcliptixErrorCode.Success)
-        {
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.Generic(
-                    $"Failed to initialize native protocol: {Native.ErrorCodeToString(result)}"));
-        }
-
-        _initialized = true;
-        return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
     public Result<Unit, EcliptixProtocolFailure> Shutdown()
     {
-        if (_initialized)
+        lock (InitLock)
         {
-            Native.ecliptix_shutdown();
-            _initialized = false;
-        }
+            if (!_initialized)
+            {
+                return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
+            }
 
-        return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
+            _initialized = false;
+
+            if (_nativeInitialized && _nativeInitRefCount > 0)
+            {
+                _nativeInitRefCount--;
+                if (_nativeInitRefCount == 0)
+                {
+                    Native.ecliptix_shutdown();
+                    _nativeInitialized = false;
+                }
+            }
+
+            return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
+        }
     }
 
     public Result<ProtocolIdentity, EcliptixProtocolFailure> CreateIdentity(byte[]? seed = null, Guid? accountId = null)
@@ -232,6 +259,11 @@ public sealed class ProtocolServerAdapter : IProtocolServer
     public Result<uint, EcliptixProtocolFailure> GetConnectionId(ProtocolSession session)
     {
         return EnsureSessionActive(session, () => session.Handle.GetConnectionId());
+    }
+
+    public Result<(uint Sending, uint Receiving), EcliptixProtocolFailure> GetChainIndices(ProtocolSession session)
+    {
+        return EnsureSessionActive(session, () => session.Handle.GetChainIndices());
     }
 
     public Result<uint?, EcliptixProtocolFailure> GetSelectedOpkId(ProtocolSession session)

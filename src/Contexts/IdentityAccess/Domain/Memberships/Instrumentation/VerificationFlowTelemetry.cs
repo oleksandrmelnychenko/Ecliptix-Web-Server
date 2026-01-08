@@ -1,14 +1,11 @@
-using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
 namespace Ecliptix.IdentityAccess.Domain.Memberships.Instrumentation;
 
 public static class VerificationFlowTelemetry
 {
-    private const string ActivitySourceName = "Ecliptix.VerificationFlow";
     private const string MeterName = "Ecliptix.VerificationFlow";
 
-    public static readonly ActivitySource ActivitySource = new(ActivitySourceName);
     private static readonly Meter Meter = new(MeterName);
 
     internal static readonly UpDownCounter<long> ActiveFlows = Meter.CreateUpDownCounter<long>(

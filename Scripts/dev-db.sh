@@ -68,7 +68,7 @@ case "$CMD" in
             exit 1
         fi
         info "Creating new migration: $ARG"
-        dotnet ef migrations add "$ARG" --project "$DOMAIN_PROJECT" --startup-project "$STARTUP_PROJECT" --context EcliptixSchemaContext --output-dir Migrations/PostgreSQL
+        dotnet ef migrations add "$ARG" --project "$DOMAIN_PROJECT" --startup-project "$STARTUP_PROJECT" --context EcliptixSchemaContext --output-dir Migrations
         success "Migration created: $ARG"
         ;;
     status)

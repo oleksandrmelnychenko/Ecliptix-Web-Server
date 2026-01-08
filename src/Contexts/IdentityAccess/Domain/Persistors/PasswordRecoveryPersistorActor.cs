@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Akka.Actor;
+using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
@@ -7,13 +8,13 @@ using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using Serilog;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
+namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
 public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFailure>
 {
@@ -210,13 +211,13 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
 
     protected override SecretKeyRecoveryFailure MapDbException(DbException ex)
     {
-        if (ex is SqlException sqlEx)
+        if (ex is PostgresException pgEx)
         {
-            return sqlEx.Number switch
+            return pgEx.SqlState switch
             {
-                1205 => SecretKeyRecoveryFailure.DatabaseError(sqlEx),
-                -2 => SecretKeyRecoveryFailure.Timeout(sqlEx),
-                _ => SecretKeyRecoveryFailure.DatabaseError(sqlEx)
+                PostgresErrorCodes.DeadlockDetected => SecretKeyRecoveryFailure.DatabaseError(pgEx),
+                PostgresErrorCodes.QueryCanceled => SecretKeyRecoveryFailure.Timeout(pgEx),
+                _ => SecretKeyRecoveryFailure.DatabaseError(pgEx)
             };
         }
 

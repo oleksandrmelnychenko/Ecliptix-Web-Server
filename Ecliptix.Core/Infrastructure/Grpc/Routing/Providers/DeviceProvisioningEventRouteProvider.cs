@@ -1,8 +1,7 @@
 using System.Buffers;
-using System.Globalization;
-using System.IO;
 using System.Security.Cryptography;
 using Akka.Actor;
+using Serilog;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.DeviceProvisioning.Domain.Events;
 using Ecliptix.DeviceProvisioning.Domain.Failures;
@@ -19,33 +18,33 @@ using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque.Failures;
-using Ecliptix.SecureProtocol.Domain.Protocol;
-using Ecliptix.SecureProtocol.Domain.ProtocolNative;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Actors;
 using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel.Grpc;
-using Ecliptix.SharedKernel.Grpc.Utilities;
 using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
 using Google.Protobuf;
-using Grpc.Core;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Routing.Providers;
 
 public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRouteProvider
 {
+    private const EventContext DeviceProvisioningContext = EventContext.DeviceProvisioning;
+
     public DeviceProvisioningEventRouteProvider(IServiceProvider services) : base(services)
     {
-        Register(DeviceProvisioningEventType.DeviceProvisioningRegisterDevice.ToString(), "device_provisioning",
+        Register(TransportEventType.DeviceProvisioningRegisterDevice, DeviceProvisioningContext,
             SecureEnvelope.Parser, HandleRegisterDevice, idempotencyRequired: true);
-        Register(DeviceProvisioningEventType.DeviceProvisioningSecureChannelEstablish.ToString(), "device_provisioning",
+        Register(TransportEventType.DeviceProvisioningSecureChannelEstablish, DeviceProvisioningContext,
             SecureEnvelope.Parser, HandleEstablishSecureChannel, idempotencyRequired: true);
-        Register(DeviceProvisioningEventType.DeviceProvisioningSecureChannelRestore.ToString(), "device_provisioning",
+        Register(TransportEventType.DeviceProvisioningSecureChannelRestore, DeviceProvisioningContext,
             RestoreChannelRequest.Parser, HandleRestoreSecureChannel, idempotencyRequired: true);
-        Register(DeviceProvisioningEventType.DeviceProvisioningSecureChannelAuthEstablish.ToString(), "device_provisioning",
+        Register(TransportEventType.DeviceProvisioningSecureChannelAuthEstablish,
+            DeviceProvisioningContext,
             AuthenticatedEstablishRequest.Parser, HandleAuthenticatedEstablish, idempotencyRequired: true);
+        Register(TransportEventType.DeviceProvisioningGetServerPublicKeys, DeviceProvisioningContext,
+            GetServerPublicKeysRequest.Parser, HandleGetServerPublicKeys, idempotencyRequired: false);
     }
 
     private static async Task<Result<object, FailureBase>> HandleRegisterDevice(
@@ -54,47 +53,39 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
         EventMetadata metadata,
         CancellationToken cancellationToken)
     {
-        uint connectId = ResolveConnectId(metadata);
+        uint connectId = GrpcCallContextFactory.ResolveConnectId(metadata);
         using IServiceScope scope = services.CreateScope();
-        GrpcCallContext context = BuildContext(metadata, connectId, cancellationToken);
+        GrpcCallContext context = GrpcCallContextFactory.BuildContext(
+            metadata, connectId, cancellationToken);
 
         IGrpcCipherService cipherService = scope.ServiceProvider.GetRequiredService<IGrpcCipherService>();
         IEcliptixActorRegistry actorRegistry = scope.ServiceProvider.GetRequiredService<IEcliptixActorRegistry>();
-        IOpaqueKeyRingService opaqueService = scope.ServiceProvider.GetRequiredService<IOpaqueKeyRingService>();
-        IProtocolKeyService protocolKeyService = scope.ServiceProvider.GetRequiredService<IProtocolKeyService>();
         IMasterKeyService masterKeyService = scope.ServiceProvider.GetRequiredService<IMasterKeyService>();
-        IOptions<SecurityConfiguration> securityConfig = scope.ServiceProvider.GetRequiredService<IOptions<SecurityConfiguration>>();
+        IOptions<SecurityConfiguration> securityConfig =
+            scope.ServiceProvider.GetRequiredService<IOptions<SecurityConfiguration>>();
 
-        GrpcSecurityService baseService = new GrpcSecurityService(cipherService, securityConfig);
+        GrpcSecurityService baseService = new(cipherService, securityConfig);
         IActorRef appDevicePersistor = actorRegistry.Get(ActorIds.AppDevicePersistorActor);
 
         SecureEnvelope response =
             await baseService.ExecuteEncryptedOperationAsync<AppDevice, DeviceRegistrationResponse>(
-            envelope, context, async (appDevice, _, _, ct) =>
-            {
-                RegisterAppDeviceIfNotExistActorEvent registerEvent = new RegisterAppDeviceIfNotExistActorEvent(appDevice, ct);
-                Task<Result<DeviceRegistrationResponse, AppDeviceFailure>>? registerTask = appDevicePersistor.Ask<Result<DeviceRegistrationResponse, AppDeviceFailure>>(
-                    registerEvent, TimeoutConfiguration.Actor.AskTimeout);
-                Result<DeviceRegistrationResponse, AppDeviceFailure> registerResult = await registerTask.WaitAsync(ct).ConfigureAwait(false);
-
-                if (registerResult.IsOk)
+                envelope, context, async (appDevice, _, _, ct) =>
                 {
-                    Result<byte[], OpaqueServerFailure> serverPublicKey = opaqueService.GetServerPublicKey();
-                    Result<byte[], EcliptixProtocolFailure> kyberPublicKey = protocolKeyService.GetServerKyberPublicKey();
+                    RegisterAppDeviceIfNotExistActorEvent registerEvent =
+                        new(appDevice, metadata.Locale, ct);
+                    Task<Result<DeviceRegistrationResponse, AppDeviceFailure>>? registerTask =
+                        appDevicePersistor.Ask<Result<DeviceRegistrationResponse, AppDeviceFailure>>(
+                            registerEvent, TimeoutConfiguration.Actor.AskTimeout);
+                    Result<DeviceRegistrationResponse, AppDeviceFailure> registerResult =
+                        await registerTask.WaitAsync(ct).ConfigureAwait(false);
 
-                    DeviceRegistrationResponse reply = registerResult.Unwrap();
-                    reply.ServerPublicKey = ByteString.CopyFrom(serverPublicKey.Unwrap());
-
-                    if (kyberPublicKey.IsOk)
+                    if (registerResult.IsOk)
                     {
-                        reply.ServerKyberPublicKey = ByteString.CopyFrom(kyberPublicKey.Unwrap());
+                        return Result<DeviceRegistrationResponse, FailureBase>.Ok(registerResult.Unwrap());
                     }
 
-                    return Result<DeviceRegistrationResponse, FailureBase>.Ok(reply);
-                }
-
-                return Result<DeviceRegistrationResponse, FailureBase>.Err(registerResult.UnwrapErr());
-            });
+                    return Result<DeviceRegistrationResponse, FailureBase>.Err(registerResult.UnwrapErr());
+                });
 
         return Result<object, FailureBase>.Ok(response);
     }
@@ -105,9 +96,8 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
         EventMetadata metadata,
         CancellationToken cancellationToken)
     {
-        uint connectId = ResolveConnectId(metadata);
+        uint connectId = GrpcCallContextFactory.ResolveConnectId(metadata);
         using IServiceScope scope = services.CreateScope();
-        GrpcCallContext context = BuildContext(metadata, connectId, cancellationToken);
 
         ISecureChannelEstablisher establisher = scope.ServiceProvider.GetRequiredService<ISecureChannelEstablisher>();
         Result<SecureEnvelope, SecureChannelFailure> result = await establisher.EstablishAsync(
@@ -124,19 +114,20 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
         EventMetadata metadata,
         CancellationToken cancellationToken)
     {
-        uint connectId = ResolveConnectId(metadata);
+        uint connectId = GrpcCallContextFactory.ResolveConnectId(metadata);
         using IServiceScope scope = services.CreateScope();
-        GrpcCallContext context = BuildContext(metadata, connectId, cancellationToken);
 
         IEcliptixActorRegistry actorRegistry = scope.ServiceProvider.GetRequiredService<IEcliptixActorRegistry>();
         IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
 
-        RestoreAppDeviceSecrecyChannelState restoreEvent = new RestoreAppDeviceSecrecyChannelState();
-        ForwardToConnectActorEvent forwardEvent = new ForwardToConnectActorEvent(connectId, restoreEvent);
+        RestoreAppDeviceSecrecyChannelState restoreEvent = new();
+        ForwardToConnectActorEvent forwardEvent = new(connectId, restoreEvent);
 
-        Task<Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>> restoreTask = protocolActor.Ask<Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>>(
-            forwardEvent, TimeoutConfiguration.Actor.AskTimeout);
-        Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure> result = await restoreTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Task<Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>> restoreTask =
+            protocolActor.Ask<Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>>(
+                forwardEvent, TimeoutConfiguration.Actor.AskTimeout);
+        Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure> result =
+            await restoreTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         if (result.IsOk)
         {
@@ -177,9 +168,8 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
         EventMetadata metadata,
         CancellationToken cancellationToken)
     {
-        uint connectId = ResolveConnectId(metadata);
+        uint connectId = GrpcCallContextFactory.ResolveConnectId(metadata);
         using IServiceScope scope = services.CreateScope();
-        GrpcCallContext context = BuildContext(metadata, connectId, cancellationToken);
 
         IMasterKeyService masterKeyService = scope.ServiceProvider.GetRequiredService<IMasterKeyService>();
         IEcliptixActorRegistry actorRegistry = scope.ServiceProvider.GetRequiredService<IEcliptixActorRegistry>();
@@ -202,18 +192,14 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
 
             Guid accountId = Helpers.FromByteStringToGuid(request.AccountUniqueId);
 
-        Result<(byte[] RootKey, byte[] MasterKeyFingerprint), FailureBase> deriveRootResult = await masterKeyService.DeriveRootKeyAndFingerprintAsync(accountId);
-        if (deriveRootResult.IsErr)
-        {
-            return Result<object, FailureBase>.Err(deriveRootResult.UnwrapErr());
-        }
+            Result<(byte[] RootKey, byte[] MasterKeyFingerprint), FailureBase> deriveRootResult =
+                await masterKeyService.DeriveRootKeyAndFingerprintAsync(accountId);
+            if (deriveRootResult.IsErr)
+            {
+                return Result<object, FailureBase>.Err(deriveRootResult.UnwrapErr());
+            }
 
-        (rootKey, masterKeyFingerprint) = deriveRootResult.Unwrap();
-
-        if (rootKey is null || masterKeyFingerprint is null)
-        {
-            return Result<object, FailureBase>.Err(MasterKeyFailure.InternalError("Root key derivation failed"));
-        }
+            (rootKey, masterKeyFingerprint) = deriveRootResult.Unwrap();
 
             byte[] requestFingerprint = request.MasterKeyFingerprint.ToByteArray();
             if (requestFingerprint.Length != masterKeyFingerprint.Length ||
@@ -230,9 +216,11 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
                 rootKey);
 
             ForwardToConnectActorEvent forwardEvent = new(connectId, initEvent);
-            Task<Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>> initTask = protocolActor.Ask<Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>>(
-                forwardEvent, TimeoutConfiguration.Actor.AskTimeout);
-            Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure> initResult = await initTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            Task<Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>> initTask =
+                protocolActor.Ask<Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>>(
+                    forwardEvent, TimeoutConfiguration.Actor.AskTimeout);
+            Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure> initResult =
+                await initTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
             if (initResult.IsErr)
             {
@@ -253,7 +241,8 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
                 serverExchangeMemory = new ReadOnlyMemory<byte>(serverExchangeBuffer, 0, serverExchangeSize);
             }
 
-            Result<byte[], CertificatePinningFailure> encryptResult = await rsaProcessor.EncryptChunkedAsync(serverExchangeMemory, cancellationToken);
+            Result<byte[], CertificatePinningFailure> encryptResult =
+                await rsaProcessor.EncryptChunkedAsync(serverExchangeMemory, cancellationToken);
             if (encryptResult.IsErr)
             {
                 return Result<object, FailureBase>.Err(
@@ -300,88 +289,63 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
         }
     }
 
-    private static uint ResolveConnectId(EventMetadata metadata)
+    private static async Task<Result<object, FailureBase>> HandleGetServerPublicKeys(
+        IServiceProvider services,
+        GetServerPublicKeysRequest request,
+        EventMetadata metadata,
+        CancellationToken cancellationToken)
     {
-        if (metadata.ConnectId != 0)
+        Log.Information("[GetServerPublicKeys] Handler invoked");
+
+        using IServiceScope scope = services.CreateScope();
+
+        uint connectId = GrpcCallContextFactory.ResolveConnectId(metadata);
+        IOpaqueKeyRingService opaqueService = scope.ServiceProvider.GetRequiredService<IOpaqueKeyRingService>();
+        IEcliptixActorRegistry actorRegistry = scope.ServiceProvider.GetRequiredService<IEcliptixActorRegistry>();
+        IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
+
+        Result<byte[], OpaqueServerFailure> serverPublicKeyResult = opaqueService.GetServerPublicKey();
+        if (serverPublicKeyResult.IsErr)
         {
-            return metadata.ConnectId;
+            Log.Error("[GetServerPublicKeys] Failed to get server public key: {Error}",
+                serverPublicKeyResult.UnwrapErr().Message);
+            return Result<object, FailureBase>.Err(
+                SecureChannelFailure.ProtocolError(
+                    $"Failed to get server public key: {serverPublicKeyResult.UnwrapErr().Message}"));
         }
 
-        if (uint.TryParse(metadata.PartitionKey, out uint parsed))
+        Log.Debug("[GetServerPublicKeys] Got server public key, length: {Length}",
+            serverPublicKeyResult.Unwrap().Length);
+
+        ForwardToConnectActorEvent forwardEvent =
+            new(connectId, new GetConnectionKyberPublicKeyActorEvent());
+        Task<Result<byte[], EcliptixProtocolFailure>> kyberTask =
+            protocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(
+                forwardEvent, TimeoutConfiguration.Actor.AskTimeout);
+        Result<byte[], EcliptixProtocolFailure> kyberPublicKeyResult =
+            await kyberTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (kyberPublicKeyResult.IsErr)
         {
-            return parsed;
+            Log.Error("[GetServerPublicKeys] Failed to get server Kyber public key: {Error}",
+                kyberPublicKeyResult.UnwrapErr().Message);
+            return Result<object, FailureBase>.Err(
+                SecureChannelFailure.ProtocolError(
+                    $"Failed to get server Kyber public key: {kyberPublicKeyResult.UnwrapErr().Message}"));
         }
 
-        throw new RpcException(new global::Grpc.Core.Status(StatusCode.InvalidArgument, "connect_id is required"));
+        Log.Debug("[GetServerPublicKeys] Got Kyber public key, length: {Length}", kyberPublicKeyResult.Unwrap().Length);
+
+        GetServerPublicKeysResponse response = new()
+        {
+            ServerPublicKey = ByteString.CopyFrom(serverPublicKeyResult.Unwrap()),
+            ServerKyberPublicKey = ByteString.CopyFrom(kyberPublicKeyResult.Unwrap())
+        };
+
+        Log.Information(
+            "[GetServerPublicKeys] Successfully prepared response with X25519 ({X25519Size} bytes) and Kyber ({KyberSize} bytes) public keys",
+            serverPublicKeyResult.Unwrap().Length, kyberPublicKeyResult.Unwrap().Length);
+
+        return Result<object, FailureBase>.Ok(response);
     }
 
-    private static GrpcCallContext BuildContext(EventMetadata metadata, uint connectId, CancellationToken cancellationToken)
-    {
-        Metadata headers = new();
-        headers.Add(MetadataConstants.Keys.ConnectId, connectId.ToString(CultureInfo.InvariantCulture));
-
-        // Critical: Copy the connection context ID (exchange type) for encryption to work properly
-        if (!string.IsNullOrWhiteSpace(metadata.KeyExchangeContext))
-        {
-            headers.Add(MetadataConstants.Keys.ConnectionContextId, metadata.KeyExchangeContext);
-        }
-        else
-        {
-            // Default to DataCenterEphemeralConnect if not specified
-            headers.Add(MetadataConstants.Keys.ConnectionContextId, PubKeyExchangeType.DataCenterEphemeralConnect.ToString());
-        }
-
-        if (!string.IsNullOrWhiteSpace(metadata.IdempotencyKey))
-        {
-            headers.Add(MetadataConstants.Keys.IdempotencyKey, metadata.IdempotencyKey);
-        }
-        else if (!string.IsNullOrWhiteSpace(metadata.CorrelationId))
-        {
-            headers.Add(MetadataConstants.Keys.IdempotencyKey, metadata.CorrelationId);
-        }
-
-        if (!string.IsNullOrWhiteSpace(metadata.CorrelationId))
-        {
-            headers.Add(MetadataConstants.Keys.CorrelationId, metadata.CorrelationId);
-        }
-
-        if (!string.IsNullOrWhiteSpace(metadata.RequestId))
-        {
-            headers.Add(MetadataConstants.Keys.RequestId, metadata.RequestId);
-        }
-
-        if (!string.IsNullOrWhiteSpace(metadata.Platform))
-        {
-            headers.Add(MetadataConstants.Keys.Platform, metadata.Platform);
-        }
-
-        if (!string.IsNullOrWhiteSpace(metadata.Locale))
-        {
-            headers.Add(MetadataConstants.Keys.Locale, metadata.Locale);
-        }
-
-        if (!string.IsNullOrWhiteSpace(metadata.Version))
-        {
-            headers.Add(MetadataConstants.Keys.Version, metadata.Version);
-        }
-
-        if (!string.IsNullOrWhiteSpace(metadata.Tenant))
-        {
-            headers.Add(MetadataConstants.Keys.Tenant, metadata.Tenant);
-        }
-
-        if (!string.IsNullOrWhiteSpace(metadata.AppDeviceId))
-        {
-            headers.Add(MetadataConstants.Keys.AppDeviceId, metadata.AppDeviceId);
-        }
-
-        if (!string.IsNullOrWhiteSpace(metadata.ApplicationInstanceId))
-        {
-            headers.Add(MetadataConstants.Keys.ApplicationInstanceId, metadata.ApplicationInstanceId);
-        }
-
-        GrpcCallContext ctx = new(metadata.EventType ?? "device_provisioning", "transport", headers, cancellationToken);
-        ctx.UserState[GrpcMetadataHandler.UniqueConnectId] = connectId;
-        return ctx;
-    }
 }

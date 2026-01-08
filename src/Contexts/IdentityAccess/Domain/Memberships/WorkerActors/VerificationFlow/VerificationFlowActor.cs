@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using System.Threading.Channels;
 using Akka.Actor;
@@ -12,8 +11,8 @@ using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.VerificationFlow.PersistenceModels;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Memberships.Instrumentation;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryResults;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
 using Ecliptix.IdentityAccess.Domain.Providers.Twilio;
 using Ecliptix.Protobuf.Membership;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
@@ -39,7 +38,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     private readonly ISmsProvider _smsProvider;
     private OneTimePassword? _activeOtp;
     private uint _activeOtpRemainingSeconds;
-    private readonly Activity? _activity;
     private CancellationToken _currentRequestCancellationToken;
     private bool _writerCompleted;
     private long _otpSendAttempts;
@@ -74,7 +72,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         IActorRef persistor, IActorRef membershipActor, ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider, string cultureName,
         IOptionsMonitor<SecurityConfiguration> securityConfig,
-        ActivityContext parentActivityContext,
         CancellationToken initialCancellationToken)
     {
         _connectId = connectId;
@@ -89,15 +86,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         _timeouts = securityConfig.CurrentValue.VerificationFlow;
         _currentRequestCancellationToken = initialCancellationToken;
         _metricTags = [KeyValuePair.Create<string, object?>("connectId", connectId)];
-        ActivityContext parentContext = parentActivityContext != default
-            ? parentActivityContext
-            : Activity.Current?.Context ?? default;
-        _activity = VerificationFlowTelemetry.ActivitySource.StartActivity(
-            "verification.flow.session",
-            ActivityKind.Internal,
-            parentContext);
-        _activity?.SetTag("verification.connect_id", connectId);
-        _activity?.SetTag("verification.purpose", purpose.ToString());
         VerificationFlowTelemetry.ActiveFlows.Add(1, _metricTags);
         Serilog.Log.Information("[verification.flow.started] ConnectId {ConnectId} Purpose {Purpose}", _connectId,
             purpose);
@@ -118,12 +106,10 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         IActorRef persistor, IActorRef membershipActor, ISmsProvider smsProvider,
         ILocalizationProvider localizationProvider, string cultureName,
         IOptionsMonitor<SecurityConfiguration> securityConfig,
-        ActivityContext parentActivityContext,
         CancellationToken initialCancellationToken)
     {
         return Props.Create(() => new VerificationFlowActor(connectId, phoneNumberIdentifier, appDeviceIdentifier,
             purpose, writer, persistor, membershipActor, smsProvider, localizationProvider, cultureName, securityConfig,
-            parentActivityContext,
             initialCancellationToken));
     }
 
@@ -174,8 +160,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 ? currentFlow.OtpActive.Value!.AttemptCount
                 : (short)0;
             _sessionDeadline = DateTimeOffset.UtcNow.Add(_timeouts.SessionTimeout);
-            _activity?.SetTag("verification.flow_id", currentFlow.UniqueIdentifier);
-            _activity?.SetTag("verification.purpose", currentFlow.Purpose.ToString());
 
             Serilog.Log.Debug("[verification.flow.state.loaded] ConnectId {ConnectId} FlowId {FlowId} Status {Status}",
                 _connectId, currentFlow.UniqueIdentifier, currentFlow.Status);
@@ -534,7 +518,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             return;
         }
 
-        _activity?.AddEvent(new ActivityEvent("verification.otp.verified"));
 
         ClearActiveOtpState();
         await TerminateActor(graceful: true, reason: "otp_verified_new_membership");
@@ -603,7 +586,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             string maxAttemptsMessage =
                 _localizationProvider.Localize(VerificationFlowMessageKeys.OtpMaxAttemptsReached, cultureName);
 
-            _activity?.AddEvent(new ActivityEvent("verification.otp.max-attempts-reached"));
 
             if (_verificationFlow.IsSome)
             {
@@ -630,7 +612,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
 
-        _activity?.AddEvent(new ActivityEvent("verification.otp.failed"));
 
         string message = _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidOtp, cultureName);
 
@@ -1199,7 +1180,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         int smsAttempt = 0;
         SmsDeliveryResult? smsResult = null;
-        Stopwatch smsStopwatch = Stopwatch.StartNew();
         _otpSendAttempts++;
 
         try
@@ -1293,7 +1273,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 _verificationFlow.Value?.UniqueIdentifier,
                 smsAttempt,
                 smsResult?.ErrorMessage.Match(err => err, () => "unknown") ?? "unknown");
-            _activity?.AddEvent(new ActivityEvent("verification.otp.failed"));
 
             ClearActiveOtpState();
             PersistState();
@@ -1303,14 +1282,11 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                     $"Failed to send SMS after {_timeouts.MaxSmsRetries} attempts: {smsResult?.ErrorMessage}"));
         }
 
-        smsStopwatch.Stop();
         VerificationFlowTelemetry.OtpSent.Add(1, _metricTags);
-        VerificationFlowTelemetry.OtpSendLatency.Record(smsStopwatch.Elapsed.TotalMilliseconds, _metricTags);
         Serilog.Log.Information("[verification.otp.sent] ConnectId {ConnectId} FlowId {FlowId} Attempts {Attempts}",
             _connectId,
             _verificationFlow.Value?.UniqueIdentifier,
             smsAttempt);
-        _activity?.AddEvent(new ActivityEvent("verification.otp.sent"));
 
         PersistState();
 
@@ -1319,7 +1295,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
     private async Task<bool> HandleExistingMembershipAsync()
     {
-        Stopwatch stopwatch = Stopwatch.StartNew();
         try
         {
             Serilog.Log.Debug(
@@ -1335,10 +1310,9 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 await _persistor.Ask<Result<ExistingMembershipResult, VerificationFlowFailure>>(
                     checkMembershipEvent, _timeouts.CheckExistingMembershipTimeout);
 
-            stopwatch.Stop();
             Serilog.Log.Information(
-                "[verification.membership.check.completed] ConnectId {ConnectId} Duration {DurationMs}ms",
-                _connectId, stopwatch.ElapsedMilliseconds);
+                "[verification.membership.check.completed] ConnectId {ConnectId}",
+                _connectId);
 
             if (membershipResult.IsErr)
             {
@@ -1375,16 +1349,14 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
         catch (Exception ex)
         {
-            stopwatch.Stop();
             bool isTimeout = ex is TimeoutException ||
                              (ex is AggregateException aggEx && aggEx.InnerExceptions.Any(e => e is TimeoutException));
 
             Serilog.Log.Error(ex,
                 "[verification.membership.check.failed] ConnectId {ConnectId} FlowId {FlowId} " +
-                "Duration {DurationMs}ms IsTimeout {IsTimeout} ExceptionType {ExceptionType}",
+                "IsTimeout {IsTimeout} ExceptionType {ExceptionType}",
                 _connectId,
                 _verificationFlow.IsSome ? _verificationFlow.Value!.UniqueIdentifier : Guid.Empty,
-                stopwatch.ElapsedMilliseconds,
                 isTimeout,
                 ex.GetType().Name);
 
@@ -1660,7 +1632,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             Context.Parent.Tell(new FlowCompletedGracefullyActorEvent(Self));
         }
 
-        _activity?.AddEvent(new ActivityEvent("verification.flow.terminated"));
 
         if (LastSequenceNr > 0)
         {
@@ -1979,7 +1950,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             CompleteWriter();
             _smsOperationCancellationTokenSource?.Dispose();
             _smsOperationCancellationTokenSource = null;
-            _activity?.Dispose();
             VerificationFlowTelemetry.ActiveFlows.Add(-1, _metricTags);
         }
         catch (Exception ex)

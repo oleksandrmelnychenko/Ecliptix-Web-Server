@@ -2,15 +2,15 @@ using System.Data.Common;
 using Akka.Actor;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Logout;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.CompiledQueries;
+using Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.SharedKernel;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Serilog;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
+namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
 public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
 {
@@ -98,14 +98,15 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
 
     protected override LogoutFailure MapDbException(DbException ex)
     {
-        if (ex is SqlException sqlEx)
+        if (ex is PostgresException pgEx)
         {
-            return sqlEx.Number switch
+            return pgEx.SqlState switch
             {
-                2627 or 2601 => LogoutFailure.RecordFailed("Duplicate logout record detected", sqlEx),
-                1205 => LogoutFailure.DatabaseError(sqlEx),
-                -2 => LogoutFailure.Timeout(sqlEx),
-                _ => LogoutFailure.DatabaseError(sqlEx)
+                PostgresErrorCodes.UniqueViolation =>
+                    LogoutFailure.RecordFailed("Duplicate logout record detected", pgEx),
+                PostgresErrorCodes.DeadlockDetected => LogoutFailure.DatabaseError(pgEx),
+                PostgresErrorCodes.QueryCanceled => LogoutFailure.Timeout(pgEx),
+                _ => LogoutFailure.DatabaseError(pgEx)
             };
         }
 

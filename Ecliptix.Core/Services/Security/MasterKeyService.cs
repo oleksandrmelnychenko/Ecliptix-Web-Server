@@ -3,8 +3,8 @@ using Akka.Actor;
 using Ecliptix.Core.Services.KeyDerivation;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.MasterKeyShares;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryResults;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
 using Ecliptix.IdentityAccess.Domain.Services.Security;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
@@ -48,16 +48,17 @@ internal sealed class MasterKeyService(
 
     private const string ErrorMessageSharesCheckFailed = "Unexpected error checking shares";
 
-    public async Task<Result<dynamic, FailureBase>> GenerateRandomMasterKeyAndSplitAsync(Guid accountId)
+    public async Task<Result<Unit, FailureBase>> GenerateRandomMasterKeyAndSplitAsync(Guid accountId)
     {
         SodiumSecureMemoryHandle? masterKeyHandle = null;
+        KeySplitResult? keySplitResult = null;
 
         try
         {
             Result<bool, FailureBase> sharesExistResult = await CheckSharesExistAsync(accountId);
             if (sharesExistResult.IsOk && sharesExistResult.Unwrap())
             {
-                return Result<dynamic, FailureBase>.Err(
+                return Result<Unit, FailureBase>.Err(
                     KeySplittingFailure.KeySplittingFailed("Master key shares already exist for this membership"));
             }
 
@@ -67,7 +68,7 @@ internal sealed class MasterKeyService(
             if (allocateResult.IsErr)
             {
                 SodiumFailure sodiumError = allocateResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(
+                return Result<Unit, FailureBase>.Err(
                     KeySplittingFailure.KeyDerivationFailed(
                         $"Failed to allocate master key handle: {sodiumError.Message}"));
             }
@@ -78,7 +79,7 @@ internal sealed class MasterKeyService(
             if (randomBytesResult.IsErr)
             {
                 SodiumFailure sodiumError = randomBytesResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(
+                return Result<Unit, FailureBase>.Err(
                     KeySplittingFailure.KeyDerivationFailed($"Failed to generate random bytes: {sodiumError.Message}"));
             }
 
@@ -89,7 +90,7 @@ internal sealed class MasterKeyService(
                 if (writeResult.IsErr)
                 {
                     SodiumFailure sodiumError = writeResult.UnwrapErr();
-                    return Result<dynamic, FailureBase>.Err(
+                    return Result<Unit, FailureBase>.Err(
                         KeySplittingFailure.KeyDerivationFailed(
                             $"Failed to write random bytes to handle: {sodiumError.Message}"));
                 }
@@ -108,10 +109,10 @@ internal sealed class MasterKeyService(
             if (splitResult.IsErr)
             {
                 KeySplittingFailure error = splitResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(error);
+                return Result<Unit, FailureBase>.Err(error);
             }
 
-            KeySplitResult keySplitResult = splitResult.Unwrap();
+            keySplitResult = splitResult.Unwrap();
 
             Result<InsertMasterKeySharesResult, KeySplittingFailure> persistResult =
                 await PersistSharesAsync(accountId, keySplitResult);
@@ -119,33 +120,35 @@ internal sealed class MasterKeyService(
             if (persistResult.IsErr)
             {
                 KeySplittingFailure error = persistResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(error);
+                return Result<Unit, FailureBase>.Err(error);
             }
 
-            return Result<dynamic, FailureBase>.Ok(keySplitResult);
+            return Result<Unit, FailureBase>.Ok(Unit.Value);
         }
         catch (Exception ex)
         {
-            return Result<dynamic, FailureBase>.Err(
+            return Result<Unit, FailureBase>.Err(
                 KeySplittingFailure.KeyDerivationFailed($"Unexpected error during master key generation: {ex.Message}",
                     ex));
         }
         finally
         {
+            keySplitResult?.Dispose();
             masterKeyHandle?.Dispose();
         }
     }
 
-    public async Task<Result<dynamic, FailureBase>> SplitAndStoreMasterKeyAsync(byte[] masterKeyBytes,
+    public async Task<Result<Unit, FailureBase>> SplitAndStoreMasterKeyAsync(byte[] masterKeyBytes,
         Guid accountId, bool allowOverwrite = false)
     {
         if (masterKeyBytes.Length != _masterKeySize)
         {
-            return Result<dynamic, FailureBase>.Err(
+            return Result<Unit, FailureBase>.Err(
                 KeySplittingFailure.KeySplittingFailed($"Invalid master key size. Expected {_masterKeySize} bytes"));
         }
 
         SodiumSecureMemoryHandle? masterKeyHandle = null;
+        KeySplitResult? keySplitResult = null;
 
         try
         {
@@ -155,7 +158,7 @@ internal sealed class MasterKeyService(
             {
                 if (!allowOverwrite)
                 {
-                    return Result<dynamic, FailureBase>.Err(
+                    return Result<Unit, FailureBase>.Err(
                         KeySplittingFailure.KeySplittingFailed("Master key shares already exist for this account"));
                 }
 
@@ -163,7 +166,7 @@ internal sealed class MasterKeyService(
 
                 if (deleteResult.IsErr)
                 {
-                    return Result<dynamic, FailureBase>.Err(deleteResult.UnwrapErr());
+                    return Result<Unit, FailureBase>.Err(deleteResult.UnwrapErr());
                 }
             }
 
@@ -173,7 +176,7 @@ internal sealed class MasterKeyService(
             if (allocateResult.IsErr)
             {
                 SodiumFailure sodiumError = allocateResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(
+                return Result<Unit, FailureBase>.Err(
                     KeySplittingFailure.KeyDerivationFailed(
                         $"Failed to allocate master key handle: {sodiumError.Message}"));
             }
@@ -184,7 +187,7 @@ internal sealed class MasterKeyService(
             if (writeResult.IsErr)
             {
                 SodiumFailure sodiumError = writeResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(
+                return Result<Unit, FailureBase>.Err(
                     KeySplittingFailure.KeyDerivationFailed(
                         $"Failed to write master key to handle: {sodiumError.Message}"));
             }
@@ -198,10 +201,10 @@ internal sealed class MasterKeyService(
             if (splitResult.IsErr)
             {
                 KeySplittingFailure error = splitResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(error);
+                return Result<Unit, FailureBase>.Err(error);
             }
 
-            KeySplitResult keySplitResult = splitResult.Unwrap();
+            keySplitResult = splitResult.Unwrap();
 
             Result<InsertMasterKeySharesResult, KeySplittingFailure> persistResult =
                 await PersistSharesAsync(accountId, keySplitResult);
@@ -209,22 +212,23 @@ internal sealed class MasterKeyService(
             if (persistResult.IsErr)
             {
                 KeySplittingFailure error = persistResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(error);
+                return Result<Unit, FailureBase>.Err(error);
             }
 
             Log.Information("[SERVER-MASTERKEY-SPLIT] Master key shares persisted successfully. AccountId: {AccountId}",
                 accountId);
 
-            return Result<dynamic, FailureBase>.Ok(keySplitResult);
+            return Result<Unit, FailureBase>.Ok(Unit.Value);
         }
         catch (Exception ex)
         {
-            return Result<dynamic, FailureBase>.Err(
+            return Result<Unit, FailureBase>.Err(
                 KeySplittingFailure.KeyDerivationFailed($"Unexpected error during master key splitting: {ex.Message}",
                     ex));
         }
         finally
         {
+            keySplitResult?.Dispose();
             masterKeyHandle?.Dispose();
         }
     }
@@ -244,7 +248,7 @@ internal sealed class MasterKeyService(
                 return Result<bool, FailureBase>.Ok(true);
             }
 
-            Result<dynamic, FailureBase> generateResult = await GenerateRandomMasterKeyAndSplitAsync(accountId);
+            Result<Unit, FailureBase> generateResult = await GenerateRandomMasterKeyAndSplitAsync(accountId);
 
             return generateResult.IsErr
                 ? Result<bool, FailureBase>.Err(generateResult.UnwrapErr())
@@ -271,14 +275,14 @@ internal sealed class MasterKeyService(
         SodiumSecureMemoryHandle? masterKeyHandle = null;
         try
         {
-            Result<dynamic, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(accountId);
+            Result<SodiumSecureMemoryHandle, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(accountId);
             if (reconstructResult.IsErr)
             {
                 FailureBase error = reconstructResult.UnwrapErr();
                 return Result<(dynamic IdentityKeys, byte[] RootKey), FailureBase>.Err(error);
             }
 
-            masterKeyHandle = (SodiumSecureMemoryHandle)reconstructResult.Unwrap();
+            masterKeyHandle = reconstructResult.Unwrap();
 
             Result<EcliptixSystemIdentityKeys, KeySplittingFailure> deriveResult =
                 await identityKeyDerivationService.DeriveIdentityKeysFromMasterKeyAsync(masterKeyHandle, accountId);
@@ -332,14 +336,14 @@ internal sealed class MasterKeyService(
         byte[]? masterKeyBytes = null;
         try
         {
-            Result<dynamic, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(accountId);
+            Result<SodiumSecureMemoryHandle, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(accountId);
             if (reconstructResult.IsErr)
             {
                 return Result<(byte[] RootKey, byte[] MasterKeyFingerprint), FailureBase>.Err(
                     reconstructResult.UnwrapErr());
             }
 
-            masterKeyHandle = (SodiumSecureMemoryHandle)reconstructResult.Unwrap();
+            masterKeyHandle = reconstructResult.Unwrap();
 
             Result<byte[], SodiumFailure> masterKeyReadResult = masterKeyHandle.ReadBytes(_masterKeySize);
             if (masterKeyReadResult.IsErr)
@@ -424,7 +428,7 @@ internal sealed class MasterKeyService(
         }
     }
 
-    private async Task<Result<dynamic, FailureBase>> ReconstructMasterKeyAsync(Guid accountId)
+    private async Task<Result<SodiumSecureMemoryHandle, FailureBase>> ReconstructMasterKeyAsync(Guid accountId)
     {
         try
         {
@@ -434,14 +438,14 @@ internal sealed class MasterKeyService(
             if (sharesResult.IsErr)
             {
                 KeySplittingFailure error = sharesResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(error);
+                return Result<SodiumSecureMemoryHandle, FailureBase>.Err(error);
             }
 
             MasterKeyShareQueryRecord[] shareRecords = sharesResult.Unwrap();
 
             if (shareRecords.Length < _defaultThreshold)
             {
-                return Result<dynamic, FailureBase>.Err(
+                return Result<SodiumSecureMemoryHandle, FailureBase>.Err(
                     KeySplittingFailure.KeyReconstructionFailed(string.Format(ErrorMessageInsufficientShares,
                         shareRecords.Length)));
             }
@@ -453,7 +457,7 @@ internal sealed class MasterKeyService(
                     System.Text.Json.JsonSerializer.Deserialize<ShareMetadata>(record.ShareMetadata);
                 if (metadata == null)
                 {
-                    return Result<dynamic, FailureBase>.Err(
+                    return Result<SodiumSecureMemoryHandle, FailureBase>.Err(
                         KeySplittingFailure.KeyReconstructionFailed(ErrorMessageMetadataDeserializationFailed));
                 }
 
@@ -473,16 +477,16 @@ internal sealed class MasterKeyService(
             if (reconstructResult.IsErr)
             {
                 KeySplittingFailure error = reconstructResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(error);
+                return Result<SodiumSecureMemoryHandle, FailureBase>.Err(error);
             }
 
             SodiumSecureMemoryHandle masterKeyHandle = reconstructResult.Unwrap();
 
-            return Result<dynamic, FailureBase>.Ok(masterKeyHandle);
+            return Result<SodiumSecureMemoryHandle, FailureBase>.Ok(masterKeyHandle);
         }
         catch (Exception ex)
         {
-            return Result<dynamic, FailureBase>.Err(
+            return Result<SodiumSecureMemoryHandle, FailureBase>.Err(
                 KeySplittingFailure.KeyReconstructionFailed(ErrorMessageUnexpectedReconstructionError, ex));
         }
     }
@@ -597,24 +601,25 @@ internal sealed class MasterKeyService(
         }
     }
 
-    public async Task<Result<dynamic, FailureBase>> GetMasterKeyHandleAsync(Guid accountId)
+    public async Task<Result<SodiumSecureMemoryHandle, FailureBase>> GetMasterKeyHandleAsync(Guid accountId)
     {
         try
         {
-            Result<dynamic, FailureBase> reconstructResult = await ReconstructMasterKeyAsync(accountId);
+            Result<SodiumSecureMemoryHandle, FailureBase> reconstructResult =
+                await ReconstructMasterKeyAsync(accountId);
             if (reconstructResult.IsErr)
             {
                 FailureBase error = reconstructResult.UnwrapErr();
-                return Result<dynamic, FailureBase>.Err(error);
+                return Result<SodiumSecureMemoryHandle, FailureBase>.Err(error);
             }
 
-            SodiumSecureMemoryHandle masterKeyHandle = (SodiumSecureMemoryHandle)reconstructResult.Unwrap();
+            SodiumSecureMemoryHandle masterKeyHandle = reconstructResult.Unwrap();
 
-            return Result<dynamic, FailureBase>.Ok(masterKeyHandle);
+            return Result<SodiumSecureMemoryHandle, FailureBase>.Ok(masterKeyHandle);
         }
         catch (Exception ex)
         {
-            return Result<dynamic, FailureBase>.Err(
+            return Result<SodiumSecureMemoryHandle, FailureBase>.Err(
                 KeySplittingFailure.KeyReconstructionFailed(
                     $"Unexpected error retrieving master key handle: {ex.Message}", ex));
         }

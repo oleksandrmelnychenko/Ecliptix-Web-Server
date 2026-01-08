@@ -7,13 +7,10 @@ using Google.Protobuf;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Routing;
 
-public sealed class EventEnvelopeDispatcher
+public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
 {
-    private readonly IEventRouteResolver _resolver;
     private static readonly Regex IdempotencyPattern = new("^[A-Za-z0-9._:-]{1,128}$", RegexOptions.Compiled);
     private const int MaxEventIdLength = 128;
-    private const int MaxEventTypeLength = 128;
-    private const int MaxContextLength = 64;
     private const int MaxRequestIdLength = 128;
     private const int MaxPlatformLength = 64;
     private const int MaxVersionLength = 32;
@@ -21,11 +18,6 @@ public sealed class EventEnvelopeDispatcher
     private const int MaxApplicationInstanceLength = 128;
     private const int MaxLocaleLength = 16;
     private const int MaxTenantLength = 64;
-
-    public EventEnvelopeDispatcher(IEventRouteResolver resolver)
-    {
-        _resolver = resolver;
-    }
 
     public async Task<EventEnvelope> DispatchAsync(EventEnvelope envelope, CancellationToken cancellationToken)
     {
@@ -37,7 +29,7 @@ public sealed class EventEnvelopeDispatcher
             return validationError;
         }
 
-        if (!_resolver.TryGetRoute(metadata.EventType, out EventRoute route))
+        if (!resolver.TryGetRoute(metadata.EventType, out EventRoute route))
         {
             return BuildErrorEnvelope(metadata, "route_not_found");
         }
@@ -116,7 +108,7 @@ public sealed class EventEnvelopeDispatcher
 
     private EventEnvelope? ValidateMetadata(EventMetadata metadata)
     {
-        if (string.IsNullOrWhiteSpace(metadata.EventType))
+        if (metadata.EventType == TransportEventType.Unspecified)
         {
             return BuildErrorEnvelope(metadata, "route_missing_event_type");
         }
@@ -129,16 +121,6 @@ public sealed class EventEnvelopeDispatcher
         if (metadata.EventId?.Length > MaxEventIdLength)
         {
             return BuildErrorEnvelope(metadata, "event_id_too_long");
-        }
-
-        if (metadata.EventType?.Length > MaxEventTypeLength)
-        {
-            return BuildErrorEnvelope(metadata, "event_type_too_long");
-        }
-
-        if (!string.IsNullOrWhiteSpace(metadata.Context) && metadata.Context.Length > MaxContextLength)
-        {
-            return BuildErrorEnvelope(metadata, "context_too_long");
         }
 
         if (!string.IsNullOrWhiteSpace(metadata.RequestId) && metadata.RequestId.Length > MaxRequestIdLength)
@@ -182,12 +164,12 @@ public sealed class EventEnvelopeDispatcher
 
     private EventEnvelope? EnsureRequiredTransportMetadata(EventMetadata metadata, EventRoute route)
     {
-        if (string.IsNullOrWhiteSpace(metadata.Context))
+        if (metadata.Context == EventContext.Unspecified)
         {
             return BuildErrorEnvelope(metadata, "context_required");
         }
 
-        if (!metadata.Context.Equals(route.Context, StringComparison.OrdinalIgnoreCase))
+        if (metadata.Context != route.Context)
         {
             return BuildErrorEnvelope(metadata, "context_mismatch");
         }
@@ -213,10 +195,8 @@ public sealed class EventEnvelopeDispatcher
         return null;
     }
 
-    private static bool RequiresConnectId(string context) =>
-        !string.IsNullOrWhiteSpace(context) &&
-        (context.Equals("identity_access", StringComparison.OrdinalIgnoreCase) ||
-         context.Equals("device_provisioning", StringComparison.OrdinalIgnoreCase));
+    private static bool RequiresConnectId(EventContext context) =>
+        context is EventContext.IdentityAccess or EventContext.DeviceProvisioning;
 
     private EventEnvelope? EnsureIdempotency(EventMetadata metadata, EventRoute route)
     {

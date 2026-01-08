@@ -1,4 +1,3 @@
-using System;
 using System.Security.Cryptography;
 using Ecliptix.OPAQUE.Server;
 using Ecliptix.Security.Opaque.Constants;
@@ -44,7 +43,6 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
             return Result<Unit, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.LibraryInitializationFailed(
                     $"Failed to create server with derived keys: {result}"));
-
         }
         catch (DllNotFoundException ex)
         {
@@ -243,11 +241,13 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
             _currentServerState = 0;
         }
 
-        if (_server != 0)
+        if (_server == 0)
         {
-            opaque_server_destroy(_server);
-            _server = 0;
+            return;
         }
+
+        opaque_server_destroy(_server);
+        _server = 0;
     }
 
     private static Result<DerivedServerKeys, OpaqueServerFailure> DeriveKeysFromMaterial(string keyMaterial)

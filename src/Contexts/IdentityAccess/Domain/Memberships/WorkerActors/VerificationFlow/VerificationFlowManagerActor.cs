@@ -4,7 +4,7 @@ using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.MobileNumber;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Providers.Twilio;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.SharedKernel;
@@ -296,7 +296,6 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
             _localizationProvider,
             actorEvent.CultureName,
             _securityConfig,
-            actorEvent.ActivityContext,
             actorEvent.CancellationToken);
 
         IActorRef newFlowActor = Context.ActorOf(props, baseActorName);

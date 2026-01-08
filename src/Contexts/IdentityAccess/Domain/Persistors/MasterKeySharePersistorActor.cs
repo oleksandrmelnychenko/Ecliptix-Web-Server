@@ -2,16 +2,16 @@ using System.Data.Common;
 using Akka.Actor;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.MasterKeyShares;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.CompiledQueries;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryResults;
+using Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.SharedKernel;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
+namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
 public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
 {
@@ -232,15 +232,17 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
 
     protected override MasterKeyFailure MapDbException(DbException ex)
     {
-        if (ex is SqlException sqlEx)
+        if (ex is PostgresException pgEx)
         {
-            return sqlEx.Number switch
+            return pgEx.SqlState switch
             {
-                2627 or 2601 => MasterKeyFailure.KeySplittingFailed($"Duplicate share detected: {sqlEx.Message}", sqlEx),
-                547 => MasterKeyFailure.InvalidIdentifier($"Foreign key constraint violation: {sqlEx.Message}"),
-                1205 => MasterKeyFailure.DatabaseError(sqlEx),
-                -2 => MasterKeyFailure.Timeout(sqlEx),
-                _ => MasterKeyFailure.DatabaseError(sqlEx)
+                PostgresErrorCodes.UniqueViolation => MasterKeyFailure.KeySplittingFailed(
+                    $"Duplicate share detected: {pgEx.MessageText}", pgEx),
+                PostgresErrorCodes.ForeignKeyViolation => MasterKeyFailure.InvalidIdentifier(
+                    $"Foreign key constraint violation: {pgEx.MessageText}"),
+                PostgresErrorCodes.DeadlockDetected => MasterKeyFailure.DatabaseError(pgEx),
+                PostgresErrorCodes.QueryCanceled => MasterKeyFailure.Timeout(pgEx),
+                _ => MasterKeyFailure.DatabaseError(pgEx)
             };
         }
 

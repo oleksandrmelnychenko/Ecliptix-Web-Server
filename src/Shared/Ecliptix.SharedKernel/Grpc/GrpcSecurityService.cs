@@ -1,6 +1,4 @@
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
 using System.Globalization;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.SharedKernel;
@@ -16,7 +14,6 @@ namespace Ecliptix.SharedKernel.Grpc;
 
 public class GrpcSecurityService
 {
-    private static readonly ActivitySource ActivitySource = new(GrpcServiceConstants.Activities.ServiceSource);
     private readonly IGrpcCipherService _cipherService;
     private readonly SecurityConfiguration _securityConfig;
 
@@ -40,12 +37,6 @@ public class GrpcSecurityService
         where TRequest : class, IMessage<TRequest>, new()
         where TResponse : class, IMessage<TResponse>, new()
     {
-        using Activity? activity = ActivitySource.StartActivity($"{GetType().Name}.{operationName}");
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.GrpcService, GetType().Name);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.GrpcMethod, operationName);
-
-        Stopwatch stopwatch = Stopwatch.StartNew();
-
         uint connectId = ExtractConnectionId(context);
         ValidateConnectionId(connectId);
 
@@ -54,7 +45,6 @@ public class GrpcSecurityService
         Result<Unit, FailureBase> timestampValidation = ValidateTimestamp(encryptedRequest, connectId);
         if (timestampValidation.IsErr)
         {
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.TimestampValid, false);
             return await CreateFailureResponseAsync<TResponse>(timestampValidation.UnwrapErr(), connectId, context);
         }
 
@@ -62,8 +52,8 @@ public class GrpcSecurityService
             await DecryptRequestAsync<TRequest>(encryptedRequest, connectId, context);
         if (decryptResult.IsErr)
         {
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, false);
-            SecureEnvelope failure = await CreateFailureResponseAsync<TResponse>(decryptResult.UnwrapErr(), connectId, context);
+            SecureEnvelope failure =
+                await CreateFailureResponseAsync<TResponse>(decryptResult.UnwrapErr(), connectId, context);
             return failure;
         }
 
@@ -71,15 +61,10 @@ public class GrpcSecurityService
             await handler(decryptResult.Unwrap(), connectId, idempotencyKey, context.CancellationToken);
         if (handlerResult.IsErr)
         {
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.HandlerSuccess, false);
             return await CreateFailureResponseAsync<TResponse>(handlerResult.UnwrapErr(), connectId, context);
         }
 
         SecureEnvelope response = await EncryptResponseAsync(handlerResult.Unwrap(), connectId, context);
-
-        stopwatch.Stop();
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.Success, true);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.DurationMs, stopwatch.ElapsedMilliseconds);
         return response;
     }
 
@@ -91,11 +76,6 @@ public class GrpcSecurityService
         where TRequest : class, IMessage<TRequest>, new()
         where TResponse : class, IMessage<TResponse>, new()
     {
-        using Activity? activity = ActivitySource.StartActivity($"{GetType().Name}.{operationName}");
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.GrpcService, GetType().Name);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.GrpcMethod, operationName);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.Streaming, true);
-
         uint connectId = ExtractConnectionId(context);
         ValidateConnectionId(connectId);
         Option<string> idempotencyKey = ExtractIdempotencyKey(context);
@@ -103,8 +83,8 @@ public class GrpcSecurityService
         Result<Unit, FailureBase> timestampValidation = ValidateTimestamp(encryptedRequest, connectId);
         if (timestampValidation.IsErr)
         {
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.TimestampValid, false);
-            SecureEnvelope failure = await CreateFailureResponseAsync<TResponse>(timestampValidation.UnwrapErr(), connectId, context);
+            SecureEnvelope failure =
+                await CreateFailureResponseAsync<TResponse>(timestampValidation.UnwrapErr(), connectId, context);
             return Result<SecureEnvelope, FailureBase>.Ok(failure);
         }
 
@@ -112,18 +92,18 @@ public class GrpcSecurityService
             await DecryptRequestAsync<TRequest>(encryptedRequest, connectId, context);
         if (decryptResult.IsErr)
         {
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, false);
-            SecureEnvelope failure = await CreateFailureResponseAsync<TResponse>(decryptResult.UnwrapErr(), connectId, context);
+            SecureEnvelope failure =
+                await CreateFailureResponseAsync<TResponse>(decryptResult.UnwrapErr(), connectId, context);
             return Result<SecureEnvelope, FailureBase>.Ok(failure);
         }
 
         Result<TResponse, FailureBase> result =
             await handler(decryptResult.Unwrap(), connectId, idempotencyKey, context.CancellationToken);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.HandlerSuccess, result.IsOk);
 
         if (result.IsErr)
         {
-            SecureEnvelope failure = await CreateFailureResponseAsync<TResponse>(result.UnwrapErr(), connectId, context);
+            SecureEnvelope failure =
+                await CreateFailureResponseAsync<TResponse>(result.UnwrapErr(), connectId, context);
             return Result<SecureEnvelope, FailureBase>.Ok(failure);
         }
 
@@ -136,15 +116,10 @@ public class GrpcSecurityService
         ServerCallContext context)
         where TResponse : class, IMessage<TResponse>, new()
     {
-        using Activity? activity = ActivitySource.StartActivity(GrpcServiceConstants.Activities.DecryptRequest);
         uint connectId = ExtractConnectionId(context);
-
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.ConnectId, connectId);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.PayloadSize, encryptedPayload.EncryptedPayload.Length);
 
         Result<TResponse, FailureBase> decryptResult =
             await DecryptRequestAsync<TResponse>(encryptedPayload, connectId, context);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, decryptResult.IsOk);
         return decryptResult;
     }
 
@@ -163,7 +138,8 @@ public class GrpcSecurityService
         try
         {
             string? connectId = context.RequestHeaders
-                .FirstOrDefault(h => string.Equals(h.Key, MetadataConstants.Keys.ConnectId, StringComparison.OrdinalIgnoreCase))
+                .FirstOrDefault(h =>
+                    string.Equals(h.Key, MetadataConstants.Keys.ConnectId, StringComparison.OrdinalIgnoreCase))
                 ?.Value;
             return string.IsNullOrWhiteSpace(connectId)
                 ? 0
@@ -171,7 +147,8 @@ public class GrpcSecurityService
         }
         catch (FormatException)
         {
-            throw new RpcException(new Status(StatusCode.InvalidArgument, MetadataConstants.ErrorMessages.InvalidConnectionIdFormat));
+            throw new RpcException(new Status(StatusCode.InvalidArgument,
+                MetadataConstants.ErrorMessages.InvalidConnectionIdFormat));
         }
     }
 
@@ -179,7 +156,8 @@ public class GrpcSecurityService
     {
         if (connectId == 0 || connectId > int.MaxValue)
         {
-            throw new RpcException(new Status(StatusCode.InvalidArgument, GrpcServiceConstants.ErrorMessages.ConnectionIdOutOfRange));
+            throw new RpcException(new Status(StatusCode.InvalidArgument,
+                GrpcServiceConstants.ErrorMessages.ConnectionIdOutOfRange));
         }
     }
 
@@ -188,20 +166,14 @@ public class GrpcSecurityService
         uint connectId,
         ServerCallContext context) where TMessage : class, IMessage<TMessage>, new()
     {
-        using Activity? activity = ActivitySource.StartActivity(GrpcServiceConstants.Activities.DecryptRequest);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.ConnectId, connectId);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.PayloadSize, encryptedPayload.EncryptedPayload.Length);
-
-        Result<byte[], FailureBase> decryptedResult = await _cipherService.DecryptEnvelop(encryptedPayload, connectId, context);
+        Result<byte[], FailureBase> decryptedResult =
+            await _cipherService.DecryptEnvelop(encryptedPayload, connectId, context);
         if (decryptedResult.IsErr)
         {
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, false);
             return Result<TMessage, FailureBase>.Err(decryptedResult.UnwrapErr());
         }
 
         ReadOnlyMemory<byte> decryptedMemory = decryptedResult.Unwrap();
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptSuccess, true);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.DecryptedSize, decryptedMemory.Length);
 
         try
         {
@@ -220,26 +192,18 @@ public class GrpcSecurityService
     private async Task<SecureEnvelope> EncryptResponseAsync<T>(T response, uint connectId, ServerCallContext context)
         where T : IMessage<T>, new()
     {
-        using Activity? activity = ActivitySource.StartActivity(GrpcServiceConstants.Activities.EncryptResponse);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.ConnectId, connectId);
-
         byte[] responseBytes = response.ToByteArray();
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.ResponseSize, responseBytes.Length);
 
-        Result<SecureEnvelope, FailureBase> encryptionResult = await _cipherService.EncryptEnvelop(responseBytes, connectId, context);
+        Result<SecureEnvelope, FailureBase> encryptionResult =
+            await _cipherService.EncryptEnvelop(responseBytes, connectId, context);
         if (encryptionResult.IsErr)
         {
             FailureBase encryptionFailure = encryptionResult.UnwrapErr();
             ClientErrorInfo clientError = encryptionFailure.ToClientError();
             GrpcErrorDescriptor descriptor = encryptionFailure.ToGrpcDescriptor();
-            activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, false);
             throw new RpcException(
                 descriptor.CreateStatus(clientError.MessageKey));
         }
-
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, true);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptedSize,
-            encryptionResult.Unwrap().EncryptedPayload.Length);
 
         return encryptionResult.Unwrap();
     }
@@ -248,12 +212,7 @@ public class GrpcSecurityService
         ServerCallContext context)
         where TResponse : class, IMessage<TResponse>, new()
     {
-        using Activity? activity = ActivitySource.StartActivity(GrpcServiceConstants.Activities.CreateFailureResponse);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.ConnectId, connectId);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.FailureType, failure.GetType().Name);
-
         SecureEnvelope failureResponse = await _cipherService.CreateFailureResponse(failure, connectId, context);
-        activity?.SetTag(GrpcServiceConstants.ActivityTags.EncryptSuccess, true);
         return failureResponse;
     }
 

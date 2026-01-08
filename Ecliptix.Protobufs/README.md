@@ -1,7 +1,7 @@
 # Protobuf layout (context-first)
 
 - Common primitives: `Protobuf/common/*` (secure envelope, health).
-- Transport contracts: `Protobuf/transport/*` (envelope metadata + unified gateway surface). `gateway.proto` exposes Unary/ServerStream/ClientStream/BidiStream on `EventGateway`. Legacy typed device RPCs are removed; DeviceProvisioning flows are routed via the gateway using `DeviceProvisioningEventType` names.
+- Transport contracts: `Protobuf/transport/*` (envelope metadata + unified gateway surface). `gateway.proto` exposes Unary/ServerStream/ClientStream/BidiStream on `EventGateway`. Legacy typed device RPCs are removed; routing uses `TransportEventType` from `transport/common/event_envelope.proto`.
 - Contexts:
   - IdentityAccess: `Protobuf/contexts/identity_access/*` (account, membership/opaque, verification/auth).
   - DeviceProvisioning: `Protobuf/contexts/device_provisioning/*` (device models/services).
@@ -14,6 +14,6 @@
 
 ## Client guidance
 
-- Always set `metadata.event_type`, `context`, and `connect_id` (or `partition_key` parseable as `connect_id`) for secure flows.
+- Always set `metadata.event_type`, `metadata.context` (EventContext), and `connect_id` (or `partition_key` parseable as `connect_id`) for secure flows.
 - Preserve `event_id` for correlation; the server echoes it as `correlation_id` unless overridden.
-- Use proto enums for event types (`IdentityAccessEventType`, `DeviceProvisioningEventType`) to avoid string mismatches.
+- Use `TransportEventType` for `metadata.event_type` to avoid mismatches.

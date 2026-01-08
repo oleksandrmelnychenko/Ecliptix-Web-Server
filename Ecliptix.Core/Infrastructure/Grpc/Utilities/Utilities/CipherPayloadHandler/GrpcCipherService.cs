@@ -106,7 +106,6 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
         ClientErrorInfo clientError = failure.ToClientError();
         GrpcErrorDescriptor descriptor = failure.ToGrpcDescriptor();
 
-        // Expose sanitized message key to the client and keep details only in logs.
         context.Status = descriptor.CreateStatus(clientError.MessageKey);
 
         EnvelopeError errorPayload = new()
@@ -126,7 +125,6 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
         Result<SecureEnvelope, FailureBase> encryptResult = await EncryptEnvelop([], connectId, context);
         if (encryptResult.IsErr)
         {
-            // If we cannot encrypt, still return an envelope with plaintext error details.
             return new SecureEnvelope
             {
                 ErrorDetails = ByteString.CopyFrom(errorBytes)

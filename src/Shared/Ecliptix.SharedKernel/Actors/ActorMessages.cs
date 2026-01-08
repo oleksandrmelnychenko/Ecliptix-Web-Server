@@ -44,6 +44,8 @@ public record GetProtocolStateActorEvent(uint ConnectId);
 
 public record GetProtocolStateReply(EcliptixSessionState? SessionState);
 
+public record GetConnectionKyberPublicKeyActorEvent;
+
 public record CleanupProtocolForTypeActorEvent(PubKeyExchangeType ExchangeType);
 
 public sealed record KeepAlive

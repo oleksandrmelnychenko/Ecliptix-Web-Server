@@ -20,7 +20,7 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
     private const string ErrorMessageIdentityKeysCreationFailed = "Failed to create identity keys";
     private const string ErrorMessageUnexpectedError = "Unexpected error during identity key derivation";
 
-    public async Task<Result<EcliptixSystemIdentityKeys, KeySplittingFailure>> DeriveIdentityKeysFromMasterKeyAsync(
+    public Task<Result<EcliptixSystemIdentityKeys, KeySplittingFailure>> DeriveIdentityKeysFromMasterKeyAsync(
         SodiumSecureMemoryHandle masterKeyHandle,
         Guid accountId)
     {
@@ -28,8 +28,8 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
         if (readResult.IsErr)
         {
             SodiumFailure error = readResult.UnwrapErr();
-            return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
-                KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageMasterKeyReadFailed}: {error.Message}"));
+            return Task.FromResult(Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
+                KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageMasterKeyReadFailed}: {error.Message}")));
         }
 
         byte[] masterKeyBytes = readResult.Unwrap();
@@ -40,39 +40,39 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
             Result<Unit, EcliptixProtocolFailure> initResult = protocol.Initialize();
             if (initResult.IsErr)
             {
-                return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
-                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageIdentityKeysCreationFailed}: {initResult.UnwrapErr().Message}"));
+                return Task.FromResult(Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
+                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageIdentityKeysCreationFailed}: {initResult.UnwrapErr().Message}")));
             }
 
             Result<ProtocolIdentity, EcliptixProtocolFailure> identityResult =
                 protocol.CreateIdentity(masterKeyBytes, accountId);
             if (identityResult.IsErr)
             {
-                return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
-                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageIdentityKeysCreationFailed}: {identityResult.UnwrapErr().Message}"));
+                return Task.FromResult(Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
+                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageIdentityKeysCreationFailed}: {identityResult.UnwrapErr().Message}")));
             }
 
             ProtocolIdentity identity = identityResult.Unwrap();
             Result<byte[], EcliptixProtocolFailure> edPkResult = protocol.GetPublicEd25519(identity);
             Result<byte[], EcliptixProtocolFailure> xPkResult = protocol.GetPublicX25519(identity);
 
-            if (edPkResult.IsErr || xPkResult.IsErr)
+            if (!edPkResult.IsErr && !xPkResult.IsErr)
             {
-                string msg = edPkResult.IsErr
-                    ? edPkResult.UnwrapErr().Message
-                    : xPkResult.UnwrapErr().Message;
-                identity.Dispose();
-                return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
-                    KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageIdentityKeysCreationFailed}: {msg}"));
+                return Task.FromResult(Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Ok(
+                    new EcliptixSystemIdentityKeys(identity)));
             }
 
-            return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Ok(
-                new EcliptixSystemIdentityKeys(identity, edPkResult.Unwrap(), xPkResult.Unwrap()));
+            string msg = edPkResult.IsErr
+                ? edPkResult.UnwrapErr().Message
+                : xPkResult.UnwrapErr().Message;
+            identity.Dispose();
+            return Task.FromResult(Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
+                KeySplittingFailure.KeyDerivationFailed($"{ErrorMessageIdentityKeysCreationFailed}: {msg}")));
         }
         catch (Exception ex)
         {
-            return Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
-                KeySplittingFailure.KeyDerivationFailed(ErrorMessageUnexpectedError, ex));
+            return Task.FromResult(Result<EcliptixSystemIdentityKeys, KeySplittingFailure>.Err(
+                KeySplittingFailure.KeyDerivationFailed(ErrorMessageUnexpectedError, ex)));
         }
         finally
         {
@@ -82,21 +82,10 @@ internal sealed class IdentityKeyDerivationService : IIdentityKeyDerivationServi
     }
 }
 
-/// <summary>
-/// Minimal identity bundle backed by the protocol server (native).
-/// </summary>
-public sealed class EcliptixSystemIdentityKeys : IDisposable
+public sealed class EcliptixSystemIdentityKeys(ProtocolIdentity identity)
+    : IDisposable
 {
-    public EcliptixSystemIdentityKeys(ProtocolIdentity identity, byte[] publicEd25519, byte[] publicX25519)
-    {
-        Identity = identity;
-        PublicEd25519 = publicEd25519;
-        PublicX25519 = publicX25519;
-    }
-
-    public ProtocolIdentity Identity { get; }
-    public byte[] PublicEd25519 { get; }
-    public byte[] PublicX25519 { get; }
+    public ProtocolIdentity Identity { get; } = identity;
 
     public void Dispose()
     {

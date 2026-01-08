@@ -1,9 +1,9 @@
 using System.Data.Common;
 using Akka.Actor;
-using Microsoft.Data.SqlClient;
+using Npgsql;
 using Serilog;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
+namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
 public static class PersistorSupervisorStrategy
 {
@@ -23,36 +23,8 @@ public static class PersistorSupervisorStrategy
 
                 return exception switch
                 {
-                    SqlException { Number: 18456 } => HandlePermanentFailure("Authentication failed", Directive.Stop),
-                    SqlException { Number: 18486 } => HandlePermanentFailure("Account locked", Directive.Stop),
-
-                    SqlException { Number: 4060 } => HandlePermanentFailure("Database not accessible", Directive.Stop),
-                    SqlException { Number: 40197 } => HandlePermanentFailure("Service unavailable", Directive.Stop),
-
-                    SqlException { Number: 824 or 825 } => HandlePermanentFailure("Data corruption detected",
-                        Directive.Stop),
-                    SqlException { Number: 102 or 156 or 207 or 208 } => HandlePermanentFailure("Invalid SQL syntax",
-                        Directive.Stop),
-
-                    SqlException { Number: 2 or 53 or 11001 } => HandleTransientFailure(actorType, "Network error",
-                        Directive.Restart),
-                    SqlException { Number: 2146893022 } => HandleTransientFailure(actorType, "Connection timeout",
-                        Directive.Restart),
-
-                    SqlException { Number: -2 } => HandleTransientFailure(actorType, "Command timeout",
-                        Directive.Restart),
                     TimeoutException => HandleTransientFailure(actorType, "Operation timeout", Directive.Restart),
-
-                    SqlException { Number: 40501 or 40613 or 49918 or 49919 or 49920 } =>
-                        HandleTransientFailure(actorType, "Transient Azure SQL error", Directive.Restart),
-
-                    SqlException { Number: 1205 } => HandleTransientFailure(actorType, "Deadlock detected",
-                        Directive.Restart),
-                    SqlException { Number: 2627 or 2601 } => HandleTransientFailure(actorType, "Concurrency conflict",
-                        Directive.Restart),
-
-                    SqlException { Number: 547 or 515 } => HandleApplicationError("Constraint violation",
-                        Directive.Escalate),
+                    PostgresException pgEx => HandlePostgresException(pgEx, actorType),
 
                     DbException => HandleTransientFailure(actorType, "Database error", Directive.Restart),
 
@@ -75,6 +47,42 @@ public static class PersistorSupervisorStrategy
                     _ => throw new ArgumentOutOfRangeException(nameof(exception), exception, null)
                 };
             });
+    }
+
+    private static Directive HandlePostgresException(PostgresException ex, Type actorType)
+    {
+        return ex.SqlState switch
+        {
+            PostgresErrorCodes.InvalidPassword or PostgresErrorCodes.InvalidAuthorizationSpecification =>
+                HandlePermanentFailure("Authentication failed", Directive.Stop),
+            PostgresErrorCodes.InvalidCatalogName =>
+                HandlePermanentFailure("Database not accessible", Directive.Stop),
+            PostgresErrorCodes.AdminShutdown or PostgresErrorCodes.CrashShutdown
+                or PostgresErrorCodes.CannotConnectNow =>
+                HandleTransientFailure(actorType, "Service unavailable", Directive.Restart),
+            PostgresErrorCodes.DataCorrupted or PostgresErrorCodes.IndexCorrupted =>
+                HandlePermanentFailure("Data corruption detected", Directive.Stop),
+            PostgresErrorCodes.SyntaxError or PostgresErrorCodes.UndefinedTable
+                or PostgresErrorCodes.UndefinedColumn =>
+                HandlePermanentFailure("Invalid SQL syntax", Directive.Stop),
+            PostgresErrorCodes.ConnectionException or PostgresErrorCodes.ConnectionDoesNotExist
+                or PostgresErrorCodes.ConnectionFailure =>
+                HandleTransientFailure(actorType, "Network error", Directive.Restart),
+            PostgresErrorCodes.TooManyConnections =>
+                HandleTransientFailure(actorType, "Service unavailable", Directive.Restart),
+            PostgresErrorCodes.QueryCanceled =>
+                HandleTransientFailure(actorType, "Command timeout", Directive.Restart),
+            PostgresErrorCodes.DeadlockDetected =>
+                HandleTransientFailure(actorType, "Deadlock detected", Directive.Restart),
+            PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.LockNotAvailable =>
+                HandleTransientFailure(actorType, "Concurrency conflict", Directive.Restart),
+            PostgresErrorCodes.UniqueViolation =>
+                HandleTransientFailure(actorType, "Concurrency conflict", Directive.Restart),
+            PostgresErrorCodes.ForeignKeyViolation or PostgresErrorCodes.NotNullViolation
+                or PostgresErrorCodes.CheckViolation =>
+                HandleApplicationError("Constraint violation", Directive.Escalate),
+            _ => HandleTransientFailure(actorType, "Database error", Directive.Restart)
+        };
     }
 
     private static Directive HandlePermanentFailure(string reason, Directive directive)

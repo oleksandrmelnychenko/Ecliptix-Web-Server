@@ -3,5 +3,8 @@ using Ecliptix.Protobuf.Device;
 
 namespace Ecliptix.DeviceProvisioning.Domain.Events;
 
-public record RegisterAppDeviceIfNotExistActorEvent(AppDevice AppDevice, CancellationToken CancellationToken = default)
+public record RegisterAppDeviceIfNotExistActorEvent(
+    AppDevice AppDevice,
+    string Locale,
+    CancellationToken CancellationToken = default)
     : ICancellableActorEvent;

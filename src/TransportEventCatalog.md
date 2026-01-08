@@ -3,8 +3,8 @@
 Server exposes only `EventGateway` (see `Protobuf/transport/gateway.proto`). Clients must set `metadata.event_type`, `metadata.context`, `metadata.delivery_kind`, and the payload described below.
 
 ## Common metadata
-- `context`: `identity_access` or `device_provisioning`
-- `event_type`: values below (C# enum names)
+- `context`: `EVENT_CONTEXT_IDENTITY_ACCESS` or `EVENT_CONTEXT_DEVICE_PROVISIONING`
+- `event_type`: `TransportEventType` enum values (C# enum names shown below; JSON uses proto names like `IDENTITY_ACCESS_REGISTRATION_INIT`)
 - `delivery_kind`: typically `DELIVERY_KIND_UNARY`
 - `connect_id` (or `partition_key` parsable as connect_id) required for secure flows
 - `idempotency_key`: required for mutating operations
@@ -36,8 +36,8 @@ Server exposes only `EventGateway` (see `Protobuf/transport/gateway.proto`). Cli
 ```json
 {
   "metadata": {
-    "event_type": "DeviceProvisioningRegisterDevice",
-    "context": "device_provisioning",
+    "event_type": "DEVICE_PROVISIONING_REGISTER_DEVICE",
+    "context": "EVENT_CONTEXT_DEVICE_PROVISIONING",
     "delivery_kind": "DELIVERY_KIND_UNARY",
     "connect_id": 42,
     "idempotency_key": "req-123"

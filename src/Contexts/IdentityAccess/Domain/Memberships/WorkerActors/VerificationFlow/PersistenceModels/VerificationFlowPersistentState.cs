@@ -1,4 +1,4 @@
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 
 namespace Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.VerificationFlow.PersistenceModels;
 

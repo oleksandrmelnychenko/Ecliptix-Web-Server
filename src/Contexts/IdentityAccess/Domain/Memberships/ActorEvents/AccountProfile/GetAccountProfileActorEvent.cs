@@ -1,5 +1,5 @@
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Common;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.SharedKernel;
 
 namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.AccountProfile;

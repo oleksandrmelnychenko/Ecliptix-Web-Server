@@ -1,30 +1,32 @@
 using System.Data;
 using System.Data.Common;
 using Akka.Actor;
+using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Account;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Common;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.MobileNumber;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Otp;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.CompiledQueries;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryResults;
+using Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
 using Google.Protobuf;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using Serilog;
 using MembershipEntity = Ecliptix.IdentityAccess.Domain.Schema.Entities.MembershipEntity;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
+using VerificationPurpose = Ecliptix.IdentityAccess.Domain.Memberships.VerificationPurpose;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors;
+namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
 public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFailure>
 {
@@ -1413,19 +1415,27 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
     protected override VerificationFlowFailure MapDbException(DbException ex)
     {
-        if (ex is SqlException sqlEx)
+        if (ex is PostgresException pgEx)
         {
-            return sqlEx.Number switch
+            return pgEx.SqlState switch
             {
-                2627 or 2601 => VerificationFlowFailure.ConcurrencyConflict(
-                    $"Unique constraint violation: {sqlEx.Message}"),
-                547 => VerificationFlowFailure.Validation($"Foreign key constraint violation: {sqlEx.Message}"),
-                1205 => VerificationFlowFailure.ConcurrencyConflict($"Deadlock detected: {sqlEx.Message}"),
-                -2 => VerificationFlowFailure.PersistorAccess("Command timeout occurred", sqlEx),
-                2 => VerificationFlowFailure.PersistorAccess("Network error occurred", sqlEx),
-                18456 => VerificationFlowFailure.PersistorAccess("Authentication failed", sqlEx),
-                _ => VerificationFlowFailure.PersistorAccess($"Database error (Code: {sqlEx.Number}): {sqlEx.Message}",
-                    sqlEx)
+                PostgresErrorCodes.UniqueViolation => VerificationFlowFailure.ConcurrencyConflict(
+                    $"Unique constraint violation: {pgEx.MessageText}"),
+                PostgresErrorCodes.ForeignKeyViolation =>
+                    VerificationFlowFailure.Validation($"Foreign key constraint violation: {pgEx.MessageText}"),
+                PostgresErrorCodes.DeadlockDetected => VerificationFlowFailure.ConcurrencyConflict(
+                    $"Deadlock detected: {pgEx.MessageText}"),
+                PostgresErrorCodes.SerializationFailure => VerificationFlowFailure.ConcurrencyConflict(
+                    $"Serialization failure: {pgEx.MessageText}"),
+                PostgresErrorCodes.QueryCanceled =>
+                    VerificationFlowFailure.PersistorAccess("Command timeout occurred", pgEx),
+                PostgresErrorCodes.ConnectionException or PostgresErrorCodes.ConnectionFailure
+                    or PostgresErrorCodes.ConnectionDoesNotExist =>
+                    VerificationFlowFailure.PersistorAccess("Network error occurred", pgEx),
+                PostgresErrorCodes.InvalidPassword or PostgresErrorCodes.InvalidAuthorizationSpecification =>
+                    VerificationFlowFailure.PersistorAccess("Authentication failed", pgEx),
+                _ => VerificationFlowFailure.PersistorAccess(
+                    $"Database error (Code: {pgEx.SqlState}): {pgEx.MessageText}", pgEx)
             };
         }
 

@@ -1,4 +1,4 @@
-namespace Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryResults;
+namespace Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
 
 public class ExistingMembershipResult
 {

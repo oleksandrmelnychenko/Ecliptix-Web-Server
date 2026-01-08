@@ -7,8 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Ecliptix.Protocol.Server" Version="1.0.0-ci.29" />
-    <PackageReference Include="Sodium.Core" Version="1.4.0" />
+    <PackageReference Include="EPP.Relay" />
+    <PackageReference Include="Sodium.Core" />
   </ItemGroup>
 
   <ItemGroup>

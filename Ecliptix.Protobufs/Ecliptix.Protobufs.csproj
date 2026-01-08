@@ -17,8 +17,7 @@
 
     <!-- Common proto files (removed pub_key_exchange.proto and protocol_state.proto - superseded by contexts/secure_protocol) -->
     <Protobuf Include="Protobuf\common\secure_envelope.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
-    <Protobuf Include="Protobuf\common\health_check.proto" GrpcServices="Client" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
-    <Protobuf Include="Protobuf\common\types.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\common\health_check.proto" GrpcServices="Server" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
 
     <!-- Identity Access context proto files -->
     <Protobuf Include="Protobuf\contexts\identity_access\membership_core.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
@@ -31,15 +30,13 @@
 
     <!-- Secure Protocol context proto files -->
     <Protobuf Include="Protobuf\contexts\secure_protocol\key_exchange.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
-    <Protobuf Include="Protobuf\contexts\secure_protocol\key_materials.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
     <Protobuf Include="Protobuf\contexts\secure_protocol\protocol_state.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" Version="3.33.0" />
-    <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
-    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.71.0" />
-    <PackageReference Include="Grpc.Tools" Version="2.76.0">
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="Grpc.Tools">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

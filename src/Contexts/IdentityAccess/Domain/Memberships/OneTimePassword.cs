@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.SharedKernel;
 using Serilog;
 

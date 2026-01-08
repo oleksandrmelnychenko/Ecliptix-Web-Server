@@ -3,14 +3,6 @@ syntax = "proto3";
 package ecliptix.transport.device_provisioning;
 option csharp_namespace = "Ecliptix.Protobuf.Transport.DeviceProvisioning";
 
-enum DeviceProvisioningEventType {
-  DEVICE_PROVISIONING_EVENT_TYPE_UNSPECIFIED = 0;
-  DEVICE_PROVISIONING_REGISTER_DEVICE = 1;
-  DEVICE_PROVISIONING_SECURE_CHANNEL_ESTABLISH = 2;
-  DEVICE_PROVISIONING_SECURE_CHANNEL_RESTORE = 3;
-  DEVICE_PROVISIONING_SECURE_CHANNEL_AUTH_ESTABLISH = 4;
-}
-
 message RestoreChannelRequest {}
 
 message RestoreChannelResponse {
