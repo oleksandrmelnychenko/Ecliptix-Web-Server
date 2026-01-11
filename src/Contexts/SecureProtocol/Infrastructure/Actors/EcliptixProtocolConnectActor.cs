@@ -1586,6 +1586,18 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
         uint sendingIndex = current?.SendingChainIndex ?? 0;
         uint receivingIndex = current?.ReceivingChainIndex ?? 0;
+        Result<(uint Sending, uint Receiving), EcliptixProtocolFailure> indicesResult =
+            _protocolServer.GetChainIndices(session);
+        if (indicesResult.IsOk)
+        {
+            (sendingIndex, receivingIndex) = indicesResult.Unwrap();
+        }
+        else
+        {
+            Context.GetLogger().Warning(
+                "[CHAIN-INDICES] Failed to read chain indices for ConnectId {0}: {1}",
+                connectId, indicesResult.UnwrapErr().Message);
+        }
 
         return Result<EcliptixSessionState, EcliptixProtocolFailure>.Ok(new EcliptixSessionState
         {

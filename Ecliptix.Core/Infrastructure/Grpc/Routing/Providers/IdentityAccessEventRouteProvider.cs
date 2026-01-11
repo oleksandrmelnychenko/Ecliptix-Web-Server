@@ -1,53 +1,17 @@
-using System;
 using Ecliptix.IdentityAccess.Infrastructure.EventHandling;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.SharedKernel;
-using Microsoft.Extensions.DependencyInjection;
+using Google.Protobuf;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Routing.Providers;
 
-public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvider
+public static class IdentityAccessEventRouteProvider
 {
     private const EventContext IdentityAccessContext = EventContext.IdentityAccess;
 
-    public IdentityAccessEventRouteProvider(IServiceProvider services) : base(services)
-    {
-        Register(TransportEventType.IdentityAccessRegistrationInit, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleRegistrationInit, idempotencyRequired: true);
-        Register(TransportEventType.IdentityAccessRegistrationComplete, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleRegistrationComplete, idempotencyRequired: true);
-        Register(TransportEventType.IdentityAccessRecoveryInit, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleRecoveryInit, idempotencyRequired: true);
-        Register(TransportEventType.IdentityAccessRecoveryComplete, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleRecoveryComplete, idempotencyRequired: true);
-        Register(TransportEventType.IdentityAccessSignInInit, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleMembershipSignIn, idempotencyRequired: true);
-        Register(TransportEventType.IdentityAccessSignInComplete, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleMembershipSignInComplete, idempotencyRequired: true);
-        Register(TransportEventType.IdentityAccessLogout, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleMembershipLogout, idempotencyRequired: true);
-        Register(TransportEventType.IdentityAccessLogoutAnonymous, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleMembershipLogoutAnonymous, idempotencyRequired: true);
-
-        Register(TransportEventType.IdentityAccessVerifyOtp, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleVerifyOtp);
-        Register(TransportEventType.IdentityAccessValidateMobileNumber, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleValidateMobile);
-        Register(TransportEventType.IdentityAccessCheckMobileAvailability, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleCheckMobileAvailability);
-        Register(TransportEventType.IdentityAccessRecoveryMobileVerification, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleRecoveryMobileVerification);
-
-        Register(TransportEventType.IdentityAccessCheckProfileName, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleCheckProfileName, idempotencyRequired: true);
-        Register(TransportEventType.IdentityAccessUpsertProfile, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleUpsertProfile, idempotencyRequired: true);
-        Register(TransportEventType.IdentityAccessGetProfile, IdentityAccessContext,
-            SecureEnvelope.Parser, HandleGetProfile);
-    }
-
-    private static Task<Result<object, FailureBase>> HandleRegistrationInit(
+    [EventRoute(TransportEventType.IdentityAccessRegistrationInit, IdentityAccessContext, IdempotencyRequired = true)]
+    internal static Task<Result<IMessage, FailureBase>> HandleRegistrationInit(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -55,7 +19,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithMembership(services, envelope, metadata, cancellationToken,
             static (handler, request, context, _) => handler.OpaqueRegistrationInitRequest(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleRegistrationComplete(
+    [EventRoute(TransportEventType.IdentityAccessRegistrationComplete, IdentityAccessContext, IdempotencyRequired = true)]
+    internal static Task<Result<IMessage, FailureBase>> HandleRegistrationComplete(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -63,7 +28,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithMembership(services, envelope, metadata, cancellationToken,
             static (handler, request, context, _) => handler.OpaqueRegistrationCompleteRequest(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleRecoveryInit(
+    [EventRoute(TransportEventType.IdentityAccessRecoveryInit, IdentityAccessContext, IdempotencyRequired = true)]
+    internal static Task<Result<IMessage, FailureBase>> HandleRecoveryInit(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -71,7 +37,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithMembership(services, envelope, metadata, cancellationToken,
             static (handler, request, context, _) => handler.OpaqueRecoverySecretKeyInitRequest(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleRecoveryComplete(
+    [EventRoute(TransportEventType.IdentityAccessRecoveryComplete, IdentityAccessContext, IdempotencyRequired = true)]
+    internal static Task<Result<IMessage, FailureBase>> HandleRecoveryComplete(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -79,7 +46,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithMembership(services, envelope, metadata, cancellationToken,
             static (handler, request, context, _) => handler.OpaqueRecoverySecretKeyCompleteRequest(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleMembershipSignIn(
+    [EventRoute(TransportEventType.IdentityAccessSignInInit, IdentityAccessContext, IdempotencyRequired = true)]
+    internal static Task<Result<IMessage, FailureBase>> HandleMembershipSignIn(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -87,7 +55,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithMembership(services, envelope, metadata, cancellationToken,
             static (handler, request, context, _) => handler.OpaqueSignInInitRequest(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleMembershipSignInComplete(
+    [EventRoute(TransportEventType.IdentityAccessSignInComplete, IdentityAccessContext, IdempotencyRequired = true)]
+    internal static Task<Result<IMessage, FailureBase>> HandleMembershipSignInComplete(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -95,7 +64,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithMembership(services, envelope, metadata, cancellationToken,
             static (handler, request, context, _) => handler.OpaqueSignInCompleteRequest(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleMembershipLogout(
+    [EventRoute(TransportEventType.IdentityAccessLogout, IdentityAccessContext, IdempotencyRequired = true)]
+    internal static Task<Result<IMessage, FailureBase>> HandleMembershipLogout(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -103,7 +73,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithMembership(services, envelope, metadata, cancellationToken,
             static (handler, request, context, _) => handler.Logout(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleMembershipLogoutAnonymous(
+    [EventRoute(TransportEventType.IdentityAccessLogoutAnonymous, IdentityAccessContext, IdempotencyRequired = true)]
+    internal static Task<Result<IMessage, FailureBase>> HandleMembershipLogoutAnonymous(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -111,7 +82,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithMembership(services, envelope, metadata, cancellationToken,
             static (handler, request, context, _) => handler.AnonymousLogout(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleVerifyOtp(
+    [EventRoute(TransportEventType.IdentityAccessVerifyOtp, IdentityAccessContext)]
+    internal static Task<Result<IMessage, FailureBase>> HandleVerifyOtp(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -119,7 +91,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithVerification(services, envelope, metadata, cancellationToken,
             static (handler, request, context) => handler.VerifyOtp(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleValidateMobile(
+    [EventRoute(TransportEventType.IdentityAccessValidateMobileNumber, IdentityAccessContext)]
+    internal static Task<Result<IMessage, FailureBase>> HandleValidateMobile(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -127,7 +100,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithVerification(services, envelope, metadata, cancellationToken,
             static (handler, request, context) => handler.ValidateMobileNumber(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleCheckMobileAvailability(
+    [EventRoute(TransportEventType.IdentityAccessCheckMobileAvailability, IdentityAccessContext)]
+    internal static Task<Result<IMessage, FailureBase>> HandleCheckMobileAvailability(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -135,7 +109,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithVerification(services, envelope, metadata, cancellationToken,
             static (handler, request, context) => handler.CheckMobileNumberAvailability(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleRecoveryMobileVerification(
+    [EventRoute(TransportEventType.IdentityAccessRecoveryMobileVerification, IdentityAccessContext)]
+    internal static Task<Result<IMessage, FailureBase>> HandleRecoveryMobileVerification(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -143,7 +118,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithVerification(services, envelope, metadata, cancellationToken,
             static (handler, request, context) => handler.RecoverySecretKeyMobileVerification(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleCheckProfileName(
+    [EventRoute(TransportEventType.IdentityAccessCheckProfileName, IdentityAccessContext, IdempotencyRequired = true)]
+    internal static Task<Result<IMessage, FailureBase>> HandleCheckProfileName(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -151,7 +127,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithAccountProfile(services, envelope, metadata, cancellationToken,
             static (handler, request, context) => handler.CheckProfileNameAvailability(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleUpsertProfile(
+    [EventRoute(TransportEventType.IdentityAccessUpsertProfile, IdentityAccessContext, IdempotencyRequired = true)]
+    internal static Task<Result<IMessage, FailureBase>> HandleUpsertProfile(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -159,7 +136,8 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithAccountProfile(services, envelope, metadata, cancellationToken,
             static (handler, request, context) => handler.CreateOrUpdateProfile(request, context));
 
-    private static Task<Result<object, FailureBase>> HandleGetProfile(
+    [EventRoute(TransportEventType.IdentityAccessGetProfile, IdentityAccessContext)]
+    internal static Task<Result<IMessage, FailureBase>> HandleGetProfile(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -167,7 +145,7 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         WithAccountProfile(services, envelope, metadata, cancellationToken,
             static (handler, request, context) => handler.GetAccountProfile(request, context));
 
-    private static async Task<Result<object, FailureBase>> WithMembership(
+    private static async Task<Result<IMessage, FailureBase>> WithMembership(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -182,10 +160,10 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
             ActivatorUtilities.CreateInstance<MembershipEventHandler>(scope.ServiceProvider);
 
         SecureEnvelope response = await invoke(handler, envelope, context, cancellationToken);
-        return Result<object, FailureBase>.Ok(response);
+        return Result<IMessage, FailureBase>.Ok(response);
     }
 
-    private static async Task<Result<object, FailureBase>> WithVerification(
+    private static async Task<Result<IMessage, FailureBase>> WithVerification(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -199,10 +177,10 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         VerificationFlowHandler handler =
             ActivatorUtilities.CreateInstance<VerificationFlowHandler>(scope.ServiceProvider);
         SecureEnvelope response = await invoke(handler, envelope, context);
-        return Result<object, FailureBase>.Ok(response);
+        return Result<IMessage, FailureBase>.Ok(response);
     }
 
-    private static async Task<Result<object, FailureBase>> WithAccountProfile(
+    private static async Task<Result<IMessage, FailureBase>> WithAccountProfile(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -216,6 +194,6 @@ public sealed class IdentityAccessEventRouteProvider : ProtobufEventRouteProvide
         AccountProfileHandler handler =
             ActivatorUtilities.CreateInstance<AccountProfileHandler>(scope.ServiceProvider);
         SecureEnvelope response = await invoke(handler, envelope, context);
-        return Result<object, FailureBase>.Ok(response);
+        return Result<IMessage, FailureBase>.Ok(response);
     }
 }

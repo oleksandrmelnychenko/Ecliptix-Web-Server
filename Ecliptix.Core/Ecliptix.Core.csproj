@@ -50,7 +50,6 @@
         <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
         <PackageReference Include="protobuf-net" />
         <PackageReference Include="Serilog.Sinks.ApplicationInsights" />
-        <PackageReference Include="Serilog.Sinks.AwsCloudWatch" />
         <PackageReference Include="Sodium.Core" />
         <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
         <PackageReference Include="EPP.Relay" />
@@ -73,10 +72,11 @@
         <ProjectReference Include="..\src\Shared\Ecliptix.SharedKernel\Ecliptix.SharedKernel.csproj" />
         <ProjectReference Include="..\src\Contexts\IdentityAccess\Domain\Ecliptix.IdentityAccess.Domain.csproj" />
     <ProjectReference Include="..\src\Contexts\IdentityAccess\Infrastructure\Ecliptix.IdentityAccess.Infrastructure.csproj" />
-        <ProjectReference Include="..\src\Contexts\DeviceProvisioning\Domain\Ecliptix.DeviceProvisioning.Domain.csproj" />
+    <ProjectReference Include="..\src\Contexts\DeviceProvisioning\Domain\Ecliptix.DeviceProvisioning.Domain.csproj" />
         <ProjectReference Include="..\src\Contexts\DeviceProvisioning\Infrastructure\Ecliptix.DeviceProvisioning.Infrastructure.csproj" />
         <ProjectReference Include="..\src\Contexts\SecureProtocol\Domain\Ecliptix.SecureProtocol.Domain.csproj" />
         <ProjectReference Include="..\src\Contexts\SecureProtocol\Infrastructure\Ecliptix.SecureProtocol.Infrastructure.csproj" />
+        <ProjectReference Include="..\src\Tools\Ecliptix.EventRouting.Generator\Ecliptix.EventRouting.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
     <ItemGroup>

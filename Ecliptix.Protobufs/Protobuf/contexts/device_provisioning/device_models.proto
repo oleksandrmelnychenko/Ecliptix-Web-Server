@@ -32,4 +32,5 @@ message GetServerPublicKeysRequest {}
 message GetServerPublicKeysResponse {
   bytes server_public_key = 1;
   bytes server_kyber_public_key = 2;
+  bytes server_nonce = 3;
 }

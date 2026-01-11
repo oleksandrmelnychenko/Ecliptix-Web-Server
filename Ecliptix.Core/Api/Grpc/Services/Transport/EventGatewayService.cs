@@ -97,17 +97,7 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
             ? deliveryKind
             : metadata.DeliveryKind;
 
-        if (metadata.ConnectId == 0)
-        {
-            try
-            {
-                metadata.ConnectId = ServiceUtilities.ExtractConnectId(context);
-            }
-            catch
-            {
-                // ignored
-            }
-        }
+        metadata.ConnectId = ServiceUtilities.ExtractConnectId(context);
 
         if (string.IsNullOrWhiteSpace(metadata.PartitionKey) && metadata.ConnectId != 0)
         {

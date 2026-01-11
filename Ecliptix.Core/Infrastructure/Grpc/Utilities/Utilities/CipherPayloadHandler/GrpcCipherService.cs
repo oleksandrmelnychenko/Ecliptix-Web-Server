@@ -125,10 +125,12 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
         Result<SecureEnvelope, FailureBase> encryptResult = await EncryptEnvelop([], connectId, context);
         if (encryptResult.IsErr)
         {
-            return new SecureEnvelope
-            {
-                ErrorDetails = ByteString.CopyFrom(errorBytes)
-            };
+            FailureBase encryptFailure = encryptResult.UnwrapErr();
+            Log.Error(
+                "[GrpcCipherService] Failed to encrypt failure response for ConnectId {ConnectId}: {Error}",
+                connectId,
+                encryptFailure.Message);
+            throw new RpcException(descriptor.CreateStatus(clientError.MessageKey));
         }
 
         SecureEnvelope envelope = encryptResult.Unwrap();

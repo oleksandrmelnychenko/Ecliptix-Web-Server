@@ -1,8 +1,10 @@
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Security.Cryptography;
+using System.Text;
 using Akka.Actor;
 using Serilog;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
+using Ecliptix.Core.Infrastructure.Grpc.Security;
 using Ecliptix.DeviceProvisioning.Domain.Events;
 using Ecliptix.DeviceProvisioning.Domain.Failures;
 using Ecliptix.DeviceProvisioning.Infrastructure.Crypto;
@@ -28,26 +30,22 @@ using Microsoft.Extensions.Options;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Routing.Providers;
 
-public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRouteProvider
+public static class DeviceProvisioningEventRouteProvider
 {
     private const EventContext DeviceProvisioningContext = EventContext.DeviceProvisioning;
+    private const int ProofLength = 32;
+    private const int MinNonceLength = 16;
+    private const int MaxNonceLength = 64;
+    private const int ServerNonceLength = 32;
+    private const string AuthenticatedEstablishReplayScope = "device_provisioning.auth_establish";
+    private static readonly TimeSpan AuthenticatedEstablishReplayTtl = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan ServerNonceTtl = TimeSpan.FromMinutes(5);
+    private static readonly byte[] AuthenticatedEstablishProofContext =
+        "Ecliptix.AuthenticatedEstablish.v1"u8.ToArray();
 
-    public DeviceProvisioningEventRouteProvider(IServiceProvider services) : base(services)
-    {
-        Register(TransportEventType.DeviceProvisioningRegisterDevice, DeviceProvisioningContext,
-            SecureEnvelope.Parser, HandleRegisterDevice, idempotencyRequired: true);
-        Register(TransportEventType.DeviceProvisioningSecureChannelEstablish, DeviceProvisioningContext,
-            SecureEnvelope.Parser, HandleEstablishSecureChannel, idempotencyRequired: true);
-        Register(TransportEventType.DeviceProvisioningSecureChannelRestore, DeviceProvisioningContext,
-            RestoreChannelRequest.Parser, HandleRestoreSecureChannel, idempotencyRequired: true);
-        Register(TransportEventType.DeviceProvisioningSecureChannelAuthEstablish,
-            DeviceProvisioningContext,
-            AuthenticatedEstablishRequest.Parser, HandleAuthenticatedEstablish, idempotencyRequired: true);
-        Register(TransportEventType.DeviceProvisioningGetServerPublicKeys, DeviceProvisioningContext,
-            GetServerPublicKeysRequest.Parser, HandleGetServerPublicKeys, idempotencyRequired: false);
-    }
-
-    private static async Task<Result<object, FailureBase>> HandleRegisterDevice(
+    [EventRoute(TransportEventType.DeviceProvisioningRegisterDevice, DeviceProvisioningContext,
+        IdempotencyRequired = true)]
+    internal static async Task<Result<IMessage, FailureBase>> HandleRegisterDevice(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -60,7 +58,6 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
 
         IGrpcCipherService cipherService = scope.ServiceProvider.GetRequiredService<IGrpcCipherService>();
         IEcliptixActorRegistry actorRegistry = scope.ServiceProvider.GetRequiredService<IEcliptixActorRegistry>();
-        IMasterKeyService masterKeyService = scope.ServiceProvider.GetRequiredService<IMasterKeyService>();
         IOptions<SecurityConfiguration> securityConfig =
             scope.ServiceProvider.GetRequiredService<IOptions<SecurityConfiguration>>();
 
@@ -79,18 +76,17 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
                     Result<DeviceRegistrationResponse, AppDeviceFailure> registerResult =
                         await registerTask.WaitAsync(ct).ConfigureAwait(false);
 
-                    if (registerResult.IsOk)
-                    {
-                        return Result<DeviceRegistrationResponse, FailureBase>.Ok(registerResult.Unwrap());
-                    }
-
-                    return Result<DeviceRegistrationResponse, FailureBase>.Err(registerResult.UnwrapErr());
+                    return registerResult.IsOk
+                        ? Result<DeviceRegistrationResponse, FailureBase>.Ok(registerResult.Unwrap())
+                        : Result<DeviceRegistrationResponse, FailureBase>.Err(registerResult.UnwrapErr());
                 });
 
-        return Result<object, FailureBase>.Ok(response);
+        return Result<IMessage, FailureBase>.Ok(response);
     }
 
-    private static async Task<Result<object, FailureBase>> HandleEstablishSecureChannel(
+    [EventRoute(TransportEventType.DeviceProvisioningSecureChannelEstablish, DeviceProvisioningContext,
+        IdempotencyRequired = true)]
+    internal static async Task<Result<IMessage, FailureBase>> HandleEstablishSecureChannel(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -104,11 +100,13 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
             envelope, connectId, cancellationToken);
 
         return result.Match(
-            success => Result<object, FailureBase>.Ok(success),
-            failure => Result<object, FailureBase>.Err(failure));
+            Result<IMessage, FailureBase>.Ok,
+            Result<IMessage, FailureBase>.Err);
     }
 
-    private static async Task<Result<object, FailureBase>> HandleRestoreSecureChannel(
+    [EventRoute(TransportEventType.DeviceProvisioningSecureChannelRestore, DeviceProvisioningContext,
+        IdempotencyRequired = true)]
+    internal static async Task<Result<IMessage, FailureBase>> HandleRestoreSecureChannel(
         IServiceProvider services,
         RestoreChannelRequest request,
         EventMetadata metadata,
@@ -134,13 +132,13 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
             RestoreSecrecyChannelResponse protocolResponse = result.Unwrap();
             if (protocolResponse.Status == RestoreSecrecyChannelResponse.Types.RestoreStatus.SessionNotFound)
             {
-                return Result<object, FailureBase>.Ok(new RestoreChannelResponse
+                return Result<IMessage, FailureBase>.Ok(new RestoreChannelResponse
                 {
                     Status = RestoreChannelResponse.Types.Status.SessionNotFound
                 });
             }
 
-            return Result<object, FailureBase>.Ok(new RestoreChannelResponse
+            return Result<IMessage, FailureBase>.Ok(new RestoreChannelResponse
             {
                 Status = RestoreChannelResponse.Types.Status.SessionRestored,
                 ReceivingChainLength = (int)protocolResponse.ReceivingChainLength,
@@ -153,16 +151,18 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
             failure.FailureType == EcliptixProtocolFailureType.StateMissing ||
             protocolActor.IsNobody())
         {
-            return Result<object, FailureBase>.Ok(new RestoreChannelResponse
+            return Result<IMessage, FailureBase>.Ok(new RestoreChannelResponse
             {
                 Status = RestoreChannelResponse.Types.Status.SessionNotFound
             });
         }
 
-        return Result<object, FailureBase>.Err(failure);
+        return Result<IMessage, FailureBase>.Err(failure);
     }
 
-    private static async Task<Result<object, FailureBase>> HandleAuthenticatedEstablish(
+    [EventRoute(TransportEventType.DeviceProvisioningSecureChannelAuthEstablish, DeviceProvisioningContext,
+        IdempotencyRequired = true)]
+    internal static async Task<Result<IMessage, FailureBase>> HandleAuthenticatedEstablish(
         IServiceProvider services,
         AuthenticatedEstablishRequest request,
         EventMetadata metadata,
@@ -173,30 +173,124 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
 
         IMasterKeyService masterKeyService = scope.ServiceProvider.GetRequiredService<IMasterKeyService>();
         IEcliptixActorRegistry actorRegistry = scope.ServiceProvider.GetRequiredService<IEcliptixActorRegistry>();
+        IReplayProtectionCache replayProtection =
+            scope.ServiceProvider.GetRequiredService<IReplayProtectionCache>();
+        IServerNonceStore nonceStore = scope.ServiceProvider.GetRequiredService<IServerNonceStore>();
         IRsaChunkProcessor rsaProcessor = scope.ServiceProvider.GetRequiredService<IRsaChunkProcessor>();
         CertificatePinningService certPinning = scope.ServiceProvider.GetRequiredService<CertificatePinningService>();
         IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
 
         byte[]? rootKey = null;
         byte[]? masterKeyFingerprint = null;
+        byte[]? serverNonce = null;
         byte[]? serverExchangeBuffer = null;
+        string? replayKey = null;
+        bool replayClaimed = false;
+        bool success = false;
 
         try
         {
-            Guid membershipId = Helpers.FromByteStringToGuid(request.MembershipUniqueId);
-            if (request.AccountUniqueId.IsEmpty)
+            if (string.IsNullOrWhiteSpace(metadata.IdempotencyKey))
             {
-                return Result<object, FailureBase>.Err(
+                return Result<IMessage, FailureBase>.Err(
+                    SecureChannelFailure.InvalidPayload("IdempotencyKey is required for authenticated channel setup"));
+            }
+
+            if (string.IsNullOrWhiteSpace(metadata.AppDeviceId) ||
+                string.IsNullOrWhiteSpace(metadata.ApplicationInstanceId))
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    SecureChannelFailure.InvalidPayload("AppDeviceId and ApplicationInstanceId are required"));
+            }
+
+            if (request.MembershipUniqueId.IsEmpty || request.MembershipUniqueId.Length != 16)
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    MasterKeyFailure.InvalidIdentifier("MembershipId is required for authenticated channel setup"));
+            }
+
+            if (request.AccountUniqueId.IsEmpty || request.AccountUniqueId.Length != 16)
+            {
+                return Result<IMessage, FailureBase>.Err(
                     MasterKeyFailure.InvalidIdentifier("AccountId is required for authenticated channel setup"));
             }
 
-            Guid accountId = Helpers.FromByteStringToGuid(request.AccountUniqueId);
+            if (request.ClientPubKeyExchange.IsEmpty)
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    SecureChannelFailure.InvalidPayload("ClientPubKeyExchange is required"));
+            }
+
+            if (request.ClientNonce.Length is < MinNonceLength or > MaxNonceLength)
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    SecureChannelFailure.InvalidPayload("ClientNonce has invalid length"));
+            }
+
+            if (request.ServerNonce.Length is < MinNonceLength or > MaxNonceLength)
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    SecureChannelFailure.InvalidPayload("ServerNonce has invalid length"));
+            }
+
+            if (request.Proof.Length != ProofLength)
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    SecureChannelFailure.InvalidPayload("Proof has invalid length"));
+            }
+
+            byte[] requestServerNonce = request.ServerNonce.ToByteArray();
+            if (!nonceStore.TryTake(connectId, out serverNonce))
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    SecureChannelFailure.InvalidPayload("ServerNonce is missing or expired"));
+            }
+
+            if (requestServerNonce.Length != serverNonce.Length ||
+                !CryptographicOperations.FixedTimeEquals(requestServerNonce, serverNonce))
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    SecureChannelFailure.InvalidPayload("ServerNonce mismatch"));
+            }
+
+            Guid membershipId;
+            try
+            {
+                membershipId = Helpers.FromByteStringToGuid(request.MembershipUniqueId);
+            }
+            catch (Exception ex)
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    MasterKeyFailure.InvalidIdentifier($"MembershipId is invalid: {ex.Message}"));
+            }
+
+            Guid accountId;
+            try
+            {
+                accountId = Helpers.FromByteStringToGuid(request.AccountUniqueId);
+            }
+            catch (Exception ex)
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    MasterKeyFailure.InvalidIdentifier($"AccountId is invalid: {ex.Message}"));
+            }
+
+            PubKeyExchange clientExchange;
+            try
+            {
+                clientExchange = PubKeyExchange.Parser.ParseFrom(request.ClientPubKeyExchange);
+            }
+            catch
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    SecureChannelFailure.InvalidPayload("ClientPubKeyExchange is invalid"));
+            }
 
             Result<(byte[] RootKey, byte[] MasterKeyFingerprint), FailureBase> deriveRootResult =
                 await masterKeyService.DeriveRootKeyAndFingerprintAsync(accountId);
             if (deriveRootResult.IsErr)
             {
-                return Result<object, FailureBase>.Err(deriveRootResult.UnwrapErr());
+                return Result<IMessage, FailureBase>.Err(deriveRootResult.UnwrapErr());
             }
 
             (rootKey, masterKeyFingerprint) = deriveRootResult.Unwrap();
@@ -205,12 +299,43 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
             if (requestFingerprint.Length != masterKeyFingerprint.Length ||
                 !CryptographicOperations.FixedTimeEquals(requestFingerprint, masterKeyFingerprint))
             {
-                return Result<object, FailureBase>.Err(MasterKeyFailure.MasterKeyMismatch());
+                return Result<IMessage, FailureBase>.Err(MasterKeyFailure.MasterKeyMismatch());
+            }
+
+            byte[] membershipIdBytes = request.MembershipUniqueId.ToByteArray();
+            byte[] accountIdBytes = request.AccountUniqueId.ToByteArray();
+            byte[] clientExchangeBytes = request.ClientPubKeyExchange.ToByteArray();
+            byte[] clientNonceBytes = request.ClientNonce.ToByteArray();
+            byte[] proofInput = BuildAuthenticatedEstablishProofInput(
+                membershipIdBytes,
+                accountIdBytes,
+                requestFingerprint,
+                clientExchangeBytes,
+                clientNonceBytes,
+                serverNonce!,
+                metadata.IdempotencyKey,
+                metadata.AppDeviceId,
+                metadata.ApplicationInstanceId);
+            byte[] expectedProof = HMACSHA256.HashData(rootKey, proofInput);
+            byte[] providedProof = request.Proof.ToByteArray();
+            if (!CryptographicOperations.FixedTimeEquals(expectedProof, providedProof))
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    SecureChannelFailure.InvalidPayload("Proof verification failed"));
+            }
+
+            replayKey = $"{accountId:N}:{metadata.IdempotencyKey}";
+            replayClaimed = replayProtection.TryBegin(
+                AuthenticatedEstablishReplayScope, replayKey, AuthenticatedEstablishReplayTtl);
+            if (!replayClaimed)
+            {
+                return Result<IMessage, FailureBase>.Err(
+                    EcliptixProtocolFailure.ReplayAttempt("Authenticated secure channel establish"));
             }
 
             InitializeProtocolWithMasterKeyActorEvent initEvent = new(
                 connectId,
-                PubKeyExchange.Parser.ParseFrom(request.ClientPubKeyExchange),
+                clientExchange,
                 membershipId,
                 accountId,
                 rootKey);
@@ -224,7 +349,7 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
 
             if (initResult.IsErr)
             {
-                return Result<object, FailureBase>.Err(initResult.UnwrapErr());
+                return Result<IMessage, FailureBase>.Err(initResult.UnwrapErr());
             }
 
             InitializeProtocolWithMasterKeyReply reply = initResult.Unwrap();
@@ -245,7 +370,7 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
                 await rsaProcessor.EncryptChunkedAsync(serverExchangeMemory, cancellationToken);
             if (encryptResult.IsErr)
             {
-                return Result<object, FailureBase>.Err(
+                return Result<IMessage, FailureBase>.Err(
                     SecureChannelFailure.FromCertificateFailure(encryptResult.UnwrapErr()));
             }
 
@@ -254,7 +379,7 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
             Result<byte[], CertificatePinningFailure> signResult = certPinning.Sign(encryptedPayload.AsMemory());
             if (signResult.IsErr)
             {
-                return Result<object, FailureBase>.Err(
+                return Result<IMessage, FailureBase>.Err(
                     SecureChannelFailure.FromCertificateFailure(signResult.UnwrapErr()));
             }
 
@@ -268,10 +393,16 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
                 ResultCode = ByteString.Empty
             };
 
-            return Result<object, FailureBase>.Ok(envelope);
+            success = true;
+            return Result<IMessage, FailureBase>.Ok(envelope);
         }
         finally
         {
+            if (replayClaimed && !success && replayKey != null)
+            {
+                replayProtection.Release(AuthenticatedEstablishReplayScope, replayKey);
+            }
+
             if (rootKey != null)
             {
                 CryptographicOperations.ZeroMemory(rootKey);
@@ -282,6 +413,11 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
                 CryptographicOperations.ZeroMemory(masterKeyFingerprint);
             }
 
+            if (serverNonce != null)
+            {
+                CryptographicOperations.ZeroMemory(serverNonce);
+            }
+
             if (serverExchangeBuffer != null)
             {
                 ArrayPool<byte>.Shared.Return(serverExchangeBuffer, clearArray: true);
@@ -289,19 +425,19 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
         }
     }
 
-    private static async Task<Result<object, FailureBase>> HandleGetServerPublicKeys(
+    [EventRoute(TransportEventType.DeviceProvisioningGetServerPublicKeys, DeviceProvisioningContext)]
+    internal static async Task<Result<IMessage, FailureBase>> HandleGetServerPublicKeys(
         IServiceProvider services,
-        GetServerPublicKeysRequest request,
+        GetServerPublicKeysRequest _,
         EventMetadata metadata,
         CancellationToken cancellationToken)
     {
-        Log.Information("[GetServerPublicKeys] Handler invoked");
-
         using IServiceScope scope = services.CreateScope();
 
         uint connectId = GrpcCallContextFactory.ResolveConnectId(metadata);
         IOpaqueKeyRingService opaqueService = scope.ServiceProvider.GetRequiredService<IOpaqueKeyRingService>();
         IEcliptixActorRegistry actorRegistry = scope.ServiceProvider.GetRequiredService<IEcliptixActorRegistry>();
+        IServerNonceStore nonceStore = scope.ServiceProvider.GetRequiredService<IServerNonceStore>();
         IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
 
         Result<byte[], OpaqueServerFailure> serverPublicKeyResult = opaqueService.GetServerPublicKey();
@@ -309,7 +445,7 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
         {
             Log.Error("[GetServerPublicKeys] Failed to get server public key: {Error}",
                 serverPublicKeyResult.UnwrapErr().Message);
-            return Result<object, FailureBase>.Err(
+            return Result<IMessage, FailureBase>.Err(
                 SecureChannelFailure.ProtocolError(
                     $"Failed to get server public key: {serverPublicKeyResult.UnwrapErr().Message}"));
         }
@@ -328,24 +464,74 @@ public sealed class DeviceProvisioningEventRouteProvider : ProtobufEventRoutePro
         {
             Log.Error("[GetServerPublicKeys] Failed to get server Kyber public key: {Error}",
                 kyberPublicKeyResult.UnwrapErr().Message);
-            return Result<object, FailureBase>.Err(
+            return Result<IMessage, FailureBase>.Err(
                 SecureChannelFailure.ProtocolError(
                     $"Failed to get server Kyber public key: {kyberPublicKeyResult.UnwrapErr().Message}"));
         }
 
         Log.Debug("[GetServerPublicKeys] Got Kyber public key, length: {Length}", kyberPublicKeyResult.Unwrap().Length);
 
+        byte[] serverNonce = RandomNumberGenerator.GetBytes(ServerNonceLength);
+        nonceStore.Store(connectId, serverNonce, ServerNonceTtl);
+
         GetServerPublicKeysResponse response = new()
         {
             ServerPublicKey = ByteString.CopyFrom(serverPublicKeyResult.Unwrap()),
-            ServerKyberPublicKey = ByteString.CopyFrom(kyberPublicKeyResult.Unwrap())
+            ServerKyberPublicKey = ByteString.CopyFrom(kyberPublicKeyResult.Unwrap()),
+            ServerNonce = ByteString.CopyFrom(serverNonce)
         };
 
         Log.Information(
             "[GetServerPublicKeys] Successfully prepared response with X25519 ({X25519Size} bytes) and Kyber ({KyberSize} bytes) public keys",
             serverPublicKeyResult.Unwrap().Length, kyberPublicKeyResult.Unwrap().Length);
 
-        return Result<object, FailureBase>.Ok(response);
+        return Result<IMessage, FailureBase>.Ok(response);
     }
 
+    private static byte[] BuildAuthenticatedEstablishProofInput(
+        byte[] membershipId,
+        byte[] accountId,
+        byte[] masterKeyFingerprint,
+        byte[] clientPubKeyExchange,
+        byte[] clientNonce,
+        byte[] serverNonce,
+        string idempotencyKey,
+        string appDeviceId,
+        string applicationInstanceId)
+    {
+        byte[] idempotencyBytes = Encoding.UTF8.GetBytes(idempotencyKey);
+        byte[] appDeviceBytes = Encoding.UTF8.GetBytes(appDeviceId);
+        byte[] appInstanceBytes = Encoding.UTF8.GetBytes(applicationInstanceId);
+        byte[][] parts =
+        [
+            AuthenticatedEstablishProofContext,
+            membershipId,
+            accountId,
+            masterKeyFingerprint,
+            clientPubKeyExchange,
+            clientNonce,
+            serverNonce,
+            idempotencyBytes,
+            appDeviceBytes,
+            appInstanceBytes
+        ];
+
+        int totalLength = 0;
+        foreach (byte[] part in parts)
+        {
+            totalLength += sizeof(uint) + part.Length;
+        }
+
+        byte[] buffer = new byte[totalLength];
+        int offset = 0;
+        foreach (byte[] part in parts)
+        {
+            BinaryPrimitives.WriteUInt32BigEndian(buffer.AsSpan(offset, sizeof(uint)), (uint)part.Length);
+            offset += sizeof(uint);
+            part.CopyTo(buffer, offset);
+            offset += part.Length;
+        }
+
+        return buffer;
+    }
 }

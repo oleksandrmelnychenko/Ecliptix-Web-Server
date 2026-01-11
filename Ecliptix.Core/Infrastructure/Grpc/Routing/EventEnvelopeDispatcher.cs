@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.SharedKernel;
@@ -46,7 +44,7 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
             return idempotencyError;
         }
 
-        object message;
+        IMessage message;
         try
         {
             message = route.Deserialize(envelope.Payload.Memory);
@@ -56,7 +54,7 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
             return BuildErrorEnvelope(metadata, "deserialize_failed");
         }
 
-        Result<object, FailureBase> result;
+        Result<IMessage, FailureBase> result;
         try
         {
             result = await route.HandleAsync(message, metadata, cancellationToken);
@@ -68,7 +66,7 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
 
         if (result.IsOk)
         {
-            object response = result.Unwrap();
+            IMessage response = result.Unwrap();
 
             try
             {

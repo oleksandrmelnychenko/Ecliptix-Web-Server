@@ -22,4 +22,7 @@ message AuthenticatedEstablishRequest {
   bytes account_unique_id = 2;
   bytes master_key_fingerprint = 3;
   bytes client_pub_key_exchange = 4;
+  bytes client_nonce = 5;
+  bytes proof = 6;
+  bytes server_nonce = 7;
 }

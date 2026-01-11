@@ -12,7 +12,6 @@
     <!-- Transport proto files -->
     <Protobuf Include="Protobuf\transport\common\event_envelope.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
     <Protobuf Include="Protobuf\transport\gateway.proto" GrpcServices="Server" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
-    <Protobuf Include="Protobuf\transport\identity_access.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
     <Protobuf Include="Protobuf\transport\device_provisioning.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
 
     <!-- Common proto files (removed pub_key_exchange.proto and protocol_state.proto - superseded by contexts/secure_protocol) -->

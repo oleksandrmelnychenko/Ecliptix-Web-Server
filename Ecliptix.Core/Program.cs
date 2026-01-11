@@ -10,6 +10,7 @@ using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Configuration.Settings;
 using Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 using Ecliptix.Core.Infrastructure.Grpc.Routing;
+using Ecliptix.Core.Infrastructure.Grpc.Security;
 using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Core.Json;
 using Ecliptix.Core.Middleware;
@@ -19,7 +20,7 @@ using Ecliptix.IdentityAccess.Domain;
 using Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.IdentityAccess.Domain.Providers.Twilio;
 using Ecliptix.IdentityAccess.Domain.Schema;
-using Ecliptix.Core.Infrastructure.Grpc.Routing.Providers;
+using Ecliptix.Core.Infrastructure.Grpc.Routing.Generated;
 using Ecliptix.Protobuf.Account;
 using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Security.Opaque;
@@ -168,9 +169,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<FailureHandlingInterceptor>();
     builder.Services.AddSingleton<RequestMetaDataInterceptor>();
     builder.Services.AddSingleton<ThreadCultureInterceptor>();
-    builder.Services.AddSingleton<IEventRouteResolver, EventRouteResolver>();
-    builder.Services.AddSingleton<IEventRouteProvider, IdentityAccessEventRouteProvider>();
-    builder.Services.AddSingleton<IEventRouteProvider, DeviceProvisioningEventRouteProvider>();
+    builder.Services.AddSingleton<IEventRouteResolver, GeneratedEventRouteResolver>();
     builder.Services.AddSingleton<EventEnvelopeDispatcher>();
     builder.Services.AddTransient<EventGatewayService>();
 
@@ -369,6 +368,8 @@ static void RegisterSecurity(IServiceCollection services, NetworkConfiguration n
 
     services.AddDistributedMemoryCache();
     services.AddMemoryCache();
+    services.AddSingleton<IReplayProtectionCache, MemoryReplayProtectionCache>();
+    services.AddSingleton<IServerNonceStore, MemoryServerNonceStore>();
     services.AddHealthChecks();
 }
 

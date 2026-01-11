@@ -18,11 +18,6 @@ internal static class GrpcCallContextFactory
             return metadata.ConnectId;
         }
 
-        if (uint.TryParse(metadata.PartitionKey, out uint parsed))
-        {
-            return parsed;
-        }
-
         throw new RpcException(new Status(StatusCode.InvalidArgument, "connect_id is required"));
     }
 
