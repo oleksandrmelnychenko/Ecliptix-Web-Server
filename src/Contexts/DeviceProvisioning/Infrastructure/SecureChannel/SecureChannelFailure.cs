@@ -51,9 +51,6 @@ public sealed record SecureChannelFailure(
     public static SecureChannelFailure FromCertificateFailure(CertificatePinningFailure failure)
         => new(SecureChannelFailureType.CryptographicError, failure.Message);
 
-    public static SecureChannelFailure SigningFailed(string message)
-        => new(SecureChannelFailureType.CryptographicError, message);
-
     public override GrpcErrorDescriptor ToGrpcDescriptor() =>
         FailureType switch
         {
@@ -91,12 +88,4 @@ public sealed record SecureChannelFailure(
             PublicErrorCode
         };
     }
-}
-
-public enum SecureChannelFailureType
-{
-    InvalidPayload,
-    CryptographicError,
-    ProtocolError,
-    ActorCommunicationError
 }

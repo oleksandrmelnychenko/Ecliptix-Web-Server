@@ -10,6 +10,7 @@ using Ecliptix.Protobuf.Device;
 using Ecliptix.SharedKernel;
 using Google.Protobuf;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Ecliptix.DeviceProvisioning.Infrastructure.Persistors;
 
@@ -34,11 +35,13 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
     private static async Task<Result<DeviceRegistrationResponse, AppDeviceFailure>> RegisterAppDeviceAsync(
         EcliptixSchemaContext ctx, Device appDevice, CancellationToken cancellationToken)
     {
-        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
+        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
+
         try
         {
             Guid appInstanceId = Helpers.FromByteStringToGuid(appDevice.ApplicationInstanceId);
             Guid deviceId = Helpers.FromByteStringToGuid(appDevice.DeviceId);
+
             int deviceType = (int)appDevice.DeviceType;
 
             if (appInstanceId == Guid.Empty || deviceId == Guid.Empty)
@@ -69,9 +72,10 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
             };
 
             ctx.Devices.Add(newDevice);
-            await ctx.SaveChangesAsync(cancellationToken);
 
+            await ctx.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+
             return Result<DeviceRegistrationResponse, AppDeviceFailure>.Ok(new DeviceRegistrationResponse
             {
                 Result = DeviceRegistrationResponse.Types.Result.DeviceRegistrationResultNewRegistration

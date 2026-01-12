@@ -22,7 +22,7 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
 
         if (connectionContextIdOpt.IsSome &&
             System.Enum.TryParse(connectionContextIdOpt.Value, true, out PubKeyExchangeType exchangeType) &&
-            System.Enum.IsDefined(typeof(PubKeyExchangeType), exchangeType))
+            System.Enum.IsDefined(exchangeType))
         {
             return exchangeType;
         }

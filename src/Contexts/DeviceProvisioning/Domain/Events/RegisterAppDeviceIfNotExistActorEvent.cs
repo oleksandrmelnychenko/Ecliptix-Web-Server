@@ -5,6 +5,5 @@ namespace Ecliptix.DeviceProvisioning.Domain.Events;
 
 public record RegisterAppDeviceIfNotExistActorEvent(
     Device AppDevice,
-    string Locale,
     CancellationToken CancellationToken = default)
     : ICancellableActorEvent;

@@ -11,146 +11,161 @@ public static class IdentityAccessEventRouteProvider
     private const EventContext IdentityAccessContext = EventContext.IdentityAccess;
 
     [EventRoute(TransportEventType.IdentityOpaqueRegistrationInit, IdentityAccessContext, IdempotencyRequired = true)]
-    internal static Task<Result<IMessage, FailureBase>> HandleRegistrationInit(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityOpaqueRegistrationInit(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithMembership(services, envelope, metadata, cancellationToken,
-            static (handler, request, context, _) => handler.OpaqueRegistrationInitRequest(request, context));
+        WithMembership(services, envelope, metadata,
+            static (handler, request, context, _) => handler.OpaqueRegistrationInitRequest(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentityOpaqueRegistrationComplete, IdentityAccessContext, IdempotencyRequired = true)]
-    internal static Task<Result<IMessage, FailureBase>> HandleRegistrationComplete(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityOpaqueRegistrationComplete(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithMembership(services, envelope, metadata, cancellationToken,
-            static (handler, request, context, _) => handler.OpaqueRegistrationCompleteRequest(request, context));
+        WithMembership(services, envelope, metadata,
+            static (handler, request, context, _) => handler.OpaqueRegistrationCompleteRequest(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentityOpaqueRecoveryInit, IdentityAccessContext, IdempotencyRequired = true)]
-    internal static Task<Result<IMessage, FailureBase>> HandleRecoveryInit(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityOpaqueRecoveryInit(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithMembership(services, envelope, metadata, cancellationToken,
-            static (handler, request, context, _) => handler.OpaqueRecoverySecretKeyInitRequest(request, context));
+        WithMembership(services, envelope, metadata,
+            static (handler, request, context, _) => handler.OpaqueRecoverySecretKeyInitRequest(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentityOpaqueRecoveryComplete, IdentityAccessContext, IdempotencyRequired = true)]
-    internal static Task<Result<IMessage, FailureBase>> HandleRecoveryComplete(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityOpaqueRecoveryComplete(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithMembership(services, envelope, metadata, cancellationToken,
-            static (handler, request, context, _) => handler.OpaqueRecoveryCompleteRequest(request, context));
+        WithMembership(services, envelope, metadata,
+            static (handler, request, context, _) => handler.OpaqueRecoveryCompleteRequest(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentityOpaqueSigninInit, IdentityAccessContext, IdempotencyRequired = true)]
-    internal static Task<Result<IMessage, FailureBase>> HandleMembershipSignIn(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityOpaqueSigninInit(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithMembership(services, envelope, metadata, cancellationToken,
-            static (handler, request, context, _) => handler.OpaqueSignInInitRequest(request, context));
+        WithMembership(services, envelope, metadata,
+            static (handler, request, context, _) => handler.OpaqueSignInInitRequest(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentityOpaqueSigninComplete, IdentityAccessContext, IdempotencyRequired = true)]
-    internal static Task<Result<IMessage, FailureBase>> HandleMembershipSignInComplete(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityOpaqueSigninComplete(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithMembership(services, envelope, metadata, cancellationToken,
-            static (handler, request, context, _) => handler.OpaqueSignInCompleteRequest(request, context));
+        WithMembership(services, envelope, metadata,
+            static (handler, request, context, _) => handler.OpaqueSignInCompleteRequest(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentitySessionLogout, IdentityAccessContext, IdempotencyRequired = true)]
-    internal static Task<Result<IMessage, FailureBase>> HandleMembershipLogout(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentitySessionLogout(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithMembership(services, envelope, metadata, cancellationToken,
-            static (handler, request, context, _) => handler.Logout(request, context));
+        WithMembership(services, envelope, metadata,
+            static (handler, request, context, _) => handler.Logout(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentitySessionLogoutAnonymous, IdentityAccessContext, IdempotencyRequired = true)]
-    internal static Task<Result<IMessage, FailureBase>> HandleMembershipLogoutAnonymous(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentitySessionLogoutAnonymous(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithMembership(services, envelope, metadata, cancellationToken,
-            static (handler, request, context, _) => handler.AnonymousLogout(request, context));
+        WithMembership(services, envelope, metadata,
+            static (handler, request, context, _) => handler.AnonymousLogout(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentityOtpVerify, IdentityAccessContext)]
-    internal static Task<Result<IMessage, FailureBase>> HandleVerifyOtp(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityOtpVerify(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithVerification(services, envelope, metadata, cancellationToken,
-            static (handler, request, context) => handler.VerifyOtp(request, context));
+        WithVerification(services, envelope, metadata,
+            static (handler, request, context) => handler.VerifyOtp(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentityMobileNumberValidate, IdentityAccessContext)]
-    internal static Task<Result<IMessage, FailureBase>> HandleValidateMobile(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityMobileNumberValidate(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithVerification(services, envelope, metadata, cancellationToken,
-            static (handler, request, context) => handler.ValidateMobileNumber(request, context));
+        WithVerification(services, envelope, metadata,
+            static (handler, request, context) => handler.ValidateMobileNumber(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentityMobileNumberAvailability, IdentityAccessContext)]
-    internal static Task<Result<IMessage, FailureBase>> HandleCheckMobileAvailability(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityMobileNumberAvailability(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithVerification(services, envelope, metadata, cancellationToken,
-            static (handler, request, context) => handler.CheckMobileNumberAvailability(request, context));
+        WithVerification(services, envelope, metadata,
+            static (handler, request, context) => handler.CheckMobileNumberAvailability(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentityRecoveryMobileVerify, IdentityAccessContext)]
-    internal static Task<Result<IMessage, FailureBase>> HandleRecoveryMobileVerification(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityRecoveryMobileVerify(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithVerification(services, envelope, metadata, cancellationToken,
-            static (handler, request, context) => handler.RecoverySecretKeyMobileVerification(request, context));
+        WithVerification(services, envelope, metadata,
+            static (handler, request, context) => handler.RecoverySecretKeyMobileVerification(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentityProfileNameAvailability, IdentityAccessContext, IdempotencyRequired = true)]
-    internal static Task<Result<IMessage, FailureBase>> HandleCheckProfileName(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityProfileNameAvailability(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithAccountProfile(services, envelope, metadata, cancellationToken,
-            static (handler, request, context) => handler.CheckProfileNameAvailability(request, context));
+        WithAccountProfile(services, envelope, metadata,
+            static (handler, request, context) => handler.CheckProfileNameAvailability(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentityProfileUpsert, IdentityAccessContext, IdempotencyRequired = true)]
-    internal static Task<Result<IMessage, FailureBase>> HandleUpsertProfile(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityProfileUpsert(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithAccountProfile(services, envelope, metadata, cancellationToken,
-            static (handler, request, context) => handler.CreateOrUpdateProfile(request, context));
+        WithAccountProfile(services, envelope, metadata,
+            static (handler, request, context) => handler.CreateOrUpdateProfile(request, context),
+            cancellationToken);
 
     [EventRoute(TransportEventType.IdentityProfileLookup, IdentityAccessContext)]
-    internal static Task<Result<IMessage, FailureBase>> HandleGetProfile(
+    internal static Task<Result<IMessage, FailureBase>> HandleIdentityProfileLookup(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
-        WithAccountProfile(services, envelope, metadata, cancellationToken,
-            static (handler, request, context) => handler.GetAccountProfile(request, context));
+        WithAccountProfile(services, envelope, metadata,
+            static (handler, request, context) => handler.GetAccountProfile(request, context),
+            cancellationToken);
 
     private static async Task<Result<IMessage, FailureBase>> WithMembership(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
-        CancellationToken cancellationToken,
-        Func<MembershipEventHandler, SecureEnvelope, GrpcCallContext, CancellationToken, Task<SecureEnvelope>> invoke)
+        Func<MembershipEventHandler, SecureEnvelope, GrpcCallContext, CancellationToken, Task<SecureEnvelope>> invoke,
+        CancellationToken cancellationToken)
     {
         uint connectId = GrpcCallContextFactory.ResolveConnectId(metadata);
         using IServiceScope scope = services.CreateScope();
@@ -167,8 +182,8 @@ public static class IdentityAccessEventRouteProvider
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
-        CancellationToken cancellationToken,
-        Func<VerificationFlowHandler, SecureEnvelope, GrpcCallContext, Task<SecureEnvelope>> invoke)
+        Func<VerificationFlowHandler, SecureEnvelope, GrpcCallContext, Task<SecureEnvelope>> invoke,
+        CancellationToken cancellationToken)
     {
         uint connectId = GrpcCallContextFactory.ResolveConnectId(metadata);
         using IServiceScope scope = services.CreateScope();
@@ -184,8 +199,8 @@ public static class IdentityAccessEventRouteProvider
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
-        CancellationToken cancellationToken,
-        Func<AccountProfileHandler, SecureEnvelope, GrpcCallContext, Task<SecureEnvelope>> invoke)
+        Func<AccountProfileHandler, SecureEnvelope, GrpcCallContext, Task<SecureEnvelope>> invoke,
+        CancellationToken cancellationToken)
     {
         uint connectId = GrpcCallContextFactory.ResolveConnectId(metadata);
         using IServiceScope scope = services.CreateScope();

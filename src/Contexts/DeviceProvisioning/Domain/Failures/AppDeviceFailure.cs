@@ -10,7 +10,7 @@ public sealed record AppDeviceFailure(
     : FailureBase(Message, InnerException)
 {
     private bool IsRecoverable =>
-        FailureType is AppDeviceFailureType.InfrastructureFailure;
+        FailureType is AppDeviceFailureType.Infrastructure;
 
     public override bool IsUserFacing => FailureType switch
     {
@@ -19,43 +19,42 @@ public sealed record AppDeviceFailure(
 
     public override bool Retryable => FailureType switch
     {
-        AppDeviceFailureType.InfrastructureFailure => true,
+        AppDeviceFailureType.Infrastructure => true,
         _ => false
     };
 
     public override ErrorSurface Surface => FailureType switch
     {
-        AppDeviceFailureType.InfrastructureFailure or AppDeviceFailureType.InternalError => ErrorSurface.System,
         _ => ErrorSurface.System
     };
 
     public override string PublicErrorCode => FailureType switch
     {
-        AppDeviceFailureType.InfrastructureFailure => "device.infrastructure",
+        AppDeviceFailureType.Infrastructure => "device.infrastructure",
         _ => "device.internal"
     };
 
     public override string? UserMessageKey => FailureType switch
     {
-        AppDeviceFailureType.InfrastructureFailure => ErrorI18NKeys.ServiceUnavailable,
+        AppDeviceFailureType.Infrastructure => ErrorI18NKeys.ServiceUnavailable,
         _ => ErrorI18NKeys.Internal
     };
 
     public static AppDeviceFailure InfrastructureFailure(string msgKey = AppDeviceMessageKeys.DataAccess,
         Exception? ex = null)
     {
-        return new AppDeviceFailure(AppDeviceFailureType.InfrastructureFailure, msgKey, ex);
+        return new AppDeviceFailure(AppDeviceFailureType.Infrastructure, msgKey, ex);
     }
 
     public static AppDeviceFailure InternalError(string msgKey = AppDeviceMessageKeys.Generic, Exception? ex = null)
     {
-        return new AppDeviceFailure(AppDeviceFailureType.InternalError, msgKey, ex);
+        return new AppDeviceFailure(AppDeviceFailureType.Internal, msgKey, ex);
     }
 
     public override GrpcErrorDescriptor ToGrpcDescriptor() =>
         FailureType switch
         {
-            AppDeviceFailureType.InfrastructureFailure => new GrpcErrorDescriptor(
+            AppDeviceFailureType.Infrastructure => new GrpcErrorDescriptor(
                 ErrorCode.ServiceUnavailable,
                 StatusCode.Unavailable,
                 UserMessageKey ?? ErrorI18NKeys.ServiceUnavailable,

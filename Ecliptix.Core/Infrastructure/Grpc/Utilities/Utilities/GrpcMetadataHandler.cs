@@ -142,38 +142,35 @@ public static class GrpcMetadataHandler
     private static uint ComputeHashFromComponents(Guid appInstanceId, Guid appDeviceId, PubKeyExchangeType contextType,
         Option<Guid> opContextId)
     {
-        byte[] appInstanceIdBytes = appInstanceId.ToByteArray();
-        byte[] appDeviceIdBytes = appDeviceId.ToByteArray();
-        uint contextTypeUint = (uint)contextType;
-        byte[] contextTypeBytes = BitConverter.GetBytes(contextTypeUint);
-        if (BitConverter.IsLittleEndian)
-        {
-            Array.Reverse(contextTypeBytes);
-        }
-
-        int totalLength = appInstanceIdBytes.Length + appDeviceIdBytes.Length + contextTypeBytes.Length;
+        const int guidSize = 16;
+        const int contextTypeSize = sizeof(uint);
+        int totalLength = guidSize + guidSize + contextTypeSize;
         if (opContextId.IsSome)
         {
-            totalLength += MetadataConstants.ByteLengths.GuidByteLength;
+            totalLength += guidSize;
         }
 
-        byte[] combined = new byte[totalLength];
-        int offset = MetadataConstants.ByteLengths.InitialOffset;
-        Buffer.BlockCopy(appInstanceIdBytes, 0, combined, offset, appInstanceIdBytes.Length);
-        offset += appInstanceIdBytes.Length;
-        Buffer.BlockCopy(appDeviceIdBytes, 0, combined, offset, appDeviceIdBytes.Length);
-        offset += appDeviceIdBytes.Length;
-        Buffer.BlockCopy(contextTypeBytes, 0, combined, offset, contextTypeBytes.Length);
-        offset += contextTypeBytes.Length;
+        Span<byte> buffer = stackalloc byte[totalLength];
+
+        int offset = 0;
+        appInstanceId.TryWriteBytes(buffer[offset..]);
+        offset += guidSize;
+
+        appDeviceId.TryWriteBytes(buffer[offset..]);
+        offset += guidSize;
+
+        BinaryPrimitives.WriteUInt32BigEndian(buffer[offset..], (uint)contextType);
+        offset += contextTypeSize;
+
         if (opContextId.IsSome)
         {
-            byte[] opContextBytes = opContextId.Value.ToByteArray();
-            Buffer.BlockCopy(opContextBytes, 0, combined, offset, opContextBytes.Length);
+            opContextId.Value.TryWriteBytes(buffer[offset..]);
         }
 
-        byte[] hash = SHA256.HashData(combined);
-        return BinaryPrimitives.ReadUInt32BigEndian(hash.AsSpan(MetadataConstants.ByteLengths.InitialOffset,
-            MetadataConstants.ByteLengths.HashSpanLength));
+        Span<byte> hash = stackalloc byte[32];
+        SHA256.TryHashData(buffer, hash, out _);
+
+        return BinaryPrimitives.ReadUInt32BigEndian(hash[..MetadataConstants.ByteLengths.HashSpanLength]);
     }
 
     public static string GetRequestedLocale(Metadata requestHeaders)

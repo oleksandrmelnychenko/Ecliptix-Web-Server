@@ -41,12 +41,12 @@ public static class DeviceProvisioningEventRouteProvider
     private static readonly TimeSpan AuthenticatedEstablishReplayTtl = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ServerNonceTtl = TimeSpan.FromMinutes(5);
 
-    private static readonly byte[] AuthenticatedEstablishProofContext =
-        "Ecliptix.AuthenticatedEstablish.v1"u8.ToArray();
+    private static ReadOnlySpan<byte> AuthenticatedEstablishProofContext =>
+        "Ecliptix.AuthenticatedEstablish.v1"u8;
 
     [EventRoute(TransportEventType.DeviceRegistration, DeviceProvisioningContext,
         IdempotencyRequired = true)]
-    internal static async Task<Result<IMessage, FailureBase>> HandleRegisterDevice(
+    internal static async Task<Result<IMessage, FailureBase>> HandleDeviceRegistration(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -70,7 +70,7 @@ public static class DeviceProvisioningEventRouteProvider
                 envelope, context, async (appDevice, _, _, ct) =>
                 {
                     RegisterAppDeviceIfNotExistActorEvent registerEvent =
-                        new(appDevice, metadata.Client?.Locale ?? string.Empty, ct);
+                        new(appDevice, ct);
                     Task<Result<DeviceRegistrationResponse, AppDeviceFailure>>? registerTask =
                         appDevicePersistor.Ask<Result<DeviceRegistrationResponse, AppDeviceFailure>>(
                             registerEvent, TimeoutConfiguration.Actor.AskTimeout);
@@ -87,7 +87,7 @@ public static class DeviceProvisioningEventRouteProvider
 
     [EventRoute(TransportEventType.DeviceSessionHandshake, DeviceProvisioningContext,
         IdempotencyRequired = true)]
-    internal static async Task<Result<IMessage, FailureBase>> HandleEstablishSecureChannel(
+    internal static async Task<Result<IMessage, FailureBase>> HandleDeviceSessionHandshake(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
@@ -107,7 +107,7 @@ public static class DeviceProvisioningEventRouteProvider
 
     [EventRoute(TransportEventType.DeviceSessionRecovery, DeviceProvisioningContext,
         IdempotencyRequired = true)]
-    internal static async Task<Result<IMessage, FailureBase>> HandleRestoreSecureChannel(
+    internal static async Task<Result<IMessage, FailureBase>> HandleDeviceSessionRecovery(
         IServiceProvider services,
         SessionRecoveryRequest request,
         EventMetadata metadata,
@@ -163,7 +163,7 @@ public static class DeviceProvisioningEventRouteProvider
 
     [EventRoute(TransportEventType.DeviceSessionAuthHandshake, DeviceProvisioningContext,
         IdempotencyRequired = true)]
-    internal static async Task<Result<IMessage, FailureBase>> HandleAuthenticatedEstablish(
+    internal static async Task<Result<IMessage, FailureBase>> HandleDeviceSessionAuthHandshake(
         IServiceProvider services,
         AuthenticatedSessionHandshakeRequest request,
         EventMetadata metadata,
@@ -243,7 +243,7 @@ public static class DeviceProvisioningEventRouteProvider
                     SecureChannelFailure.InvalidPayload("Proof has invalid length"));
             }
 
-            byte[] requestServerNonce = crypto.ServerNonce.ToByteArray();
+            ReadOnlySpan<byte> requestServerNonce = crypto.ServerNonce.Span;
             if (!nonceStore.TryTake(connectId, out serverNonce))
             {
                 return Result<IMessage, FailureBase>.Err(
@@ -299,29 +299,25 @@ public static class DeviceProvisioningEventRouteProvider
 
             (rootKey, masterKeyFingerprint) = deriveRootResult.Unwrap();
 
-            byte[] requestFingerprint = crypto.MasterKeyFingerprint.ToByteArray();
+            ReadOnlySpan<byte> requestFingerprint = crypto.MasterKeyFingerprint.Span;
             if (requestFingerprint.Length != masterKeyFingerprint.Length ||
                 !CryptographicOperations.FixedTimeEquals(requestFingerprint, masterKeyFingerprint))
             {
                 return Result<IMessage, FailureBase>.Err(MasterKeyFailure.MasterKeyMismatch());
             }
 
-            byte[] membershipIdBytes = identity.MembershipId.ToByteArray();
-            byte[] accountIdBytes = identity.AccountId.ToByteArray();
-            byte[] clientExchangeBytes = crypto.PubKeyExchange.ToByteArray();
-            byte[] clientNonceBytes = crypto.ClientNonce.ToByteArray();
             byte[] proofInput = BuildAuthenticatedEstablishProofInput(
-                membershipIdBytes,
-                accountIdBytes,
+                identity.MembershipId.Span,
+                identity.AccountId.Span,
                 requestFingerprint,
-                clientExchangeBytes,
-                clientNonceBytes,
+                crypto.PubKeyExchange.Span,
+                crypto.ClientNonce.Span,
                 serverNonce!,
                 metadata.Client!.IdempotencyKey,
                 metadata.Client.DeviceId.ToBase64(),
                 metadata.Client.ApplicationInstanceId.ToBase64());
             byte[] expectedProof = HMACSHA256.HashData(rootKey, proofInput);
-            byte[] providedProof = crypto.Proof.ToByteArray();
+            ReadOnlySpan<byte> providedProof = crypto.Proof.Span;
             if (!CryptographicOperations.FixedTimeEquals(expectedProof, providedProof))
             {
                 return Result<IMessage, FailureBase>.Err(
@@ -430,7 +426,7 @@ public static class DeviceProvisioningEventRouteProvider
     }
 
     [EventRoute(TransportEventType.DeviceServerKeys, DeviceProvisioningContext)]
-    internal static async Task<Result<IMessage, FailureBase>> HandleGetServerPublicKeys(
+    internal static async Task<Result<IMessage, FailureBase>> HandleDeviceServerKeys(
         IServiceProvider services,
         ServerPublicKeysRequest _,
         EventMetadata metadata,
@@ -493,49 +489,68 @@ public static class DeviceProvisioningEventRouteProvider
     }
 
     private static byte[] BuildAuthenticatedEstablishProofInput(
-        byte[] membershipId,
-        byte[] accountId,
-        byte[] masterKeyFingerprint,
-        byte[] clientPubKeyExchange,
-        byte[] clientNonce,
-        byte[] serverNonce,
+        ReadOnlySpan<byte> membershipId,
+        ReadOnlySpan<byte> accountId,
+        ReadOnlySpan<byte> masterKeyFingerprint,
+        ReadOnlySpan<byte> clientPubKeyExchange,
+        ReadOnlySpan<byte> clientNonce,
+        ReadOnlySpan<byte> serverNonce,
         string idempotencyKey,
         string appDeviceId,
         string applicationInstanceId)
     {
-        byte[] idempotencyBytes = Encoding.UTF8.GetBytes(idempotencyKey);
-        byte[] appDeviceBytes = Encoding.UTF8.GetBytes(appDeviceId);
-        byte[] appInstanceBytes = Encoding.UTF8.GetBytes(applicationInstanceId);
-        byte[][] parts =
-        [
-            AuthenticatedEstablishProofContext,
-            membershipId,
-            accountId,
-            masterKeyFingerprint,
-            clientPubKeyExchange,
-            clientNonce,
-            serverNonce,
-            idempotencyBytes,
-            appDeviceBytes,
-            appInstanceBytes
-        ];
+        int idempotencyByteCount = Encoding.UTF8.GetByteCount(idempotencyKey);
+        int appDeviceByteCount = Encoding.UTF8.GetByteCount(appDeviceId);
+        int appInstanceByteCount = Encoding.UTF8.GetByteCount(applicationInstanceId);
 
-        int totalLength = 0;
-        foreach (byte[] part in parts)
-        {
-            totalLength += sizeof(uint) + part.Length;
-        }
+        ReadOnlySpan<byte> context = AuthenticatedEstablishProofContext;
+        int totalLength = 10 * sizeof(uint) // 10 length prefixes
+                          + context.Length
+                          + membershipId.Length
+                          + accountId.Length
+                          + masterKeyFingerprint.Length
+                          + clientPubKeyExchange.Length
+                          + clientNonce.Length
+                          + serverNonce.Length
+                          + idempotencyByteCount
+                          + appDeviceByteCount
+                          + appInstanceByteCount;
 
         byte[] buffer = new byte[totalLength];
+        Span<byte> span = buffer;
         int offset = 0;
-        foreach (byte[] part in parts)
-        {
-            BinaryPrimitives.WriteUInt32BigEndian(buffer.AsSpan(offset, sizeof(uint)), (uint)part.Length);
-            offset += sizeof(uint);
-            part.CopyTo(buffer, offset);
-            offset += part.Length;
-        }
+
+        WriteSpanPart(span, ref offset, context);
+        WriteSpanPart(span, ref offset, membershipId);
+        WriteSpanPart(span, ref offset, accountId);
+        WriteSpanPart(span, ref offset, masterKeyFingerprint);
+        WriteSpanPart(span, ref offset, clientPubKeyExchange);
+        WriteSpanPart(span, ref offset, clientNonce);
+        WriteSpanPart(span, ref offset, serverNonce);
+
+        // Write UTF8 strings directly to buffer
+        BinaryPrimitives.WriteUInt32BigEndian(span[offset..], (uint)idempotencyByteCount);
+        offset += sizeof(uint);
+        Encoding.UTF8.GetBytes(idempotencyKey, span[offset..]);
+        offset += idempotencyByteCount;
+
+        BinaryPrimitives.WriteUInt32BigEndian(span[offset..], (uint)appDeviceByteCount);
+        offset += sizeof(uint);
+        Encoding.UTF8.GetBytes(appDeviceId, span[offset..]);
+        offset += appDeviceByteCount;
+
+        BinaryPrimitives.WriteUInt32BigEndian(span[offset..], (uint)appInstanceByteCount);
+        offset += sizeof(uint);
+        Encoding.UTF8.GetBytes(applicationInstanceId, span[offset..]);
 
         return buffer;
+    }
+
+    private static void WriteSpanPart(Span<byte> buffer, ref int offset, ReadOnlySpan<byte> part)
+    {
+        BinaryPrimitives.WriteUInt32BigEndian(buffer[offset..], (uint)part.Length);
+        offset += sizeof(uint);
+        part.CopyTo(buffer[offset..]);
+        offset += part.Length;
     }
 }

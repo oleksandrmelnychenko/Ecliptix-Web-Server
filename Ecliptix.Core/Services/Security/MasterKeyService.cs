@@ -358,8 +358,20 @@ internal sealed class MasterKeyService(
             {
                 byte[] rootKeyBytes = new byte[_masterKeySize];
 
-                byte[] saltBytes = accountId.ToByteArray();
-                byte[] infoBytes = System.Text.Encoding.UTF8.GetBytes($"{RootKeyInfo}:v1:{accountId}");
+                const int GuidSize = 16;
+                const int InfoPrefixLength = 28; // "ecliptix-protocol-root-key:v1:"
+                const int GuidStringLength = 36; // "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                const int TotalInfoLength = InfoPrefixLength + GuidStringLength;
+
+                Span<byte> saltBytes = stackalloc byte[GuidSize];
+                accountId.TryWriteBytes(saltBytes);
+
+                Span<char> guidChars = stackalloc char[GuidStringLength];
+                accountId.TryFormat(guidChars, out _);
+
+                Span<byte> infoBytes = stackalloc byte[TotalInfoLength];
+                "ecliptix-protocol-root-key:v1:"u8.CopyTo(infoBytes);
+                System.Text.Encoding.UTF8.GetBytes(guidChars, infoBytes[InfoPrefixLength..]);
 
                 HKDF.DeriveKey(
                     HashAlgorithmName.SHA512,
@@ -395,9 +407,22 @@ internal sealed class MasterKeyService(
 
     private static byte[] DeriveMasterKeyFingerprint(byte[] masterKeyBytes, Guid accountId)
     {
-        byte[] infoBytes = System.Text.Encoding.UTF8.GetBytes($"{MasterKeyFingerprintInfo}:v1:{accountId}");
+        const int InfoPrefixLength = 36; // "ecliptix-master-key-fingerprint:v1:"
+        const int GuidStringLength = 36;
+        const int TotalInfoLength = InfoPrefixLength + GuidStringLength;
+        const int HmacOutputSize = 32;
+
+        Span<char> guidChars = stackalloc char[GuidStringLength];
+        accountId.TryFormat(guidChars, out _);
+
+        Span<byte> infoBytes = stackalloc byte[TotalInfoLength];
+        "ecliptix-master-key-fingerprint:v1:"u8.CopyTo(infoBytes);
+        System.Text.Encoding.UTF8.GetBytes(guidChars, infoBytes[InfoPrefixLength..]);
+
+        byte[] fingerprint = new byte[HmacOutputSize];
         using HMACSHA256 hmac = new(masterKeyBytes);
-        return hmac.ComputeHash(infoBytes);
+        hmac.TryComputeHash(infoBytes, fingerprint, out _);
+        return fingerprint;
     }
 
     public async Task<Result<bool, FailureBase>> CheckSharesExistAsync(Guid accountId)

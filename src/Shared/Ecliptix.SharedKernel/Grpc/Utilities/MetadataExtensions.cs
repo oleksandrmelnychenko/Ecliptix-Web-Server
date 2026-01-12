@@ -8,14 +8,16 @@ public static class MetadataExtensions
 
     public static Result<string, MetaDataSystemFailure> GetValueAsResult(this Metadata metadata, string key)
     {
-        string? value = metadata
-            .Where(entry => entry.Key.Equals(key, StringComparison.OrdinalIgnoreCase))
-            .Select(entry => entry.Value)
-            .FirstOrDefault();
+        foreach (Metadata.Entry entry in metadata)
+        {
+            if (entry.Key.Equals(key, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrEmpty(entry.Value))
+            {
+                return Result<string, MetaDataSystemFailure>.Ok(entry.Value);
+            }
+        }
 
-        return !string.IsNullOrEmpty(value)
-            ? Result<string, MetaDataSystemFailure>.Ok(value)
-            : Result<string, MetaDataSystemFailure>.Err(
-                MetaDataSystemFailure.ComponentNotFound(string.Format(ComponentNotFoundFormat, key)));
+        return Result<string, MetaDataSystemFailure>.Err(
+            MetaDataSystemFailure.ComponentNotFound(string.Format(ComponentNotFoundFormat, key)));
     }
 }
