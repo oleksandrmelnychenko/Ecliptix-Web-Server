@@ -578,7 +578,7 @@ internal sealed class MasterKeyService(
                 ok => Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Ok(ok),
                 err => err.Message.Contains(MasterKeyMessageKeys.SharesNotFound)
                     ? Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Ok(
-                        System.Array.Empty<MasterKeyShareQueryRecord>())
+                        Array.Empty<MasterKeyShareQueryRecord>())
                     : Result<MasterKeyShareQueryRecord[], KeySplittingFailure>.Err(
                         KeySplittingFailure.KeyReconstructionFailed(
                             $"{ErrorMessageRetrieveSharesFailed}: {err.Message}",

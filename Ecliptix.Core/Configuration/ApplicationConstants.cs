@@ -5,7 +5,6 @@ public static class ApplicationConstants
     public static class ActorSystem
     {
         public const string SystemName = "EcliptixProtocolSystemActor";
-        public const string ConfigFileName = "akka.conf";
     }
 
     public static class ActorNames
@@ -48,13 +47,6 @@ public static class ApplicationConstants
     {
         public const string HttpRequestTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
         public const string Environment = "Environment";
-    }
-
-    public static class ActorSystemTasks
-    {
-        public const string StopAcceptingNewConnections = "stop-accepting-new-connections";
-        public const string DrainActiveRequests = "drain-active-requests";
-        public const string CleanupResources = "cleanup-resources";
     }
 
     public static class DiagnosticContext

@@ -162,7 +162,7 @@ public static class DeviceProvisioningEventRouteProvider
     }
 
     [EventRoute(TransportEventType.DeviceSessionAuthHandshake, DeviceProvisioningContext,
-        IdempotencyRequired = true)]
+        IdempotencyRequired = true, RequiresDeviceId = true, RequiresApplicationInstanceId = true)]
     internal static async Task<Result<IMessage, FailureBase>> HandleDeviceSessionAuthHandshake(
         IServiceProvider services,
         AuthenticatedSessionHandshakeRequest request,
@@ -191,107 +191,18 @@ public static class DeviceProvisioningEventRouteProvider
 
         try
         {
-            if (string.IsNullOrWhiteSpace(metadata.Client?.IdempotencyKey))
+            Result<AuthenticatedHandshakeContext, FailureBase> validation =
+                ValidateAuthenticatedHandshakeRequest(request, metadata, nonceStore, connectId);
+            if (validation.IsErr)
             {
-                return Result<IMessage, FailureBase>.Err(
-                    SecureChannelFailure.InvalidPayload("IdempotencyKey is required for authenticated channel setup"));
+                return Result<IMessage, FailureBase>.Err(validation.UnwrapErr());
             }
 
-            if (metadata.Client?.DeviceId == null || metadata.Client.DeviceId.IsEmpty ||
-                metadata.Client?.ApplicationInstanceId == null || metadata.Client.ApplicationInstanceId.IsEmpty)
-            {
-                return Result<IMessage, FailureBase>.Err(
-                    SecureChannelFailure.InvalidPayload("DeviceId and ApplicationInstanceId are required"));
-            }
-
-            AuthenticatedSessionHandshakeRequest.Types.Identity? identity = request.Identity;
-            AuthenticatedSessionHandshakeRequest.Types.Cryptography? crypto = request.Cryptography;
-
-            if (identity == null || identity.MembershipId.IsEmpty || identity.MembershipId.Length != 16)
-            {
-                return Result<IMessage, FailureBase>.Err(
-                    MasterKeyFailure.InvalidIdentifier("MembershipId is required for authenticated channel setup"));
-            }
-
-            if (identity.AccountId.IsEmpty || identity.AccountId.Length != 16)
-            {
-                return Result<IMessage, FailureBase>.Err(
-                    MasterKeyFailure.InvalidIdentifier("AccountId is required for authenticated channel setup"));
-            }
-
-            if (crypto == null || crypto.PubKeyExchange.IsEmpty)
-            {
-                return Result<IMessage, FailureBase>.Err(
-                    SecureChannelFailure.InvalidPayload("PubKeyExchange is required"));
-            }
-
-            if (crypto.ClientNonce.Length is < MinNonceLength or > MaxNonceLength)
-            {
-                return Result<IMessage, FailureBase>.Err(
-                    SecureChannelFailure.InvalidPayload("ClientNonce has invalid length"));
-            }
-
-            if (crypto.ServerNonce.Length is < MinNonceLength or > MaxNonceLength)
-            {
-                return Result<IMessage, FailureBase>.Err(
-                    SecureChannelFailure.InvalidPayload("ServerNonce has invalid length"));
-            }
-
-            if (crypto.Proof.Length != ProofLength)
-            {
-                return Result<IMessage, FailureBase>.Err(
-                    SecureChannelFailure.InvalidPayload("Proof has invalid length"));
-            }
-
-            ReadOnlySpan<byte> requestServerNonce = crypto.ServerNonce.Span;
-            if (!nonceStore.TryTake(connectId, out serverNonce))
-            {
-                return Result<IMessage, FailureBase>.Err(
-                    SecureChannelFailure.InvalidPayload("ServerNonce is missing or expired"));
-            }
-
-            if (requestServerNonce.Length != serverNonce.Length ||
-                !CryptographicOperations.FixedTimeEquals(requestServerNonce, serverNonce))
-            {
-                return Result<IMessage, FailureBase>.Err(
-                    SecureChannelFailure.InvalidPayload("ServerNonce mismatch"));
-            }
-
-            Guid membershipId;
-            try
-            {
-                membershipId = Helpers.FromByteStringToGuid(identity.MembershipId);
-            }
-            catch (Exception ex)
-            {
-                return Result<IMessage, FailureBase>.Err(
-                    MasterKeyFailure.InvalidIdentifier($"MembershipId is invalid: {ex.Message}"));
-            }
-
-            Guid accountId;
-            try
-            {
-                accountId = Helpers.FromByteStringToGuid(identity.AccountId);
-            }
-            catch (Exception ex)
-            {
-                return Result<IMessage, FailureBase>.Err(
-                    MasterKeyFailure.InvalidIdentifier($"AccountId is invalid: {ex.Message}"));
-            }
-
-            PubKeyExchange clientExchange;
-            try
-            {
-                clientExchange = PubKeyExchange.Parser.ParseFrom(crypto.PubKeyExchange);
-            }
-            catch
-            {
-                return Result<IMessage, FailureBase>.Err(
-                    SecureChannelFailure.InvalidPayload("PubKeyExchange is invalid"));
-            }
+            AuthenticatedHandshakeContext ctx = validation.Unwrap();
+            serverNonce = ctx.ServerNonce;
 
             Result<(byte[] RootKey, byte[] MasterKeyFingerprint), FailureBase> deriveRootResult =
-                await masterKeyService.DeriveRootKeyAndFingerprintAsync(accountId);
+                await masterKeyService.DeriveRootKeyAndFingerprintAsync(ctx.AccountId);
             if (deriveRootResult.IsErr)
             {
                 return Result<IMessage, FailureBase>.Err(deriveRootResult.UnwrapErr());
@@ -299,7 +210,7 @@ public static class DeviceProvisioningEventRouteProvider
 
             (rootKey, masterKeyFingerprint) = deriveRootResult.Unwrap();
 
-            ReadOnlySpan<byte> requestFingerprint = crypto.MasterKeyFingerprint.Span;
+            ReadOnlySpan<byte> requestFingerprint = ctx.Crypto.MasterKeyFingerprint.Span;
             if (requestFingerprint.Length != masterKeyFingerprint.Length ||
                 !CryptographicOperations.FixedTimeEquals(requestFingerprint, masterKeyFingerprint))
             {
@@ -307,24 +218,26 @@ public static class DeviceProvisioningEventRouteProvider
             }
 
             byte[] proofInput = BuildAuthenticatedEstablishProofInput(
-                identity.MembershipId.Span,
-                identity.AccountId.Span,
+                request.Identity!.MembershipId.Span,
+                request.Identity.AccountId.Span,
                 requestFingerprint,
-                crypto.PubKeyExchange.Span,
-                crypto.ClientNonce.Span,
-                serverNonce!,
-                metadata.Client!.IdempotencyKey,
-                metadata.Client.DeviceId.ToBase64(),
+                ctx.Crypto.PubKeyExchange.Span,
+                ctx.Crypto.ClientNonce.Span,
+                serverNonce,
+                ctx.IdempotencyKey,
+                metadata.Client!.DeviceId.ToBase64(),
                 metadata.Client.ApplicationInstanceId.ToBase64());
+
             byte[] expectedProof = HMACSHA256.HashData(rootKey, proofInput);
-            ReadOnlySpan<byte> providedProof = crypto.Proof.Span;
+            ReadOnlySpan<byte> providedProof = ctx.Crypto.Proof.Span;
+
             if (!CryptographicOperations.FixedTimeEquals(expectedProof, providedProof))
             {
                 return Result<IMessage, FailureBase>.Err(
                     SecureChannelFailure.InvalidPayload("Proof verification failed"));
             }
 
-            replayKey = $"{accountId:N}:{metadata.Client.IdempotencyKey}";
+            replayKey = $"{ctx.AccountId:N}:{ctx.IdempotencyKey}";
             replayClaimed = replayProtection.TryBegin(
                 AuthenticatedEstablishReplayScope, replayKey, AuthenticatedEstablishReplayTtl);
             if (!replayClaimed)
@@ -335,9 +248,9 @@ public static class DeviceProvisioningEventRouteProvider
 
             InitializeProtocolWithMasterKeyActorEvent initEvent = new(
                 connectId,
-                clientExchange,
-                membershipId,
-                accountId,
+                ctx.ClientExchange,
+                ctx.MembershipId,
+                ctx.AccountId,
                 rootKey);
 
             ForwardToConnectActorEvent forwardEvent = new(connectId, initEvent);
@@ -499,12 +412,14 @@ public static class DeviceProvisioningEventRouteProvider
         string appDeviceId,
         string applicationInstanceId)
     {
+        const int prefix = 10;
+
         int idempotencyByteCount = Encoding.UTF8.GetByteCount(idempotencyKey);
         int appDeviceByteCount = Encoding.UTF8.GetByteCount(appDeviceId);
         int appInstanceByteCount = Encoding.UTF8.GetByteCount(applicationInstanceId);
 
         ReadOnlySpan<byte> context = AuthenticatedEstablishProofContext;
-        int totalLength = 10 * sizeof(uint) // 10 length prefixes
+        int totalLength = prefix * sizeof(uint)
                           + context.Length
                           + membershipId.Length
                           + accountId.Length
@@ -528,7 +443,6 @@ public static class DeviceProvisioningEventRouteProvider
         WriteSpanPart(span, ref offset, clientNonce);
         WriteSpanPart(span, ref offset, serverNonce);
 
-        // Write UTF8 strings directly to buffer
         BinaryPrimitives.WriteUInt32BigEndian(span[offset..], (uint)idempotencyByteCount);
         offset += sizeof(uint);
         Encoding.UTF8.GetBytes(idempotencyKey, span[offset..]);
@@ -553,4 +467,98 @@ public static class DeviceProvisioningEventRouteProvider
         part.CopyTo(buffer[offset..]);
         offset += part.Length;
     }
+
+    private static Result<AuthenticatedHandshakeContext, FailureBase> ValidateAuthenticatedHandshakeRequest(
+        AuthenticatedSessionHandshakeRequest request,
+        EventMetadata metadata,
+        IServerNonceStore nonceStore,
+        uint connectId)
+    {
+        AuthenticatedSessionHandshakeRequest.Types.Identity? identity = request.Identity;
+        AuthenticatedSessionHandshakeRequest.Types.Cryptography? crypto = request.Cryptography;
+
+        if (identity == null || identity.MembershipId.IsEmpty || identity.MembershipId.Length != 16)
+        {
+            return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
+                MasterKeyFailure.InvalidIdentifier("MembershipId is required for authenticated channel setup"));
+        }
+
+        if (identity.AccountId.IsEmpty || identity.AccountId.Length != 16)
+        {
+            return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
+                MasterKeyFailure.InvalidIdentifier("AccountId is required for authenticated channel setup"));
+        }
+
+        if (crypto == null || crypto.PubKeyExchange.IsEmpty)
+        {
+            return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
+                SecureChannelFailure.InvalidPayload("PubKeyExchange is required"));
+        }
+
+        if (crypto.ClientNonce.Length is < MinNonceLength or > MaxNonceLength)
+        {
+            return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
+                SecureChannelFailure.InvalidPayload("ClientNonce has invalid length"));
+        }
+
+        if (crypto.ServerNonce.Length is < MinNonceLength or > MaxNonceLength)
+        {
+            return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
+                SecureChannelFailure.InvalidPayload("ServerNonce has invalid length"));
+        }
+
+        if (crypto.Proof.Length != ProofLength)
+        {
+            return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
+                SecureChannelFailure.InvalidPayload("Proof has invalid length"));
+        }
+
+        ReadOnlySpan<byte> requestServerNonce = crypto.ServerNonce.Span;
+        if (!nonceStore.TryTake(connectId, out byte[] serverNonce))
+        {
+            return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
+                SecureChannelFailure.InvalidPayload("ServerNonce is missing or expired"));
+        }
+
+        if (requestServerNonce.Length != serverNonce.Length ||
+            !CryptographicOperations.FixedTimeEquals(requestServerNonce, serverNonce))
+        {
+            return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
+                SecureChannelFailure.InvalidPayload("ServerNonce mismatch"));
+        }
+
+        if (!Helpers.TryFromByteStringToGuid(identity.MembershipId, out Guid membershipId))
+        {
+            return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
+                MasterKeyFailure.InvalidIdentifier("MembershipId is invalid"));
+        }
+
+        if (!Helpers.TryFromByteStringToGuid(identity.AccountId, out Guid accountId))
+        {
+            return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
+                MasterKeyFailure.InvalidIdentifier("AccountId is invalid"));
+        }
+
+        if (!Helpers.TryParseProto(crypto.PubKeyExchange, PubKeyExchange.Parser, out PubKeyExchange? clientExchange))
+        {
+            return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
+                SecureChannelFailure.InvalidPayload("PubKeyExchange is invalid"));
+        }
+
+        return Result<AuthenticatedHandshakeContext, FailureBase>.Ok(new AuthenticatedHandshakeContext(
+            membershipId,
+            accountId,
+            clientExchange!,
+            serverNonce,
+            crypto,
+            metadata.Client!.IdempotencyKey));
+    }
+
+    private sealed record AuthenticatedHandshakeContext(
+        Guid MembershipId,
+        Guid AccountId,
+        PubKeyExchange ClientExchange,
+        byte[] ServerNonce,
+        AuthenticatedSessionHandshakeRequest.Types.Cryptography Crypto,
+        string IdempotencyKey);
 }

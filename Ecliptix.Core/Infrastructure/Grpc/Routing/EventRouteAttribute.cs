@@ -10,4 +10,8 @@ internal sealed class EventRouteAttribute(TransportEventType eventType, EventCon
     public EventContext Context { get; } = context;
 
     public bool IdempotencyRequired { get; init; }
+
+    public bool RequiresDeviceId { get; init; }
+
+    public bool RequiresApplicationInstanceId { get; init; }
 }

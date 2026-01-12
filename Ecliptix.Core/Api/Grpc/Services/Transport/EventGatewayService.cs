@@ -144,8 +144,8 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
         metadata.Client.Platform = platform;
         metadata.Client.Locale = locale;
         metadata.Client.Version = version;
-        metadata.Client.DeviceId = Google.Protobuf.ByteString.FromBase64(appDeviceId);
-        metadata.Client.ApplicationInstanceId = Google.Protobuf.ByteString.FromBase64(applicationInstanceId);
+        metadata.Client.DeviceId = ByteString.FromBase64(appDeviceId);
+        metadata.Client.ApplicationInstanceId = ByteString.FromBase64(applicationInstanceId);
         metadata.Client.Tenant = tenant;
 
         request.Metadata = metadata;

@@ -532,7 +532,7 @@ static void InitializeProtocolKeyService(WebApplication app)
     IProtocolKeyService protocolKeyService = app.Services.GetRequiredService<IProtocolKeyService>();
     SecurityKeysSettings securityKeysSettings = app.Services.GetRequiredService<IOptions<SecurityKeysSettings>>().Value;
 
-    string? seedString = securityKeysSettings.ProtocolIdentitySeed ?? securityKeysSettings.OpaqueSecretKeySeed;
+    string seedString = securityKeysSettings.ProtocolIdentitySeed ?? securityKeysSettings.OpaqueSecretKeySeed;
     if (string.IsNullOrWhiteSpace(seedString))
     {
         Log.Error("Protocol identity seed is not configured (ProtocolIdentitySeed or OpaqueSecretKeySeed required)");

@@ -27,6 +27,7 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
             .Bind(ValidateRouteContext)
             .Bind(EnsureConnectId)
             .Bind(ValidateIdempotency)
+            .Bind(ValidateDeviceIdentifiers)
             .Bind(DeserializePayload)
             .BindAsync(ctx => ExecuteHandler(ctx, cancellationToken))
             .Bind(SerializeResponse)
@@ -82,7 +83,7 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
     }
 
     private static Result<DispatchContext, DispatchFailure> ValidateByteStringLength(
-        DispatchContext ctx, Google.Protobuf.ByteString? value, int maxLength, string errorCode)
+        DispatchContext ctx, ByteString? value, int maxLength, string errorCode)
     {
         return value != null && !value.IsEmpty && value.Length > maxLength
             ? Fail(ctx, errorCode)
@@ -151,6 +152,23 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
         return !string.IsNullOrWhiteSpace(idempotencyKey) && !IdempotencyPattern.IsMatch(idempotencyKey)
             ? Fail(ctx, DispatcherErrorCodes.IdempotencyInvalid)
             : Ok(ctx);
+    }
+
+    private static Result<DispatchContext, DispatchFailure> ValidateDeviceIdentifiers(DispatchContext ctx)
+    {
+        if (ctx.Route!.RequiresDeviceId &&
+            (ctx.Metadata.Client?.DeviceId == null || ctx.Metadata.Client.DeviceId.IsEmpty))
+        {
+            return Fail(ctx, DispatcherErrorCodes.DeviceIdRequired);
+        }
+
+        if (ctx.Route.RequiresApplicationInstanceId &&
+            (ctx.Metadata.Client?.ApplicationInstanceId == null || ctx.Metadata.Client.ApplicationInstanceId.IsEmpty))
+        {
+            return Fail(ctx, DispatcherErrorCodes.ApplicationInstanceIdRequired);
+        }
+
+        return Ok(ctx);
     }
 
     private static Result<DispatchContext, DispatchFailure> DeserializePayload(DispatchContext ctx)
@@ -239,8 +257,8 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
                 IdempotencyKey = requestMetadata.Client?.IdempotencyKey ?? string.Empty,
                 Platform = requestMetadata.Client?.Platform ?? string.Empty,
                 Version = requestMetadata.Client?.Version ?? string.Empty,
-                DeviceId = requestMetadata.Client?.DeviceId ?? Google.Protobuf.ByteString.Empty,
-                ApplicationInstanceId = requestMetadata.Client?.ApplicationInstanceId ?? Google.Protobuf.ByteString.Empty
+                DeviceId = requestMetadata.Client?.DeviceId ?? ByteString.Empty,
+                ApplicationInstanceId = requestMetadata.Client?.ApplicationInstanceId ?? ByteString.Empty
             },
             Security = new SecurityContext
             {

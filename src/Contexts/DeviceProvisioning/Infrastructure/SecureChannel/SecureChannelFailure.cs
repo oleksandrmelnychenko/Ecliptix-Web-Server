@@ -34,22 +34,28 @@ public sealed record SecureChannelFailure(
 
     public override string? UserMessageKey => FailureType switch
     {
-        SecureChannelFailureType.InvalidPayload => ErrorI18NKeys.Validation,
-        SecureChannelFailureType.CryptographicError => ErrorI18NKeys.DependencyUnavailable,
-        SecureChannelFailureType.ActorCommunicationError => ErrorI18NKeys.ServiceUnavailable,
+        SecureChannelFailureType.InvalidPayload => SecureChannelMessageKeys.InvalidPayload,
+        SecureChannelFailureType.CryptographicError => SecureChannelMessageKeys.CryptoError,
+        SecureChannelFailureType.ActorCommunicationError => SecureChannelMessageKeys.ActorError,
+        SecureChannelFailureType.ProtocolError => SecureChannelMessageKeys.ProtocolError,
         _ => ErrorI18NKeys.Internal
     };
-    public static SecureChannelFailure ProtocolError(string message)
-        => new(SecureChannelFailureType.ProtocolError, message);
 
-    public static SecureChannelFailure InvalidPayload(string message)
-        => new(SecureChannelFailureType.InvalidPayload, message);
+    public static SecureChannelFailure ProtocolError(string details)
+        => new(SecureChannelFailureType.ProtocolError,
+            $"{SecureChannelMessageKeys.ProtocolError}: {details}");
 
-    public static SecureChannelFailure ActorCommunicationError(string message)
-        => new(SecureChannelFailureType.ActorCommunicationError, message);
+    public static SecureChannelFailure InvalidPayload(string details)
+        => new(SecureChannelFailureType.InvalidPayload,
+            $"{SecureChannelMessageKeys.InvalidPayload}: {details}");
+
+    public static SecureChannelFailure ActorCommunicationError(string details)
+        => new(SecureChannelFailureType.ActorCommunicationError,
+            $"{SecureChannelMessageKeys.ActorError}: {details}");
 
     public static SecureChannelFailure FromCertificateFailure(CertificatePinningFailure failure)
-        => new(SecureChannelFailureType.CryptographicError, failure.Message);
+        => new(SecureChannelFailureType.CryptographicError,
+            $"{SecureChannelMessageKeys.CryptoError}: {failure.Message}");
 
     public override GrpcErrorDescriptor ToGrpcDescriptor() =>
         FailureType switch

@@ -15,11 +15,7 @@ public class SecrecyHandshakeKeepAliveInterceptor(IEcliptixActorRegistry actorRe
         ServerCallContext context,
         UnaryServerMethod<TRequest, TResponse> continuation)
     {
-        uint connectId = (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
-
-        ForwardToConnectActorEvent keepAliveForwarder = new(connectId, KeepAlive.Instance);
-        _protocolSystemActor.Value.Tell(keepAliveForwarder);
-
+        SendKeepAlive(context);
         return await continuation(request, context);
     }
 
@@ -29,11 +25,7 @@ public class SecrecyHandshakeKeepAliveInterceptor(IEcliptixActorRegistry actorRe
         ServerCallContext context,
         ServerStreamingServerMethod<TRequest, TResponse> continuation)
     {
-        uint connectId = (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
-
-        ForwardToConnectActorEvent keepAliveForwarder = new(connectId, KeepAlive.Instance);
-        _protocolSystemActor.Value.Tell(keepAliveForwarder);
-
+        SendKeepAlive(context);
         await continuation(request, responseStream, context);
     }
 
@@ -42,11 +34,7 @@ public class SecrecyHandshakeKeepAliveInterceptor(IEcliptixActorRegistry actorRe
         ServerCallContext context,
         ClientStreamingServerMethod<TRequest, TResponse> continuation)
     {
-        uint connectId = (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
-
-        ForwardToConnectActorEvent keepAliveForwarder = new(connectId, KeepAlive.Instance);
-        _protocolSystemActor.Value.Tell(keepAliveForwarder);
-
+        SendKeepAlive(context);
         return await continuation(requestStream, context);
     }
 
@@ -56,11 +44,13 @@ public class SecrecyHandshakeKeepAliveInterceptor(IEcliptixActorRegistry actorRe
         ServerCallContext context,
         DuplexStreamingServerMethod<TRequest, TResponse> continuation)
     {
-        uint connectId = (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
-
-        ForwardToConnectActorEvent keepAliveForwarder = new(connectId, KeepAlive.Instance);
-        _protocolSystemActor.Value.Tell(keepAliveForwarder);
-
+        SendKeepAlive(context);
         await continuation(requestStream, responseStream, context);
+    }
+
+    private void SendKeepAlive(ServerCallContext context)
+    {
+        uint connectId = (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
+        _protocolSystemActor.Value.Tell(new ForwardToConnectActorEvent(connectId, KeepAlive.Instance));
     }
 }

@@ -28,4 +28,7 @@ internal static class DispatcherErrorCodes
 
     public const string IdempotencyRequired = "idempotency_required";
     public const string IdempotencyInvalid = "idempotency_invalid";
+
+    public const string DeviceIdRequired = "device_id_required";
+    public const string ApplicationInstanceIdRequired = "application_instance_id_required";
 }

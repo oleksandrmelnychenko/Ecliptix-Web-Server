@@ -27,6 +27,7 @@ public sealed class TelemetryInterceptor : Interceptor, IDisposable
         ServerCallContext context,
         ServerStreamingServerMethod<TRequest, TResponse> continuation)
     {
+        RequestsTotal.Add(InterceptorConstants.Numbers.One);
         await continuation(request, responseStream, context);
     }
 

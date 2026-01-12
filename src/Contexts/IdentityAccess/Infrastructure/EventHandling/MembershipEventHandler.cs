@@ -146,7 +146,7 @@ public sealed class MembershipEventHandler(
                 context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    byte[] peerRecord = Helpers.ReadMemoryToRetrieveBytes(message.PeerRegistrationRecord.Memory);
+                    byte[] peerRecord = message.PeerRegistrationRecord.ToByteArray();
 
                     try
                     {
@@ -184,7 +184,7 @@ public sealed class MembershipEventHandler(
                 request, context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    byte[] peerRecovery = Helpers.ReadMemoryToRetrieveBytes(message.PeerRecoveryRecord.Memory);
+                    byte[] peerRecovery = message.PeerRecoveryRecord.ToByteArray();
 
                     try
                     {
@@ -224,7 +224,7 @@ public sealed class MembershipEventHandler(
                 request, context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    byte[] peerOprf = Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory);
+                    byte[] peerOprf = message.PeerOprf.ToByteArray();
                     try
                     {
                         GenerateMembershipOprfRegistrationRequestEvent @event = new(
@@ -260,7 +260,7 @@ public sealed class MembershipEventHandler(
                 request, context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    byte[] peerOprf = Helpers.ReadMemoryToRetrieveBytes(message.PeerOprf.Memory);
+                    byte[] peerOprf = message.PeerOprf.ToByteArray();
                     try
                     {
                         OprfInitRecoverySecureKeyEvent @event = new(

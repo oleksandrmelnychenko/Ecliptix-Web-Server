@@ -230,7 +230,7 @@ public sealed class FailureHandlingInterceptor(ILocalizationProvider localizatio
             return connectId.ToString(CultureInfo.InvariantCulture);
         }
 
-        string? httpCorrelation = context.GetHttpContext()?.TraceIdentifier;
+        string httpCorrelation = context.GetHttpContext().TraceIdentifier;
         return string.IsNullOrEmpty(httpCorrelation) ? Guid.NewGuid().ToString("N") : httpCorrelation;
     }
 

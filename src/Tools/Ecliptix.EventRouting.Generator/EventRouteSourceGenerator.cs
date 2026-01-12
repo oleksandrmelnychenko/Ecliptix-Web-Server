@@ -124,7 +124,8 @@ public sealed class EventRouteSourceGenerator : IIncrementalGenerator
             }
 
             if (!TryGetRouteMetadata(candidate.Attribute, out string? eventTypeName, out string? eventTypeExpr,
-                    out string? contextExpr, out bool idempotencyRequired, out long eventTypeValue, out bool hasUnspecified))
+                    out string? contextExpr, out bool idempotencyRequired, out bool requiresDeviceId,
+                    out bool requiresApplicationInstanceId, out long eventTypeValue, out bool hasUnspecified))
             {
                 Location? location = method.Locations.FirstOrDefault();
                 context.ReportDiagnostic(Diagnostic.Create(InvalidSignature, location, method.Name));
@@ -150,6 +151,8 @@ public sealed class EventRouteSourceGenerator : IIncrementalGenerator
                 EventTypeExpression: eventTypeExpr!,
                 ContextExpression: contextExpr!,
                 IdempotencyRequired: idempotencyRequired,
+                RequiresDeviceId: requiresDeviceId,
+                RequiresApplicationInstanceId: requiresApplicationInstanceId,
                 MessageType: messageType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                 HandlerMethod: method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + method.Name,
                 ReturnsValueTask: returnsValueTask));
@@ -232,6 +235,8 @@ public sealed class EventRouteSourceGenerator : IIncrementalGenerator
         out string? eventTypeExpression,
         out string? contextExpression,
         out bool idempotencyRequired,
+        out bool requiresDeviceId,
+        out bool requiresApplicationInstanceId,
         out long eventTypeValue,
         out bool hasUnspecified)
     {
@@ -239,6 +244,8 @@ public sealed class EventRouteSourceGenerator : IIncrementalGenerator
         eventTypeExpression = null;
         contextExpression = null;
         idempotencyRequired = false;
+        requiresDeviceId = false;
+        requiresApplicationInstanceId = false;
         eventTypeValue = 0;
         hasUnspecified = false;
 
@@ -279,7 +286,14 @@ public sealed class EventRouteSourceGenerator : IIncrementalGenerator
             if (string.Equals(namedArg.Key, "IdempotencyRequired", StringComparison.Ordinal))
             {
                 idempotencyRequired = namedArg.Value.Value is bool b && b;
-                break;
+            }
+            else if (string.Equals(namedArg.Key, "RequiresDeviceId", StringComparison.Ordinal))
+            {
+                requiresDeviceId = namedArg.Value.Value is bool b && b;
+            }
+            else if (string.Equals(namedArg.Key, "RequiresApplicationInstanceId", StringComparison.Ordinal))
+            {
+                requiresApplicationInstanceId = namedArg.Value.Value is bool b && b;
             }
         }
 
@@ -365,7 +379,9 @@ public sealed class EventRouteSourceGenerator : IIncrementalGenerator
             builder.Append("                Deserialize_").Append(route.EventTypeName).AppendLine(",");
             builder.Append("                Serialize_").Append(route.EventTypeName).AppendLine(",");
             builder.Append("                (value, metadata, cancellationToken) => Handle_").Append(route.EventTypeName).AppendLine("(services, value, metadata, cancellationToken),");
-            builder.Append("                ").Append(route.IdempotencyRequired ? "true" : "false").Append(')');
+            builder.Append("                ").Append(route.IdempotencyRequired ? "true" : "false").AppendLine(",");
+            builder.Append("                ").Append(route.RequiresDeviceId ? "true" : "false").AppendLine(",");
+            builder.Append("                ").Append(route.RequiresApplicationInstanceId ? "true" : "false").Append(')');
             if (index < routes.Count - 1)
             {
                 builder.Append(',');
@@ -422,6 +438,8 @@ public sealed class EventRouteSourceGenerator : IIncrementalGenerator
         string EventTypeExpression,
         string ContextExpression,
         bool IdempotencyRequired,
+        bool RequiresDeviceId,
+        bool RequiresApplicationInstanceId,
         string MessageType,
         string HandlerMethod,
         bool ReturnsValueTask);
