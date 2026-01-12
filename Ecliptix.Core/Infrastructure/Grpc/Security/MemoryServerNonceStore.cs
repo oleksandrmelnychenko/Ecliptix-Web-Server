@@ -1,4 +1,3 @@
-using System;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Security;
@@ -9,10 +8,7 @@ public sealed class MemoryServerNonceStore(IMemoryCache cache) : IServerNonceSto
 
     public void Store(uint connectId, byte[] nonce, TimeSpan ttl)
     {
-        if (nonce is null)
-        {
-            throw new ArgumentNullException(nameof(nonce));
-        }
+        ArgumentNullException.ThrowIfNull(nonce);
 
         if (nonce.Length == 0)
         {

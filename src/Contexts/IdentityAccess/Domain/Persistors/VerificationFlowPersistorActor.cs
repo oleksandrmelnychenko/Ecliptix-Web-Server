@@ -24,7 +24,7 @@ using Npgsql;
 using Serilog;
 using MembershipEntity = Ecliptix.IdentityAccess.Domain.Schema.Entities.MembershipEntity;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
-using VerificationPurpose = Ecliptix.IdentityAccess.Domain.Memberships.VerificationPurpose;
+using OtpVerificationPurpose = Ecliptix.IdentityAccess.Domain.Memberships.OtpVerificationPurpose;
 
 namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
@@ -247,7 +247,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     existingByConnectionId.UniqueId, cmd.ConnectId);
             }
 
-            if (cmd.Purpose == VerificationPurpose.SecureKeyRecovery)
+            if (cmd.Purpose == OtpVerificationPurpose.SecureKeyRecovery)
             {
                 Option<VerificationFlowFailure> recoveryRuleResult = await HandlePasswordRecoveryRulesAsync(
                     schemeContext, cmd, mobile.UniqueId, persistorSettings, cancellationToken);
@@ -452,7 +452,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         List<VerificationFlowEntity> oldActiveFlows = await schemeContext.VerificationFlows
             .Where(vf => vf.MobileNumberId == mobileUniqueId &&
-                         vf.Purpose == VerificationPurpose.SecureKeyRecovery &&
+                         vf.Purpose == OtpVerificationPurpose.SecureKeyRecovery &&
                          (vf.Status == VerificationFlowStatus.Pending || vf.Status == VerificationFlowStatus.Verified) &&
                          !vf.IsDeleted)
             .ToListAsync(cancellationToken);
@@ -495,7 +495,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         int recoveryCountByDevice = await schemeContext.VerificationFlows
             .Where(f => f.AppDeviceId == cmd.AppDeviceId &&
-                        f.Purpose == VerificationPurpose.SecureKeyRecovery &&
+                        f.Purpose == OtpVerificationPurpose.SecureKeyRecovery &&
                         f.CreatedAt >= recoveryLookbackTime &&
                         !f.IsDeleted)
             .AsNoTracking()
@@ -681,7 +681,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             }
 
             VerificationFlowStatus newStatus = cmd.Status;
-            VerificationPurpose purpose = flow.Purpose;
+            OtpVerificationPurpose purpose = flow.Purpose;
 
             int rowsAffected = await schemeContext.VerificationFlows
                 .Where(f => f.UniqueId == cmd.FlowIdentifier && !f.IsDeleted)
@@ -700,7 +700,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             await transaction.CommitAsync(cancellationToken);
 
-            if (purpose == VerificationPurpose.SecureKeyRecovery && newStatus == VerificationFlowStatus.Verified && _membershipPersistorActor.IsSome)
+            if (purpose == OtpVerificationPurpose.SecureKeyRecovery && newStatus == VerificationFlowStatus.Verified && _membershipPersistorActor.IsSome)
             {
                 Log.Information(
                     "[UPDATE-FLOW-STATUS] Password recovery flow {FlowId} marked as verified. Sending async request to update membership VerificationFlowId",
@@ -766,10 +766,10 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             ProtoMembership existingMembership = new()
             {
-                UniqueIdentifier = Helpers.GuidToByteString(membership.UniqueId),
+                MembershipId = Helpers.GuidToByteString(membership.UniqueId),
                 Status = activityStatus,
                 CreationStatus = creationStatus,
-                AccountUniqueIdentifier = accountOpt.IsSome
+                AccountId = accountOpt.IsSome
                     ? Helpers.GuidToByteString(accountOpt.Value!.UniqueId)
                     : ByteString.Empty
             };
@@ -906,7 +906,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             return new MobileNumberAvailabilityResponse
             {
-                Status = MobileAvailabilityStatus.RegistrationExpired,
+                Status = MobileNumberAvailabilityStatus.MobileNumberAvailabilityRegistrationExpired,
                 CanRegister = true,
                 CanContinue = false,
                 LocalizationKey = VerificationFlowMessageKeys.MobileRegistrationExpired
@@ -922,7 +922,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             return new MobileNumberAvailabilityResponse
             {
-                Status = MobileAvailabilityStatus.IncompleteRegistration,
+                Status = MobileNumberAvailabilityStatus.MobileNumberAvailabilityIncompleteRegistration,
                 CanRegister = false,
                 CanContinue = false,
                 ExistingMembershipId = Helpers.GuidToByteString(info.MembershipId),
@@ -935,7 +935,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         MobileNumberAvailabilityResponse response = new()
         {
-            Status = MobileAvailabilityStatus.IncompleteRegistration,
+            Status = MobileNumberAvailabilityStatus.MobileNumberAvailabilityIncompleteRegistration,
             CanRegister = false,
             CanContinue = true,
             ExistingMembershipId = Helpers.GuidToByteString(info.MembershipId),
@@ -947,7 +947,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
         if (info.AccountUniqueId.HasValue)
         {
-            response.AccountUniqueIdentifier = Helpers.GuidToByteString(info.AccountUniqueId.Value);
+            response.AccountId = Helpers.GuidToByteString(info.AccountUniqueId.Value);
         }
 
         return response;
@@ -970,7 +970,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             return Option<MobileNumberAvailabilityResponse>.Some(
                 new MobileNumberAvailabilityResponse
                 {
-                    Status = MobileAvailabilityStatus.DataCorruption,
+                    Status = MobileNumberAvailabilityStatus.MobileNumberAvailabilityDataCorruption,
                     CanRegister = false,
                     CanContinue = false,
                     ExistingMembershipId = Helpers.GuidToByteString(info.MembershipId),
@@ -990,9 +990,9 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         Membership.Types.ActivityStatus activityStatus)
     {
         bool isActive = activityStatus == Membership.Types.ActivityStatus.Active;
-        MobileAvailabilityStatus status = isActive
-            ? MobileAvailabilityStatus.TakenActive
-            : MobileAvailabilityStatus.TakenInactive;
+        MobileNumberAvailabilityStatus status = isActive
+            ? MobileNumberAvailabilityStatus.MobileNumberAvailabilityTakenActive
+            : MobileNumberAvailabilityStatus.MobileNumberAvailabilityTakenInactive;
         string localizationKey = isActive
             ? VerificationFlowMessageKeys.MobileTakenActiveAccount
             : VerificationFlowMessageKeys.MobileTakenInactiveAccount;
@@ -1039,7 +1039,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
     {
         return new MobileNumberAvailabilityResponse
         {
-            Status = MobileAvailabilityStatus.Available,
+            Status = MobileNumberAvailabilityStatus.MobileNumberAvailabilityAvailable,
             CanRegister = true,
             CanContinue = false,
             LocalizationKey = VerificationFlowMessageKeys.MobileAvailableForRegistration

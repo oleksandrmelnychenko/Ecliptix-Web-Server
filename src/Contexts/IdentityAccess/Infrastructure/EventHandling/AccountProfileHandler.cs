@@ -26,7 +26,7 @@ public sealed class AccountProfileHandler(
     public async Task<SecureEnvelope> CheckProfileNameAvailability(SecureEnvelope request, ServerCallContext context)
     {
         return await _service
-            .ExecuteEncryptedOperationAsync<CheckProfileNameAvailabilityRequest, CheckProfileNameAvailabilityResponse>(
+            .ExecuteEncryptedOperationAsync<ProfileNameAvailabilityRequest, ProfileNameAvailabilityResponse>(
                 request, context,
                 async (message, _, _, cancellationToken) =>
                 {
@@ -42,13 +42,13 @@ public sealed class AccountProfileHandler(
 
                     if (result.IsErr)
                     {
-                        return Result<CheckProfileNameAvailabilityResponse, FailureBase>.Err(result.UnwrapErr());
+                        return Result<ProfileNameAvailabilityResponse, FailureBase>.Err(result.UnwrapErr());
                     }
 
                     bool isAvailable = result.Unwrap();
 
-                    return Result<CheckProfileNameAvailabilityResponse, FailureBase>.Ok(
-                        new CheckProfileNameAvailabilityResponse
+                    return Result<ProfileNameAvailabilityResponse, FailureBase>.Ok(
+                        new ProfileNameAvailabilityResponse
                         {
                             IsAvailable = isAvailable, Reason = isAvailable ? "Available" : "Taken"
                         });
@@ -58,7 +58,7 @@ public sealed class AccountProfileHandler(
     public async Task<SecureEnvelope> CreateOrUpdateProfile(SecureEnvelope request, ServerCallContext context)
     {
         return await _service
-            .ExecuteEncryptedOperationAsync<CreateOrUpdateProfileRequest, CreateOrUpdateProfileResponse>(
+            .ExecuteEncryptedOperationAsync<ProfileUpsertRequest, ProfileUpsertResponse>(
                 request, context,
                 async (message, _, _, cancellationToken) =>
                 {
@@ -80,13 +80,13 @@ public sealed class AccountProfileHandler(
 
                     if (result.IsErr)
                     {
-                        return Result<CreateOrUpdateProfileResponse, FailureBase>.Err(result.UnwrapErr());
+                        return Result<ProfileUpsertResponse, FailureBase>.Err(result.UnwrapErr());
                     }
 
                     AccountProfileInfo info = result.Unwrap();
 
-                    return Result<CreateOrUpdateProfileResponse, FailureBase>.Ok(
-                        new CreateOrUpdateProfileResponse
+                    return Result<ProfileUpsertResponse, FailureBase>.Ok(
+                        new ProfileUpsertResponse
                         {
                             IsSuccess = true,
                             Profile = new AccountProfile
@@ -102,7 +102,7 @@ public sealed class AccountProfileHandler(
 
     public async Task<SecureEnvelope> GetAccountProfile(SecureEnvelope request, ServerCallContext context)
     {
-        return await _service.ExecuteEncryptedOperationAsync<GetAccountProfileRequest, GetAccountProfileResponse>(
+        return await _service.ExecuteEncryptedOperationAsync<ProfileLookupRequest, ProfileLookupResponse>(
             request,
             context,
             async (message, _, _, cancellationToken) =>
@@ -111,10 +111,10 @@ public sealed class AccountProfileHandler(
 
                 ProfileSearchCriteria criteria = message.SearchCriteriaCase switch
                 {
-                    GetAccountProfileRequest.SearchCriteriaOneofCase.ByMobileNumber =>
+                    ProfileLookupRequest.SearchCriteriaOneofCase.ByMobileNumber =>
                         new SearchByMobile(message.ByMobileNumber),
 
-                    GetAccountProfileRequest.SearchCriteriaOneofCase.ByAccountId =>
+                    ProfileLookupRequest.SearchCriteriaOneofCase.ByAccountId =>
                         new SearchById(Helpers.FromByteStringToGuid(message.ByAccountId)),
 
                     _ => throw new RpcException(new Status(StatusCode.InvalidArgument, "Search criteria not specified"))
@@ -132,16 +132,16 @@ public sealed class AccountProfileHandler(
 
                 if (result.IsErr)
                 {
-                    return Result<GetAccountProfileResponse, FailureBase>.Err(result.UnwrapErr());
+                    return Result<ProfileLookupResponse, FailureBase>.Err(result.UnwrapErr());
                 }
 
                 Option<AccountProfileInfo> profileInfoOpt = result.Unwrap();
 
-                GetAccountProfileResponse response = new();
+                ProfileLookupResponse response = new();
 
                 if (!profileInfoOpt.IsSome)
                 {
-                    return Result<GetAccountProfileResponse, FailureBase>.Ok(response);
+                    return Result<ProfileLookupResponse, FailureBase>.Ok(response);
                 }
 
                 AccountProfileInfo profileInfo = profileInfoOpt.Value!;
@@ -154,7 +154,7 @@ public sealed class AccountProfileHandler(
                     DisplayName = profileInfo.DisplayName
                 };
 
-                return Result<GetAccountProfileResponse, FailureBase>.Ok(response);
+                return Result<ProfileLookupResponse, FailureBase>.Ok(response);
             });
     }
 }

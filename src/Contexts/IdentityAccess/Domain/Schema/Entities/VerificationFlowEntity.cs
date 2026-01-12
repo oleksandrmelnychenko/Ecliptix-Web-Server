@@ -7,7 +7,7 @@ public class VerificationFlowEntity : EntityBase
     public Guid AppDeviceId { get; set; }
 
     public VerificationFlowStatus Status { get; set; } = VerificationFlowStatus.Pending;
-    public VerificationPurpose Purpose { get; set; } = VerificationPurpose.Unspecified;
+    public OtpVerificationPurpose Purpose { get; set; } = OtpVerificationPurpose.Unspecified;
     public short OtpCount { get; set; }
     public long? ConnectionId { get; set; }
     public DateTimeOffset? LastOtpSentAt { get; set; }

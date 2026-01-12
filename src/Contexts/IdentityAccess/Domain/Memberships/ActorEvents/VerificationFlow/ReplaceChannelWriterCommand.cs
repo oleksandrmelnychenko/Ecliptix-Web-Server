@@ -7,4 +7,4 @@ namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlo
 
 public sealed record ReplaceChannelWriterCommand(
     uint ConnectId,
-    ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> NewWriter);
+    ChannelWriter<Result<OtpCountdownUpdate, VerificationFlowFailure>> NewWriter);

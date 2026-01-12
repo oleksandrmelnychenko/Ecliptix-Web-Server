@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package ecliptix.proto.membership;
+option csharp_namespace = "Ecliptix.Protobuf.Membership";
+
+message Membership {
+  bytes membership_id = 1;
+
+  enum ActivityStatus {
+    ACTIVITY_STATUS_UNSPECIFIED = 0;
+    ACTIVITY_STATUS_ACTIVE = 1;
+    ACTIVITY_STATUS_INACTIVE = 2;
+  }
+
+  enum CreationStatus {
+    CREATION_STATUS_UNSPECIFIED = 0;
+    CREATION_STATUS_OTP_VERIFIED = 1;
+    CREATION_STATUS_SECURE_KEY_SET = 2;
+    CREATION_STATUS_PASSPHRASE_SET = 3;
+  }
+
+  ActivityStatus status = 3;
+  optional CreationStatus creation_status = 4;
+  optional bytes account_id = 5;
+}
+
+enum MobileNumberAvailabilityStatus {
+  MOBILE_NUMBER_AVAILABILITY_UNSPECIFIED = 0;
+  MOBILE_NUMBER_AVAILABILITY_AVAILABLE = 1;
+  MOBILE_NUMBER_AVAILABILITY_INCOMPLETE_REGISTRATION = 2;
+  MOBILE_NUMBER_AVAILABILITY_TAKEN_ACTIVE = 3;
+  MOBILE_NUMBER_AVAILABILITY_TAKEN_INACTIVE = 4;
+  MOBILE_NUMBER_AVAILABILITY_DATA_CORRUPTION = 5;
+  MOBILE_NUMBER_AVAILABILITY_REGISTRATION_EXPIRED = 6;
+}
+
+message MobileNumberAvailabilityRequest {
+  bytes mobile_number_id = 1;
+}
+
+message MobileNumberAvailabilityResponse {
+  MobileNumberAvailabilityStatus status = 1;
+  bool can_register = 2;
+  bool can_continue = 3;
+  optional bytes existing_membership_id = 4;
+  optional bytes registered_device_id = 5;
+  optional Membership.CreationStatus creation_status = 6;
+  optional Membership.ActivityStatus activity_status = 7;
+  string localization_key = 8;
+  optional bytes account_id = 9;
+}
+
+enum LogoutScope {
+  LOGOUT_SCOPE_UNSPECIFIED = 0;
+  LOGOUT_SCOPE_THIS_DEVICE = 1;
+  LOGOUT_SCOPE_ALL_DEVICES = 2;
+}
+
+message AuthenticatedLogoutRequest {
+  bytes membership_id = 1;
+  string logout_reason = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  bytes hmac_proof = 4;
+  LogoutScope scope = 5;
+  optional bytes account_id = 6;
+}
+
+message AuthenticatedLogoutResponse {
+  enum Result {
+    AUTHENTICATED_LOGOUT_RESULT_UNSPECIFIED = 0;
+    AUTHENTICATED_LOGOUT_RESULT_SUCCEEDED = 1;
+    AUTHENTICATED_LOGOUT_RESULT_ALREADY_LOGGED_OUT = 2;
+    AUTHENTICATED_LOGOUT_RESULT_SESSION_NOT_FOUND = 3;
+    AUTHENTICATED_LOGOUT_RESULT_FAILED = 4;
+    AUTHENTICATED_LOGOUT_RESULT_INVALID_TIMESTAMP = 5;
+    AUTHENTICATED_LOGOUT_RESULT_INVALID_HMAC = 6;
+  }
+  Result result = 1;
+  google.protobuf.Timestamp server_timestamp = 2;
+  bytes revocation_proof = 3;
+}
+
+message LogoutRequest {
+  bytes membership_id = 1;
+  string logout_reason = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  bytes hmac_proof = 4;
+  LogoutScope scope = 5;
+  optional bytes account_id = 6;
+}
+
+message LogoutResponse {
+  enum Result {
+    LOGOUT_RESULT_UNSPECIFIED = 0;
+    LOGOUT_RESULT_SUCCEEDED = 1;
+    LOGOUT_RESULT_ALREADY_LOGGED_OUT = 2;
+    LOGOUT_RESULT_SESSION_NOT_FOUND = 3;
+    LOGOUT_RESULT_INVALID_TIMESTAMP = 4;
+    LOGOUT_RESULT_INVALID_HMAC = 5;
+    LOGOUT_RESULT_TIMESTAMP_TOO_OLD = 6;
+    LOGOUT_RESULT_FAILED = 7;
+  }
+  Result result = 1;
+  google.protobuf.Timestamp server_timestamp = 2;
+  optional string message = 3;
+}

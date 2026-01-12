@@ -11,7 +11,7 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
 {
     public override Task<EventEnvelope> Unary(EventEnvelope request, ServerCallContext context)
     {
-        if (request.Metadata is null || request.Metadata.EventType == TransportEventType.Unspecified)
+        if (request.Metadata?.Identity?.EventType is null or TransportEventType.Unspecified)
         {
             return Task.FromResult(BuildMissingEventTypeEnvelope(DeliveryKind.Unary));
         }
@@ -25,7 +25,7 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
         IServerStreamWriter<EventEnvelope> responseStream,
         ServerCallContext context)
     {
-        if (request.Metadata is null || request.Metadata.EventType == TransportEventType.Unspecified)
+        if (request.Metadata?.Identity?.EventType is null or TransportEventType.Unspecified)
         {
             await responseStream.WriteAsync(BuildMissingEventTypeEnvelope(DeliveryKind.ServerStream));
             return;
@@ -44,7 +44,7 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
 
         await foreach (EventEnvelope request in requestStream.ReadAllAsync(context.CancellationToken))
         {
-            if (request.Metadata is null || request.Metadata.EventType == TransportEventType.Unspecified)
+            if (request.Metadata?.Identity?.EventType is null or TransportEventType.Unspecified)
             {
                 return BuildMissingEventTypeEnvelope(DeliveryKind.ClientStream);
             }
@@ -57,9 +57,8 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
         {
             Metadata = new EventMetadata
             {
-                Status = "ERR",
-                ErrorCode = "empty_stream",
-                DeliveryKind = DeliveryKind.ClientStream
+                Identity = new EventIdentity { DeliveryKind = DeliveryKind.ClientStream },
+                Outcome = new EventOutcome { Status = "ERR", ErrorCode = "empty_stream" }
             }
         };
     }
@@ -71,7 +70,7 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
     {
         await foreach (EventEnvelope request in requestStream.ReadAllAsync(context.CancellationToken))
         {
-            if (request.Metadata is null || request.Metadata.EventType == TransportEventType.Unspecified)
+            if (request.Metadata?.Identity?.EventType is null or TransportEventType.Unspecified)
             {
                 await responseStream.WriteAsync(BuildMissingEventTypeEnvelope(DeliveryKind.BidiStream));
                 continue;
@@ -89,83 +88,65 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
         ServerCallContext context)
     {
         EventMetadata metadata = request.Metadata ?? new EventMetadata();
-        metadata.EventId = string.IsNullOrWhiteSpace(metadata.EventId)
+        metadata.Identity ??= new EventIdentity();
+        metadata.Client ??= new ClientContext();
+        metadata.Security ??= new SecurityContext();
+
+        string? GetHeader(string key) =>
+            context.RequestHeaders.FirstOrDefault(h => h.Key == key)?.Value;
+
+        void ApplyIfEmpty(ref string target, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value) && string.IsNullOrWhiteSpace(target))
+            {
+                target = value;
+            }
+        }
+
+        metadata.Identity.EventId = string.IsNullOrWhiteSpace(metadata.Identity.EventId)
             ? Guid.NewGuid().ToString("N")
-            : metadata.EventId;
+            : metadata.Identity.EventId;
 
-        metadata.DeliveryKind = metadata.DeliveryKind == DeliveryKind.Unspecified
+        metadata.Identity.DeliveryKind = metadata.Identity.DeliveryKind == DeliveryKind.Unspecified
             ? deliveryKind
-            : metadata.DeliveryKind;
+            : metadata.Identity.DeliveryKind;
 
-        metadata.ConnectId = ServiceUtilities.ExtractConnectId(context);
+        metadata.Security.ConnectId = ServiceUtilities.ExtractConnectId(context);
 
-        if (string.IsNullOrWhiteSpace(metadata.PartitionKey) && metadata.ConnectId != 0)
+        if (string.IsNullOrWhiteSpace(metadata.Identity.PartitionKey) && metadata.Security.ConnectId != 0)
         {
-            metadata.PartitionKey = metadata.ConnectId.ToString();
+            metadata.Identity.PartitionKey = metadata.Security.ConnectId.ToString();
         }
 
-        string? idempotency = context.RequestHeaders.FirstOrDefault(h =>
-            h.Key == MetadataConstants.Keys.IdempotencyKey)?.Value;
-        if (!string.IsNullOrWhiteSpace(idempotency) && string.IsNullOrWhiteSpace(metadata.IdempotencyKey))
-        {
-            metadata.IdempotencyKey = idempotency;
-        }
+        string idempotencyKey = metadata.Client.IdempotencyKey;
+        string requestId = metadata.Client.RequestId;
+        string correlationId = metadata.Identity.CorrelationId;
+        string platform = metadata.Client.Platform;
+        string locale = metadata.Client.Locale;
+        string version = metadata.Client.Version;
+        string appDeviceId = metadata.Client.DeviceId?.ToBase64() ?? string.Empty;
+        string applicationInstanceId = metadata.Client.ApplicationInstanceId?.ToBase64() ?? string.Empty;
+        string tenant = metadata.Client.Tenant;
 
-        string? requestId = context.RequestHeaders.FirstOrDefault(h =>
-            h.Key == MetadataConstants.Keys.RequestId)?.Value;
-        if (!string.IsNullOrWhiteSpace(requestId) && string.IsNullOrWhiteSpace(metadata.RequestId))
-        {
-            metadata.RequestId = requestId;
-        }
+        ApplyIfEmpty(ref idempotencyKey, GetHeader(MetadataConstants.Keys.IdempotencyKey));
+        ApplyIfEmpty(ref requestId, GetHeader(MetadataConstants.Keys.RequestId));
+        ApplyIfEmpty(ref correlationId, GetHeader(MetadataConstants.Keys.CorrelationId));
+        ApplyIfEmpty(ref platform, GetHeader(MetadataConstants.Keys.Platform));
+        ApplyIfEmpty(ref locale, GetHeader(MetadataConstants.Keys.Locale));
+        ApplyIfEmpty(ref version, GetHeader(MetadataConstants.Keys.Version));
+        ApplyIfEmpty(ref appDeviceId, GetHeader(MetadataConstants.Keys.DeviceId));
+        ApplyIfEmpty(ref applicationInstanceId, GetHeader(MetadataConstants.Keys.ApplicationInstanceId));
+        ApplyIfEmpty(ref tenant, GetHeader(MetadataConstants.Keys.Tenant));
 
-        string? correlationId = context.RequestHeaders.FirstOrDefault(h =>
-            h.Key == MetadataConstants.Keys.CorrelationId)?.Value;
-        if (!string.IsNullOrWhiteSpace(correlationId) && string.IsNullOrWhiteSpace(metadata.CorrelationId))
-        {
-            metadata.CorrelationId = correlationId;
-        }
-
-        string? platform = context.RequestHeaders.FirstOrDefault(h =>
-            h.Key == MetadataConstants.Keys.Platform)?.Value;
-        if (!string.IsNullOrWhiteSpace(platform) && string.IsNullOrWhiteSpace(metadata.Platform))
-        {
-            metadata.Platform = platform;
-        }
-
-        string? locale = context.RequestHeaders.FirstOrDefault(h =>
-            h.Key == MetadataConstants.Keys.Locale)?.Value;
-        if (!string.IsNullOrWhiteSpace(locale) && string.IsNullOrWhiteSpace(metadata.Locale))
-        {
-            metadata.Locale = locale;
-        }
-
-        string? version = context.RequestHeaders.FirstOrDefault(h =>
-            h.Key == MetadataConstants.Keys.Version)?.Value;
-        if (!string.IsNullOrWhiteSpace(version) && string.IsNullOrWhiteSpace(metadata.Version))
-        {
-            metadata.Version = version;
-        }
-
-        string? appDeviceId = context.RequestHeaders.FirstOrDefault(h =>
-            h.Key == MetadataConstants.Keys.AppDeviceId)?.Value;
-        if (!string.IsNullOrWhiteSpace(appDeviceId) && string.IsNullOrWhiteSpace(metadata.AppDeviceId))
-        {
-            metadata.AppDeviceId = appDeviceId;
-        }
-
-        string? appInstanceId = context.RequestHeaders.FirstOrDefault(h =>
-            h.Key == MetadataConstants.Keys.ApplicationInstanceId)?.Value;
-        if (!string.IsNullOrWhiteSpace(appInstanceId) && string.IsNullOrWhiteSpace(metadata.ApplicationInstanceId))
-        {
-            metadata.ApplicationInstanceId = appInstanceId;
-        }
-
-        string? tenant = context.RequestHeaders.FirstOrDefault(h =>
-            h.Key == MetadataConstants.Keys.Tenant)?.Value;
-        if (!string.IsNullOrWhiteSpace(tenant) && string.IsNullOrWhiteSpace(metadata.Tenant))
-        {
-            metadata.Tenant = tenant;
-        }
+        metadata.Client.IdempotencyKey = idempotencyKey;
+        metadata.Client.RequestId = requestId;
+        metadata.Identity.CorrelationId = correlationId;
+        metadata.Client.Platform = platform;
+        metadata.Client.Locale = locale;
+        metadata.Client.Version = version;
+        metadata.Client.DeviceId = Google.Protobuf.ByteString.FromBase64(appDeviceId);
+        metadata.Client.ApplicationInstanceId = Google.Protobuf.ByteString.FromBase64(applicationInstanceId);
+        metadata.Client.Tenant = tenant;
 
         request.Metadata = metadata;
         return request;
@@ -175,9 +156,8 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
     {
         Metadata = new EventMetadata
         {
-            Status = "ERR",
-            ErrorCode = "missing_event_type",
-            DeliveryKind = deliveryKind
+            Identity = new EventIdentity { DeliveryKind = deliveryKind },
+            Outcome = new EventOutcome { Status = "ERR", ErrorCode = "missing_event_type" }
         },
         Payload = ByteString.Empty
     };

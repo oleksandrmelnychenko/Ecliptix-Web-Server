@@ -4,21 +4,23 @@ package ecliptix.proto.account;
 option csharp_namespace = "Ecliptix.Protobuf.Account";
 
 enum AccountType {
-  PERSONAL = 0;
-  MILITARY = 1;
-  BUSINESS = 2;
+  ACCOUNT_TYPE_UNSPECIFIED = 0;
+  ACCOUNT_TYPE_PERSONAL = 1;
+  ACCOUNT_TYPE_MILITARY = 2;
+  ACCOUNT_TYPE_BUSINESS = 3;
 }
 
 enum AccountStatus {
-  INACTIVE = 0;
-  ACTIVE = 1;
-  SUSPENDED = 2;
-  LOCKED = 3;
+  ACCOUNT_STATUS_UNSPECIFIED = 0;
+  ACCOUNT_STATUS_INACTIVE = 1;
+  ACCOUNT_STATUS_ACTIVE = 2;
+  ACCOUNT_STATUS_SUSPENDED = 3;
+  ACCOUNT_STATUS_LOCKED = 4;
 }
 
 message Account {
-  bytes unique_identifier = 1;
-  bytes membership_identifier = 2;
+  bytes account_id = 1;
+  bytes membership_id = 2;
   AccountType account_type = 3;
   AccountStatus status = 5;
   bool is_default_account = 6;
@@ -34,27 +36,27 @@ message AccountProfile {
   string display_name = 4;
 }
 
-message CheckProfileNameAvailabilityRequest {
+message ProfileNameAvailabilityRequest {
   string profile_name = 1;
 }
 
-message CheckProfileNameAvailabilityResponse {
+message ProfileNameAvailabilityResponse {
   bool is_available = 1;
   string reason = 2;
 }
 
-message CreateOrUpdateProfileRequest {
+message ProfileUpsertRequest {
   bytes account_id = 1;
   string profile_name = 2;
   string display_name = 3;
 }
 
-message CreateOrUpdateProfileResponse {
+message ProfileUpsertResponse {
   AccountProfile profile = 1;
   bool is_success = 2;
 }
 
-message GetAccountProfileRequest {
+message ProfileLookupRequest {
   bytes current_account_id = 1;
   oneof search_criteria {
     string by_mobile_number = 2;
@@ -63,6 +65,6 @@ message GetAccountProfileRequest {
   }
 }
 
-message GetAccountProfileResponse {
+message ProfileLookupResponse {
   optional AccountProfile profile = 1;
 }

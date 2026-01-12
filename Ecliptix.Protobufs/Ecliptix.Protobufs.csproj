@@ -11,25 +11,25 @@
   <ItemGroup>
     <!-- Transport proto files -->
     <Protobuf Include="Protobuf\transport\common\event_envelope.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
-    <Protobuf Include="Protobuf\transport\gateway.proto" GrpcServices="Server" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
-    <Protobuf Include="Protobuf\transport\device_provisioning.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\transport\gateway\event_gateway.proto" GrpcServices="Server" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\transport\device_provisioning\session.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
 
-    <!-- Common proto files (removed pub_key_exchange.proto and protocol_state.proto - superseded by contexts/secure_protocol) -->
+    <!-- Common proto files -->
     <Protobuf Include="Protobuf\common\secure_envelope.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
     <Protobuf Include="Protobuf\common\health_check.proto" GrpcServices="Server" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
 
     <!-- Identity Access context proto files -->
-    <Protobuf Include="Protobuf\contexts\identity_access\membership_core.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\contexts\identity_access\membership.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
     <Protobuf Include="Protobuf\contexts\identity_access\account.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
-    <Protobuf Include="Protobuf\contexts\identity_access\opaque_models.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
-    <Protobuf Include="Protobuf\contexts\identity_access\verification_models.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\contexts\identity_access\opaque.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\contexts\identity_access\verification.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
 
     <!-- Device Provisioning context proto files -->
-    <Protobuf Include="Protobuf\contexts\device_provisioning\device_models.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\contexts\device_provisioning\device.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
 
     <!-- Secure Protocol context proto files -->
     <Protobuf Include="Protobuf\contexts\secure_protocol\key_exchange.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
-    <Protobuf Include="Protobuf\contexts\secure_protocol\protocol_state.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\contexts\secure_protocol\session_state.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
   </ItemGroup>
 
   <ItemGroup>

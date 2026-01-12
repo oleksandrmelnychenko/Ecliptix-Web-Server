@@ -1,0 +1,76 @@
+syntax = "proto3";
+import "contexts/identity_access/membership.proto";
+
+package ecliptix.proto.membership;
+option csharp_namespace = "Ecliptix.Protobuf.Membership";
+
+enum OtpVerificationPurpose {
+  OTP_VERIFICATION_PURPOSE_UNSPECIFIED = 0;
+  OTP_VERIFICATION_PURPOSE_REGISTRATION = 1;
+  OTP_VERIFICATION_PURPOSE_LOGIN = 2;
+  OTP_VERIFICATION_PURPOSE_PASSWORD_RECOVERY = 3;
+}
+
+enum OtpVerificationResult {
+  OTP_VERIFICATION_RESULT_UNSPECIFIED = 0;
+  OTP_VERIFICATION_RESULT_SUCCEEDED = 1;
+  OTP_VERIFICATION_RESULT_INVALID_MOBILE = 2;
+  OTP_VERIFICATION_RESULT_INVALID_OTP = 3;
+  OTP_VERIFICATION_RESULT_EXPIRED = 4;
+}
+
+message OtpVerificationRequest {
+  enum Type {
+    OTP_REQUEST_TYPE_UNSPECIFIED = 0;
+    OTP_REQUEST_TYPE_SEND = 1;
+    OTP_REQUEST_TYPE_RESEND = 2;
+  }
+
+  bytes mobile_number_id = 1;
+  OtpVerificationPurpose purpose = 3;
+  Type type = 4;
+}
+
+message OtpCountdownUpdate {
+  uint32 seconds_remaining = 1;
+  bytes session_id = 2;
+  bool already_verified = 3;
+
+  enum Status {
+    OTP_COUNTDOWN_STATUS_UNSPECIFIED = 0;
+    OTP_COUNTDOWN_STATUS_ACTIVE = 1;
+    OTP_COUNTDOWN_STATUS_EXPIRED = 2;
+    OTP_COUNTDOWN_STATUS_NOT_FOUND = 3;
+    OTP_COUNTDOWN_STATUS_FAILED = 4;
+    OTP_COUNTDOWN_STATUS_MAX_ATTEMPTS_REACHED = 5;
+    OTP_COUNTDOWN_STATUS_SESSION_EXPIRED = 6;
+    OTP_COUNTDOWN_STATUS_RESEND_COOLDOWN = 7;
+    OTP_COUNTDOWN_STATUS_SERVER_UNAVAILABLE = 8;
+  }
+
+  Status status = 4;
+  optional string message = 5;
+  optional string message_key = 6;
+}
+
+message OtpCodeVerifyRequest {
+  string code = 2;
+  OtpVerificationPurpose purpose = 3;
+  uint32 stream_connect_id = 4;
+}
+
+message OtpCodeVerifyResponse {
+  OtpVerificationResult result = 1;
+  optional string message = 2;
+  optional ecliptix.proto.membership.Membership membership = 3;
+}
+
+message MobileNumberValidateRequest {
+  string mobile_number = 1;
+}
+
+message MobileNumberValidateResponse {
+  bytes mobile_number_id = 1;
+  OtpVerificationResult result = 2;
+  optional string message = 3;
+}

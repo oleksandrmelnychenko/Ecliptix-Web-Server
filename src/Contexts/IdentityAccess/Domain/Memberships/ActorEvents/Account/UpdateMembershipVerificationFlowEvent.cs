@@ -4,7 +4,7 @@ namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Account;
 
 public record UpdateMembershipVerificationFlowEvent(
     Guid VerificationFlowId,
-    VerificationPurpose Purpose,
+    OtpVerificationPurpose Purpose,
     VerificationFlowStatus FlowStatus,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;

@@ -10,9 +10,9 @@ public record InitiateVerificationFlowActorEvent(
     uint ConnectId,
     Guid MobileNumberIdentifier,
     Guid AppDeviceIdentifier,
-    VerificationPurpose Purpose,
-    InitiateVerificationRequest.Types.Type RequestType,
-    ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>> ChannelWriter,
+    OtpVerificationPurpose Purpose,
+    OtpVerificationRequest.Types.Type RequestType,
+    ChannelWriter<Result<OtpCountdownUpdate, VerificationFlowFailure>> ChannelWriter,
     string CultureName,
     Option<string> IdempotencyKey,
     CancellationToken CancellationToken = default

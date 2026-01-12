@@ -4,7 +4,7 @@ using Akka.Persistence;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
-using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Protobuf.SecureProtocol;
 using ProtobufPublicKeyBundle = Ecliptix.Protobuf.Protocol.PublicKeyBundle;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Actors;

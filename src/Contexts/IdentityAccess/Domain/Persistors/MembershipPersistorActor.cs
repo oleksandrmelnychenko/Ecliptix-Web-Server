@@ -18,7 +18,7 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using Serilog;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
-using VerificationPurpose = Ecliptix.IdentityAccess.Domain.Memberships.VerificationPurpose;
+using OtpVerificationPurpose = Ecliptix.IdentityAccess.Domain.Memberships.OtpVerificationPurpose;
 
 namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
@@ -717,7 +717,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             MembershipEntity? membership;
 
-            if (verificationFlow.Purpose == VerificationPurpose.SecureKeyRecovery)
+            if (verificationFlow.Purpose == OtpVerificationPurpose.SecureKeyRecovery)
             {
                 membership = await ctx.Memberships
                     .Where(m => m.MobileNumberId == verificationFlow.MobileNumber.UniqueId &&
@@ -863,7 +863,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             await ctx.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
         try
         {
-            if (cmd.Purpose != VerificationPurpose.SecureKeyRecovery ||
+            if (cmd.Purpose != OtpVerificationPurpose.SecureKeyRecovery ||
                 cmd.FlowStatus != VerificationFlowStatus.Verified)
             {
                 await RollbackSilentlyAsync(transaction);

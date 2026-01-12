@@ -23,13 +23,14 @@ using Ecliptix.SharedKernel.Grpc.Utilities;
 using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
 using Ecliptix.SharedKernel.KeyDerivation;
 using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Microsoft.Extensions.Options;
 using Serilog;
-using OprfRecoverySecretKeyCompleteRequest = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteRequest;
-using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteResponse;
-using OprfRecoverySecureKeyInitRequest = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitRequest;
-using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitResponse;
+using OprfRecoverySecretKeyCompleteRequest = Ecliptix.Protobuf.Membership.OpaqueRecoveryCompleteRequest;
+using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoveryCompleteResponse;
+using OprfRecoverySecureKeyInitRequest = Ecliptix.Protobuf.Membership.OpaqueRecoveryInitRequest;
+using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRecoveryInitResponse;
 using OprfRegistrationCompleteRequest = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteRequest;
 using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
 using OprfRegistrationInitRequest = Ecliptix.Protobuf.Membership.OpaqueRegistrationInitRequest;
@@ -71,7 +72,7 @@ public sealed class MembershipEventHandler(
                     {
                         return Result<OpaqueSignInInitResponse, FailureBase>.Ok(new OpaqueSignInInitResponse
                         {
-                            Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
+                            Result = OpaqueOperationResult.InvalidCredentials,
                             Message = verificationFlowFailure.Message
                         });
                     }
@@ -84,7 +85,7 @@ public sealed class MembershipEventHandler(
                 {
                     return Result<OpaqueSignInInitResponse, FailureBase>.Ok(new OpaqueSignInInitResponse
                     {
-                        Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
+                        Result = OpaqueOperationResult.InvalidCredentials,
                         Message = phoneNumberResult.LocalizedMessage.Value!
                     });
                 }
@@ -150,7 +151,7 @@ public sealed class MembershipEventHandler(
                     try
                     {
                         CompleteRegistrationRecordActorEvent @event = new(
-                            Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                            Helpers.FromByteStringToGuid(message.MembershipId),
                             peerRecord,
                             cancellationToken);
 
@@ -174,7 +175,7 @@ public sealed class MembershipEventHandler(
                 });
     }
 
-    public async Task<SecureEnvelope> OpaqueRecoverySecretKeyCompleteRequest(SecureEnvelope request,
+    public async Task<SecureEnvelope> OpaqueRecoveryCompleteRequest(SecureEnvelope request,
         ServerCallContext context)
     {
         return await _service
@@ -188,7 +189,7 @@ public sealed class MembershipEventHandler(
                     try
                     {
                         OprfCompleteRecoverySecureKeyEvent @event = new(
-                            Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                            Helpers.FromByteStringToGuid(message.MembershipId),
                             peerRecovery,
                             cancellationToken);
 
@@ -227,7 +228,7 @@ public sealed class MembershipEventHandler(
                     try
                     {
                         GenerateMembershipOprfRegistrationRequestEvent @event = new(
-                            Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                            Helpers.FromByteStringToGuid(message.MembershipId),
                             peerOprf,
                             cancellationToken);
 
@@ -263,7 +264,7 @@ public sealed class MembershipEventHandler(
                     try
                     {
                         OprfInitRecoverySecureKeyEvent @event = new(
-                            Helpers.FromByteStringToGuid(message.MembershipIdentifier),
+                            Helpers.FromByteStringToGuid(message.MembershipId),
                             peerOprf,
                             _cultureName,
                             cancellationToken);
@@ -404,8 +405,9 @@ public sealed class MembershipEventHandler(
 
     private static string BuildCanonicalLogoutRequest(LogoutRequest request)
     {
-        return $"logout:v1:{request.MembershipIdentifier.ToBase64()}:" +
-               $"{request.Timestamp}:{request.Scope}:{request.LogoutReason}";
+        long timestampSeconds = request.Timestamp?.ToDateTimeOffset().ToUnixTimeSeconds() ?? 0;
+        return $"logout:v1:{request.MembershipId.ToBase64()}:" +
+               $"{timestampSeconds}:{request.Scope}:{request.LogoutReason}";
     }
 
     private Task<byte[]> CaptureRatchetFingerprintAsync(uint connectId)
@@ -511,11 +513,11 @@ public sealed class MembershipEventHandler(
         ServerCallContext context,
         CancellationToken cancellationToken)
     {
-        Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
+        Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipId);
         long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         Result<Guid, FailureBase> accountResult =
-            await ResolveAccountIdAsync(membershipId, message.AccountIdentifier, cancellationToken);
+            await ResolveAccountIdAsync(membershipId, message.AccountId, cancellationToken);
 
         if (accountResult.IsErr)
         {
@@ -523,7 +525,8 @@ public sealed class MembershipEventHandler(
                 membershipId, accountResult.UnwrapErr().Message);
             return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
             {
-                Result = LogoutResponse.Types.Result.SessionNotFound, ServerTimestamp = serverTimestamp
+                Result = LogoutResponse.Types.Result.LogoutResultSessionNotFound,
+                ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(serverTimestamp))
             });
         }
 
@@ -552,23 +555,25 @@ public sealed class MembershipEventHandler(
 
         return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
         {
-            Result = LogoutResponse.Types.Result.Succeeded,
-            ServerTimestamp = serverTimestamp,
-            RevocationProof = Google.Protobuf.ByteString.CopyFrom(revocationProof)
+            Result = LogoutResponse.Types.Result.LogoutResultSucceeded,
+            ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(serverTimestamp)),
+            Message = Convert.ToBase64String(revocationProof)
         });
     }
 
     private async Task<Result<Unit, LogoutResponse>> PerformValidationChecksAsync(
         LogoutRequest message, Guid membershipId, Guid accountId, long serverTimestamp)
     {
-        long timestampDrift = Math.Abs(serverTimestamp - message.Timestamp);
+        long messageTimestamp = message.Timestamp?.ToDateTimeOffset().ToUnixTimeSeconds() ?? 0;
+        long timestampDrift = Math.Abs(serverTimestamp - messageTimestamp);
         long maxDrift = (long)_securityConfig.GrpcSecurity.MaxTimestampDrift.TotalSeconds;
 
         if (timestampDrift > maxDrift)
         {
             return Result<Unit, LogoutResponse>.Err(new LogoutResponse
             {
-                Result = LogoutResponse.Types.Result.InvalidTimestamp, ServerTimestamp = serverTimestamp
+                Result = LogoutResponse.Types.Result.LogoutResultInvalidTimestamp,
+                ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(serverTimestamp))
             });
         }
 
@@ -579,7 +584,8 @@ public sealed class MembershipEventHandler(
         {
             return Result<Unit, LogoutResponse>.Err(new LogoutResponse
             {
-                Result = LogoutResponse.Types.Result.SessionNotFound, ServerTimestamp = serverTimestamp
+                Result = LogoutResponse.Types.Result.LogoutResultSessionNotFound,
+                ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(serverTimestamp))
             });
         }
 
@@ -588,7 +594,8 @@ public sealed class MembershipEventHandler(
         {
             return Result<Unit, LogoutResponse>.Err(new LogoutResponse
             {
-                Result = LogoutResponse.Types.Result.InvalidHmac, ServerTimestamp = serverTimestamp
+                Result = LogoutResponse.Types.Result.LogoutResultInvalidHmac,
+                ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(serverTimestamp))
             });
         }
 
@@ -597,7 +604,7 @@ public sealed class MembershipEventHandler(
 
     private static LogoutReason ParseLogoutReason(string protoReason)
     {
-        if (!string.IsNullOrEmpty(protoReason) && Enum.TryParse(protoReason, true, out LogoutReason reason))
+        if (!string.IsNullOrEmpty(protoReason) && System.Enum.TryParse(protoReason, true, out LogoutReason reason))
         {
             return reason;
         }
@@ -655,8 +662,8 @@ public sealed class MembershipEventHandler(
                     Log.Error(ex, "Error during logout for ConnectId: {ConnectId}", connectId);
                     return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
                     {
-                        Result = LogoutResponse.Types.Result.Failed,
-                        ServerTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                        Result = LogoutResponse.Types.Result.LogoutResultFailed,
+                        ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow)
                     });
                 }
             });
@@ -665,7 +672,7 @@ public sealed class MembershipEventHandler(
     }
 
     private async Task<Result<Unit, FailureBase>> ValidateAnonymousLogoutHmacAsync(
-        AnonymousLogoutRequest message,
+        LogoutRequest message,
         Guid accountId)
     {
         if (message.HmacProof == null || message.HmacProof.IsEmpty)
@@ -707,7 +714,7 @@ public sealed class MembershipEventHandler(
 
             logoutHmacKey = hmacKeyResult.Unwrap();
 
-            string canonical = BuildCanonicalAnonymousLogoutRequest(message);
+            string canonical = BuildCanonicalLogoutRequest(message);
             int maxByteCount = System.Text.Encoding.UTF8.GetMaxByteCount(canonical.Length);
             byte[]? canonicalBytes = ArrayPool<byte>.Shared.Rent(maxByteCount);
 
@@ -746,45 +753,39 @@ public sealed class MembershipEventHandler(
         }
     }
 
-    private static string BuildCanonicalAnonymousLogoutRequest(AnonymousLogoutRequest request)
-    {
-        return $"logout:v1:{request.MembershipIdentifier.ToBase64()}:" +
-               $"{request.Timestamp}:{request.Scope}:{request.LogoutReason}";
-    }
-
-    private async Task<Result<AnonymousLogoutResponse, FailureBase>> ProcessAnonymousLogoutAsync(
-        AnonymousLogoutRequest message,
+    private async Task<Result<LogoutResponse, FailureBase>> ProcessAnonymousLogoutAsync(
+        LogoutRequest message,
         uint connectId,
         ServerCallContext context,
         CancellationToken cancellationToken)
     {
-        Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipIdentifier);
+        Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipId);
         long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         Result<Guid, FailureBase> accountResult =
-            await ResolveAccountIdAsync(membershipId, message.AccountIdentifier, cancellationToken);
+            await ResolveAccountIdAsync(membershipId, message.AccountId, cancellationToken);
 
         if (accountResult.IsErr)
         {
             Log.Warning(
                 "[LOGOUT-ANONYMOUS] Failed to resolve account for MembershipId: {MembershipId}. Error: {Error}",
                 membershipId, accountResult.UnwrapErr().Message);
-            return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
+            return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
             {
-                Result = AnonymousLogoutResponse.Types.Result.SessionNotFound,
-                ServerTimestamp = serverTimestamp,
+                Result = LogoutResponse.Types.Result.LogoutResultSessionNotFound,
+                ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(serverTimestamp)),
                 Message = "Session not found"
             });
         }
 
         Guid accountId = accountResult.Unwrap();
 
-        Result<Unit, AnonymousLogoutResponse> validationResult =
+        Result<Unit, LogoutResponse> validationResult =
             await PerformAnonymousValidationChecksAsync(message, membershipId, accountId, serverTimestamp);
 
         if (validationResult.IsErr)
         {
-            return Result<AnonymousLogoutResponse, FailureBase>.Ok(validationResult.UnwrapErr());
+            return Result<LogoutResponse, FailureBase>.Ok(validationResult.UnwrapErr());
         }
 
         LogoutReason reason = ParseLogoutReason(message.LogoutReason);
@@ -798,18 +799,19 @@ public sealed class MembershipEventHandler(
 
         ScheduleProtocolCleanup(connectId);
 
-        return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
+        return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
         {
-            Result = AnonymousLogoutResponse.Types.Result.Succeeded,
-            ServerTimestamp = serverTimestamp,
+            Result = LogoutResponse.Types.Result.LogoutResultSucceeded,
+            ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(serverTimestamp)),
             Message = "Logout successful"
         });
     }
 
-    private async Task<Result<Unit, AnonymousLogoutResponse>> PerformAnonymousValidationChecksAsync(
-        AnonymousLogoutRequest message, Guid membershipId, Guid accountId, long serverTimestamp)
+    private async Task<Result<Unit, LogoutResponse>> PerformAnonymousValidationChecksAsync(
+        LogoutRequest message, Guid membershipId, Guid accountId, long serverTimestamp)
     {
-        long timestampDrift = Math.Abs(serverTimestamp - message.Timestamp);
+        long messageTimestamp = message.Timestamp?.ToDateTimeOffset().ToUnixTimeSeconds() ?? 0;
+        long timestampDrift = Math.Abs(serverTimestamp - messageTimestamp);
         const long maxWindowSeconds = 72 * 3600;
 
         if (timestampDrift > maxWindowSeconds)
@@ -818,10 +820,10 @@ public sealed class MembershipEventHandler(
                 "[LOGOUT-ANONYMOUS] Timestamp outside 72-hour window for MembershipId: {MembershipId}. Drift: {Drift}s",
                 membershipId, timestampDrift);
 
-            return Result<Unit, AnonymousLogoutResponse>.Err(new AnonymousLogoutResponse
+            return Result<Unit, LogoutResponse>.Err(new LogoutResponse
             {
-                Result = AnonymousLogoutResponse.Types.Result.TimestampTooOld,
-                ServerTimestamp = serverTimestamp,
+                Result = LogoutResponse.Types.Result.LogoutResultTimestampTooOld,
+                ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(serverTimestamp)),
                 Message = "Logout request older than 72 hours"
             });
         }
@@ -835,20 +837,20 @@ public sealed class MembershipEventHandler(
                 "[LOGOUT-ANONYMOUS] Failed to check shares for MembershipId: {MembershipId}. Error: {Error}",
                 membershipId, sharesExistResult.UnwrapErr().Message);
 
-            return Result<Unit, AnonymousLogoutResponse>.Err(new AnonymousLogoutResponse
+            return Result<Unit, LogoutResponse>.Err(new LogoutResponse
             {
-                Result = AnonymousLogoutResponse.Types.Result.SessionNotFound,
-                ServerTimestamp = serverTimestamp,
+                Result = LogoutResponse.Types.Result.LogoutResultSessionNotFound,
+                ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(serverTimestamp)),
                 Message = "Session not found"
             });
         }
 
         if (!sharesExistResult.Unwrap())
         {
-            return Result<Unit, AnonymousLogoutResponse>.Err(new AnonymousLogoutResponse
+            return Result<Unit, LogoutResponse>.Err(new LogoutResponse
             {
-                Result = AnonymousLogoutResponse.Types.Result.AlreadyLoggedOut,
-                ServerTimestamp = serverTimestamp,
+                Result = LogoutResponse.Types.Result.LogoutResultAlreadyLoggedOut,
+                ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(serverTimestamp)),
                 Message = "Already logged out"
             });
         }
@@ -862,21 +864,21 @@ public sealed class MembershipEventHandler(
             Log.Warning("[LOGOUT-ANONYMOUS] HMAC validation failed for MembershipId: {MembershipId}",
                 membershipId);
 
-            return Result<Unit, AnonymousLogoutResponse>.Err(new AnonymousLogoutResponse
+            return Result<Unit, LogoutResponse>.Err(new LogoutResponse
             {
-                Result = AnonymousLogoutResponse.Types.Result.InvalidHmac,
-                ServerTimestamp = serverTimestamp,
+                Result = LogoutResponse.Types.Result.LogoutResultInvalidHmac,
+                ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(serverTimestamp)),
                 Message = "Invalid HMAC proof"
             });
         }
 
-        return Result<Unit, AnonymousLogoutResponse>.Ok(Unit.Value);
+        return Result<Unit, LogoutResponse>.Ok(Unit.Value);
     }
 
     public async Task<SecureEnvelope> AnonymousLogout(SecureEnvelope request, ServerCallContext context)
     {
         SecureEnvelope response =
-            await _service.ExecuteEncryptedOperationAsync<AnonymousLogoutRequest, AnonymousLogoutResponse>(
+            await _service.ExecuteEncryptedOperationAsync<LogoutRequest, LogoutResponse>(
                 request, context,
                 async (message, connectId, _, cancellationToken) =>
                 {
@@ -892,10 +894,10 @@ public sealed class MembershipEventHandler(
                     {
                         Log.Error(ex, "[LOGOUT-ANONYMOUS] Error during anonymous logout for ConnectId: {ConnectId}",
                             connectId);
-                        return Result<AnonymousLogoutResponse, FailureBase>.Ok(new AnonymousLogoutResponse
+                        return Result<LogoutResponse, FailureBase>.Ok(new LogoutResponse
                         {
-                            Result = AnonymousLogoutResponse.Types.Result.Failed,
-                            ServerTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                            Result = LogoutResponse.Types.Result.LogoutResultFailed,
+                            ServerTimestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
                             Message = "Internal server error"
                         });
                     }

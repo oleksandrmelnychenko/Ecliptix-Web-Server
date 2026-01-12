@@ -60,7 +60,7 @@ public static class VerificationFlowQueries
         VerificationFlowEntity? result = await ctx.VerificationFlows
             .Where(f => f.UniqueId == flowId &&
                         f.ConnectionId == connectionId &&
-                        f.Purpose == VerificationPurpose.Registration &&
+                        f.Purpose == OtpVerificationPurpose.Registration &&
                         !f.IsDeleted)
             .Include(f => f.MobileNumber)
             .AsNoTracking()
@@ -90,7 +90,7 @@ public static class VerificationFlowQueries
         EcliptixSchemaContext ctx,
         Guid mobileUniqueId,
         Guid deviceId,
-        VerificationPurpose purpose,
+        OtpVerificationPurpose purpose,
         CancellationToken cancellationToken = default)
     {
         return await ctx.VerificationFlows
@@ -108,7 +108,7 @@ public static class VerificationFlowQueries
         EcliptixSchemaContext ctx,
         Guid mobileUniqueId,
         Guid deviceId,
-        VerificationPurpose purpose,
+        OtpVerificationPurpose purpose,
         CancellationToken cancellationToken = default)
     {
         VerificationFlowEntity? result = await ctx.VerificationFlows
@@ -159,7 +159,7 @@ public static class VerificationFlowQueries
     {
         return await ctx.VerificationFlows
             .Where(f => f.MobileNumberId == mobileUniqueId &&
-                        f.Purpose == VerificationPurpose.SecureKeyRecovery &&
+                        f.Purpose == OtpVerificationPurpose.SecureKeyRecovery &&
                         f.CreatedAt >= since &&
                         !f.IsDeleted)
             .AsNoTracking()

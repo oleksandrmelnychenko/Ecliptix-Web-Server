@@ -1,6 +1,6 @@
 namespace Ecliptix.IdentityAccess.Domain.Memberships;
 
-public enum VerificationPurpose
+public enum OtpVerificationPurpose
 {
     Unspecified,
     Registration,

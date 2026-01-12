@@ -7,12 +7,6 @@ public static class InterceptorConstants
         public const string GrpcTelemetryMeter = "Ecliptix.GrpcTelemetry";
     }
 
-    public static class StatusMessages
-    {
-        public const string Ok = "OK";
-        public const string Internal = "INTERNAL";
-    }
-
     public static class Connections
     {
         public const string UniqueConnectIdKey = "UniqueConnectId";
@@ -27,11 +21,6 @@ public static class InterceptorConstants
     public static class LogMessages
     {
         public const string GrpcUnhandledException = "An unhandled exception was thrown during gRPC call {Method}.";
-    }
-
-    public static class Characters
-    {
-        public const char Space = ' ';
     }
 
     public static class Numbers

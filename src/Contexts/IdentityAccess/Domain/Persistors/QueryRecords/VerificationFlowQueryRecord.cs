@@ -10,7 +10,7 @@ public record VerificationFlowQueryRecord
     public required Guid AppDeviceIdentifier { get; init; }
     public Option<uint> ConnectId { get; init; }
     public required DateTimeOffset ExpiresAt { get; init; }
-    public required VerificationPurpose Purpose { get; init; }
+    public required OtpVerificationPurpose Purpose { get; init; }
     public required VerificationFlowStatus Status { get; init; }
     public required int OtpCount { get; init; }
     public Option<OtpQueryRecord> OtpActive { get; init; }

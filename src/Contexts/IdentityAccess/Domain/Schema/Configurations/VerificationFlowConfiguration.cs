@@ -29,8 +29,8 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntit
         builder.Property(e => e.Purpose)
             .IsRequired()
             .HasMaxLength(30)
-            .HasDefaultValue(VerificationPurpose.Unspecified)
-            .HasConversion(new EnumToSnakeCaseConverter<VerificationPurpose>());
+            .HasDefaultValue(OtpVerificationPurpose.Unspecified)
+            .HasConversion(new EnumToSnakeCaseConverter<OtpVerificationPurpose>());
 
         builder.Property(e => e.OtpCount)
             .HasDefaultValue((short)0);

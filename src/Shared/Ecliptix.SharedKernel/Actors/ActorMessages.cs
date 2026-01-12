@@ -1,6 +1,6 @@
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
-using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Protobuf.SecureProtocol;
 
 namespace Ecliptix.SharedKernel.Actors;
 

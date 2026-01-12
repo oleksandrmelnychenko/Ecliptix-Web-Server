@@ -17,7 +17,7 @@ public static class GrpcMetadataHandler
     private const string LinkIdKey = MetadataConstants.Keys.LinkId;
     private const string ApplicationInstanceIdKey = MetadataConstants.Keys.ApplicationInstanceId;
 
-    private const string AppDeviceId = MetadataConstants.Keys.AppDeviceId;
+    private const string AppDeviceId = MetadataConstants.Keys.DeviceId;
     private static string KeyExchangeContextTypeValue => MetadataConstants.SecurityKeys.KeyExchangeContextTypeValue;
     private static string KeyExchangeContextTypeKey => MetadataConstants.SecurityKeys.KeyExchangeContextTypeKey;
 

@@ -22,7 +22,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     private readonly ISmsProvider _smsProvider;
     private readonly IOptionsMonitor<SecurityConfiguration> _securityConfig;
 
-    private readonly Dictionary<IActorRef, ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>>
+    private readonly Dictionary<IActorRef, ChannelWriter<Result<OtpCountdownUpdate, VerificationFlowFailure>>>
         _flowWriters = new();
 
     private readonly Dictionary<string, IActorRef> _idempotencyToActor = new();
@@ -59,7 +59,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         string baseActorName = GetActorName(actorEvent.ConnectId);
         IActorRef? existingActor = Context.Child(baseActorName);
 
-        if (actorEvent.RequestType == InitiateVerificationRequest.Types.Type.SendOtp)
+        if (actorEvent.RequestType == OtpVerificationRequest.Types.Type.OtpRequestTypeSend)
         {
             await HandleSendOtpRequestAsync(actorEvent, existingActor, baseActorName);
         }
@@ -332,7 +332,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                     "[verification.flow.manager.verify-query-failed] ConnectId {ConnectId} - Query failed",
                     actorEvent.ConnectId);
 
-                Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(queryResult.UnwrapErr()));
+                Sender.Tell(Result<OtpCodeVerifyResponse, VerificationFlowFailure>.Err(queryResult.UnwrapErr()));
                 return;
             }
 
@@ -377,7 +377,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                     actorEvent.ConnectId, flowStatus.Status);
             }
 
-            Sender.Tell(Result<VerifyCodeResponse, VerificationFlowFailure>.Err(failure));
+            Sender.Tell(Result<OtpCodeVerifyResponse, VerificationFlowFailure>.Err(failure));
         }
     }
 
@@ -385,7 +385,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     {
         IActorRef completedActor = actorEvent.ActorRef;
         _flowWriters.Remove(completedActor,
-            out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? _);
+            out ChannelWriter<Result<OtpCountdownUpdate, VerificationFlowFailure>>? _);
 
         KeyValuePair<string, IActorRef> entryToRemove = _idempotencyToActor
             .FirstOrDefault(kvp => kvp.Value.Equals(completedActor));
@@ -410,7 +410,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         }
 
         if (_flowWriters.Remove(deadActor,
-                out ChannelWriter<Result<VerificationCountdownUpdate, VerificationFlowFailure>>? writer))
+                out ChannelWriter<Result<OtpCountdownUpdate, VerificationFlowFailure>>? writer))
         {
             if (terminatedMessage is { ExistenceConfirmed: true, AddressTerminated: false })
             {
@@ -419,7 +419,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                 );
 
                 bool writeSuccess =
-                    writer.TryWrite(Result<VerificationCountdownUpdate, VerificationFlowFailure>.Err(failure));
+                    writer.TryWrite(Result<OtpCountdownUpdate, VerificationFlowFailure>.Err(failure));
                 if (!writeSuccess)
                 {
                     Log.Warning(

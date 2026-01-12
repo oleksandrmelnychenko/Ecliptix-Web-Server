@@ -14,7 +14,7 @@ public static class MetadataConstants
         public const string Tenant = "tenant";
         public const string LinkId = "fetch-link";
         public const string ApplicationInstanceId = "application-identifier";
-        public const string AppDeviceId = "d-identifier";
+        public const string DeviceId = "d-identifier";
         public const string ConnectionContextId = "c-context-id";
         public const string OperationContextId = "o-context-id";
         public const string IdempotencyKey = "x-idempotency-key";

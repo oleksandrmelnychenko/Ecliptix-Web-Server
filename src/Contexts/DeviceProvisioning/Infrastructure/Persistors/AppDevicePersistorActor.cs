@@ -32,12 +32,12 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
     }
 
     private static async Task<Result<DeviceRegistrationResponse, AppDeviceFailure>> RegisterAppDeviceAsync(
-        EcliptixSchemaContext ctx, AppDevice appDevice, CancellationToken cancellationToken)
+        EcliptixSchemaContext ctx, Device appDevice, CancellationToken cancellationToken)
     {
         await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
         try
         {
-            Guid appInstanceId = Helpers.FromByteStringToGuid(appDevice.AppInstanceId);
+            Guid appInstanceId = Helpers.FromByteStringToGuid(appDevice.ApplicationInstanceId);
             Guid deviceId = Helpers.FromByteStringToGuid(appDevice.DeviceId);
             int deviceType = (int)appDevice.DeviceType;
 
@@ -46,7 +46,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 await transaction.RollbackAsync(CancellationToken.None);
                 return Result<DeviceRegistrationResponse, AppDeviceFailure>.Ok(new DeviceRegistrationResponse
                 {
-                    Status = DeviceRegistrationResponse.Types.Status.InvalidRequest
+                    Result = DeviceRegistrationResponse.Types.Result.DeviceRegistrationResultInvalidRequest
                 });
             }
 
@@ -57,7 +57,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 await transaction.RollbackAsync(CancellationToken.None);
                 return Result<DeviceRegistrationResponse, AppDeviceFailure>.Ok(new DeviceRegistrationResponse
                 {
-                    Status = DeviceRegistrationResponse.Types.Status.AlreadyExists
+                    Result = DeviceRegistrationResponse.Types.Result.DeviceRegistrationResultAlreadyExists
                 });
             }
 
@@ -74,7 +74,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
             await transaction.CommitAsync(cancellationToken);
             return Result<DeviceRegistrationResponse, AppDeviceFailure>.Ok(new DeviceRegistrationResponse
             {
-                Status = DeviceRegistrationResponse.Types.Status.NewRegistration
+                Result = DeviceRegistrationResponse.Types.Result.DeviceRegistrationResultNewRegistration
             });
         }
         catch (Exception ex)

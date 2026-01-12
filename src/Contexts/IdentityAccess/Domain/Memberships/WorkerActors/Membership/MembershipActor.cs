@@ -22,8 +22,8 @@ using Ecliptix.SharedKernel.Failures.Sodium;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using ByteString = Google.Protobuf.ByteString;
-using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecretKeyCompleteResponse;
-using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRecoverySecureKeyInitResponse;
+using OprfRecoverySecretKeyCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRecoveryCompleteResponse;
+using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRecoveryInitResponse;
 using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
 using OprfRegistrationInitResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationInitResponse;
 
@@ -437,8 +437,8 @@ public sealed class MembershipActor : ReceivePersistentActor
             AccountInfo a = accounts[i];
             availableAccounts.Add(new Protobuf.Account.Account
             {
-                UniqueIdentifier = Helpers.GuidToByteString(a.AccountId),
-                MembershipIdentifier = Helpers.GuidToByteString(a.MembershipId),
+                AccountId = Helpers.GuidToByteString(a.AccountId),
+                MembershipId = Helpers.GuidToByteString(a.MembershipId),
                 AccountType = a.Type,
                 Status = a.Status,
                 IsDefaultAccount = a.IsDefault
@@ -451,7 +451,7 @@ public sealed class MembershipActor : ReceivePersistentActor
         replyTo.Tell(Result<OprfRegistrationCompleteResponse, AccountFailure>.Ok(
             new OprfRegistrationCompleteResponse
             {
-                Result = OprfRegistrationCompleteResponse.Types.RegistrationResult.Succeeded,
+                Result = OpaqueOperationResult.Succeeded,
                 Message = "Registration completed successfully.",
                 SessionKey = ByteString.Empty,
                 AvailableAccounts = { availableAccounts },
@@ -700,13 +700,13 @@ public sealed class MembershipActor : ReceivePersistentActor
         {
             Membership = new ProtoMembership
             {
-                UniqueIdentifier = Helpers.GuidToByteString(@event.MembershipIdentifier),
+                MembershipId = Helpers.GuidToByteString(@event.MembershipIdentifier),
                 Status = ProtoMembership.Types.ActivityStatus.Active,
                 CreationStatus = ProtoMembership.Types.CreationStatus.SecureKeySet,
-                AccountUniqueIdentifier = Helpers.GuidToByteString(accountId)
+                AccountId = Helpers.GuidToByteString(accountId)
             },
             PeerOprf = ByteString.CopyFrom(oprfResponse),
-            Result = OprfRecoverySecureKeyInitResponse.Types.RecoveryResult.Succeeded
+            Result = OpaqueOperationResult.Succeeded
         };
 
         Log.Info(
@@ -789,12 +789,12 @@ public sealed class MembershipActor : ReceivePersistentActor
         {
             Membership = new ProtoMembership
             {
-                UniqueIdentifier = Helpers.GuidToByteString(@event.MembershipIdentifier),
+                MembershipId = Helpers.GuidToByteString(@event.MembershipIdentifier),
                 Status = ProtoMembership.Types.ActivityStatus.Inactive,
                 CreationStatus = ProtoMembership.Types.CreationStatus.OtpVerified
             },
             PeerOprf = ByteString.CopyFrom(oprfResponse),
-            Result = OprfRegistrationInitResponse.Types.UpdateResult.Succeeded
+            Result = OpaqueOperationResult.Succeeded
         };
 
         Log.Info("[MEMBERSHIP-PERSIST] Persisting pending account id for MembershipId: {0}. Current LastSequenceNr: {1}",
@@ -863,7 +863,7 @@ public sealed class MembershipActor : ReceivePersistentActor
                 replyTo.Tell(Result<OpaqueSignInInitResponse, MembershipFailure>.Ok(
                     new OpaqueSignInInitResponse
                     {
-                        Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
+                        Result = OpaqueOperationResult.InvalidCredentials,
                         Message = message
                     }));
                 return;
@@ -893,7 +893,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             replyTo.Tell(Result<OpaqueSignInInitResponse, MembershipFailure>.Ok(
                 new OpaqueSignInInitResponse
                 {
-                    Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
+                    Result = OpaqueOperationResult.InvalidCredentials,
                     Message = _localizationProvider.Localize(
                         VerificationFlowMessageKeys.InvalidCredentials,
                         @event.CultureName)
@@ -913,7 +913,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             replyTo.Tell(Result<OpaqueSignInInitResponse, MembershipFailure>.Ok(
                 new OpaqueSignInInitResponse
                 {
-                    Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
+                    Result = OpaqueOperationResult.InvalidCredentials,
                     Message = _localizationProvider.Localize(
                         VerificationFlowMessageKeys.InvalidCredentials,
                         @event.CultureName)
@@ -936,7 +936,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             replyTo.Tell(Result<OpaqueSignInInitResponse, MembershipFailure>.Ok(
                 new OpaqueSignInInitResponse
                 {
-                    Result = OpaqueSignInInitResponse.Types.SignInResult.InvalidCredentials,
+                    Result = OpaqueOperationResult.InvalidCredentials,
                     Message = message
                 }));
             return;
@@ -985,7 +985,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             replyTo.Tell(Result<OpaqueSignInFinalizeResponse, MembershipFailure>.Ok(
                 new OpaqueSignInFinalizeResponse
                 {
-                    Result = OpaqueSignInFinalizeResponse.Types.SignInResult.InvalidCredentials
+                    Result = OpaqueOperationResult.InvalidCredentials
                 }));
             return;
         }
@@ -999,7 +999,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             replyTo.Tell(Result<OpaqueSignInFinalizeResponse, MembershipFailure>.Ok(
                 new OpaqueSignInFinalizeResponse
                 {
-                    Result = OpaqueSignInFinalizeResponse.Types.SignInResult.InvalidCredentials
+                    Result = OpaqueOperationResult.InvalidCredentials
                 }));
             return;
         }
@@ -1028,7 +1028,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             replyTo.Tell(Result<OpaqueSignInFinalizeResponse, MembershipFailure>.Ok(
                 new OpaqueSignInFinalizeResponse
                 {
-                    Result = OpaqueSignInFinalizeResponse.Types.SignInResult.InvalidCredentials
+                    Result = OpaqueOperationResult.InvalidCredentials
                 }));
             return;
         }
@@ -1052,7 +1052,7 @@ public sealed class MembershipActor : ReceivePersistentActor
                 state.MembershipId);
         }
 
-        if (finalizeResponse.Result == OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded &&
+        if (finalizeResponse.Result == OpaqueOperationResult.Succeeded &&
             sessionKeyHandle != null &&
             !sessionKeyHandle.IsInvalid)
         {
@@ -1078,10 +1078,10 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         finalizeResponse.Membership = new ProtoMembership
         {
-            UniqueIdentifier = Helpers.GuidToByteString(state.MembershipId),
+            MembershipId = Helpers.GuidToByteString(state.MembershipId),
             Status = state.ActivityStatus,
             CreationStatus = state.CreationStatus,
-            AccountUniqueIdentifier = state.ActiveAccountId.HasValue
+            AccountId = state.ActiveAccountId.HasValue
                 ? Helpers.GuidToByteString(state.ActiveAccountId.Value)
                 : ByteString.Empty
         };
@@ -1091,8 +1091,8 @@ public sealed class MembershipActor : ReceivePersistentActor
             List<Protobuf.Account.Account> availableAccounts = state.AvailableAccounts.Select(a =>
                 new Protobuf.Account.Account
                 {
-                    UniqueIdentifier = Helpers.GuidToByteString(a.AccountId),
-                    MembershipIdentifier = Helpers.GuidToByteString(a.MembershipId),
+                    AccountId = Helpers.GuidToByteString(a.AccountId),
+                    MembershipId = Helpers.GuidToByteString(a.MembershipId),
                     AccountType = a.Type,
                     Status = a.Status,
                     IsDefaultAccount = a.IsDefault
@@ -1103,7 +1103,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             if (state.ActiveAccountId.HasValue)
             {
                 finalizeResponse.ActiveAccount = availableAccounts.FirstOrDefault(a =>
-                    Helpers.FromByteStringToGuid(a.UniqueIdentifier) == state.ActiveAccountId.Value);
+                    Helpers.FromByteStringToGuid(a.AccountId) == state.ActiveAccountId.Value);
             }
         }
 

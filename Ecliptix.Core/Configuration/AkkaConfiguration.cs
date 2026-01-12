@@ -40,7 +40,7 @@ internal static class AkkaConfiguration
             configurationBuilder
                 .ConfigureLoggers(setup =>
                 {
-                    setup.LogLevel = Akka.Event.LogLevel.InfoLevel;
+                    setup.LogLevel = Akka.Event.LogLevel.WarningLevel;
                     setup.DeadLetterOptions = new DeadLetterOptions { LogCount = 10, LogDuringShutdown = false, };
                 })
                 .WithSqlPersistence(
@@ -115,7 +115,7 @@ internal static class AkkaConfiguration
                         akka.persistence.sql-store.journal.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
                         akka.persistence.sql-store.snapshot.call-timeout = {TimeoutConfiguration.FormatForAkka(TimeoutConfiguration.Database.CommandTimeout)}
 
-                         stdout-loglevel = INFO
+                         stdout-loglevel = WARNING
 
                         persistence {{
                             journal {{
@@ -168,7 +168,7 @@ internal static class AkkaConfiguration
                                 protobuf = ""Ecliptix.Core.Infrastructure.Serialization.Base64SessionStateSerializer, Ecliptix.Core""
                             }}
                             serialization-bindings {{
-                                ""Ecliptix.Protobuf.ProtocolState.EcliptixSessionState, Ecliptix.Protobufs"" = protobuf
+                                ""Ecliptix.Protobuf.SecureProtocol.EcliptixSessionState, Ecliptix.Protobufs"" = protobuf
                             }}
                         }}
                     }}

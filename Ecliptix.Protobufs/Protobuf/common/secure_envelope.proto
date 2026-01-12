@@ -6,66 +6,64 @@ option csharp_namespace = "Ecliptix.Protobuf.Common";
 import "google/protobuf/timestamp.proto";
 
 message SecureEnvelope {
-  bytes meta_data = 1;                      // Encrypted EnvelopeMetadata (was plaintext)
+  bytes meta_data = 1;
   bytes encrypted_payload = 2;
   bytes result_code = 3;
   optional bytes authentication_tag = 4;
   google.protobuf.Timestamp timestamp = 5;
   optional bytes error_details = 6;
-  bytes header_nonce = 7;                   // Nonce for header decryption (12 bytes)
-  optional bytes dh_public_key = 8;         // DH public key for ratchet (not encrypted, receiver needs this before decrypting metadata)
-  optional bytes kyber_ciphertext = 9;       // Kyber ciphertext for PQ hybrid ratchet rotation (not encrypted)
-  optional uint64 ratchet_epoch = 10;        // Monotonic ratchet epoch set by sender; used to detect stale state
+  bytes header_nonce = 7;
+  optional bytes dh_public_key = 8;
+  optional bytes kyber_ciphertext = 9;
+  optional uint64 ratchet_epoch = 10;
 }
 
-message EnvelopeMetadata{
+message EnvelopeMetadata {
   string envelope_id = 1;
   bytes channel_key_id = 2;
   bytes nonce = 3;
   uint32 ratchet_index = 4;
   EnvelopeType envelope_type = 5;
-  optional string correlation_id = 6;       // Note: dh_public_key moved to SecureEnvelope
+  optional string correlation_id = 6;
 }
 
 message EnvelopeError {
-  string error_code = 1;                    // Machine-readable error code
-  string error_message = 2;                 // Human-readable message
+  string error_code = 1;
+  string error_message = 2;
   optional uint32 retry_after_seconds = 3;
   google.protobuf.Timestamp occurred_at = 4;
 }
 
 enum EnvelopeResultCode {
-  SUCCESS = 0;
-
-  BAD_REQUEST = 1;
-  UNAUTHORIZED = 2;
-  FORBIDDEN = 3;
-  NOT_FOUND = 4;
-  METHOD_NOT_ALLOWED = 5;
-  CONFLICT = 6;
-  RATE_LIMITED = 7;
-  PAYLOAD_TOO_LARGE = 8;
-
-  INTERNAL_ERROR = 10;
-  SERVICE_UNAVAILABLE = 11;
-  GATEWAY_TIMEOUT = 12;
-  INSUFFICIENT_STORAGE = 13;
-
-  CRYPTO_ERROR = 20;
-  INVALID_SIGNATURE = 21;
-  EXPIRED_KEY = 22;
-  RATCHET_ERROR = 23;
-  DECRYPTION_FAILED = 24;
-
-  NETWORK_ERROR = 30;
-  CONNECTION_LOST = 31;
-  TIMEOUT = 32;
+  ENVELOPE_RESULT_UNSPECIFIED = 0;
+  ENVELOPE_RESULT_SUCCESS = 1;
+  ENVELOPE_RESULT_BAD_REQUEST = 2;
+  ENVELOPE_RESULT_UNAUTHORIZED = 3;
+  ENVELOPE_RESULT_FORBIDDEN = 4;
+  ENVELOPE_RESULT_NOT_FOUND = 5;
+  ENVELOPE_RESULT_METHOD_NOT_ALLOWED = 6;
+  ENVELOPE_RESULT_CONFLICT = 7;
+  ENVELOPE_RESULT_RATE_LIMITED = 8;
+  ENVELOPE_RESULT_PAYLOAD_TOO_LARGE = 9;
+  ENVELOPE_RESULT_INTERNAL_ERROR = 10;
+  ENVELOPE_RESULT_SERVICE_UNAVAILABLE = 11;
+  ENVELOPE_RESULT_GATEWAY_TIMEOUT = 12;
+  ENVELOPE_RESULT_INSUFFICIENT_STORAGE = 13;
+  ENVELOPE_RESULT_CRYPTO_ERROR = 20;
+  ENVELOPE_RESULT_INVALID_SIGNATURE = 21;
+  ENVELOPE_RESULT_EXPIRED_KEY = 22;
+  ENVELOPE_RESULT_RATCHET_ERROR = 23;
+  ENVELOPE_RESULT_DECRYPTION_FAILED = 24;
+  ENVELOPE_RESULT_NETWORK_ERROR = 30;
+  ENVELOPE_RESULT_CONNECTION_LOST = 31;
+  ENVELOPE_RESULT_TIMEOUT = 32;
 }
 
 enum EnvelopeType {
-  REQUEST = 0;
-  RESPONSE = 1;
-  NOTIFICATION = 2;
-  HEARTBEAT = 3;
-  ERROR_RESPONSE = 4;
+  ENVELOPE_TYPE_UNSPECIFIED = 0;
+  ENVELOPE_TYPE_REQUEST = 1;
+  ENVELOPE_TYPE_RESPONSE = 2;
+  ENVELOPE_TYPE_NOTIFICATION = 3;
+  ENVELOPE_TYPE_HEARTBEAT = 4;
+  ENVELOPE_TYPE_ERROR_RESPONSE = 5;
 }

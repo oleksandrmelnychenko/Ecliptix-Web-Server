@@ -6,7 +6,7 @@ namespace Ecliptix.SharedKernel.Grpc.Utilities;
 
 public static class DeviceIdResolver
 {
-    private const string AppDeviceId = MetadataConstants.Keys.AppDeviceId;
+    private const string AppDeviceId = MetadataConstants.Keys.DeviceId;
 
     public static Guid ResolveDeviceIdFromContext(ServerCallContext context)
     {

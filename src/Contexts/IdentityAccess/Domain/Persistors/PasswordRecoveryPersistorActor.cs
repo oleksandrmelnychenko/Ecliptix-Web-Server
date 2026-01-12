@@ -96,7 +96,7 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
 
             VerificationFlowEntity? recoveryFlow = await ctx.VerificationFlows
                 .Where(vf => vf.UniqueId == membership.VerificationFlowId &&
-                             vf.Purpose == VerificationPurpose.SecureKeyRecovery &&
+                             vf.Purpose == OtpVerificationPurpose.SecureKeyRecovery &&
                              vf.Status == VerificationFlowStatus.Verified &&
                              vf.UpdatedAt >= recoveryValidationStart &&
                              !vf.IsDeleted)
@@ -164,7 +164,7 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
 
             int rowsAffected = await schemaContext.VerificationFlows
                 .Where(vf => vf.UniqueId == membership.VerificationFlowId &&
-                             vf.Purpose == VerificationPurpose.SecureKeyRecovery &&
+                             vf.Purpose == OtpVerificationPurpose.SecureKeyRecovery &&
                              vf.Status == VerificationFlowStatus.Verified &&
                              !vf.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters

@@ -285,7 +285,7 @@ public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) 
             ServerEphemeralPublicKey = ByteString.CopyFrom(serverEphemeralKeyBuffer),
             RegistrationRecord = ByteString.CopyFrom(registrationRecord),
             ServerStateToken = ByteString.CopyFrom(ke2Data),
-            Result = OpaqueSignInInitResponse.Types.SignInResult.Succeeded
+            Result = OpaqueOperationResult.Succeeded
         };
     }
 
@@ -299,7 +299,7 @@ public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) 
         return new OpaqueSignInFinalizeResponse
         {
             ServerMac = ByteString.CopyFrom(serverMac),
-            Result = OpaqueSignInFinalizeResponse.Types.SignInResult.Succeeded,
+            Result = OpaqueOperationResult.Succeeded,
             Message = AuthenticationSuccessful
         };
     }
@@ -308,7 +308,7 @@ public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) 
     {
         return new OpaqueSignInFinalizeResponse
         {
-            Result = OpaqueSignInFinalizeResponse.Types.SignInResult.InvalidCredentials,
+            Result = OpaqueOperationResult.InvalidCredentials,
             Message = AuthenticationFailed
         };
     }

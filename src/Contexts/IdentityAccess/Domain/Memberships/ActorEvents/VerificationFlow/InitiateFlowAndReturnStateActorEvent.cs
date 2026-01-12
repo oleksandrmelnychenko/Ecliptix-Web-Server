@@ -5,7 +5,7 @@ namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlo
 public record InitiateFlowAndReturnStateActorEvent(
     Guid AppDeviceId,
     Guid MobileNumberUniqueId,
-    VerificationPurpose Purpose,
+    OtpVerificationPurpose Purpose,
     uint? ConnectId,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;

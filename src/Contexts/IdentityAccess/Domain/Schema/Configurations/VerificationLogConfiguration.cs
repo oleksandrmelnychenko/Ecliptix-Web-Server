@@ -30,7 +30,7 @@ public class VerificationLogConfiguration : EntityBaseMap<VerificationLogEntity>
         builder.Property(e => e.Purpose)
             .IsRequired()
             .HasMaxLength(50)
-            .HasConversion(new EnumToSnakeCaseConverter<VerificationPurpose>());
+            .HasConversion(new EnumToSnakeCaseConverter<OtpVerificationPurpose>());
 
         builder.Property(e => e.Status)
             .IsRequired()

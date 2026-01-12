@@ -117,7 +117,7 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
 
         if (clientError.Retryable)
         {
-            errorPayload.RetryAfterSeconds = 0; // caller can decide backoff policy
+            errorPayload.RetryAfterSeconds = 0;
         }
 
         byte[] errorBytes = errorPayload.ToByteArray();

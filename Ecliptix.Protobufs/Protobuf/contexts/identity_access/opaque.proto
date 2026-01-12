@@ -1,39 +1,36 @@
 syntax = "proto3";
-import "contexts/identity_access/membership_core.proto";
+import "contexts/identity_access/membership.proto";
 import "contexts/identity_access/account.proto";
 
 package ecliptix.proto.membership;
 option csharp_namespace = "Ecliptix.Protobuf.Membership";
 
+enum OpaqueOperationResult {
+  OPAQUE_OPERATION_RESULT_UNSPECIFIED = 0;
+  OPAQUE_OPERATION_RESULT_SUCCEEDED = 1;
+  OPAQUE_OPERATION_RESULT_INVALID_CREDENTIALS = 2;
+  OPAQUE_OPERATION_RESULT_LOGIN_ATTEMPTS_EXCEEDED = 3;
+}
+
 message OpaqueRegistrationInitRequest {
   bytes peer_oprf = 1;
-  bytes membership_identifier = 2;
+  bytes membership_id = 2;
 }
 
 message OpaqueRegistrationInitResponse {
   bytes peer_oprf = 1;
-
-  enum UpdateResult {
-    SUCCEEDED = 0;
-    INVALID_CREDENTIALS = 1;
-  }
-
-  UpdateResult result = 2;
+  OpaqueOperationResult result = 2;
   optional string message = 3;
   optional Membership membership = 4;
 }
 
 message OpaqueRegistrationCompleteRequest {
   bytes peer_registration_record = 1;
-  bytes membership_identifier = 2;
+  bytes membership_id = 2;
 }
 
 message OpaqueRegistrationCompleteResponse {
-  enum RegistrationResult {
-    SUCCEEDED = 0;
-  }
-
-  RegistrationResult result = 1;
+  OpaqueOperationResult result = 1;
   optional string message = 2;
   optional bytes session_key = 3;
   repeated ecliptix.proto.account.Account available_accounts = 4;
@@ -50,16 +47,10 @@ message OpaqueSignInInitResponse {
   bytes server_ephemeral_public_key = 2;
   bytes registration_record = 3;
   bytes server_state_token = 4;
-  
   optional string message = 5;
   optional int32 minutes_until_retry = 6;
-  SignInResult result = 7;
+  OpaqueOperationResult result = 7;
   bytes server_mac = 8;
-  enum SignInResult {
-    SUCCEEDED = 0;
-    INVALID_CREDENTIALS = 1;
-    LOGIN_ATTEMPT_EXCEEDED = 2;
-  }
 }
 
 message OpaqueSignInFinalizeRequest {
@@ -72,42 +63,30 @@ message OpaqueSignInFinalizeRequest {
 message OpaqueSignInFinalizeResponse {
   bytes server_mac = 1;
   optional Membership membership = 2;
-  SignInResult result = 3;
+  OpaqueOperationResult result = 3;
   optional string message = 4;
   optional int32 minutes_until_retry = 5;
   repeated ecliptix.proto.account.Account available_accounts = 6;
   optional ecliptix.proto.account.Account active_account = 7;
-
-  enum SignInResult {
-    SUCCEEDED = 0;
-    INVALID_CREDENTIALS = 1;
-    LOGIN_ATTEMPT_EXCEEDED = 2;
-  }
 }
 
-message OpaqueRecoverySecureKeyInitRequest {
+message OpaqueRecoveryInitRequest {
   bytes peer_oprf = 1;
-  bytes membership_identifier = 2;
+  bytes membership_id = 2;
 }
 
-message OpaqueRecoverySecureKeyInitResponse {
+message OpaqueRecoveryInitResponse {
   bytes peer_oprf = 1;
-
-  enum RecoveryResult {
-    SUCCEEDED = 0;
-    INVALID_CREDENTIALS = 1;
-  }
-
-  RecoveryResult result = 2;
+  OpaqueOperationResult result = 2;
   optional string message = 3;
   optional Membership membership = 4;
 }
 
-message OpaqueRecoverySecretKeyCompleteRequest {
+message OpaqueRecoveryCompleteRequest {
   bytes peer_recovery_record = 1;
-  bytes membership_identifier = 2;
+  bytes membership_id = 2;
 }
 
-message OpaqueRecoverySecretKeyCompleteResponse {
+message OpaqueRecoveryCompleteResponse {
   optional string message = 1;
 }

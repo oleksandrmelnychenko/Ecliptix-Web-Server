@@ -1,6 +1,6 @@
 using Akka.Actor;
 using Akka.Serialization;
-using Ecliptix.Protobuf.ProtocolState;
+using Ecliptix.Protobuf.SecureProtocol;
 using Google.Protobuf;
 
 namespace Ecliptix.Core.Infrastructure.Serialization;

@@ -9,7 +9,7 @@ public class VerificationLogEntity : EntityBase
     public Guid DeviceId { get; set; }
     public Guid? AccountId { get; set; }
 
-    public VerificationPurpose Purpose { get; set; }
+    public OtpVerificationPurpose Purpose { get; set; }
     public VerificationFlowStatus Status { get; set; }
     public short OtpCount { get; set; } = 0;
 
