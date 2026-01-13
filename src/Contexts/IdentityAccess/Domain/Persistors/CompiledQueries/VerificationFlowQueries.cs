@@ -1,4 +1,5 @@
 using Ecliptix.IdentityAccess.Domain.Memberships;
+using Ecliptix.IdentityAccess.Domain.Memberships.Otp;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.SharedKernel;

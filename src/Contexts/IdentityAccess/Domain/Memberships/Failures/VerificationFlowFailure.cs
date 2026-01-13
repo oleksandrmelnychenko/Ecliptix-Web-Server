@@ -1,3 +1,4 @@
+using Ecliptix.IdentityAccess.Domain.Memberships.Otp;
 using Ecliptix.SharedKernel;
 using Grpc.Core;
 
@@ -272,6 +273,30 @@ public sealed record VerificationFlowFailure(
 
             OtpFailureType.UpdateFailed => new VerificationFlowFailure(
                 VerificationFlowFailureType.PersistorAccess,
+                otpFailure.Message,
+                SourceFailure: otpFailure,
+                otpFailure.InnerException),
+
+            OtpFailureType.Expired => new VerificationFlowFailure(
+                VerificationFlowFailureType.OtpExpired,
+                otpFailure.Message,
+                SourceFailure: otpFailure,
+                otpFailure.InnerException),
+
+            OtpFailureType.AlreadyUsed => new VerificationFlowFailure(
+                VerificationFlowFailureType.InvalidOtp,
+                otpFailure.Message,
+                SourceFailure: otpFailure,
+                otpFailure.InnerException),
+
+            OtpFailureType.PersistorAccess => new VerificationFlowFailure(
+                VerificationFlowFailureType.PersistorAccess,
+                otpFailure.Message,
+                SourceFailure: otpFailure,
+                otpFailure.InnerException),
+
+            OtpFailureType.ValidationFailed => new VerificationFlowFailure(
+                VerificationFlowFailureType.Validation,
                 otpFailure.Message,
                 SourceFailure: otpFailure,
                 otpFailure.InnerException),

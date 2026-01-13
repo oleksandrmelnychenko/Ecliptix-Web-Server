@@ -1,11 +1,14 @@
 using System.Text.RegularExpressions;
+using Ecliptix.IdentityAccess.Domain;
 using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.SharedKernel;
 using Google.Protobuf;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Routing;
 
-public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
+public sealed class EventEnvelopeDispatcher(
+    IEventRouteResolver resolver,
+    ILocalizationProvider localizationProvider)
 {
     private static readonly Regex IdempotencyPattern = new("^[A-Za-z0-9._:-]{1,128}$", RegexOptions.Compiled);
     private const int MaxEventIdLength = 128;
@@ -184,7 +187,7 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
         }
     }
 
-    private static async Task<Result<DispatchContext, DispatchFailure>> ExecuteHandler(
+    private async Task<Result<DispatchContext, DispatchFailure>> ExecuteHandler(
         DispatchContext ctx, CancellationToken cancellationToken)
     {
         try
@@ -295,10 +298,11 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
         => Result<DispatchContext, DispatchFailure>.Err(
             new DispatchFailure(errorCode, string.Empty, string.Empty, retryable, ctx.Metadata));
 
-    private static Result<DispatchContext, DispatchFailure> FailWithDescriptor(DispatchContext ctx, FailureBase failure)
+    private Result<DispatchContext, DispatchFailure> FailWithDescriptor(DispatchContext ctx, FailureBase failure)
     {
         GrpcErrorDescriptor descriptor = failure.ToGrpcDescriptor();
-        string localizedMessage = failure.UserMessageKey ?? descriptor.I18nKey;
+        string locale = ctx.Metadata.Client?.Locale ?? "en-US";
+        string localizedMessage = localizationProvider.Localize(descriptor.I18nKey, locale);
 
         return Result<DispatchContext, DispatchFailure>.Err(
             new DispatchFailure(

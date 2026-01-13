@@ -1,4 +1,5 @@
-using Ecliptix.IdentityAccess.Domain.Memberships;
+using Ecliptix.IdentityAccess.Domain.Memberships.Otp;
+
 namespace Ecliptix.IdentityAccess.Domain.Schema.Entities;
 
 public class OtpCodeEntity : EntityBase

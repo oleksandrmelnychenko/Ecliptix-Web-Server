@@ -1,7 +1,6 @@
 using System.Data.Common;
 using Akka.Actor;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.AccountProfile;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Common;
+using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;

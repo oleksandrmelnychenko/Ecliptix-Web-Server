@@ -1,7 +1,7 @@
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
+using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.SecureProtocol;

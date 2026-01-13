@@ -1,8 +1,7 @@
 using System.Data.Common;
 using Akka.Actor;
 using Ecliptix.IdentityAccess.Domain.Memberships;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Common;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
+using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;

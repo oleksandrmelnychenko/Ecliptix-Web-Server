@@ -3,14 +3,10 @@ using System.Threading.Channels;
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Account;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Common;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.MobileNumber;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.Otp;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.VerificationFlow;
+using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.VerificationFlow.PersistenceModels;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Memberships.Instrumentation;
+using Ecliptix.IdentityAccess.Domain.Memberships.Otp;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
 using Ecliptix.IdentityAccess.Domain.Providers.Twilio;
@@ -41,7 +37,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     private CancellationToken _currentRequestCancellationToken;
     private bool _writerCompleted;
     private long _otpSendAttempts;
-    private readonly KeyValuePair<string, object?>[] _metricTags;
 
     private ICancelable? _otpTimer = Cancelable.CreateCanceled();
     private ICancelable? _sessionTimer = Cancelable.CreateCanceled();
@@ -58,6 +53,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     private uint _lastPublishedRemainingSeconds;
     private bool _otpTimerStartLogged;
     private short _currentOtpAttemptCount;
+
     private sealed record OtpExpiredNow;
 
 #pragma warning disable CS0108
@@ -85,8 +81,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         _securityConfig = securityConfig;
         _timeouts = securityConfig.CurrentValue.VerificationFlow;
         _currentRequestCancellationToken = initialCancellationToken;
-        _metricTags = [KeyValuePair.Create<string, object?>("connectId", connectId)];
-        VerificationFlowTelemetry.ActiveFlows.Add(1, _metricTags);
         Serilog.Log.Information("[verification.flow.started] ConnectId {ConnectId} Purpose {Purpose}", _connectId,
             purpose);
 
@@ -189,7 +183,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
     private async Task ContinueWithOtp(CancellationToken requestCancellationToken = default)
     {
-
         _isCompleting = false;
         _cleanupCompleted = false;
         _timersStarted = false;
@@ -490,7 +483,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
 
         CreateMembershipActorEvent createEvent = new(_connectId, _verificationFlow.Value!.UniqueIdentifier,
-            _activeOtp.UniqueIdentifier, ProtoMembership.Types.CreationStatus.OtpVerified, GetOperationCancellationToken());
+            _activeOtp.UniqueIdentifier, ProtoMembership.Types.CreationStatus.OtpVerified,
+            GetOperationCancellationToken());
 
         try
         {
@@ -581,7 +575,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         if (_currentOtpAttemptCount >= _timeouts.MaxOtpVerificationAttempts)
         {
             await UpdateOtpStatus(OtpStatus.Invalid);
-            VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
 
             string maxAttemptsMessage =
                 _localizationProvider.Localize(VerificationFlowMessageKeys.OtpMaxAttemptsReached, cultureName);
@@ -610,8 +603,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             return;
         }
 
-        VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
-
 
         string message = _localizationProvider.Localize(VerificationFlowMessageKeys.InvalidOtp, cultureName);
 
@@ -632,7 +623,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (actorEvent.RequestType == OtpVerificationRequest.Types.Type.OtpRequestTypeSend)
         {
-
             if (_verificationFlow.IsSome && _verificationFlow.Value!.OtpCount > 0)
             {
                 Result<(string Outcome, uint RemainingSeconds), VerificationFlowFailure> cooldownCheckResult =
@@ -666,21 +656,21 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                     switch (cooldownOutcome)
                     {
                         case VerificationFlowMessageKeys.OtpMaxAttemptsReached:
-                            {
-                                status = OtpCountdownUpdate.Types.Status.OtpCountdownStatusMaxAttemptsReached;
-                                messageKey = VerificationFlowMessageKeys.OtpMaxAttemptsReached;
-                                message = _localizationProvider.Localize(
-                                    VerificationFlowMessageKeys.OtpMaxAttemptsReached, actorEvent.CultureName);
-                            }
+                        {
+                            status = OtpCountdownUpdate.Types.Status.OtpCountdownStatusMaxAttemptsReached;
+                            messageKey = VerificationFlowMessageKeys.OtpMaxAttemptsReached;
+                            message = _localizationProvider.Localize(
+                                VerificationFlowMessageKeys.OtpMaxAttemptsReached, actorEvent.CultureName);
+                        }
                             break;
                         case VerificationFlowMessageKeys.ResendCooldown:
-                            {
-                                status = OtpCountdownUpdate.Types.Status.OtpCountdownStatusResendCooldown;
-                                messageKey = VerificationFlowMessageKeys.ResendCooldown;
-                                message = _localizationProvider.Localize(
-                                    VerificationFlowMessageKeys.ResendCooldown, actorEvent.CultureName);
-                                secondsRemaining = cooldownRemainingSeconds;
-                            }
+                        {
+                            status = OtpCountdownUpdate.Types.Status.OtpCountdownStatusResendCooldown;
+                            messageKey = VerificationFlowMessageKeys.ResendCooldown;
+                            message = _localizationProvider.Localize(
+                                VerificationFlowMessageKeys.ResendCooldown, actorEvent.CultureName);
+                            secondsRemaining = cooldownRemainingSeconds;
+                        }
                             break;
                         default:
                             await CompleteWithError(
@@ -710,9 +700,9 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             }
             else if (_writer != null && !_writerCompleted)
             {
-
                 Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
-                    VerificationFlowFailure.Generic("A verification session is already in progress for this connection")));
+                    VerificationFlowFailure.Generic(
+                        "A verification session is already in progress for this connection")));
                 return;
             }
 
@@ -810,52 +800,52 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                 Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
                 break;
             case VerificationFlowMessageKeys.OtpMaxAttemptsReached:
+            {
+                if (_writer != null && !_writerCompleted)
                 {
-                    if (_writer != null && !_writerCompleted)
-                    {
-                        CompleteWriter();
-                    }
-
-                    _writer = actorEvent.ChannelWriter;
-                    _writerCompleted = false;
-
-                    string message = _localizationProvider.Localize(
-                        VerificationFlowMessageKeys.OtpMaxAttemptsReached, actorEvent.CultureName);
-                    await SafeWriteToChannelAsync(Result<OtpCountdownUpdate, VerificationFlowFailure>.Ok(
-                        new OtpCountdownUpdate
-                        {
-                            SecondsRemaining = 0,
-                            SessionId = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
-                            Status = OtpCountdownUpdate.Types.Status.OtpCountdownStatusMaxAttemptsReached,
-                            Message = message,
-                            MessageKey = VerificationFlowMessageKeys.OtpMaxAttemptsReached
-                        }));
-                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
+                    CompleteWriter();
                 }
+
+                _writer = actorEvent.ChannelWriter;
+                _writerCompleted = false;
+
+                string message = _localizationProvider.Localize(
+                    VerificationFlowMessageKeys.OtpMaxAttemptsReached, actorEvent.CultureName);
+                await SafeWriteToChannelAsync(Result<OtpCountdownUpdate, VerificationFlowFailure>.Ok(
+                    new OtpCountdownUpdate
+                    {
+                        SecondsRemaining = 0,
+                        SessionId = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
+                        Status = OtpCountdownUpdate.Types.Status.OtpCountdownStatusMaxAttemptsReached,
+                        Message = message,
+                        MessageKey = VerificationFlowMessageKeys.OtpMaxAttemptsReached
+                    }));
+                Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
+            }
                 break;
             case VerificationFlowMessageKeys.ResendCooldown:
+            {
+                if (_writer != null && !_writerCompleted)
                 {
-                    if (_writer != null && !_writerCompleted)
-                    {
-                        CompleteWriter();
-                    }
-
-                    _writer = actorEvent.ChannelWriter;
-                    _writerCompleted = false;
-
-                    string message = _localizationProvider.Localize(
-                        VerificationFlowMessageKeys.ResendCooldown, actorEvent.CultureName);
-                    await SafeWriteToChannelAsync(Result<OtpCountdownUpdate, VerificationFlowFailure>.Ok(
-                        new OtpCountdownUpdate
-                        {
-                            SecondsRemaining = remainingSeconds,
-                            SessionId = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
-                            Status = OtpCountdownUpdate.Types.Status.OtpCountdownStatusResendCooldown,
-                            Message = message,
-                            MessageKey = VerificationFlowMessageKeys.ResendCooldown
-                        }));
-                    Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
+                    CompleteWriter();
                 }
+
+                _writer = actorEvent.ChannelWriter;
+                _writerCompleted = false;
+
+                string message = _localizationProvider.Localize(
+                    VerificationFlowMessageKeys.ResendCooldown, actorEvent.CultureName);
+                await SafeWriteToChannelAsync(Result<OtpCountdownUpdate, VerificationFlowFailure>.Ok(
+                    new OtpCountdownUpdate
+                    {
+                        SecondsRemaining = remainingSeconds,
+                        SessionId = Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier),
+                        Status = OtpCountdownUpdate.Types.Status.OtpCountdownStatusResendCooldown,
+                        Message = message,
+                        MessageKey = VerificationFlowMessageKeys.ResendCooldown
+                    }));
+                Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
+            }
                 break;
             default:
                 await CompleteWithError(
@@ -1161,8 +1151,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         _activeOtp.UniqueIdentifier = createOtp.OtpUniqueId;
         _activeOtpRecord = Option<OtpQueryRecord>.Some(otpRecord with
         {
-            UniqueIdentifier = createOtp.OtpUniqueId,
-            AttemptCount = 0
+            UniqueIdentifier = createOtp.OtpUniqueId, AttemptCount = 0
         });
         _currentOtpAttemptCount = 0;
 
@@ -1206,7 +1195,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
         catch (OperationCanceledException)
         {
-            VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
             Log.Debug("SMS retry operation was cancelled for phone number ending in {PhoneNumberSuffix}",
                 phoneNumberQueryRecord.MobileNumber.Length > 4
                     ? phoneNumberQueryRecord.MobileNumber[^4..]
@@ -1233,7 +1221,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
         catch (Exception ex)
         {
-            VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
             Serilog.Log.Warning(ex, "[verification.otp.send.exception] ConnectId {ConnectId}", _connectId);
 
             try
@@ -1257,16 +1244,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (smsResult?.IsSuccess != true)
         {
-            try
-            {
-                await UpdateOtpStatus(OtpStatus.Invalid);
-            }
-            catch
-            {
+            await UpdateOtpStatus(OtpStatus.Invalid);
 
-            }
-
-            VerificationFlowTelemetry.OtpFailed.Add(1, _metricTags);
             Serilog.Log.Warning(
                 "[verification.otp.failed] ConnectId {ConnectId} FlowId {FlowId} Attempts {Attempts} Error {Error}",
                 _connectId,
@@ -1282,7 +1261,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                     $"Failed to send SMS after {_timeouts.MaxSmsRetries} attempts: {smsResult?.ErrorMessage}"));
         }
 
-        VerificationFlowTelemetry.OtpSent.Add(1, _metricTags);
         Serilog.Log.Information("[verification.otp.sent] ConnectId {ConnectId} FlowId {FlowId} Attempts {Attempts}",
             _connectId,
             _verificationFlow.Value?.UniqueIdentifier,
@@ -1447,7 +1425,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
     private void HandleRecoveryCompleted()
     {
-
         _cleanupCompleted = false;
         _isCompleting = false;
 
@@ -1496,30 +1473,17 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
     private async Task UpdateOtpStatus(OtpStatus status)
     {
-        if (_activeOtp == null)
-        {
-            return;
-        }
+        Result<Unit, VerificationFlowFailure> result =
+            await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
+                new UpdateOtpStatusActorEvent(_activeOtp!.UniqueIdentifier, status, GetOperationCancellationToken()),
+                _timeouts.UpdateOtpStatusTimeout);
 
-        try
+        if (result.IsErr)
         {
-            Result<Unit, VerificationFlowFailure> result =
-                await _persistor.Ask<Result<Unit, VerificationFlowFailure>>(
-                    new UpdateOtpStatusActorEvent(_activeOtp.UniqueIdentifier, status, GetOperationCancellationToken()),
-                    _timeouts.UpdateOtpStatusTimeout);
-
-            if (result.IsErr)
-            {
-                VerificationFlowFailure failure = result.UnwrapErr();
-                Serilog.Log.Warning(
-                    "[verification.otp.status-update-warning] ConnectId {ConnectId} Status {Status} Failure {Failure}",
-                    _connectId, status, failure.Message);
-            }
-        }
-        catch (Exception ex)
-        {
-            Serilog.Log.Error(ex, "[verification.otp.status-update-failed] ConnectId {ConnectId} Status {Status}",
-                _connectId, status);
+            VerificationFlowFailure failure = result.UnwrapErr();
+            Serilog.Log.Warning(
+                "[verification.otp.status-update-warning] ConnectId {ConnectId} Status {Status} Failure {Failure}",
+                _connectId, status, failure.Message);
         }
     }
 
@@ -1548,7 +1512,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         return length == 0 ? string.Empty : new string(buffer[..length]);
     }
 
-    private static Result<OtpCodeVerifyResponse, VerificationFlowFailure> CreateVerifyResponse(OtpVerificationResult result,
+    private static Result<OtpCodeVerifyResponse, VerificationFlowFailure> CreateVerifyResponse(
+        OtpVerificationResult result,
         string message)
     {
         return Result<OtpCodeVerifyResponse, VerificationFlowFailure>.Ok(new OtpCodeVerifyResponse
@@ -1637,7 +1602,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         {
             try
             {
-
                 PersistState();
 
                 DeleteMessages(LastSequenceNr);
@@ -1726,11 +1690,16 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
     }
 
-    private void CompleteWriter(Exception? error = null, [System.Runtime.CompilerServices.CallerMemberName] string callerMethod = "", [System.Runtime.CompilerServices.CallerLineNumber] int callerLine = 0)
+    private void CompleteWriter(Exception? error = null,
+        [System.Runtime.CompilerServices.CallerMemberName]
+        string callerMethod = "",
+        [System.Runtime.CompilerServices.CallerLineNumber]
+        int callerLine = 0)
     {
         if (_writerCompleted)
         {
-            Serilog.Log.Debug("[verification.writer.already-completed] ConnectId {ConnectId} Caller {Caller}:{Line}", _connectId, callerMethod, callerLine);
+            Serilog.Log.Debug("[verification.writer.already-completed] ConnectId {ConnectId} Caller {Caller}:{Line}",
+                _connectId, callerMethod, callerLine);
             return;
         }
 
@@ -1741,11 +1710,14 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         if (writer == null)
         {
-            Serilog.Log.Warning("[verification.writer.complete-null] ConnectId {ConnectId} Caller {Caller}:{Line}", _connectId, callerMethod, callerLine);
+            Serilog.Log.Warning("[verification.writer.complete-null] ConnectId {ConnectId} Caller {Caller}:{Line}",
+                _connectId, callerMethod, callerLine);
             return;
         }
 
-        Serilog.Log.Information("[verification.writer.completing] ConnectId {ConnectId} HasError {HasError} Caller {Caller}:{Line}", _connectId, error != null, callerMethod, callerLine);
+        Serilog.Log.Information(
+            "[verification.writer.completing] ConnectId {ConnectId} HasError {HasError} Caller {Caller}:{Line}",
+            _connectId, error != null, callerMethod, callerLine);
 
         try
         {
@@ -1807,7 +1779,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
         catch (InvalidOperationException)
         {
-            VerificationFlowTelemetry.ChannelDrops.Add(1, _metricTags);
             Log.Warning(
                 "[verification.channel.drop] Channel closed while writing update for ConnectId {ConnectId}",
                 _connectId);
@@ -1815,7 +1786,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
         catch (OperationCanceledException)
         {
-            VerificationFlowTelemetry.ChannelDrops.Add(1, _metricTags);
             Log.Warning("[verification.channel.drop] Write cancelled for ConnectId {ConnectId}", _connectId);
             if (!_currentRequestCancellationToken.IsCancellationRequested)
             {
@@ -1824,7 +1794,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
         catch
         {
-            VerificationFlowTelemetry.ChannelDrops.Add(1, _metricTags);
             CompleteWriter();
         }
     }
@@ -1835,9 +1804,8 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         bool otpActive = _activeOtp?.IsActive == true &&
                          CalculateRemainingSeconds(_activeOtp.ExpiresAt) > 0;
         bool isValid = remaining > TimeSpan.Zero && otpActive;
-        uint remainingSeconds = (uint)Math.Max(0, remaining.TotalSeconds);
 
-        Sender.Tell(new FlowValidityResponse(isValid, remainingSeconds));
+        Sender.Tell(new FlowValidityResponse(isValid));
     }
 
     private async Task HandleReplaceChannelWriter(ReplaceChannelWriterCommand cmd)
@@ -1950,7 +1918,6 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
             CompleteWriter();
             _smsOperationCancellationTokenSource?.Dispose();
             _smsOperationCancellationTokenSource = null;
-            VerificationFlowTelemetry.ActiveFlows.Add(-1, _metricTags);
         }
         catch (Exception ex)
         {

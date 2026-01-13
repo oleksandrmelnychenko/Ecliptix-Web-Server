@@ -1,5 +1,5 @@
 using Akka.Actor;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents.AccountProfile;
+using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.SharedKernel;
@@ -10,7 +10,6 @@ namespace Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.AccountProfile
 
 public class AccountProfileActor : ReceiveActor
 {
-
     private readonly IActorRef _profilePersistor;
 
     private const int MinProfileNameLength = 3;

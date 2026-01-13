@@ -1,4 +1,4 @@
-using Ecliptix.IdentityAccess.Domain.Memberships;
+using Ecliptix.IdentityAccess.Domain.Memberships.Otp;
 
 namespace Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 
