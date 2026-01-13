@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Globalization;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 

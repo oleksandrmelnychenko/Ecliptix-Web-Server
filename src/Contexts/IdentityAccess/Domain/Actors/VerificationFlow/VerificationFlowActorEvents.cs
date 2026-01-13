@@ -1,10 +1,13 @@
 using System.Threading.Channels;
 using Akka.Actor;
+using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Actors;
+using OtpVerificationPurpose = Ecliptix.IdentityAccess.Domain.Memberships.OtpVerificationPurpose;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+namespace Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 
 public sealed record ReplaceChannelWriterCommand(
     uint ConnectId,

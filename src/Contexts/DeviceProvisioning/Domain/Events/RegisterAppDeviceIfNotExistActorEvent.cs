@@ -1,5 +1,5 @@
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.Protobuf.Device;
+using Ecliptix.SharedKernel.Actors;
 
 namespace Ecliptix.DeviceProvisioning.Domain.Events;
 

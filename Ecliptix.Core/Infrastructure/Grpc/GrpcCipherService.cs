@@ -2,15 +2,15 @@ using Akka.Actor;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Actors;
 using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
-using Ecliptix.SharedKernel.Actors;
-using Grpc.Core;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
 using Serilog;
 
-namespace Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
+namespace Ecliptix.Core.Infrastructure.Grpc;
 
 public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCipherService
 {

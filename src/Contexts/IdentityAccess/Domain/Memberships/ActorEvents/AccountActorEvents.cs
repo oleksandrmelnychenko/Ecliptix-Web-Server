@@ -1,4 +1,5 @@
 using Ecliptix.Protobuf.Membership;
+using Ecliptix.SharedKernel.Actors;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
 
 namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;

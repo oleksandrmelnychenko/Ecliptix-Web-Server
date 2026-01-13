@@ -3,8 +3,10 @@ using System.Threading.Channels;
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
+using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow.PersistenceModels;
+using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
-using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.VerificationFlow.PersistenceModels;
+using OtpVerificationPurpose = Ecliptix.IdentityAccess.Domain.Memberships.OtpVerificationPurpose;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Memberships.Otp;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
@@ -17,7 +19,7 @@ using Ecliptix.SharedKernel.Configuration;
 using Google.Protobuf;
 using Microsoft.Extensions.Options;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.VerificationFlow;
+namespace Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 
 public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 {

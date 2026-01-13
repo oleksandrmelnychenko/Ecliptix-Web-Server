@@ -1,6 +1,6 @@
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.VerificationFlow.PersistenceModels;
+namespace Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow.PersistenceModels;
 
 internal sealed record VerificationFlowPersistentState(
     VerificationFlowQueryRecord? VerificationFlow,

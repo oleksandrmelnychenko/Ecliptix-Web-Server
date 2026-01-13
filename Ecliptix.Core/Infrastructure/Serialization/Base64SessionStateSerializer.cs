@@ -5,13 +5,12 @@ using Google.Protobuf;
 
 namespace Ecliptix.Core.Infrastructure.Serialization;
 
-public class Base64SessionStateSerializer : SerializerWithStringManifest
+/// <summary>
+///     Akka configuration. Don't remove.
+/// </summary>
+public class Base64SessionStateSerializer(ExtendedActorSystem system) : SerializerWithStringManifest(system)
 {
     private const string EcliptixSessionStateManifest = "EcliptixSessionState";
-
-    public Base64SessionStateSerializer(ExtendedActorSystem system) : base(system)
-    {
-    }
 
     public override int Identifier => 100;
 

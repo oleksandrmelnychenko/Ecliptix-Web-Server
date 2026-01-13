@@ -1,0 +1,3 @@
+namespace Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow.PersistenceModels;
+
+internal sealed record VerificationFlowActorSnapshot(VerificationFlowPersistentState State);

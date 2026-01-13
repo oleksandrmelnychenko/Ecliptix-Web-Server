@@ -5,7 +5,7 @@ namespace Ecliptix.Core.Infrastructure.Grpc.Security;
 
 public sealed class MemoryReplayProtectionCache(IMemoryCache cache) : IReplayProtectionCache
 {
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
 
     public bool TryBegin(string scope, string key, TimeSpan ttl)
     {

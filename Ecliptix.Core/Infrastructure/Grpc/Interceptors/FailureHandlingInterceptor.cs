@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Security.Authentication;
 using Ecliptix.Core.Infrastructure.Grpc.Constants;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
 using Ecliptix.IdentityAccess.Domain;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Grpc.Utilities;

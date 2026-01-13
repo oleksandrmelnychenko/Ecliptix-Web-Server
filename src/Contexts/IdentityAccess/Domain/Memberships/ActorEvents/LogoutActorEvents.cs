@@ -1,4 +1,5 @@
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
+using Ecliptix.SharedKernel.Actors;
 
 namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 

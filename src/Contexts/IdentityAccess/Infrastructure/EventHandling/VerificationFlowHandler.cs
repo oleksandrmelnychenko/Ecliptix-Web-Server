@@ -4,7 +4,7 @@ using System.Globalization;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
-using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.VerificationFlow;
+using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Actors;
 using Ecliptix.Protobuf.Common;

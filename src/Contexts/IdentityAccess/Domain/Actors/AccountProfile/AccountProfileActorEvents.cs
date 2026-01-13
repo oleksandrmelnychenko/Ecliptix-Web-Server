@@ -1,7 +1,8 @@
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Actors;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+namespace Ecliptix.IdentityAccess.Domain.Actors.AccountProfile;
 
 public abstract record ProfileSearchCriteria;
 public record SearchByMobile(string MobileNumber) : ProfileSearchCriteria;

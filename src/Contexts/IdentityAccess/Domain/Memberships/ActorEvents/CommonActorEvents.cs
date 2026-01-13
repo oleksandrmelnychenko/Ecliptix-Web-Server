@@ -1,8 +1,5 @@
-namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+using Ecliptix.SharedKernel.Actors;
 
-public interface ICancellableActorEvent
-{
-    CancellationToken CancellationToken { get; }
-}
+namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 
 public record PrepareForTerminationMessage;

@@ -6,7 +6,7 @@ using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Grpc.Utilities;
 using Grpc.Core;
 
-namespace Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities;
+namespace Ecliptix.Core.Infrastructure.Grpc;
 
 public static class GrpcMetadataHandler
 {

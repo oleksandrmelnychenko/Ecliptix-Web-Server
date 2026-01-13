@@ -1,12 +1,11 @@
 using Akka.Actor;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
 using Serilog;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.AccountProfileActor;
+namespace Ecliptix.IdentityAccess.Domain.Actors.AccountProfile;
 
 public class AccountProfileActor : ReceiveActor
 {

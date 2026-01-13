@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Akka.Actor;
+using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
@@ -10,7 +11,7 @@ using Ecliptix.SharedKernel.Configuration;
 using Microsoft.Extensions.Options;
 using Serilog;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.VerificationFlow;
+namespace Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 
 public sealed class VerificationFlowManagerActor : ReceiveActor
 {

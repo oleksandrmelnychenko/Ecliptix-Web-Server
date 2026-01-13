@@ -11,6 +11,7 @@ using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.Protobuf.Account;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.SharedKernel;
+using Ecliptix.SharedKernel.Actors;
 using Ecliptix.SharedKernel.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;

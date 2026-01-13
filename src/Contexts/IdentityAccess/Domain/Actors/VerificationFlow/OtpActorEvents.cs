@@ -1,7 +1,8 @@
 using Ecliptix.IdentityAccess.Domain.Memberships.Otp;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
+using Ecliptix.SharedKernel.Actors;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+namespace Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 
 public record CreateOtpActorEvent(OtpQueryRecord OtpRecord, CancellationToken CancellationToken = default)
     : ICancellableActorEvent;

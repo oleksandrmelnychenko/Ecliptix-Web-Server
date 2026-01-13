@@ -2,8 +2,11 @@ using System.Security.Cryptography;
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
+using Ecliptix.IdentityAccess.Domain.Actors.AccountProfile;
+using Ecliptix.IdentityAccess.Domain.Actors.Membership.PersistenceModels;
+using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
+using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
-using Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.Membership.PersistenceModels;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
@@ -24,7 +27,7 @@ using OprfRecoverySecureKeyInitResponse = Ecliptix.Protobuf.Membership.OpaqueRec
 using OprfRegistrationCompleteResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationCompleteResponse;
 using OprfRegistrationInitResponse = Ecliptix.Protobuf.Membership.OpaqueRegistrationInitResponse;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.Membership;
+namespace Ecliptix.IdentityAccess.Domain.Actors.Membership;
 
 internal sealed class PendingSignInState : IDisposable
 {

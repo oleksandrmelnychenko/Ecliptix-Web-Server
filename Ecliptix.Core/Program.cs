@@ -2,18 +2,16 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Threading.RateLimiting;
-using Akka;
 using Akka.Actor;
 using Ecliptix.Core;
 using Ecliptix.Core.Api.Grpc.Services.Transport;
 using Ecliptix.Core.Configuration;
 using Ecliptix.Core.Configuration.Settings;
+using Ecliptix.Core.Infrastructure.Grpc;
 using Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 using Ecliptix.Core.Infrastructure.Grpc.Routing;
 using Ecliptix.Core.Infrastructure.Grpc.Security;
-using Ecliptix.Core.Infrastructure.Grpc.Utilities.Utilities.CipherPayloadHandler;
 using Ecliptix.Core.Json;
-using Ecliptix.Core.Middleware;
 using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
 using Ecliptix.IdentityAccess.Domain;
@@ -283,7 +281,6 @@ static void ConfigureMiddleware(WebApplication app)
     });
 
     app.UseRateLimiter();
-    app.UseMiddleware<SecurityMiddleware>();
     app.UseRequestLocalization();
     app.UseRouting();
     app.UseResponseCompression();

@@ -1,7 +1,7 @@
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.WorkerActors.Membership.PersistenceModels;
+namespace Ecliptix.IdentityAccess.Domain.Actors.Membership.PersistenceModels;
 
 internal sealed record PendingSignInStoredEvent(
     uint ConnectId,
