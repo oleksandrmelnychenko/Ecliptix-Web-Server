@@ -198,7 +198,7 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
         }
         catch
         {
-            return Fail(ctx, DispatcherErrorCodes.HandlerFailed);
+            return Fail(ctx, DispatcherErrorCodes.HandlerFailed, retryable: true);
         }
     }
 
@@ -228,12 +228,24 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
     {
         return new EventEnvelope
         {
-            Metadata = BuildResponseMetadata(failure.Metadata, DispatcherErrorCodes.StatusError, failure.ErrorCode),
+            Metadata = BuildResponseMetadata(
+                failure.Metadata,
+                DispatcherErrorCodes.StatusError,
+                failure.ErrorCode,
+                failure.MessageKey,
+                failure.LocalizedMessage,
+                failure.Retryable),
             Payload = ByteString.Empty
         };
     }
 
-    private static EventMetadata BuildResponseMetadata(EventMetadata requestMetadata, string status, string errorCode)
+    private static EventMetadata BuildResponseMetadata(
+        EventMetadata requestMetadata,
+        string status,
+        string errorCode,
+        string messageKey = "",
+        string localizedMessage = "",
+        bool retryable = false)
     {
         return new EventMetadata
         {
@@ -268,7 +280,10 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
             Outcome = new EventOutcome
             {
                 Status = status,
-                ErrorCode = errorCode
+                ErrorCode = errorCode,
+                MessageKey = messageKey,
+                Retryable = retryable,
+                LocalizedMessage = localizedMessage
             }
         };
     }
@@ -276,13 +291,21 @@ public sealed class EventEnvelopeDispatcher(IEventRouteResolver resolver)
     private static Result<DispatchContext, DispatchFailure> Ok(DispatchContext ctx)
         => Result<DispatchContext, DispatchFailure>.Ok(ctx);
 
-    private static Result<DispatchContext, DispatchFailure> Fail(DispatchContext ctx, string errorCode)
-        => Result<DispatchContext, DispatchFailure>.Err(new DispatchFailure(errorCode, ctx.Metadata));
+    private static Result<DispatchContext, DispatchFailure> Fail(DispatchContext ctx, string errorCode, bool retryable = false)
+        => Result<DispatchContext, DispatchFailure>.Err(
+            new DispatchFailure(errorCode, string.Empty, string.Empty, retryable, ctx.Metadata));
 
     private static Result<DispatchContext, DispatchFailure> FailWithDescriptor(DispatchContext ctx, FailureBase failure)
     {
         GrpcErrorDescriptor descriptor = failure.ToGrpcDescriptor();
+        string localizedMessage = failure.UserMessageKey ?? descriptor.I18nKey;
+
         return Result<DispatchContext, DispatchFailure>.Err(
-            new DispatchFailure(descriptor.ErrorCode.ToString(), ctx.Metadata));
+            new DispatchFailure(
+                descriptor.ErrorCode.ToString(),
+                descriptor.I18nKey,
+                localizedMessage,
+                descriptor.Retryable,
+                ctx.Metadata));
     }
 }

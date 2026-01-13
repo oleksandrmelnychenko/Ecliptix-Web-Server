@@ -63,6 +63,9 @@ message SecurityContext {
 message EventOutcome {
   string status = 1;
   string error_code = 2;
+  string message_key = 3;
+  bool retryable = 4;
+  string localized_message = 5;
 }
 
 enum DeliveryKind {

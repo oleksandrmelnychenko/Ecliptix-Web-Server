@@ -92,16 +92,7 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
         metadata.Client ??= new ClientContext();
         metadata.Security ??= new SecurityContext();
 
-        string? GetHeader(string key) =>
-            context.RequestHeaders.FirstOrDefault(h => h.Key == key)?.Value;
-
-        void ApplyIfEmpty(ref string target, string? value)
-        {
-            if (!string.IsNullOrWhiteSpace(value) && string.IsNullOrWhiteSpace(target))
-            {
-                target = value;
-            }
-        }
+        Metadata headers = context.RequestHeaders;
 
         metadata.Identity.EventId = string.IsNullOrWhiteSpace(metadata.Identity.EventId)
             ? Guid.NewGuid().ToString("N")
@@ -118,39 +109,45 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
             metadata.Identity.PartitionKey = metadata.Security.ConnectId.ToString();
         }
 
-        string idempotencyKey = metadata.Client.IdempotencyKey;
-        string requestId = metadata.Client.RequestId;
-        string correlationId = metadata.Identity.CorrelationId;
-        string platform = metadata.Client.Platform;
-        string locale = metadata.Client.Locale;
-        string version = metadata.Client.Version;
-        string appDeviceId = metadata.Client.DeviceId?.ToBase64() ?? string.Empty;
-        string applicationInstanceId = metadata.Client.ApplicationInstanceId?.ToBase64() ?? string.Empty;
-        string tenant = metadata.Client.Tenant;
+        metadata.Client.IdempotencyKey = ApplyHeaderIfEmpty(metadata.Client.IdempotencyKey, headers, MetadataConstants.Keys.IdempotencyKey);
+        metadata.Client.RequestId = ApplyHeaderIfEmpty(metadata.Client.RequestId, headers, MetadataConstants.Keys.RequestId);
+        metadata.Identity.CorrelationId = ApplyHeaderIfEmpty(metadata.Identity.CorrelationId, headers, MetadataConstants.Keys.CorrelationId);
+        metadata.Client.Platform = ApplyHeaderIfEmpty(metadata.Client.Platform, headers, MetadataConstants.Keys.Platform);
+        metadata.Client.Locale = ApplyHeaderIfEmpty(metadata.Client.Locale, headers, MetadataConstants.Keys.Locale);
+        metadata.Client.Version = ApplyHeaderIfEmpty(metadata.Client.Version, headers, MetadataConstants.Keys.Version);
+        metadata.Client.Tenant = ApplyHeaderIfEmpty(metadata.Client.Tenant, headers, MetadataConstants.Keys.Tenant);
 
-        ApplyIfEmpty(ref idempotencyKey, GetHeader(MetadataConstants.Keys.IdempotencyKey));
-        ApplyIfEmpty(ref requestId, GetHeader(MetadataConstants.Keys.RequestId));
-        ApplyIfEmpty(ref correlationId, GetHeader(MetadataConstants.Keys.CorrelationId));
-        ApplyIfEmpty(ref platform, GetHeader(MetadataConstants.Keys.Platform));
-        ApplyIfEmpty(ref locale, GetHeader(MetadataConstants.Keys.Locale));
-        ApplyIfEmpty(ref version, GetHeader(MetadataConstants.Keys.Version));
-        ApplyIfEmpty(ref appDeviceId, GetHeader(MetadataConstants.Keys.DeviceId));
-        ApplyIfEmpty(ref applicationInstanceId, GetHeader(MetadataConstants.Keys.ApplicationInstanceId));
-        ApplyIfEmpty(ref tenant, GetHeader(MetadataConstants.Keys.Tenant));
-
-        metadata.Client.IdempotencyKey = idempotencyKey;
-        metadata.Client.RequestId = requestId;
-        metadata.Identity.CorrelationId = correlationId;
-        metadata.Client.Platform = platform;
-        metadata.Client.Locale = locale;
-        metadata.Client.Version = version;
-        metadata.Client.DeviceId = ByteString.FromBase64(appDeviceId);
-        metadata.Client.ApplicationInstanceId = ByteString.FromBase64(applicationInstanceId);
-        metadata.Client.Tenant = tenant;
+        metadata.Client.DeviceId = ApplyByteStringHeaderIfEmpty(metadata.Client.DeviceId, headers, MetadataConstants.Keys.DeviceId);
+        metadata.Client.ApplicationInstanceId = ApplyByteStringHeaderIfEmpty(metadata.Client.ApplicationInstanceId, headers, MetadataConstants.Keys.ApplicationInstanceId);
 
         request.Metadata = metadata;
         return request;
     }
+
+    private static string ApplyHeaderIfEmpty(string current, Metadata headers, string key)
+    {
+        if (!string.IsNullOrWhiteSpace(current))
+        {
+            return current;
+        }
+
+        string? value = GetHeaderValue(headers, key);
+        return !string.IsNullOrWhiteSpace(value) ? value : current;
+    }
+
+    private static ByteString ApplyByteStringHeaderIfEmpty(ByteString current, Metadata headers, string key)
+    {
+        if (!current.IsEmpty)
+        {
+            return current;
+        }
+
+        string? value = GetHeaderValue(headers, key);
+        return !string.IsNullOrWhiteSpace(value) ? ByteString.FromBase64(value) : current;
+    }
+
+    private static string? GetHeaderValue(Metadata headers, string key) =>
+        headers.FirstOrDefault(h => h.Key == key)?.Value;
 
     private static EventEnvelope BuildMissingEventTypeEnvelope(DeliveryKind deliveryKind) => new()
     {
