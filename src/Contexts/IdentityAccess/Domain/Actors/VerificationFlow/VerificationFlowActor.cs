@@ -5,7 +5,7 @@ using Akka.Event;
 using Akka.Persistence;
 using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow.PersistenceModels;
 using Ecliptix.IdentityAccess.Domain.Memberships;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+using Ecliptix.IdentityAccess.Domain.Actors.Membership;
 using OtpVerificationPurpose = Ecliptix.IdentityAccess.Domain.Memberships.OtpVerificationPurpose;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Memberships.Otp;
@@ -271,7 +271,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         CommandAsync<VerifyFlowCommand>(HandleVerifyOtp);
         CommandAsync<InitiateVerificationFlowCommand>(HandleOtpVerificationRequest);
         CommandAsync<PrepareForTerminationMessage>(HandleClientDisconnection);
-        Command<CheckFlowValidityQuery>(HandleSessionValidityCheck);
+        Command<IsFlowValidQuery>(HandleSessionValidityCheck);
         CommandAsync<ReplaceChannelWriterCommand>(HandleReplaceChannelWriter);
         Command<DeleteMessagesSuccess>(_ => HandleDeleteMessagesSuccess());
         Command<DeleteMessagesFailure>(HandleDeleteMessagesFailure);
@@ -288,7 +288,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         CommandAsync<VerifyFlowCommand>(HandleVerifyOtp);
         CommandAsync<InitiateVerificationFlowCommand>(HandleOtpVerificationRequest);
         CommandAsync<PrepareForTerminationMessage>(HandleClientDisconnection);
-        Command<CheckFlowValidityQuery>(HandleSessionValidityCheck);
+        Command<IsFlowValidQuery>(HandleSessionValidityCheck);
         CommandAsync<ReplaceChannelWriterCommand>(HandleReplaceChannelWriter);
         Command<DeleteMessagesSuccess>(_ => HandleDeleteMessagesSuccess());
         Command<DeleteMessagesFailure>(HandleDeleteMessagesFailure);
@@ -1835,7 +1835,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         }
     }
 
-    private void HandleSessionValidityCheck(CheckFlowValidityQuery _)
+    private void HandleSessionValidityCheck(IsFlowValidQuery _)
     {
         TimeSpan remaining = _sessionDeadline - DateTimeOffset.UtcNow;
         bool otpActive = _activeOtp?.IsActive == true &&

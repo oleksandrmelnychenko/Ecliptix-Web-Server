@@ -5,7 +5,6 @@ using Akka.Actor;
 using Ecliptix.SharedKernel.Actors;
 using Ecliptix.IdentityAccess.Domain.Actors.Membership;
 using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;

@@ -3,7 +3,7 @@ using System.Data.Common;
 using Akka.Actor;
 using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+using Ecliptix.IdentityAccess.Domain.Actors.Membership;
 using Ecliptix.IdentityAccess.Domain.Memberships.Otp;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;

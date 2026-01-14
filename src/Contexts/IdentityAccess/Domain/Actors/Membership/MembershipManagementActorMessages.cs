@@ -1,8 +1,9 @@
+using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.SharedKernel.Actors;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+namespace Ecliptix.IdentityAccess.Domain.Actors.Membership;
 
 public record ExistsMembershipQuery(
     Guid MobileNumberId,
@@ -60,7 +61,7 @@ public record UpdateMembershipCreationStatusCommand(
 
 public record UpdateMembershipVerificationFlowCommand(
     Guid VerificationFlowId,
-    OtpVerificationPurpose Purpose,
+    Memberships.OtpVerificationPurpose Purpose,
     VerificationFlowStatus FlowStatus,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;

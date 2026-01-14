@@ -1,7 +1,7 @@
 using System.Threading.Channels;
 using Akka.Actor;
 using Ecliptix.IdentityAccess.Domain.Memberships;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+using Ecliptix.IdentityAccess.Domain.Actors.Membership;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Providers.Twilio;
@@ -167,7 +167,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         {
             VerificationFlowActorSettings settings = _securityConfig.CurrentValue.VerificationFlowActor;
             FlowValidityResponse validity = await trackedActor.Ask<FlowValidityResponse>(
-                new CheckFlowValidityQuery(),
+                new IsFlowValidQuery(),
                 timeout: settings.SessionValidityCheckTimeout);
 
             if (validity.IsValid)

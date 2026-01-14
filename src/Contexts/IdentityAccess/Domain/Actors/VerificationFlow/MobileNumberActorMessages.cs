@@ -1,6 +1,6 @@
 using Ecliptix.SharedKernel.Actors;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+namespace Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 
 public record ExistsMobileNumberQuery(
     Guid MobileNumberId,

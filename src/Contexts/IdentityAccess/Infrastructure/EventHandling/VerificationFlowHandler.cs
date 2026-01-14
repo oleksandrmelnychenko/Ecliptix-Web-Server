@@ -1,7 +1,7 @@
 using System.Threading.Channels;
 using Akka.Actor;
 using System.Globalization;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+using Ecliptix.IdentityAccess.Domain.Actors.Membership;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;

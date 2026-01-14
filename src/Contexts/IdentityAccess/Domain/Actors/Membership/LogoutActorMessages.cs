@@ -1,7 +1,7 @@
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.SharedKernel.Actors;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+namespace Ecliptix.IdentityAccess.Domain.Actors.Membership;
 
 public record GetLogoutByDeviceQuery(
     Guid DeviceId,

@@ -6,7 +6,6 @@ using Ecliptix.IdentityAccess.Domain.Actors.AccountProfile;
 using Ecliptix.IdentityAccess.Domain.Actors.Membership.PersistenceModels;
 using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 using Ecliptix.IdentityAccess.Domain.Memberships;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;

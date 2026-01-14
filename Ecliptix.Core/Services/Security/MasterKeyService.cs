@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using Akka.Actor;
 using Ecliptix.Core.Services.KeyDerivation;
-using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+using Ecliptix.IdentityAccess.Domain.Actors.Membership;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;

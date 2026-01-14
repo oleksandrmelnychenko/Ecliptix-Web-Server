@@ -15,7 +15,7 @@ public sealed record ReplaceChannelWriterCommand(
 
 public record ProtocolCleanupRequiredEvent(uint ConnectId);
 
-public sealed record CheckFlowValidityQuery;
+public sealed record IsFlowValidQuery;
 
 public record VerifyMobileForSecretKeyRecoveryCommand(
     string MobileNumber,

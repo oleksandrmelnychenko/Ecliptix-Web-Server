@@ -1,6 +1,6 @@
 using Ecliptix.SharedKernel.Actors;
 
-namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
+namespace Ecliptix.IdentityAccess.Domain.Actors.Membership;
 
 public record ShareData(
     int ShareIndex,
