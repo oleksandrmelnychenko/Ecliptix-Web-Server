@@ -31,7 +31,7 @@ public sealed class AccountProfileHandler(
                 request, context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    CheckProfileNameAvailabilityEvent evt = new(message.ProfileName, cancellationToken);
+                    ExistsProfileNameQuery evt = new(message.ProfileName, cancellationToken);
 
                     Task<Result<bool, AccountProfileFailure>> task =
                         _accountActor.Ask<Result<bool, AccountProfileFailure>>(
@@ -65,7 +65,7 @@ public sealed class AccountProfileHandler(
                 {
                     Guid accountId = Helpers.FromByteStringToGuid(message.AccountId);
 
-                    UpdateAccountProfileEvent evt = new(
+                    UpdateAccountProfileCommand evt = new(
                         accountId,
                         message.ProfileName,
                         message.DisplayName,
@@ -121,7 +121,7 @@ public sealed class AccountProfileHandler(
                     _ => throw new RpcException(new Status(StatusCode.InvalidArgument, "Search criteria not specified"))
                 };
 
-                GetAccountProfileActorEvent actorEvent = new(currentAccountId, criteria, cancellationToken);
+                GetAccountProfileQuery actorEvent = new(currentAccountId, criteria, cancellationToken);
 
                 Task<Result<Option<AccountProfileInfo>, AccountProfileFailure>> task =
                     _accountActor.Ask<Result<Option<AccountProfileInfo>, AccountProfileFailure>>(

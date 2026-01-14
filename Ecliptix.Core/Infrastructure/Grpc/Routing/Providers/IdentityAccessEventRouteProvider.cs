@@ -3,6 +3,7 @@ using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.SharedKernel;
 using Google.Protobuf;
+using Grpc.Core;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Routing.Providers;
 
@@ -159,6 +160,27 @@ public static class IdentityAccessEventRouteProvider
         WithAccountProfile(services, envelope, metadata,
             static (handler, request, context) => handler.GetAccountProfile(request, context),
             cancellationToken);
+
+    [EventRoute(TransportEventType.IdentityOtpInitiate, IdentityAccessContext, DeliveryKind.ServerStream)]
+    internal static async Task HandleIdentityOtpInitiate(
+        IServiceProvider services,
+        SecureEnvelope envelope,
+        EventMetadata metadata,
+        IServerStreamWriter<EventEnvelope> responseStream,
+        CancellationToken cancellationToken)
+    {
+        uint connectId = GrpcCallContextFactory.ResolveConnectId(metadata);
+        using IServiceScope scope = services.CreateScope();
+        GrpcCallContext context = GrpcCallContextFactory.BuildContext(
+            metadata, connectId, cancellationToken);
+
+        VerificationFlowHandler handler =
+            ActivatorUtilities.CreateInstance<VerificationFlowHandler>(scope.ServiceProvider);
+
+        SecureEnvelopeStreamAdapter streamAdapter = new(responseStream, metadata);
+
+        await handler.InitiateVerification(envelope, streamAdapter, context);
+    }
 
     private static async Task<Result<IMessage, FailureBase>> WithMembership(
         IServiceProvider services,

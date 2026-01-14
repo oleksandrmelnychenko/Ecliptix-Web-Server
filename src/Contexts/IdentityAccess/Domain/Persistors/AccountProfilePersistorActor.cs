@@ -28,13 +28,13 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
 
     private void Ready()
     {
-        ReceivePersistorCommand<GetAccountProfileActorEvent, Option<AccountProfileInfo>>(
+        ReceivePersistorCommand<GetAccountProfileQuery, Option<AccountProfileInfo>>(
             GetAccountProfileAsync, "GetAccountProfile");
 
-        ReceivePersistorCommand<CheckProfileNameAvailabilityEvent, bool>(
+        ReceivePersistorCommand<ExistsProfileNameQuery, bool>(
             CheckProfileNameAvailabilityAsync, "CheckProfileNameAvailability");
 
-        ReceivePersistorCommand<UpdateAccountProfileEvent, AccountProfileInfo>(
+        ReceivePersistorCommand<UpdateAccountProfileCommand, AccountProfileInfo>(
             UpdateAccountProfileAsync, "UpdateAccountProfile");
     }
 
@@ -52,14 +52,14 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
 
             return;
 
-            Task<Result<TResult, AccountProfileFailure>> Operation(EcliptixSchemaContext ctx,
+            Task<Result<TResult, AccountProfileFailure>> Operation(EcliptixSchemaContext schemaContext,
                 CancellationToken cancellationToken) =>
-                handler(ctx, message, cancellationToken);
+                handler(schemaContext, message, cancellationToken);
         });
     }
 
     private static async Task<Result<Option<AccountProfileInfo>, AccountProfileFailure>> GetAccountProfileAsync(
-        EcliptixSchemaContext ctx, GetAccountProfileActorEvent cmd, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext, GetAccountProfileQuery cmd, CancellationToken cancellationToken)
     {
         try
         {
@@ -69,11 +69,11 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
             {
                 case SearchByMobile mobileCriteria:
                     profileOpt = await AccountProfileQueries.GetPrimaryAccountProfileByMobileNumber(
-                        ctx, mobileCriteria.MobileNumber, cmd.CurrentAccountId);
+                        schemaContext, mobileCriteria.MobileNumber, cmd.CurrentAccountId);
                     break;
 
                 case SearchById idCriteria:
-                    profileOpt = await AccountProfileQueries.GetByAccountId(ctx, idCriteria.AccountId);
+                    profileOpt = await AccountProfileQueries.GetByAccountId(schemaContext, idCriteria.AccountId);
                     break;
             }
 
@@ -100,11 +100,11 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
     }
 
     private static async Task<Result<bool, AccountProfileFailure>> CheckProfileNameAvailabilityAsync(
-        EcliptixSchemaContext ctx, CheckProfileNameAvailabilityEvent cmd, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext, ExistsProfileNameQuery cmd, CancellationToken cancellationToken)
     {
         try
         {
-            bool isTaken = await AccountProfileQueries.IsProfileNameTaken(ctx, cmd.ProfileName);
+            bool isTaken = await AccountProfileQueries.IsProfileNameTaken(schemaContext, cmd.ProfileName);
 
             return Result<bool, AccountProfileFailure>.Ok(!isTaken);
         }
@@ -115,13 +115,13 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
     }
 
     private static async Task<Result<AccountProfileInfo, AccountProfileFailure>> UpdateAccountProfileAsync(
-        EcliptixSchemaContext ctx, UpdateAccountProfileEvent cmd, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext, UpdateAccountProfileCommand cmd, CancellationToken cancellationToken)
     {
         try
         {
 
             Option<AccountProfileEntity> profileOpt =
-                await AccountProfileQueries.GetByAccountIdTracking(ctx, cmd.AccountId);
+                await AccountProfileQueries.GetByAccountIdTracking(schemaContext, cmd.AccountId);
 
             AccountProfileEntity profile;
 
@@ -136,7 +136,7 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
             }
             else
             {
-                bool accountExists = await ctx.Accounts
+                bool accountExists = await schemaContext.Accounts
                     .AnyAsync(a => a.UniqueId == cmd.AccountId, cancellationToken);
 
                 if (!accountExists)
@@ -153,10 +153,10 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
                     UpdatedAt = DateTimeOffset.UtcNow,
                 };
 
-                ctx.AccountProfiles.Add(profile);
+                schemaContext.AccountProfiles.Add(profile);
             }
 
-            await ctx.SaveChangesAsync(cancellationToken);
+            await schemaContext.SaveChangesAsync(cancellationToken);
 
             AccountProfileInfo resultInfo = new(
                 profile.UniqueId,

@@ -1,4 +1,4 @@
-namespace Ecliptix.DeviceProvisioning.Infrastructure.Crypto;
+namespace Ecliptix.Security.Certificate.Pinning.Crypto;
 
 public interface IRsaConfiguration
 {

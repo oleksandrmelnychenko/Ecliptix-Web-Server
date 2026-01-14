@@ -1,7 +1,8 @@
 using Ecliptix.Protobuf.Common;
+using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.SharedKernel;
 
-namespace Ecliptix.DeviceProvisioning.Infrastructure.SecureChannel;
+namespace Ecliptix.Security.Certificate.Pinning.SecureChannel;
 
 public interface ISecureChannelEstablisher
 {

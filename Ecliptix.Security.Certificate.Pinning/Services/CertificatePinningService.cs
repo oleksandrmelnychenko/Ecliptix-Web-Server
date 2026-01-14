@@ -481,7 +481,6 @@ public sealed class CertificatePinningService : IDisposable
             }
             catch (Exception)
             {
-                // ignored
             }
             finally
             {

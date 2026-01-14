@@ -1,8 +1,7 @@
-using Ecliptix.Security.Certificate.Pinning.Failures;
 using Grpc.Core;
 using Ecliptix.SharedKernel;
 
-namespace Ecliptix.DeviceProvisioning.Infrastructure.SecureChannel;
+namespace Ecliptix.Security.Certificate.Pinning.Failures;
 
 public sealed record SecureChannelFailure(
     SecureChannelFailureType FailureType,

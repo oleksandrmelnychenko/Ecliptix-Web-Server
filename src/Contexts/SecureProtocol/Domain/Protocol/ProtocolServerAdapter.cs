@@ -7,7 +7,6 @@ namespace Ecliptix.SecureProtocol.Domain.Protocol;
 
 public sealed class ProtocolServerAdapter : IProtocolServer
 {
-    // Native library is process-global; track initialization across adapter instances.
     private static readonly object InitLock = new();
     private static int _nativeInitRefCount;
     private static bool _nativeInitialized;

@@ -21,31 +21,31 @@ public sealed class EcliptixProtocolSystemActor : ReceiveActor
 
     private void Ready()
     {
-        ReceiveAsync<BeginAppDeviceEphemeralConnectActorEvent>(ProcessNewSessionRequest);
-        ReceiveAsync<ForwardToConnectActorEvent>(ProcessForwarding);
+        ReceiveAsync<InitiateEphemeralConnectCommand>(ProcessNewSessionRequest);
+        ReceiveAsync<RouteToConnectionCommand>(ProcessForwarding);
         Receive<Terminated>(_ => { });
     }
 
-    private async Task ProcessNewSessionRequest(BeginAppDeviceEphemeralConnectActorEvent actorEvent)
+    private async Task ProcessNewSessionRequest(InitiateEphemeralConnectCommand actorEvent)
     {
         uint connectId = actorEvent.UniqueConnectId;
         Result<IActorRef, EcliptixProtocolFailure> connectActorResult = GetOrCreateConnectActor(connectId);
 
         if (connectActorResult.IsErr)
         {
-            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(connectActorResult.UnwrapErr()));
+            Sender.Tell(Result<DeriveSharedSecretResponse, EcliptixProtocolFailure>.Err(connectActorResult.UnwrapErr()));
             return;
         }
 
         IActorRef connectActor = connectActorResult.Unwrap();
-        DeriveSharedSecretActorEvent deriveSharedSecretEvent = new(connectId, actorEvent.PubKeyExchange);
-        Result<DeriveSharedSecretReply, EcliptixProtocolFailure> result =
-            await connectActor.Ask<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>>(deriveSharedSecretEvent);
+        DeriveSharedSecretCommand deriveSharedSecretEvent = new(connectId, actorEvent.PubKeyExchange);
+        Result<DeriveSharedSecretResponse, EcliptixProtocolFailure> result =
+            await connectActor.Ask<Result<DeriveSharedSecretResponse, EcliptixProtocolFailure>>(deriveSharedSecretEvent);
 
         Sender.Tell(result);
     }
 
-    private async Task ProcessForwarding(ForwardToConnectActorEvent message)
+    private async Task ProcessForwarding(RouteToConnectionCommand message)
     {
         uint connectId = message.ConnectId;
         string actorName = GetConnectActorName(connectId);

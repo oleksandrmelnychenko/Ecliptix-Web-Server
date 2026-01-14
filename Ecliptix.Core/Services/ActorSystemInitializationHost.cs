@@ -9,6 +9,7 @@ using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 using Ecliptix.IdentityAccess.Domain.Persistors;
 using Ecliptix.IdentityAccess.Domain.Providers.Twilio;
 using Ecliptix.IdentityAccess.Domain.Schema;
+using Ecliptix.IdentityAccess.Domain.Services;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Actors;
 using Ecliptix.SharedKernel.Configuration;
@@ -16,7 +17,6 @@ using Ecliptix.SecureProtocol.Infrastructure.Actors;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Ecliptix.Security.Opaque.Contracts;
-using Ecliptix.IdentityAccess.Domain.Services.Security;
 using Serilog;
 
 namespace Ecliptix.Core.Services;
@@ -26,7 +26,7 @@ public sealed class ActorSystemInitializationHost(
     IEcliptixActorRegistry registry,
     IDbContextFactory<EcliptixSchemaContext> dbContextFactory,
     IOpaqueProtocolService opaqueProtocolService,
-    ILocalizationProvider localizationProvider,
+    ILocalizationService localizationService,
     IMasterKeyService masterKeyService,
     ISmsProvider smsProvider,
     IOptionsMonitor<SecurityConfiguration> securityConfig) : IHostedService
@@ -71,7 +71,7 @@ public sealed class ActorSystemInitializationHost(
                 accountPersistorActor,
                 passwordRecoveryPersistorActor,
                 opaqueProtocolService,
-                localizationProvider,
+                localizationService,
                 masterKeyService,
                 securityConfig),
             ApplicationConstants.ActorNames.MembershipActor);
@@ -85,7 +85,7 @@ public sealed class ActorSystemInitializationHost(
                 verificationFlowPersistorActor,
                 membershipActor,
                 smsProvider,
-                localizationProvider,
+                localizationService,
                 securityConfig),
             ApplicationConstants.ActorNames.VerificationFlowManagerActor);
 

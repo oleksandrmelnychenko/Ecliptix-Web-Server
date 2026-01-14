@@ -24,5 +24,7 @@ public enum EcliptixProtocolFailureType
     ReplayAttempt,
     StateMismatch,
     HeaderAuthenticationFailed,
-    SessionAuthenticationFailed
+    SessionAuthenticationFailed,
+    IndexDesynchronized,
+    ChainIndexMismatch
 }

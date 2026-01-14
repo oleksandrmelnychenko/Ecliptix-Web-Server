@@ -6,5 +6,6 @@ public enum ValidationFailureReason
     InvalidCountryCode,
     TooShort,
     TooLong,
-    PossibleButNotCertain
+    PossibleButNotCertain,
+    NotMobile
 }

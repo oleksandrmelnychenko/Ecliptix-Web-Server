@@ -74,6 +74,7 @@ public static class VerificationFlowMessageKeys
     public const string MobileParsingGenericError = "mobile_parsing_generic_error";
     public const string MobileParsingPossibleButLocalOnly = "mobile_parsing_possible_but_local_only";
     public const string MobileValidationUnexpectedError = "mobile_validation_unexpected_error";
+    public const string MobileNotMobile = "mobile_not_mobile";
 
     public const string MobileAvailableForRegistration = "mobile_available_for_registration";
     public const string MobileIncompleteRegistration = "mobile_incomplete_registration_continue";

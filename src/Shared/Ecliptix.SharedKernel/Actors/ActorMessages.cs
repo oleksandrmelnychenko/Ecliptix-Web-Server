@@ -4,49 +4,49 @@ using Ecliptix.Protobuf.SecureProtocol;
 
 namespace Ecliptix.SharedKernel.Actors;
 
-public record BeginAppDeviceEphemeralConnectActorEvent(PubKeyExchange PubKeyExchange, uint UniqueConnectId);
+public record InitiateEphemeralConnectCommand(PubKeyExchange PubKeyExchange, uint UniqueConnectId);
 
-public record DecryptSecureEnvelopeActorEvent(
+public record DecryptSecureEnvelopeCommand(
     PubKeyExchangeType PubKeyExchangeType,
     SecureEnvelope SecureEnvelope);
 
-public record EncryptPayloadActorEvent(
+public record EncryptPayloadCommand(
     PubKeyExchangeType PubKeyExchangeType,
     byte[] Payload);
 
-public record EncryptPayloadComponentsActorEvent(
+public record EncryptPayloadComponentsCommand(
     PubKeyExchangeType ExchangeType,
     byte[] Payload);
 
-public record DecryptPayloadWithHeaderActorEvent(
+public record DecryptPayloadWithHeaderCommand(
     PubKeyExchangeType ExchangeType,
     byte[] Metadata,
     byte[] EncryptedPayload);
 
-public record ForwardToConnectActorEvent(uint ConnectId, object Payload);
+public record RouteToConnectionCommand(uint ConnectId, object Payload);
 
-public record RestoreAppDeviceSecrecyChannelState;
+public record RestoreProtocolSessionCommand;
 
-public record DeriveSharedSecretActorEvent(uint ConnectId, PubKeyExchange PubKeyExchange);
+public record DeriveSharedSecretCommand(uint ConnectId, PubKeyExchange PubKeyExchange);
 
-public record DeriveSharedSecretReply(PubKeyExchange PubKeyExchange);
+public record DeriveSharedSecretResponse(PubKeyExchange PubKeyExchange);
 
-public record InitializeProtocolWithMasterKeyActorEvent(
+public record InitializeProtocolWithMasterKeyCommand(
     uint ConnectId,
     PubKeyExchange ClientPubKeyExchange,
     Guid MembershipId,
     Guid AccountId,
     byte[] RootKey);
 
-public record InitializeProtocolWithMasterKeyReply(PubKeyExchange ServerPubKeyExchange);
+public record InitializeProtocolWithMasterKeyResponse(PubKeyExchange ServerPubKeyExchange);
 
-public record GetProtocolStateActorEvent(uint ConnectId);
+public record GetProtocolStateQuery(uint ConnectId);
 
-public record GetProtocolStateReply(EcliptixSessionState? SessionState);
+public record GetProtocolStateResponse(EcliptixSessionState? SessionState);
 
-public record GetConnectionKyberPublicKeyActorEvent;
+public record GetConnectionKyberPublicKeyQuery;
 
-public record CleanupProtocolForTypeActorEvent(PubKeyExchangeType ExchangeType);
+public record CleanupProtocolForTypeCommand(PubKeyExchangeType ExchangeType);
 
 public sealed record KeepAlive
 {

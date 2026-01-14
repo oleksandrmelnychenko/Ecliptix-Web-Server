@@ -1,10 +1,11 @@
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
+using Ecliptix.IdentityAccess.Domain.Services;
 using Ecliptix.SharedKernel;
 using PhoneNumbers;
 
 namespace Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
 
-public class MobileNumberValidator(ILocalizationProvider localizationProvider) : IMobileNumberValidator
+public class MobileNumberValidator(ILocalizationService localizationService) : IMobileNumberValidator
 {
     private readonly PhoneNumberUtil _phoneNumberUtil = PhoneNumberUtil.GetInstance();
 
@@ -13,7 +14,7 @@ public class MobileNumberValidator(ILocalizationProvider localizationProvider) :
     {
         if (string.IsNullOrWhiteSpace(mobileNumber))
         {
-            string message = localizationProvider.Localize(VerificationFlowMessageKeys.MobileNumberEmpty, cultureName);
+            string message = localizationService.Localize(VerificationFlowMessageKeys.MobileNumberEmpty, cultureName);
             return Result<MobileNumberValidationResult, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.MobileNumberInvalid(message)
             );
@@ -23,7 +24,7 @@ public class MobileNumberValidator(ILocalizationProvider localizationProvider) :
             !_phoneNumberUtil.GetSupportedRegions().Contains(defaultRegion))
         {
             string message =
-                localizationProvider.Localize(VerificationFlowMessageKeys.InvalidDefaultRegion, cultureName);
+                localizationService.Localize(VerificationFlowMessageKeys.InvalidDefaultRegion, cultureName);
             return Result<MobileNumberValidationResult, VerificationFlowFailure>.Err(
                 VerificationFlowFailure.Generic(message)
             );
@@ -57,12 +58,12 @@ public class MobileNumberValidator(ILocalizationProvider localizationProvider) :
                     _ => VerificationFlowMessageKeys.MobileParsingGenericError
                 };
 
-                string message = localizationProvider.Localize(errorKey, cultureName);
+                string message = localizationService.Localize(errorKey, cultureName);
                 return VerificationFlowFailure.MobileNumberInvalid(message, npe);
             }
 
             string genericMessage =
-                localizationProvider.Localize(VerificationFlowMessageKeys.MobileParsingGenericError, cultureName);
+                localizationService.Localize(VerificationFlowMessageKeys.MobileParsingGenericError, cultureName);
             return VerificationFlowFailure.Generic(genericMessage, ex);
         });
     }
@@ -79,22 +80,38 @@ public class MobileNumberValidator(ILocalizationProvider localizationProvider) :
                 ValidationFailureReason internalReason = MapLibValidationReasonToInternalReason(possibility);
 
                 string messageKey = MapLibValidationReasonToMessageKey(possibility);
-                string message = localizationProvider.Localize(messageKey, cultureName);
+                string message = localizationService.Localize(messageKey, cultureName);
 
                 return MobileNumberValidationResult.CreateInvalid(
                     message,
                     internalReason,
                     Option<string>.Some(e164Format),
-                    Option<object[]>.None);
+                    Option<object[]>.None,
+                    Option<string>.Some(messageKey),
+                    Option<MobileCheckStatus>.None);
             }
 
             PhoneNumberType libType = _phoneNumberUtil.GetNumberType(parsedMobileNumber);
             MobileCheckStatus mobileStatus = DetermineMobileStatus(libType);
+            if (mobileStatus != MobileCheckStatus.IsMobile)
+            {
+                string messageKey = VerificationFlowMessageKeys.MobileNotMobile;
+                string message = localizationService.Localize(messageKey, cultureName);
+
+                return MobileNumberValidationResult.CreateInvalid(
+                    message,
+                    ValidationFailureReason.NotMobile,
+                    Option<string>.Some(e164Format),
+                    Option<object[]>.None,
+                    Option<string>.Some(messageKey),
+                    Option<MobileCheckStatus>.Some(mobileStatus));
+            }
+
             string? detectedRegion = _phoneNumberUtil.GetRegionCodeForNumber(parsedMobileNumber);
             return new MobileNumberValidationResult(e164Format, detectedRegion ?? "Unknown", mobileStatus);
         }, ex =>
         {
-            string message = localizationProvider.Localize(VerificationFlowMessageKeys.MobileValidationUnexpectedError,
+            string message = localizationService.Localize(VerificationFlowMessageKeys.MobileValidationUnexpectedError,
                 cultureName);
             return VerificationFlowFailure.Generic(message, ex);
         });
@@ -102,7 +119,7 @@ public class MobileNumberValidator(ILocalizationProvider localizationProvider) :
 
     private static MobileCheckStatus DetermineMobileStatus(PhoneNumberType libType)
     {
-        return libType is PhoneNumberType.MOBILE or PhoneNumberType.FIXED_LINE_OR_MOBILE
+        return libType is PhoneNumberType.MOBILE
             ? MobileCheckStatus.IsMobile
             : MobileCheckStatus.IsNotMobile;
     }

@@ -61,7 +61,7 @@ public static class OneTimePasswordHashing
         byte[]? rentedArray = null;
         Span<byte> combinedBytes = combinedMaxBytes <= StackAllocThreshold
             ? stackalloc byte[StackAllocThreshold]
-            : (rentedArray = ArrayPool<byte>.Shared.Rent(combinedMaxBytes));
+            : rentedArray = ArrayPool<byte>.Shared.Rent(combinedMaxBytes);
 
         try
         {

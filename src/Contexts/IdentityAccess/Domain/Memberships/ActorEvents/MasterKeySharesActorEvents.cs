@@ -9,17 +9,17 @@ public record ShareData(
     string StorageLocation
 );
 
-public record DeleteMasterKeySharesEvent(
+public record DeleteMasterKeySharesCommand(
     Guid AccountId,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record GetMasterKeySharesEvent(
+public record GetMasterKeySharesQuery(
     Guid AccountUniqueId,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record InsertMasterKeySharesEvent(
+public record CreateMasterKeySharesCommand(
     Guid AccountUniqueId,
     IReadOnlyList<ShareData> Shares,
     CancellationToken CancellationToken = default

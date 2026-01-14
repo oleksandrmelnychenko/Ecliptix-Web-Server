@@ -4,18 +4,18 @@ using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
 
 namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 
-public record CheckExistingMembershipActorEvent(
+public record ExistsMembershipQuery(
     Guid MobileNumberId,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record CreateDefaultAccountEvent(
+public record CreateDefaultAccountCommand(
     Guid MembershipId,
     Guid? AccountId = null,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record CreateMembershipActorEvent(
+public record CreateMembershipCommand(
     uint ConnectId,
     Guid VerificationFlowIdentifier,
     Guid OtpIdentifier,
@@ -23,27 +23,27 @@ public record CreateMembershipActorEvent(
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record GetAccountsByMembershipIdEvent(
+public record GetAccountsByMembershipIdQuery(
     Guid MembershipId,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record GetDefaultAccountIdEvent(
+public record GetDefaultAccountIdQuery(
     Guid MembershipId,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record GetMembershipByUniqueIdEvent(
+public record GetMembershipByUniqueIdQuery(
     Guid MembershipUniqueId,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record GetMembershipByVerificationFlowEvent(
+public record GetMembershipByVerificationFlowQuery(
     Guid VerificationFlowId,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record SignInMembershipActorEvent(
+public record SignInMembershipCommand(
     uint ConnectId,
     string MobileNumber,
     Guid DeviceId,
@@ -52,13 +52,13 @@ public record SignInMembershipActorEvent(
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record UpdateMembershipCreationStatusEvent(
+public record UpdateMembershipCreationStatusCommand(
     Guid MembershipIdentifier,
     MembershipCreationStatus CreationStatus,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record UpdateMembershipVerificationFlowEvent(
+public record UpdateMembershipVerificationFlowCommand(
     Guid VerificationFlowId,
     OtpVerificationPurpose Purpose,
     VerificationFlowStatus FlowStatus,

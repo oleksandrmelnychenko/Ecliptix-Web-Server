@@ -50,6 +50,6 @@ public class SecrecyHandshakeKeepAliveInterceptor(IEcliptixActorRegistry actorRe
     private void SendKeepAlive(ServerCallContext context)
     {
         uint connectId = (uint)context.UserState[GrpcMetadataHandler.UniqueConnectId];
-        _protocolSystemActor.Value.Tell(new ForwardToConnectActorEvent(connectId, KeepAlive.Instance));
+        _protocolSystemActor.Value.Tell(new RouteToConnectionCommand(connectId, KeepAlive.Instance));
     }
 }

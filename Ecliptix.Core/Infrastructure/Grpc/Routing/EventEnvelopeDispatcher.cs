@@ -1,14 +1,16 @@
 using System.Text.RegularExpressions;
 using Ecliptix.IdentityAccess.Domain;
+using Ecliptix.IdentityAccess.Domain.Services;
 using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.SharedKernel;
 using Google.Protobuf;
+using Grpc.Core;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Routing;
 
 public sealed class EventEnvelopeDispatcher(
     IEventRouteResolver resolver,
-    ILocalizationProvider localizationProvider)
+    ILocalizationService localizationService)
 {
     private static readonly Regex IdempotencyPattern = new("^[A-Za-z0-9._:-]{1,128}$", RegexOptions.Compiled);
     private const int MaxEventIdLength = 128;
@@ -27,14 +29,127 @@ public sealed class EventEnvelopeDispatcher(
             .Bind(ValidateDeliveryKind)
             .Bind(ValidateFieldLengths)
             .Bind(ResolveRoute)
+            .Bind(dispatchContext => ValidateDeliveryKindMatch(dispatchContext, DeliveryKind.Unary))
             .Bind(ValidateRouteContext)
             .Bind(EnsureConnectId)
             .Bind(ValidateIdempotency)
             .Bind(ValidateDeviceIdentifiers)
             .Bind(DeserializePayload)
-            .BindAsync(ctx => ExecuteHandler(ctx, cancellationToken))
+            .BindAsync(dispatchContext => ExecuteUnaryHandler(dispatchContext, cancellationToken))
             .Bind(SerializeResponse)
             .MatchAsync(BuildSuccessEnvelope, BuildErrorEnvelope);
+    }
+
+    public async Task DispatchServerStreamAsync(
+        EventEnvelope envelope,
+        IServerStreamWriter<EventEnvelope> responseStream,
+        CancellationToken cancellationToken)
+    {
+        Result<DispatchContext, DispatchFailure> result = CreateContext(envelope)
+            .Bind(ValidateEventType)
+            .Bind(ValidateDeliveryKind)
+            .Bind(ValidateFieldLengths)
+            .Bind(ResolveRoute)
+            .Bind(dispatchContext => ValidateDeliveryKindMatch(dispatchContext, DeliveryKind.ServerStream))
+            .Bind(ValidateRouteContext)
+            .Bind(EnsureConnectId)
+            .Bind(ValidateIdempotency)
+            .Bind(ValidateDeviceIdentifiers)
+            .Bind(DeserializePayload);
+
+        if (result.IsErr)
+        {
+            await responseStream.WriteAsync(BuildErrorEnvelope(result.UnwrapErr()));
+            return;
+        }
+
+        DispatchContext dispatchContext = result.Unwrap();
+        await ExecuteServerStreamHandler(dispatchContext, responseStream, cancellationToken);
+    }
+
+    public async Task<EventEnvelope> DispatchClientStreamAsync(
+        IAsyncEnumerable<EventEnvelope> envelopes,
+        CancellationToken cancellationToken)
+    {
+        await using IAsyncEnumerator<EventEnvelope> enumerator = envelopes.GetAsyncEnumerator(cancellationToken);
+
+        if (!await enumerator.MoveNextAsync())
+        {
+            return BuildErrorEnvelope(new DispatchFailure(
+                DispatcherErrorCodes.DeserializeFailed,
+                string.Empty,
+                string.Empty,
+                false,
+                new EventMetadata()));
+        }
+
+        EventEnvelope firstEnvelope = enumerator.Current;
+
+        Result<DispatchContext, DispatchFailure> result = CreateContext(firstEnvelope)
+            .Bind(ValidateEventType)
+            .Bind(ValidateDeliveryKind)
+            .Bind(ValidateFieldLengths)
+            .Bind(ResolveRoute)
+            .Bind(dispatchContext => ValidateDeliveryKindMatch(dispatchContext, DeliveryKind.ClientStream))
+            .Bind(ValidateRouteContext)
+            .Bind(EnsureConnectId)
+            .Bind(ValidateIdempotency)
+            .Bind(ValidateDeviceIdentifiers);
+
+        if (result.IsErr)
+        {
+            return BuildErrorEnvelope(result.UnwrapErr());
+        }
+
+        DispatchContext dispatchContext = result.Unwrap();
+        IAsyncEnumerable<IMessage> messageStream = DeserializeEnumeratedStream(firstEnvelope, enumerator, dispatchContext.Route!, cancellationToken);
+
+        return await ExecuteClientStreamHandler(dispatchContext, messageStream, cancellationToken)
+            .Bind(SerializeResponse)
+            .MatchAsync(BuildSuccessEnvelope, BuildErrorEnvelope);
+    }
+
+    public async Task DispatchBidiStreamAsync(
+        IAsyncEnumerable<EventEnvelope> envelopes,
+        IServerStreamWriter<EventEnvelope> responseStream,
+        CancellationToken cancellationToken)
+    {
+        await using IAsyncEnumerator<EventEnvelope> enumerator = envelopes.GetAsyncEnumerator(cancellationToken);
+
+        if (!await enumerator.MoveNextAsync())
+        {
+            await responseStream.WriteAsync(BuildErrorEnvelope(new DispatchFailure(
+                DispatcherErrorCodes.DeserializeFailed,
+                string.Empty,
+                string.Empty,
+                false,
+                new EventMetadata())));
+            return;
+        }
+
+        EventEnvelope firstEnvelope = enumerator.Current;
+
+        Result<DispatchContext, DispatchFailure> result = CreateContext(firstEnvelope)
+            .Bind(ValidateEventType)
+            .Bind(ValidateDeliveryKind)
+            .Bind(ValidateFieldLengths)
+            .Bind(ResolveRoute)
+            .Bind(dispatchContext => ValidateDeliveryKindMatch(dispatchContext, DeliveryKind.BidiStream))
+            .Bind(ValidateRouteContext)
+            .Bind(EnsureConnectId)
+            .Bind(ValidateIdempotency)
+            .Bind(ValidateDeviceIdentifiers);
+
+        if (result.IsErr)
+        {
+            await responseStream.WriteAsync(BuildErrorEnvelope(result.UnwrapErr()));
+            return;
+        }
+
+        DispatchContext dispatchContext = result.Unwrap();
+        IAsyncEnumerable<IMessage> messageStream = DeserializeEnumeratedStream(firstEnvelope, enumerator, dispatchContext.Route!, cancellationToken);
+
+        await ExecuteBidiStreamHandler(dispatchContext, messageStream, responseStream, cancellationToken);
     }
 
     private static Result<DispatchContext, DispatchFailure> CreateContext(EventEnvelope envelope)
@@ -50,23 +165,23 @@ public sealed class EventEnvelopeDispatcher(
         return Ok(new DispatchContext { Envelope = envelope, Metadata = metadata });
     }
 
-    private static Result<DispatchContext, DispatchFailure> ValidateEventType(DispatchContext ctx)
+    private static Result<DispatchContext, DispatchFailure> ValidateEventType(DispatchContext dispatchContext)
     {
-        return ctx.Metadata.Identity?.EventType is null or TransportEventType.Unspecified
-            ? Fail(ctx, DispatcherErrorCodes.RouteMissingEventType)
-            : Ok(ctx);
+        return dispatchContext.Metadata.Identity?.EventType is null or TransportEventType.Unspecified
+            ? Fail(dispatchContext, DispatcherErrorCodes.RouteMissingEventType)
+            : Ok(dispatchContext);
     }
 
-    private static Result<DispatchContext, DispatchFailure> ValidateDeliveryKind(DispatchContext ctx)
+    private static Result<DispatchContext, DispatchFailure> ValidateDeliveryKind(DispatchContext dispatchContext)
     {
-        return ctx.Metadata.Identity?.DeliveryKind is null or DeliveryKind.Unspecified
-            ? Fail(ctx, DispatcherErrorCodes.DeliveryKindRequired)
-            : Ok(ctx);
+        return dispatchContext.Metadata.Identity?.DeliveryKind is null or DeliveryKind.Unspecified
+            ? Fail(dispatchContext, DispatcherErrorCodes.DeliveryKindRequired)
+            : Ok(dispatchContext);
     }
 
-    private static Result<DispatchContext, DispatchFailure> ValidateFieldLengths(DispatchContext ctx)
+    private static Result<DispatchContext, DispatchFailure> ValidateFieldLengths(DispatchContext dispatchContext)
     {
-        return Ok(ctx)
+        return Ok(dispatchContext)
             .Bind(c => ValidateLength(c, c.Metadata.Identity?.EventId, MaxEventIdLength, DispatcherErrorCodes.EventIdTooLong))
             .Bind(c => ValidateLength(c, c.Metadata.Client?.RequestId, MaxRequestIdLength, DispatcherErrorCodes.RequestIdTooLong))
             .Bind(c => ValidateLength(c, c.Metadata.Client?.Platform, MaxPlatformLength, DispatcherErrorCodes.PlatformTooLong))
@@ -78,152 +193,268 @@ public sealed class EventEnvelopeDispatcher(
     }
 
     private static Result<DispatchContext, DispatchFailure> ValidateLength(
-        DispatchContext ctx, string? value, int maxLength, string errorCode)
+        DispatchContext dispatchContext, string? value, int maxLength, string errorCode)
     {
         return !string.IsNullOrWhiteSpace(value) && value.Length > maxLength
-            ? Fail(ctx, errorCode)
-            : Ok(ctx);
+            ? Fail(dispatchContext, errorCode)
+            : Ok(dispatchContext);
     }
 
     private static Result<DispatchContext, DispatchFailure> ValidateByteStringLength(
-        DispatchContext ctx, ByteString? value, int maxLength, string errorCode)
+        DispatchContext dispatchContext, ByteString? value, int maxLength, string errorCode)
     {
         return value != null && !value.IsEmpty && value.Length > maxLength
-            ? Fail(ctx, errorCode)
-            : Ok(ctx);
+            ? Fail(dispatchContext, errorCode)
+            : Ok(dispatchContext);
     }
 
-    private Result<DispatchContext, DispatchFailure> ResolveRoute(DispatchContext ctx)
+    private Result<DispatchContext, DispatchFailure> ResolveRoute(DispatchContext dispatchContext)
     {
-        return resolver.TryGetRoute(ctx.Metadata.Identity!.EventType, out EventRoute route)
-            ? Ok(ctx.WithRoute(route))
-            : Fail(ctx, DispatcherErrorCodes.RouteNotFound);
+        return resolver.TryGetRoute(dispatchContext.Metadata.Identity!.EventType, out EventRoute route)
+            ? Ok(dispatchContext.WithRoute(route))
+            : Fail(dispatchContext, DispatcherErrorCodes.RouteNotFound);
     }
 
-    private static Result<DispatchContext, DispatchFailure> ValidateRouteContext(DispatchContext ctx)
+    private static Result<DispatchContext, DispatchFailure> ValidateRouteContext(DispatchContext dispatchContext)
     {
-        if (ctx.Metadata.Identity?.Context is null or EventContext.Unspecified)
+        if (dispatchContext.Metadata.Identity?.Context is null or EventContext.Unspecified)
         {
-            return Fail(ctx, DispatcherErrorCodes.ContextRequired);
+            return Fail(dispatchContext, DispatcherErrorCodes.ContextRequired);
         }
 
-        return ctx.Metadata.Identity.Context != ctx.Route!.Context
-            ? Fail(ctx, DispatcherErrorCodes.ContextMismatch)
-            : Ok(ctx);
+        return dispatchContext.Metadata.Identity.Context != dispatchContext.Route!.Context
+            ? Fail(dispatchContext, DispatcherErrorCodes.ContextMismatch)
+            : Ok(dispatchContext);
     }
 
-    private static Result<DispatchContext, DispatchFailure> EnsureConnectId(DispatchContext ctx)
+    private static Result<DispatchContext, DispatchFailure> ValidateDeliveryKindMatch(
+        DispatchContext dispatchContext, DeliveryKind expectedKind)
     {
-        if (!RequiresConnectId(ctx.Route!.Context))
+        return dispatchContext.Route!.DeliveryKind != expectedKind
+            ? Fail(dispatchContext, DispatcherErrorCodes.DeliveryKindMismatch)
+            : Ok(dispatchContext);
+    }
+
+    private static Result<DispatchContext, DispatchFailure> EnsureConnectId(DispatchContext dispatchContext)
+    {
+        if (!RequiresConnectId(dispatchContext.Route!.Context))
         {
-            return Ok(ctx);
+            return Ok(dispatchContext);
         }
 
-        ctx.Metadata.Security ??= new SecurityContext();
-        ctx.Metadata.Identity ??= new EventIdentity();
+        dispatchContext.Metadata.Security ??= new SecurityContext();
+        dispatchContext.Metadata.Identity ??= new EventIdentity();
 
-        if (ctx.Metadata.Security.ConnectId == 0 && uint.TryParse(ctx.Metadata.Identity.PartitionKey, out uint parsed))
+        if (dispatchContext.Metadata.Security.ConnectId == 0 && uint.TryParse(dispatchContext.Metadata.Identity.PartitionKey, out uint parsed))
         {
-            ctx.Metadata.Security.ConnectId = parsed;
+            dispatchContext.Metadata.Security.ConnectId = parsed;
         }
 
-        if (ctx.Metadata.Security.ConnectId == 0)
+        if (dispatchContext.Metadata.Security.ConnectId == 0)
         {
-            return Fail(ctx, DispatcherErrorCodes.ConnectIdRequired);
+            return Fail(dispatchContext, DispatcherErrorCodes.ConnectIdRequired);
         }
 
-        if (string.IsNullOrWhiteSpace(ctx.Metadata.Identity.PartitionKey))
+        if (string.IsNullOrWhiteSpace(dispatchContext.Metadata.Identity.PartitionKey))
         {
-            ctx.Metadata.Identity.PartitionKey = ctx.Metadata.Security.ConnectId.ToString();
+            dispatchContext.Metadata.Identity.PartitionKey = dispatchContext.Metadata.Security.ConnectId.ToString();
         }
 
-        return Ok(ctx);
+        return Ok(dispatchContext);
     }
 
     private static bool RequiresConnectId(EventContext context) =>
         context is EventContext.IdentityAccess or EventContext.DeviceProvisioning;
 
-    private static Result<DispatchContext, DispatchFailure> ValidateIdempotency(DispatchContext ctx)
+    private static Result<DispatchContext, DispatchFailure> ValidateIdempotency(DispatchContext dispatchContext)
     {
-        string? idempotencyKey = ctx.Metadata.Client?.IdempotencyKey;
+        string? idempotencyKey = dispatchContext.Metadata.Client?.IdempotencyKey;
 
-        if (ctx.Route!.IdempotencyRequired && string.IsNullOrWhiteSpace(idempotencyKey))
+        if (dispatchContext.Route!.IdempotencyRequired && string.IsNullOrWhiteSpace(idempotencyKey))
         {
-            return Fail(ctx, DispatcherErrorCodes.IdempotencyRequired);
+            return Fail(dispatchContext, DispatcherErrorCodes.IdempotencyRequired);
         }
 
         return !string.IsNullOrWhiteSpace(idempotencyKey) && !IdempotencyPattern.IsMatch(idempotencyKey)
-            ? Fail(ctx, DispatcherErrorCodes.IdempotencyInvalid)
-            : Ok(ctx);
+            ? Fail(dispatchContext, DispatcherErrorCodes.IdempotencyInvalid)
+            : Ok(dispatchContext);
     }
 
-    private static Result<DispatchContext, DispatchFailure> ValidateDeviceIdentifiers(DispatchContext ctx)
+    private static Result<DispatchContext, DispatchFailure> ValidateDeviceIdentifiers(DispatchContext dispatchContext)
     {
-        if (ctx.Route!.RequiresDeviceId &&
-            (ctx.Metadata.Client?.DeviceId == null || ctx.Metadata.Client.DeviceId.IsEmpty))
+        if (dispatchContext.Route!.RequiresDeviceId &&
+            (dispatchContext.Metadata.Client?.DeviceId == null || dispatchContext.Metadata.Client.DeviceId.IsEmpty))
         {
-            return Fail(ctx, DispatcherErrorCodes.DeviceIdRequired);
+            return Fail(dispatchContext, DispatcherErrorCodes.DeviceIdRequired);
         }
 
-        if (ctx.Route.RequiresApplicationInstanceId &&
-            (ctx.Metadata.Client?.ApplicationInstanceId == null || ctx.Metadata.Client.ApplicationInstanceId.IsEmpty))
+        if (dispatchContext.Route.RequiresApplicationInstanceId &&
+            (dispatchContext.Metadata.Client?.ApplicationInstanceId == null || dispatchContext.Metadata.Client.ApplicationInstanceId.IsEmpty))
         {
-            return Fail(ctx, DispatcherErrorCodes.ApplicationInstanceIdRequired);
+            return Fail(dispatchContext, DispatcherErrorCodes.ApplicationInstanceIdRequired);
         }
 
-        return Ok(ctx);
+        return Ok(dispatchContext);
     }
 
-    private static Result<DispatchContext, DispatchFailure> DeserializePayload(DispatchContext ctx)
+    private static Result<DispatchContext, DispatchFailure> DeserializePayload(DispatchContext dispatchContext)
     {
         try
         {
-            IMessage message = ctx.Route!.Deserialize(ctx.Envelope.Payload.Memory);
-            return Ok(ctx.WithMessage(message));
+            IMessage message = dispatchContext.Route!.Deserialize(dispatchContext.Envelope.Payload.Memory);
+            return Ok(dispatchContext.WithMessage(message));
         }
         catch
         {
-            return Fail(ctx, DispatcherErrorCodes.DeserializeFailed);
+            return Fail(dispatchContext, DispatcherErrorCodes.DeserializeFailed);
         }
     }
 
-    private async Task<Result<DispatchContext, DispatchFailure>> ExecuteHandler(
-        DispatchContext ctx, CancellationToken cancellationToken)
+    private async Task<Result<DispatchContext, DispatchFailure>> ExecuteUnaryHandler(
+        DispatchContext dispatchContext, CancellationToken cancellationToken)
     {
+        if (dispatchContext.Route!.HandleUnaryAsync is null)
+        {
+            return Fail(dispatchContext, DispatcherErrorCodes.HandlerNotConfigured);
+        }
+
         try
         {
             Result<IMessage, FailureBase> result =
-                await ctx.Route!.HandleAsync(ctx.Message!, ctx.Metadata, cancellationToken);
+                await dispatchContext.Route.HandleUnaryAsync(dispatchContext.Message!, dispatchContext.Metadata, cancellationToken);
 
             return result.IsOk
-                ? Ok(ctx.WithResponse(result.Unwrap()))
-                : FailWithDescriptor(ctx, result.UnwrapErr());
+                ? Ok(dispatchContext.WithResponse(result.Unwrap()))
+                : FailWithDescriptor(dispatchContext, result.UnwrapErr());
         }
         catch
         {
-            return Fail(ctx, DispatcherErrorCodes.HandlerFailed, retryable: true);
+            return Fail(dispatchContext, DispatcherErrorCodes.HandlerFailed, retryable: true);
         }
     }
 
-    private static Result<DispatchContext, DispatchFailure> SerializeResponse(DispatchContext ctx)
+    private async Task ExecuteServerStreamHandler(
+        DispatchContext dispatchContext,
+        IServerStreamWriter<EventEnvelope> responseStream,
+        CancellationToken cancellationToken)
+    {
+        if (dispatchContext.Route!.HandleServerStreamAsync is null)
+        {
+            await responseStream.WriteAsync(BuildErrorEnvelope(new DispatchFailure(
+                DispatcherErrorCodes.HandlerNotConfigured,
+                string.Empty,
+                string.Empty,
+                false,
+                dispatchContext.Metadata)));
+            return;
+        }
+
+        try
+        {
+            await dispatchContext.Route.HandleServerStreamAsync(dispatchContext.Message!, dispatchContext.Metadata, responseStream, cancellationToken);
+        }
+        catch
+        {
+            await responseStream.WriteAsync(BuildErrorEnvelope(new DispatchFailure(
+                DispatcherErrorCodes.HandlerFailed,
+                string.Empty,
+                string.Empty,
+                true,
+                dispatchContext.Metadata)));
+        }
+    }
+
+    private async Task<Result<DispatchContext, DispatchFailure>> ExecuteClientStreamHandler(
+        DispatchContext dispatchContext,
+        IAsyncEnumerable<IMessage> messageStream,
+        CancellationToken cancellationToken)
+    {
+        if (dispatchContext.Route!.HandleClientStreamAsync is null)
+        {
+            return Fail(dispatchContext, DispatcherErrorCodes.HandlerNotConfigured);
+        }
+
+        try
+        {
+            Result<IMessage, FailureBase> result =
+                await dispatchContext.Route.HandleClientStreamAsync(messageStream, dispatchContext.Metadata, cancellationToken);
+
+            return result.IsOk
+                ? Ok(dispatchContext.WithResponse(result.Unwrap()))
+                : FailWithDescriptor(dispatchContext, result.UnwrapErr());
+        }
+        catch
+        {
+            return Fail(dispatchContext, DispatcherErrorCodes.HandlerFailed, retryable: true);
+        }
+    }
+
+    private async Task ExecuteBidiStreamHandler(
+        DispatchContext dispatchContext,
+        IAsyncEnumerable<IMessage> messageStream,
+        IServerStreamWriter<EventEnvelope> responseStream,
+        CancellationToken cancellationToken)
+    {
+        if (dispatchContext.Route!.HandleBidiStreamAsync is null)
+        {
+            await responseStream.WriteAsync(BuildErrorEnvelope(new DispatchFailure(
+                DispatcherErrorCodes.HandlerNotConfigured,
+                string.Empty,
+                string.Empty,
+                false,
+                dispatchContext.Metadata)));
+            return;
+        }
+
+        try
+        {
+            await dispatchContext.Route.HandleBidiStreamAsync(messageStream, dispatchContext.Metadata, responseStream, cancellationToken);
+        }
+        catch
+        {
+            await responseStream.WriteAsync(BuildErrorEnvelope(new DispatchFailure(
+                DispatcherErrorCodes.HandlerFailed,
+                string.Empty,
+                string.Empty,
+                true,
+                dispatchContext.Metadata)));
+        }
+    }
+
+    private static async IAsyncEnumerable<IMessage> DeserializeEnumeratedStream(
+        EventEnvelope firstEnvelope,
+        IAsyncEnumerator<EventEnvelope> enumerator,
+        EventRoute route,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        yield return route.Deserialize(firstEnvelope.Payload.Memory);
+
+        while (await enumerator.MoveNextAsync().ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return route.Deserialize(enumerator.Current.Payload.Memory);
+        }
+    }
+
+    private static Result<DispatchContext, DispatchFailure> SerializeResponse(DispatchContext dispatchContext)
     {
         try
         {
-            ReadOnlyMemory<byte> serialized = ctx.Route!.Serialize(ctx.Response!);
-            return Ok(ctx with { Envelope = new EventEnvelope { Payload = ByteString.CopyFrom(serialized.Span) } });
+            ReadOnlyMemory<byte> serialized = dispatchContext.Route!.Serialize(dispatchContext.Response!);
+            return Ok(dispatchContext with { Envelope = new EventEnvelope { Payload = ByteString.CopyFrom(serialized.Span) } });
         }
         catch
         {
-            return Fail(ctx, DispatcherErrorCodes.SerializeFailed);
+            return Fail(dispatchContext, DispatcherErrorCodes.SerializeFailed);
         }
     }
 
-    private static EventEnvelope BuildSuccessEnvelope(DispatchContext ctx)
+    private static EventEnvelope BuildSuccessEnvelope(DispatchContext dispatchContext)
     {
         return new EventEnvelope
         {
-            Metadata = BuildResponseMetadata(ctx.Metadata, DispatcherErrorCodes.StatusOk, string.Empty),
-            Payload = ctx.Envelope.Payload
+            Metadata = BuildResponseMetadata(dispatchContext.Metadata, DispatcherErrorCodes.StatusOk, string.Empty),
+            Payload = dispatchContext.Envelope.Payload
         };
     }
 
@@ -291,18 +522,18 @@ public sealed class EventEnvelopeDispatcher(
         };
     }
 
-    private static Result<DispatchContext, DispatchFailure> Ok(DispatchContext ctx)
-        => Result<DispatchContext, DispatchFailure>.Ok(ctx);
+    private static Result<DispatchContext, DispatchFailure> Ok(DispatchContext dispatchContext)
+        => Result<DispatchContext, DispatchFailure>.Ok(dispatchContext);
 
-    private static Result<DispatchContext, DispatchFailure> Fail(DispatchContext ctx, string errorCode, bool retryable = false)
+    private static Result<DispatchContext, DispatchFailure> Fail(DispatchContext dispatchContext, string errorCode, bool retryable = false)
         => Result<DispatchContext, DispatchFailure>.Err(
-            new DispatchFailure(errorCode, string.Empty, string.Empty, retryable, ctx.Metadata));
+            new DispatchFailure(errorCode, string.Empty, string.Empty, retryable, dispatchContext.Metadata));
 
-    private Result<DispatchContext, DispatchFailure> FailWithDescriptor(DispatchContext ctx, FailureBase failure)
+    private Result<DispatchContext, DispatchFailure> FailWithDescriptor(DispatchContext dispatchContext, FailureBase failure)
     {
         GrpcErrorDescriptor descriptor = failure.ToGrpcDescriptor();
-        string locale = ctx.Metadata.Client?.Locale ?? "en-US";
-        string localizedMessage = localizationProvider.Localize(descriptor.I18nKey, locale);
+        string locale = dispatchContext.Metadata.Client?.Locale ?? "en-US";
+        string localizedMessage = localizationService.Localize(descriptor.I18nKey, locale);
 
         return Result<DispatchContext, DispatchFailure>.Err(
             new DispatchFailure(
@@ -310,6 +541,6 @@ public sealed class EventEnvelopeDispatcher(
                 descriptor.I18nKey,
                 localizedMessage,
                 descriptor.Retryable,
-                ctx.Metadata));
+                dispatchContext.Metadata));
     }
 }

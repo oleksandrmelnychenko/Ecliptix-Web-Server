@@ -1,6 +1,6 @@
 using Ecliptix.SharedKernel;
 
-namespace Ecliptix.IdentityAccess.Domain.Services.Security;
+namespace Ecliptix.IdentityAccess.Domain.Services;
 
 public interface IMasterKeyService
 {

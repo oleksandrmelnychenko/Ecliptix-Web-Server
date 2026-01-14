@@ -32,8 +32,9 @@ using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel.Grpc.Utilities;
 using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
 using Ecliptix.SharedKernel.Actors;
-using Ecliptix.DeviceProvisioning.Infrastructure.Crypto;
-using Ecliptix.DeviceProvisioning.Infrastructure.SecureChannel;
+using Ecliptix.Security.Certificate.Pinning.Crypto;
+using Ecliptix.Security.Certificate.Pinning.SecureChannel;
+using Ecliptix.IdentityAccess.Domain.Services;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -208,7 +209,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
     });
 
     builder.Services.AddSingleton<IEcliptixActorRegistry, ActorRegistry>();
-    builder.Services.AddSingleton<ILocalizationProvider, VerificationFlowLocalizer>();
+    builder.Services.AddSingleton<ILocalizationService, VerificationFlowLocalizer>();
     builder.Services.AddSingleton<IMobileNumberValidator, MobileNumberValidator>();
     builder.Services.AddSingleton<IGrpcCipherService, GrpcCipherService>();
 
@@ -235,7 +236,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
 
     builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.ISecretSharingService, Ecliptix.Core.Services.KeyDerivation.NativeSecretSharingService>();
     builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IIdentityKeyDerivationService, Ecliptix.Core.Services.KeyDerivation.IdentityKeyDerivationService>();
-    builder.Services.AddSingleton<Ecliptix.IdentityAccess.Domain.Services.Security.IMasterKeyService, Ecliptix.Core.Services.Security.MasterKeyService>();
+    builder.Services.AddSingleton<IMasterKeyService, Ecliptix.Core.Services.Security.MasterKeyService>();
 
     builder.Services.AddSingleton<IRsaConfiguration, RsaConfiguration>();
     builder.Services.AddSingleton<IRsaChunkProcessor, RsaChunkProcessor>();

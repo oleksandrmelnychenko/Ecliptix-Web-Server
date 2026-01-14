@@ -28,23 +28,23 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
 
     private void Ready()
     {
-        Receive<InsertMasterKeySharesEvent>(cmd =>
+        Receive<CreateMasterKeySharesCommand>(cmd =>
             ExecuteWithContext(
-                    (ctx, cancellationToken) => InsertMasterKeySharesAsync(ctx, cmd, cancellationToken),
+                    (schemaContext, cancellationToken) => InsertMasterKeySharesAsync(schemaContext, cmd, cancellationToken),
                     "InsertMasterKeyShares",
                     cmd.CancellationToken)
                 .PipeTo(Sender));
 
-        Receive<GetMasterKeySharesEvent>(cmd =>
+        Receive<GetMasterKeySharesQuery>(cmd =>
             ExecuteWithContext(
-                    (ctx, cancellationToken) => GetMasterKeySharesByAccountIdAsync(ctx, cmd, cancellationToken),
+                    (schemaContext, cancellationToken) => GetMasterKeySharesByAccountIdAsync(schemaContext, cmd, cancellationToken),
                     "GetMasterKeyShares",
                     cmd.CancellationToken)
                 .PipeTo(Sender));
 
-        Receive<DeleteMasterKeySharesEvent>(cmd =>
+        Receive<DeleteMasterKeySharesCommand>(cmd =>
             ExecuteWithContext(
-                    (ctx, cancellationToken) => DeleteMasterKeySharesAsync(ctx, cmd, cancellationToken),
+                    (schemaContext, cancellationToken) => DeleteMasterKeySharesAsync(schemaContext, cmd, cancellationToken),
                     "DeleteMasterKeyShares",
                     cmd.CancellationToken)
                 .PipeTo(Sender));
@@ -52,7 +52,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
 
     private static async Task<Result<InsertMasterKeySharesResult, MasterKeyFailure>> InsertMasterKeySharesAsync(
         EcliptixSchemaContext schemaContext,
-        InsertMasterKeySharesEvent cmd,
+        CreateMasterKeySharesCommand cmd,
         CancellationToken cancellationToken)
     {
         await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
@@ -166,7 +166,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
     private static async Task<Result<MasterKeyShareQueryRecord[], MasterKeyFailure>>
         GetMasterKeySharesByAccountIdAsync(
             EcliptixSchemaContext schemaContext,
-            GetMasterKeySharesEvent cmd,
+            GetMasterKeySharesQuery cmd,
             CancellationToken cancellationToken)
     {
         try
@@ -208,7 +208,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
 
     private static async Task<Result<Unit, MasterKeyFailure>> DeleteMasterKeySharesAsync(
         EcliptixSchemaContext schemaContext,
-        DeleteMasterKeySharesEvent cmd,
+        DeleteMasterKeySharesCommand cmd,
         CancellationToken cancellationToken)
     {
         await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =

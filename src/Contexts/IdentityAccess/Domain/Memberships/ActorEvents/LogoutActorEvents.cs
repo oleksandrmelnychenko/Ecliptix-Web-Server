@@ -3,23 +3,23 @@ using Ecliptix.SharedKernel.Actors;
 
 namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 
-public record GetLogoutByDeviceEvent(
+public record GetLogoutByDeviceQuery(
     Guid DeviceId,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record GetLogoutHistoryEvent(
+public record GetLogoutHistoryQuery(
     Guid MembershipUniqueId,
     int Limit,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record GetMostRecentLogoutEvent(
+public record GetMostRecentLogoutQuery(
     Guid MembershipUniqueId,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record RecordLogoutEvent(
+public record RecordLogoutCommand(
     Guid MembershipUniqueId,
     Guid? AccountId,
     Guid DeviceId,

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Authentication;
 using Ecliptix.Core.Infrastructure.Grpc.Constants;
 using Ecliptix.IdentityAccess.Domain;
+using Ecliptix.IdentityAccess.Domain.Services;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Grpc.Utilities;
 using Grpc.Core;
@@ -10,7 +11,7 @@ using Serilog;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 
-public sealed class FailureHandlingInterceptor(ILocalizationProvider localizationProvider) : Interceptor
+public sealed class FailureHandlingInterceptor(ILocalizationService localizationService) : Interceptor
 {
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
         TRequest request,
@@ -160,7 +161,7 @@ public sealed class FailureHandlingInterceptor(ILocalizationProvider localizatio
         GrpcErrorDescriptor descriptor,
         string locale)
     {
-        string localized = localizationProvider.Localize(descriptor.I18nKey, locale);
+        string localized = localizationService.Localize(descriptor.I18nKey, locale);
         if (!string.Equals(localized, descriptor.I18nKey, StringComparison.Ordinal))
         {
             return (localized, descriptor);
@@ -169,14 +170,14 @@ public sealed class FailureHandlingInterceptor(ILocalizationProvider localizatio
         string fallbackKey = GetFallbackKey(descriptor.ErrorCode);
         if (!string.Equals(fallbackKey, descriptor.I18nKey, StringComparison.Ordinal))
         {
-            string fallbackMessage = localizationProvider.Localize(fallbackKey, locale);
+            string fallbackMessage = localizationService.Localize(fallbackKey, locale);
             if (!string.Equals(fallbackMessage, fallbackKey, StringComparison.Ordinal))
             {
                 return (fallbackMessage, descriptor with { I18nKey = fallbackKey });
             }
         }
 
-        string safeMessage = localizationProvider.Localize(ErrorI18NKeys.Internal, locale);
+        string safeMessage = localizationService.Localize(ErrorI18NKeys.Internal, locale);
         return (safeMessage, descriptor with { I18nKey = ErrorI18NKeys.Internal });
     }
 

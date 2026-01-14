@@ -27,42 +27,42 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
 
     private void Ready()
     {
-        Receive<RecordLogoutEvent>(cmd =>
+        Receive<RecordLogoutCommand>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, token) => RecordLogoutAsync(ctx, cmd, token), "RecordLogout", cancellationToken)
+            ExecuteWithContext((schemaContext, token) => RecordLogoutAsync(schemaContext, cmd, token), "RecordLogout", cancellationToken)
                 .PipeTo(Sender);
         });
 
-        Receive<GetLogoutHistoryEvent>(cmd =>
+        Receive<GetLogoutHistoryQuery>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, _) => GetLogoutHistoryAsync(ctx, cmd), "GetLogoutHistory", cancellationToken)
+            ExecuteWithContext((schemaContext, _) => GetLogoutHistoryAsync(schemaContext, cmd), "GetLogoutHistory", cancellationToken)
                 .PipeTo(Sender);
         });
 
-        Receive<GetMostRecentLogoutEvent>(cmd =>
+        Receive<GetMostRecentLogoutQuery>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, _) => GetMostRecentLogoutAsync(ctx, cmd), "GetMostRecentLogout", cancellationToken)
+            ExecuteWithContext((schemaContext, _) => GetMostRecentLogoutAsync(schemaContext, cmd), "GetMostRecentLogout", cancellationToken)
                 .PipeTo(Sender);
         });
 
-        Receive<GetLogoutByDeviceEvent>(cmd =>
+        Receive<GetLogoutByDeviceQuery>(cmd =>
         {
             CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((ctx, _) => GetLogoutByDeviceAsync(ctx, cmd), "GetLogoutByDevice", cancellationToken)
+            ExecuteWithContext((schemaContext, _) => GetLogoutByDeviceAsync(schemaContext, cmd), "GetLogoutByDevice", cancellationToken)
                 .PipeTo(Sender);
         });
     }
 
     private static async Task<Result<Unit, LogoutFailure>> RecordLogoutAsync(
-        EcliptixSchemaContext ctx,
-        RecordLogoutEvent cmd,
+        EcliptixSchemaContext schemaContext,
+        RecordLogoutCommand cmd,
         CancellationToken cancellationToken)
     {
         await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
-            await ctx.Database.BeginTransactionAsync(cancellationToken);
+            await schemaContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             LogoutAuditEntity audit = new()
@@ -76,8 +76,8 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
                 Platform = cmd.Platform
             };
 
-            ctx.LogoutAudits.Add(audit);
-            await ctx.SaveChangesAsync(cancellationToken);
+            schemaContext.LogoutAudits.Add(audit);
+            await schemaContext.SaveChangesAsync(cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
 
@@ -124,13 +124,13 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
     }
 
     private static async Task<Result<List<LogoutAuditEntity>, LogoutFailure>> GetLogoutHistoryAsync(
-        EcliptixSchemaContext ctx,
-        GetLogoutHistoryEvent cmd)
+        EcliptixSchemaContext schemaContext,
+        GetLogoutHistoryQuery cmd)
     {
         try
         {
             List<LogoutAuditEntity> history = await LogoutAuditQueries.GetLogoutHistory(
-                ctx,
+                schemaContext,
                 cmd.MembershipUniqueId,
                 cmd.Limit);
 
@@ -150,7 +150,7 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
 
     private static async Task<Result<Option<LogoutAuditEntity>, LogoutFailure>> GetMostRecentLogoutAsync(
         EcliptixSchemaContext schemaContext,
-        GetMostRecentLogoutEvent cmd)
+        GetMostRecentLogoutQuery cmd)
     {
         try
         {
@@ -183,7 +183,7 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
 
     private static async Task<Result<Option<LogoutAuditEntity>, LogoutFailure>> GetLogoutByDeviceAsync(
         EcliptixSchemaContext schemaContext,
-        GetLogoutByDeviceEvent cmd)
+        GetLogoutByDeviceQuery cmd)
     {
         try
         {

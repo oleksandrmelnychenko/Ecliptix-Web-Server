@@ -22,8 +22,8 @@ public abstract class PersistorBase<TFailure>(IDbContextFactory<EcliptixSchemaCo
         return await PersistorRetryPolicy.ExecuteWithRetryAsync(
             async token =>
             {
-                await using EcliptixSchemaContext ctx = await DbContextFactory.CreateDbContextAsync(token);
-                return await operation(ctx, token);
+                await using EcliptixSchemaContext schemaContext = await DbContextFactory.CreateDbContextAsync(token);
+                return await operation(schemaContext, token);
             },
             operationName,
             operationTimeout,

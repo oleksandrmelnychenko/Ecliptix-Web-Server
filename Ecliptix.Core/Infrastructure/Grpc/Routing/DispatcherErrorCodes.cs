@@ -13,6 +13,8 @@ internal static class DispatcherErrorCodes
     public const string HandlerFailed = "handler_failed";
 
     public const string DeliveryKindRequired = "delivery_kind_required";
+    public const string DeliveryKindMismatch = "delivery_kind_mismatch";
+    public const string HandlerNotConfigured = "handler_not_configured";
     public const string ContextRequired = "context_required";
     public const string ContextMismatch = "context_mismatch";
     public const string ConnectIdRequired = "connect_id_required";

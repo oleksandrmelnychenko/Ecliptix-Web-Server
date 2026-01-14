@@ -17,13 +17,13 @@ public record ProtocolCleanupRequiredEvent(uint ConnectId);
 
 public sealed record CheckFlowValidityQuery;
 
-public record VerifyMobileForSecretKeyRecoveryActorEvent(
+public record VerifyMobileForSecretKeyRecoveryCommand(
     string MobileNumber,
     string? RegionCode,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record InitiateFlowAndReturnStateActorEvent(
+public record InitiateFlowCommand(
     Guid AppDeviceId,
     Guid MobileNumberUniqueId,
     OtpVerificationPurpose Purpose,
@@ -31,38 +31,38 @@ public record InitiateFlowAndReturnStateActorEvent(
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record ExpirePasswordRecoveryFlowsEvent(Guid MembershipIdentifier, CancellationToken CancellationToken = default)
+public record ExpirePasswordRecoveryFlowsCommand(Guid MembershipIdentifier, CancellationToken CancellationToken = default)
     : ICancellableActorEvent;
 
-public record VerifyFlowActorEvent(
+public record VerifyFlowCommand(
     uint ConnectId,
     string OneTimePassword,
     string CultureName,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record QueryFlowStatusByConnectionIdActorEvent(
+public record GetFlowStatusByConnectionIdQuery(
     uint ConnectionId,
     CancellationToken CancellationToken) : ICancellableActorEvent;
 
-public record PasswordRecoveryFlowValidation(bool IsValid, Guid? FlowId);
+public record PasswordRecoveryFlowValidationResponse(bool IsValid, Guid? FlowId);
 
-public record FlowCompletedGracefullyActorEvent(IActorRef ActorRef);
+public record FlowCompletedGracefullyEvent(IActorRef ActorRef);
 
 public record VerificationFlowExpiredEvent(string CultureName);
 
-public record ValidatePasswordRecoveryFlowEvent(Guid MembershipIdentifier, CancellationToken CancellationToken = default)
+public record ValidatePasswordRecoveryFlowCommand(Guid MembershipIdentifier, CancellationToken CancellationToken = default)
     : ICancellableActorEvent;
 
 public sealed record FlowValidityResponse(bool IsValid);
 
-public record UpdateVerificationFlowStatusActorEvent(
+public record UpdateVerificationFlowStatusCommand(
     Guid FlowIdentifier,
     VerificationFlowStatus Status,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record InitiateVerificationFlowActorEvent(
+public record InitiateVerificationFlowCommand(
     uint ConnectId,
     Guid MobileNumberIdentifier,
     Guid AppDeviceIdentifier,

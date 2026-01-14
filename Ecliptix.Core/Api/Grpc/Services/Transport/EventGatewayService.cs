@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Ecliptix.Core.Infrastructure.Grpc.Routing;
 using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.Protobuf.Transport.Gateway;
@@ -32,35 +33,17 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
         }
 
         EventEnvelope normalized = NormalizeMetadata(request, DeliveryKind.ServerStream, context);
-        EventEnvelope response = await dispatcher.DispatchAsync(normalized, context.CancellationToken);
-        await responseStream.WriteAsync(response);
+        await dispatcher.DispatchServerStreamAsync(normalized, responseStream, context.CancellationToken);
     }
 
     public override async Task<EventEnvelope> ClientStream(
         IAsyncStreamReader<EventEnvelope> requestStream,
         ServerCallContext context)
     {
-        EventEnvelope? lastResponse = null;
+        IAsyncEnumerable<EventEnvelope> normalizedStream =
+            NormalizeStreamAsync(requestStream, DeliveryKind.ClientStream, context);
 
-        await foreach (EventEnvelope request in requestStream.ReadAllAsync(context.CancellationToken))
-        {
-            if (request.Metadata?.Identity?.EventType is null or TransportEventType.Unspecified)
-            {
-                return BuildMissingEventTypeEnvelope(DeliveryKind.ClientStream);
-            }
-
-            EventEnvelope normalized = NormalizeMetadata(request, DeliveryKind.ClientStream, context);
-            lastResponse = await dispatcher.DispatchAsync(normalized, context.CancellationToken);
-        }
-
-        return lastResponse ?? new EventEnvelope
-        {
-            Metadata = new EventMetadata
-            {
-                Identity = new EventIdentity { DeliveryKind = DeliveryKind.ClientStream },
-                Outcome = new EventOutcome { Status = "ERR", ErrorCode = "empty_stream" }
-            }
-        };
+        return await dispatcher.DispatchClientStreamAsync(normalizedStream, context.CancellationToken);
     }
 
     public override async Task BidiStream(
@@ -68,17 +51,25 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
         IServerStreamWriter<EventEnvelope> responseStream,
         ServerCallContext context)
     {
-        await foreach (EventEnvelope request in requestStream.ReadAllAsync(context.CancellationToken))
-        {
-            if (request.Metadata?.Identity?.EventType is null or TransportEventType.Unspecified)
-            {
-                await responseStream.WriteAsync(BuildMissingEventTypeEnvelope(DeliveryKind.BidiStream));
-                continue;
-            }
+        IAsyncEnumerable<EventEnvelope> normalizedStream =
+            NormalizeStreamAsync(requestStream, DeliveryKind.BidiStream, context);
 
-            EventEnvelope normalized = NormalizeMetadata(request, DeliveryKind.BidiStream, context);
-            EventEnvelope response = await dispatcher.DispatchAsync(normalized, context.CancellationToken);
-            await responseStream.WriteAsync(response);
+        await dispatcher.DispatchBidiStreamAsync(normalizedStream, responseStream, context.CancellationToken);
+    }
+
+    private async IAsyncEnumerable<EventEnvelope> NormalizeStreamAsync(
+        IAsyncStreamReader<EventEnvelope> requestStream,
+        DeliveryKind deliveryKind,
+        ServerCallContext context,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        CancellationToken effectiveToken = cancellationToken == default
+            ? context.CancellationToken
+            : cancellationToken;
+
+        await foreach (EventEnvelope envelope in requestStream.ReadAllAsync(effectiveToken))
+        {
+            yield return NormalizeMetadata(envelope, deliveryKind, context);
         }
     }
 

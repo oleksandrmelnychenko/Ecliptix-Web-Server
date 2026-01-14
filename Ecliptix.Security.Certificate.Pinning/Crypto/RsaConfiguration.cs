@@ -1,6 +1,6 @@
 using Ecliptix.Security.Certificate.Pinning.NativeResolver;
 
-namespace Ecliptix.DeviceProvisioning.Infrastructure.Crypto;
+namespace Ecliptix.Security.Certificate.Pinning.Crypto;
 
 public class RsaConfiguration : IRsaConfiguration
 {

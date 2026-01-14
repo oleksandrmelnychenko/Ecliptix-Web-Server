@@ -1,11 +1,12 @@
 using System.Collections.Frozen;
 using System.Globalization;
 using Ecliptix.IdentityAccess.Domain;
+using Ecliptix.IdentityAccess.Domain.Services;
 using Ecliptix.SharedKernel;
 
 namespace Ecliptix.Core.Resources;
 
-public sealed class VerificationFlowLocalizer : ILocalizationProvider
+public sealed class VerificationFlowLocalizer : ILocalizationService
 {
     private const string DefaultCulture = "en-US";
     private const string UkraineCulture = "uk-UA";
@@ -137,6 +138,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["mobile_parsing_possible_but_local_only"] =
                     "Number might be valid locally; add country code or region.",
                 ["mobile_validation_unexpected_error"] = "Unexpected error validating phone number.",
+                ["mobile_not_mobile"] = "This number is not a mobile number.",
             }.ToFrozenDictionary(),
 
             [UkraineCulture] = new Dictionary<string, string>
@@ -265,6 +267,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationProvider
                 ["mobile_parsing_possible_but_local_only"] =
                     "Номер може бути дійсним локально; додайте код країни або регіон.",
                 ["mobile_validation_unexpected_error"] = "Неочікувана помилка при валідації номера телефону.",
+                ["mobile_not_mobile"] = "Цей номер не є мобільним.",
             }.ToFrozenDictionary()
         }.ToFrozenDictionary();
 

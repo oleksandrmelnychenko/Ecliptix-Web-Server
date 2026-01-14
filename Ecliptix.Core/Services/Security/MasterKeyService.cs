@@ -5,7 +5,7 @@ using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
-using Ecliptix.IdentityAccess.Domain.Services.Security;
+using Ecliptix.IdentityAccess.Domain.Services;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel.Actors;
@@ -534,7 +534,7 @@ internal sealed class MasterKeyService(
                     })
                 select new ShareData(share.ShareIndex, share.ShareData, metadata, share.Location.ToString()));
 
-            InsertMasterKeySharesEvent insertEvent = new(
+            CreateMasterKeySharesCommand insertEvent = new(
                 accountId,
                 shareDataList
             );
@@ -567,7 +567,7 @@ internal sealed class MasterKeyService(
         try
         {
             IActorRef masterKeySharePersistor = actorRegistry.Get(ActorIds.MasterKeySharePersistorActor);
-            GetMasterKeySharesEvent getEvent = new(accountId);
+            GetMasterKeySharesQuery getEvent = new(accountId);
 
             Result<MasterKeyShareQueryRecord[], MasterKeyFailure> result =
                 await masterKeySharePersistor.Ask<Result<MasterKeyShareQueryRecord[], MasterKeyFailure>>(
@@ -601,7 +601,7 @@ internal sealed class MasterKeyService(
         try
         {
             IActorRef masterKeySharePersistor = actorRegistry.Get(ActorIds.MasterKeySharePersistorActor);
-            DeleteMasterKeySharesEvent deleteEvent = new(accountId);
+            DeleteMasterKeySharesCommand deleteEvent = new(accountId);
 
             Result<Unit, MasterKeyFailure> result =
                 await masterKeySharePersistor.Ask<Result<Unit, MasterKeyFailure>>(

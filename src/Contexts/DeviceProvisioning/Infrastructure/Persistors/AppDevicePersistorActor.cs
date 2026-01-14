@@ -26,16 +26,16 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
     {
         Receive<RegisterAppDeviceIfNotExistActorEvent>(args =>
             ExecuteWithContext(
-                    (ctx, cancellationToken) => RegisterAppDeviceAsync(ctx, args.AppDevice, cancellationToken),
+                    (schemaContext, cancellationToken) => RegisterAppDeviceAsync(schemaContext, args.AppDevice, cancellationToken),
                     "RegisterAppDevice",
                     args.CancellationToken)
                 .PipeTo(Sender));
     }
 
     private static async Task<Result<DeviceRegistrationResponse, AppDeviceFailure>> RegisterAppDeviceAsync(
-        EcliptixSchemaContext ctx, Device appDevice, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext, Device appDevice, CancellationToken cancellationToken)
     {
-        await using IDbContextTransaction transaction = await ctx.Database.BeginTransactionAsync(cancellationToken);
+        await using IDbContextTransaction transaction = await schemaContext.Database.BeginTransactionAsync(cancellationToken);
 
         try
         {
@@ -53,7 +53,7 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 });
             }
 
-            Option<DeviceEntity> existingDeviceOpt = await DeviceQueries.GetByAppInstanceId(ctx, appInstanceId, cancellationToken);
+            Option<DeviceEntity> existingDeviceOpt = await DeviceQueries.GetByAppInstanceId(schemaContext, appInstanceId, cancellationToken);
 
             if (existingDeviceOpt.IsSome)
             {
@@ -71,9 +71,9 @@ public class AppDevicePersistorActor : PersistorBase<AppDeviceFailure>
                 DeviceType = deviceType
             };
 
-            ctx.Devices.Add(newDevice);
+            schemaContext.Devices.Add(newDevice);
 
-            await ctx.SaveChangesAsync(cancellationToken);
+            await schemaContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
             return Result<DeviceRegistrationResponse, AppDeviceFailure>.Ok(new DeviceRegistrationResponse

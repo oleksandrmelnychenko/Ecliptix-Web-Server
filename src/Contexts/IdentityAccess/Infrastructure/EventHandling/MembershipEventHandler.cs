@@ -9,7 +9,7 @@ using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
-using Ecliptix.IdentityAccess.Domain.Services.Security;
+using Ecliptix.IdentityAccess.Domain.Services;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.SharedKernel;
@@ -48,7 +48,6 @@ public sealed class MembershipEventHandler(
     private readonly IActorRef _membershipActor = actorRegistry.Get(ActorIds.MembershipActor);
     private readonly IActorRef _accountPersistor = actorRegistry.Get(ActorIds.AccountPersistorActor);
     private readonly IActorRef _logoutAuditPersistor = actorRegistry.Get(ActorIds.LogoutAuditPersistorActor);
-    private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
     private readonly SecurityConfiguration _securityConfig = securityConfig.Value;
 
@@ -89,7 +88,7 @@ public sealed class MembershipEventHandler(
 
                 Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
 
-                SignInMembershipActorEvent signInEvent = new(
+                SignInMembershipCommand signInEvent = new(
                     connectId,
                     phoneNumberResult.ParsedMobileNumberE164.Value!,
                     deviceId,
@@ -147,14 +146,14 @@ public sealed class MembershipEventHandler(
 
                     try
                     {
-                        CompleteRegistrationRecordActorEvent @event = new(
+                        CompleteRegistrationCommand command = new(
                             Helpers.FromByteStringToGuid(message.MembershipId),
                             peerRecord,
                             cancellationToken);
 
                         Task<Result<OprfRegistrationCompleteResponse, AccountFailure>> completeRegistrationRecordTask =
                             _membershipActor.Ask<Result<OprfRegistrationCompleteResponse, AccountFailure>>(
-                                @event,
+                                command,
                                 TimeoutConfiguration.Actor.AskTimeout);
 
                         Result<OprfRegistrationCompleteResponse, AccountFailure> completeRegistrationRecordResult =
@@ -185,7 +184,7 @@ public sealed class MembershipEventHandler(
 
                     try
                     {
-                        OprfCompleteRecoverySecureKeyEvent @event = new(
+                        CompleteOprfSecureKeyRecoveryCommand command = new(
                             Helpers.FromByteStringToGuid(message.MembershipId),
                             peerRecovery,
                             cancellationToken);
@@ -194,7 +193,7 @@ public sealed class MembershipEventHandler(
                             completeRecoverySecretKeyTask =
                                 _membershipActor
                                     .Ask<Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>>(
-                                        @event,
+                                        command,
                                         TimeoutConfiguration.Actor.AskTimeout);
 
                         Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>
@@ -224,14 +223,14 @@ public sealed class MembershipEventHandler(
                     byte[] peerOprf = message.PeerOprf.ToByteArray();
                     try
                     {
-                        GenerateMembershipOprfRegistrationRequestEvent @event = new(
+                        GenerateOprfRegistrationCommand command = new(
                             Helpers.FromByteStringToGuid(message.MembershipId),
                             peerOprf,
                             cancellationToken);
 
                         Task<Result<OprfRegistrationInitResponse, AccountFailure>> updateOperationTask =
                             _membershipActor.Ask<Result<OprfRegistrationInitResponse, AccountFailure>>(
-                                @event,
+                                command,
                                 TimeoutConfiguration.Actor.AskTimeout);
 
                         Result<OprfRegistrationInitResponse, AccountFailure> updateOperationResult =
@@ -260,7 +259,7 @@ public sealed class MembershipEventHandler(
                     byte[] peerOprf = message.PeerOprf.ToByteArray();
                     try
                     {
-                        OprfInitRecoverySecureKeyEvent @event = new(
+                        InitiateOprfSecureKeyRecoveryCommand command = new(
                             Helpers.FromByteStringToGuid(message.MembershipId),
                             peerOprf,
                             _cultureName,
@@ -268,7 +267,7 @@ public sealed class MembershipEventHandler(
 
                         Task<Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>> recoveryInitTask =
                             _membershipActor.Ask<Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>>(
-                                @event,
+                                command,
                                 TimeoutConfiguration.Actor.AskTimeout);
 
                         Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure> result =
@@ -299,7 +298,7 @@ public sealed class MembershipEventHandler(
 
         Task<Result<Option<Guid>, AccountFailure>> accountTask =
             _accountPersistor.Ask<Result<Option<Guid>, AccountFailure>>(
-                new GetDefaultAccountIdEvent(membershipId, cancellationToken),
+                new GetDefaultAccountIdQuery(membershipId, cancellationToken),
                 TimeoutConfiguration.Actor.AskTimeout);
 
         Result<Option<Guid>, AccountFailure> accountResult =
@@ -530,7 +529,7 @@ public sealed class MembershipEventHandler(
         Guid accountId = accountResult.Unwrap();
 
         Result<Unit, LogoutResponse> validationResult =
-            await PerformValidationChecksAsync(message, membershipId, accountId, serverTimestamp);
+            await PerformValidationChecksAsync(message, accountId, serverTimestamp);
 
         if (validationResult.IsErr)
         {
@@ -559,7 +558,7 @@ public sealed class MembershipEventHandler(
     }
 
     private async Task<Result<Unit, LogoutResponse>> PerformValidationChecksAsync(
-        LogoutRequest message, Guid membershipId, Guid accountId, long serverTimestamp)
+        LogoutRequest message, Guid accountId, long serverTimestamp)
     {
         long messageTimestamp = message.Timestamp?.ToDateTimeOffset().ToUnixTimeSeconds() ?? 0;
         long timestampDrift = Math.Abs(serverTimestamp - messageTimestamp);
@@ -612,7 +611,7 @@ public sealed class MembershipEventHandler(
     private async Task RecordLogoutAuditAsync(Guid membershipId, Guid? accountId, Guid deviceId, LogoutReason reason,
         CancellationToken cancellationToken)
     {
-        RecordLogoutEvent logoutEvent = new(membershipId, accountId, deviceId, reason,
+        RecordLogoutCommand logoutEvent = new(membershipId, accountId, deviceId, reason,
             "", "", cancellationToken);
 
         Task<Result<Unit, LogoutFailure>> auditTask =
@@ -713,7 +712,7 @@ public sealed class MembershipEventHandler(
 
             string canonical = BuildCanonicalLogoutRequest(message);
             int maxByteCount = System.Text.Encoding.UTF8.GetMaxByteCount(canonical.Length);
-            byte[]? canonicalBytes = ArrayPool<byte>.Shared.Rent(maxByteCount);
+            byte[] canonicalBytes = ArrayPool<byte>.Shared.Rent(maxByteCount);
 
             try
             {

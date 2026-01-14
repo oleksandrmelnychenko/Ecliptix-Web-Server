@@ -9,18 +9,18 @@ namespace Ecliptix.IdentityAccess.Domain.Actors.AccountProfile;
 
 public class AccountProfileActor : ReceiveActor
 {
-    private readonly IActorRef _profilePersistor;
+    private readonly IActorRef _profilePersistorActor;
 
     private const int MinProfileNameLength = 3;
     private const int MaxProfileNameLength = 30;
 
     public AccountProfileActor(IActorRef accountProfilePersistor)
     {
-        _profilePersistor = accountProfilePersistor;
+        _profilePersistorActor = accountProfilePersistor;
 
-        ReceiveAsync<CheckProfileNameAvailabilityEvent>(HandleCheckAvailability);
-        ReceiveAsync<UpdateAccountProfileEvent>(HandleUpdateProfile);
-        ReceiveAsync<GetAccountProfileActorEvent>(HandleGetAccountProfile);
+        ReceiveAsync<ExistsProfileNameQuery>(HandleCheckAvailability);
+        ReceiveAsync<UpdateAccountProfileCommand>(HandleUpdateProfile);
+        ReceiveAsync<GetAccountProfileQuery>(HandleGetAccountProfile);
     }
 
     public static Props Build(IActorRef accountProfilePersistor)
@@ -28,13 +28,13 @@ public class AccountProfileActor : ReceiveActor
         return Props.Create(() => new AccountProfileActor(accountProfilePersistor));
     }
 
-    private async Task HandleGetAccountProfile(GetAccountProfileActorEvent evt)
+    private async Task HandleGetAccountProfile(GetAccountProfileQuery evt)
     {
         IActorRef replyTo = Sender;
         try
         {
             Result<Option<AccountProfileInfo>, AccountProfileFailure> result =
-                await _profilePersistor.Ask<Result<Option<AccountProfileInfo>, AccountProfileFailure>>(
+                await _profilePersistorActor.Ask<Result<Option<AccountProfileInfo>, AccountProfileFailure>>(
                 evt,
                 TimeoutConfiguration.Actor.AskTimeout
             );
@@ -49,7 +49,7 @@ public class AccountProfileActor : ReceiveActor
         }
     }
 
-    private async Task HandleCheckAvailability(CheckProfileNameAvailabilityEvent evt)
+    private async Task HandleCheckAvailability(ExistsProfileNameQuery evt)
     {
         IActorRef replyTo = Sender;
 
@@ -65,7 +65,7 @@ public class AccountProfileActor : ReceiveActor
             }
 
             Task<Result<bool, AccountProfileFailure>> task =
-                _profilePersistor.Ask<Result<bool, AccountProfileFailure>>(
+                _profilePersistorActor.Ask<Result<bool, AccountProfileFailure>>(
                     evt, TimeoutConfiguration.Actor.AskTimeout);
 
             Result<bool, AccountProfileFailure> result = await task;
@@ -80,7 +80,7 @@ public class AccountProfileActor : ReceiveActor
         }
     }
 
-    private async Task HandleUpdateProfile(UpdateAccountProfileEvent evt)
+    private async Task HandleUpdateProfile(UpdateAccountProfileCommand evt)
     {
         IActorRef replyTo = Sender;
 
@@ -115,7 +115,7 @@ public class AccountProfileActor : ReceiveActor
             }
 
             Task<Result<AccountProfileInfo, AccountProfileFailure>> task =
-                _profilePersistor.Ask<Result<AccountProfileInfo, AccountProfileFailure>>(
+                _profilePersistorActor.Ask<Result<AccountProfileInfo, AccountProfileFailure>>(
                     evt, TimeoutConfiguration.Actor.AskTimeout);
 
             Result<AccountProfileInfo, AccountProfileFailure> result = await task;

@@ -8,20 +8,20 @@ public abstract record ProfileSearchCriteria;
 public record SearchByMobile(string MobileNumber) : ProfileSearchCriteria;
 public record SearchById(Guid AccountId) : ProfileSearchCriteria;
 
-public record CheckProfileNameAvailabilityEvent(
+public record ExistsProfileNameQuery(
     string ProfileName,
     CancellationToken CancellationToken
 ) : ICancellableActorEvent;
 
-public record GetAccountProfileActorEvent(
+public record GetAccountProfileQuery(
     Guid CurrentAccountId,
     ProfileSearchCriteria Criteria,
     CancellationToken CancellationToken
 ) : ICancellableActorEvent;
 
-public record GetAccountProfileResult(Result<Option<AccountProfileInfo>, FailureBase> Result);
+public record GetAccountProfileResponse(Result<Option<AccountProfileInfo>, FailureBase> Result);
 
-public record UpdateAccountProfileEvent(
+public record UpdateAccountProfileCommand(
     Guid AccountId,
     string ProfileName,
     string DisplayName,

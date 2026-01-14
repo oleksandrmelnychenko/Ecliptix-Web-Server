@@ -1,5 +1,5 @@
 using Akka.Actor;
-using Ecliptix.DeviceProvisioning.Infrastructure.Crypto;
+using Ecliptix.Security.Certificate.Pinning.Crypto;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Security.Certificate.Pinning.Failures;
@@ -11,7 +11,7 @@ using Google.Protobuf;
 using System.Buffers;
 using System.IO;
 
-namespace Ecliptix.DeviceProvisioning.Infrastructure.SecureChannel;
+namespace Ecliptix.Security.Certificate.Pinning.SecureChannel;
 
 public class RsaSecureChannelEstablisher(
     IRsaChunkProcessor rsaChunkProcessor,
@@ -48,13 +48,13 @@ public class RsaSecureChannelEstablisher(
                     SecureChannelFailure.InvalidPayload($"Invalid PubKeyExchange format: {ex.Message}"));
             }
 
-            BeginAppDeviceEphemeralConnectActorEvent actorEvent = new(pubKeyExchange, connectId);
-            Result<DeriveSharedSecretReply, EcliptixProtocolFailure> protocolResult;
+            InitiateEphemeralConnectCommand actorEvent = new(pubKeyExchange, connectId);
+            Result<DeriveSharedSecretResponse, EcliptixProtocolFailure> protocolResult;
 
             try
             {
-                Task<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>> protocolTask =
-                    protocolActor.Ask<Result<DeriveSharedSecretReply, EcliptixProtocolFailure>>(
+                Task<Result<DeriveSharedSecretResponse, EcliptixProtocolFailure>> protocolTask =
+                    protocolActor.Ask<Result<DeriveSharedSecretResponse, EcliptixProtocolFailure>>(
                         actorEvent,
                         TimeoutConfiguration.Actor.AskTimeout);
                 protocolResult = await protocolTask.WaitAsync(cancellationToken).ConfigureAwait(false);

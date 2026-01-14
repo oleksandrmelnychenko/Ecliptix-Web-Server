@@ -5,6 +5,7 @@ using Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Providers.Twilio;
+using Ecliptix.IdentityAccess.Domain.Services;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
@@ -15,45 +16,67 @@ namespace Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 
 public sealed class VerificationFlowManagerActor : ReceiveActor
 {
-    private readonly ILocalizationProvider _localizationProvider;
+    private const int IdempotencyTtlMinutes = 30;
+    private static readonly TimeSpan IdempotencyCleanupInterval = TimeSpan.FromMinutes(5);
+
+    private readonly ILocalizationService _localizationService;
     private readonly IActorRef _membershipActor;
-    private readonly IActorRef _persistor;
+    private readonly IActorRef _persistorActor;
     private readonly ISmsProvider _smsProvider;
     private readonly IOptionsMonitor<SecurityConfiguration> _securityConfig;
 
     private readonly Dictionary<IActorRef, ChannelWriter<Result<OtpCountdownUpdate, VerificationFlowFailure>>>
         _flowWriters = new();
 
-    private readonly Dictionary<string, IActorRef> _idempotencyToActor = new();
+    private readonly Dictionary<string, (IActorRef Actor, DateTimeOffset CreatedAt)> _idempotencyToActor = new();
+    private ICancelable? _idempotencyCleanupTimer;
 
     public VerificationFlowManagerActor(
         IActorRef persistor,
         IActorRef membershipActor,
         ISmsProvider smsProvider,
-        ILocalizationProvider localizationProvider,
+        ILocalizationService localizationService,
         IOptionsMonitor<SecurityConfiguration> securityConfig)
     {
-        _persistor = persistor;
+        _persistorActor = persistor;
         _membershipActor = membershipActor;
         _smsProvider = smsProvider;
-        _localizationProvider = localizationProvider;
+        _localizationService = localizationService;
         _securityConfig = securityConfig;
 
         Become(Ready);
     }
 
-    private void Ready()
+    protected override void PreStart()
     {
-        ReceiveAsync<InitiateVerificationFlowActorEvent>(HandleInitiateFlowAsync);
-        ReceiveAsync<VerifyFlowActorEvent>(HandleVerifyFlowAsync);
-        Receive<Terminated>(HandleTerminated);
-        Receive<EnsureMobileNumberActorEvent>(actorEvent => _persistor.Forward(actorEvent));
-        Receive<VerifyMobileForSecretKeyRecoveryActorEvent>(actorEvent => _persistor.Forward(actorEvent));
-        Receive<CheckMobileNumberAvailabilityActorEvent>(actorEvent => _persistor.Forward(actorEvent));
-        Receive<FlowCompletedGracefullyActorEvent>(HandleFlowCompletedGracefully);
+        base.PreStart();
+        _idempotencyCleanupTimer = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
+            IdempotencyCleanupInterval,
+            IdempotencyCleanupInterval,
+            Self,
+            CleanupStaleIdempotencyKeys.Instance,
+            ActorRefs.NoSender);
     }
 
-    private async Task HandleInitiateFlowAsync(InitiateVerificationFlowActorEvent actorEvent)
+    protected override void PostStop()
+    {
+        _idempotencyCleanupTimer?.Cancel();
+        base.PostStop();
+    }
+
+    private void Ready()
+    {
+        ReceiveAsync<InitiateVerificationFlowCommand>(HandleInitiateFlowAsync);
+        ReceiveAsync<VerifyFlowCommand>(HandleVerifyFlowAsync);
+        Receive<Terminated>(HandleTerminated);
+        Receive<ValidateMobileNumberCommand>(actorEvent => _persistorActor.Forward(actorEvent));
+        Receive<VerifyMobileForSecretKeyRecoveryCommand>(actorEvent => _persistorActor.Forward(actorEvent));
+        Receive<ExistsMobileNumberQuery>(actorEvent => _persistorActor.Forward(actorEvent));
+        Receive<FlowCompletedGracefullyEvent>(HandleFlowCompletedGracefully);
+        Receive<CleanupStaleIdempotencyKeys>(HandleCleanupStaleIdempotencyKeys);
+    }
+
+    private async Task HandleInitiateFlowAsync(InitiateVerificationFlowCommand actorEvent)
     {
         string baseActorName = GetActorName(actorEvent.ConnectId);
         IActorRef? existingActor = Context.Child(baseActorName);
@@ -69,7 +92,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     }
 
     private async Task HandleSendOtpRequestAsync(
-        InitiateVerificationFlowActorEvent actorEvent,
+        InitiateVerificationFlowCommand actorEvent,
         IActorRef? existingActor,
         string baseActorName)
     {
@@ -105,14 +128,14 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
 
         if (actorEvent.IdempotencyKey.IsSome)
         {
-            _idempotencyToActor[actorEvent.IdempotencyKey.Value!] = newFlowActor;
+            _idempotencyToActor[actorEvent.IdempotencyKey.Value!] = (newFlowActor, DateTimeOffset.UtcNow);
         }
 
         Sender.Tell(Result<Unit, VerificationFlowFailure>.Ok(Unit.Value));
     }
 
     private void HandleOtherRequests(
-        InitiateVerificationFlowActorEvent actorEvent,
+        InitiateVerificationFlowCommand actorEvent,
         IActorRef? existingActor,
         string baseActorName)
     {
@@ -129,14 +152,16 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     }
 
     private async Task<(bool Resumed, IActorRef? ActorFound)> TryResumeIdempotentSessionAsync(
-        InitiateVerificationFlowActorEvent actorEvent)
+        InitiateVerificationFlowCommand actorEvent)
     {
         if (!actorEvent.IdempotencyKey.IsSome ||
-            !_idempotencyToActor.TryGetValue(actorEvent.IdempotencyKey.Value!, out IActorRef? trackedActor) ||
-            trackedActor.IsNobody())
+            !_idempotencyToActor.TryGetValue(actorEvent.IdempotencyKey.Value!, out (IActorRef Actor, DateTimeOffset CreatedAt) entry) ||
+            entry.Actor.IsNobody())
         {
             return (false, null);
         }
+
+        IActorRef trackedActor = entry.Actor;
 
         try
         {
@@ -280,7 +305,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     }
 
     private IActorRef SpawnNewFlowActor(
-        InitiateVerificationFlowActorEvent actorEvent,
+        InitiateVerificationFlowCommand actorEvent,
         string baseActorName)
     {
         Props props = VerificationFlowActor.Build(
@@ -289,10 +314,10 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
             actorEvent.AppDeviceIdentifier,
             actorEvent.Purpose,
             actorEvent.ChannelWriter,
-            _persistor,
+            _persistorActor,
             _membershipActor,
             _smsProvider,
-            _localizationProvider,
+            _localizationService,
             actorEvent.CultureName,
             _securityConfig,
             actorEvent.CancellationToken);
@@ -305,7 +330,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         return newFlowActor;
     }
 
-    private async Task HandleVerifyFlowAsync(VerifyFlowActorEvent actorEvent)
+    private async Task HandleVerifyFlowAsync(VerifyFlowCommand actorEvent)
     {
         IActorRef? childActor = Context.Child(GetActorName(actorEvent.ConnectId));
 
@@ -315,12 +340,12 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         }
         else
         {
-            QueryFlowStatusByConnectionIdActorEvent queryEvent = new(
+            GetFlowStatusByConnectionIdQuery queryEvent = new(
                 actorEvent.ConnectId,
                 actorEvent.CancellationToken);
 
             Result<FlowStatusQueryRecord, VerificationFlowFailure> queryResult =
-                await _persistor.Ask<Result<FlowStatusQueryRecord, VerificationFlowFailure>>(
+                await _persistorActor.Ask<Result<FlowStatusQueryRecord, VerificationFlowFailure>>(
                     queryEvent,
                     TimeoutConfiguration.Actor.AskTimeout,
                     actorEvent.CancellationToken);
@@ -380,14 +405,14 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         }
     }
 
-    private void HandleFlowCompletedGracefully(FlowCompletedGracefullyActorEvent actorEvent)
+    private void HandleFlowCompletedGracefully(FlowCompletedGracefullyEvent actorEvent)
     {
         IActorRef completedActor = actorEvent.ActorRef;
         _flowWriters.Remove(completedActor,
             out ChannelWriter<Result<OtpCountdownUpdate, VerificationFlowFailure>>? _);
 
-        KeyValuePair<string, IActorRef> entryToRemove = _idempotencyToActor
-            .FirstOrDefault(kvp => kvp.Value.Equals(completedActor));
+        KeyValuePair<string, (IActorRef Actor, DateTimeOffset CreatedAt)> entryToRemove = _idempotencyToActor
+            .FirstOrDefault(kvp => kvp.Value.Actor.Equals(completedActor));
 
         if (entryToRemove.Key != null)
         {
@@ -400,7 +425,7 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         IActorRef deadActor = terminatedMessage.ActorRef;
 
         string? keyToRemove = _idempotencyToActor
-            .FirstOrDefault(kvp => kvp.Value.Equals(deadActor))
+            .FirstOrDefault(kvp => kvp.Value.Actor.Equals(deadActor))
             .Key;
 
         if (keyToRemove != null)
@@ -466,11 +491,43 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
     private static string GetActorName(uint connectId) =>
         $"flow-{connectId}";
 
+    private void HandleCleanupStaleIdempotencyKeys(CleanupStaleIdempotencyKeys _)
+    {
+        DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddMinutes(-IdempotencyTtlMinutes);
+        List<string> keysToRemove = [];
+
+        foreach (KeyValuePair<string, (IActorRef Actor, DateTimeOffset CreatedAt)> kvp in _idempotencyToActor)
+        {
+            if (kvp.Value.CreatedAt < cutoff || kvp.Value.Actor.IsNobody())
+            {
+                keysToRemove.Add(kvp.Key);
+            }
+        }
+
+        foreach (string key in keysToRemove)
+        {
+            _idempotencyToActor.Remove(key);
+        }
+
+        if (keysToRemove.Count > 0)
+        {
+            Log.Debug(
+                "[verification.flow.manager.cleanup] Removed {Count} stale idempotency keys",
+                keysToRemove.Count);
+        }
+    }
+
     public static Props Build(IActorRef persistor, IActorRef membershipActor, ISmsProvider smsProvider,
-        ILocalizationProvider localizationProvider, IOptionsMonitor<SecurityConfiguration> securityConfig)
+        ILocalizationService localizationService, IOptionsMonitor<SecurityConfiguration> securityConfig)
     {
         return Props.Create(() =>
-            new VerificationFlowManagerActor(persistor, membershipActor, smsProvider, localizationProvider,
+            new VerificationFlowManagerActor(persistor, membershipActor, smsProvider, localizationService,
                 securityConfig));
+    }
+
+    private sealed class CleanupStaleIdempotencyKeys
+    {
+        public static readonly CleanupStaleIdempotencyKeys Instance = new();
+        private CleanupStaleIdempotencyKeys() { }
     }
 }

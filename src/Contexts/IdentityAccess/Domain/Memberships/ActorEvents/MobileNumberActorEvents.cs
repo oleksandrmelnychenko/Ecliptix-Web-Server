@@ -2,20 +2,20 @@ using Ecliptix.SharedKernel.Actors;
 
 namespace Ecliptix.IdentityAccess.Domain.Memberships.ActorEvents;
 
-public record CheckMobileNumberAvailabilityActorEvent(
+public record ExistsMobileNumberQuery(
     Guid MobileNumberId,
     Guid DeviceId,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record EnsureMobileNumberActorEvent(
+public record ValidateMobileNumberCommand(
     string MobileNumber,
     string? RegionCode,
     Guid AppDeviceIdentifier,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;
 
-public record GetMobileNumberActorEvent(
+public record GetMobileNumberQuery(
     Guid MobileNumberIdentifier,
     CancellationToken CancellationToken = default
 ) : ICancellableActorEvent;

@@ -1,4 +1,4 @@
-namespace Ecliptix.DeviceProvisioning.Infrastructure.SecureChannel;
+namespace Ecliptix.Security.Certificate.Pinning.Failures;
 
 public static class SecureChannelMessageKeys
 {

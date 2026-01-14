@@ -21,25 +21,15 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Ecliptix.IdentityAccess.Infrastructure.EventHandling;
 
-public sealed class VerificationFlowHandler
+public sealed class VerificationFlowHandler(
+    IEcliptixActorRegistry actorRegistry,
+    IMobileNumberValidator phoneNumberValidator,
+    IGrpcCipherService grpcCipherService,
+    IOptions<SecurityConfiguration> securityConfig)
 {
-    private readonly GrpcSecurityService _service;
-    private readonly IActorRef _verificationFlowManagerActor;
-    private readonly IMobileNumberValidator _phoneNumberValidator;
-    private readonly IGrpcCipherService _grpcCipherService;
+    private readonly GrpcSecurityService _service = new(grpcCipherService, securityConfig);
+    private readonly IActorRef _verificationFlowManagerActor = actorRegistry.Get(ActorIds.VerificationFlowManagerActor);
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
-
-    public VerificationFlowHandler(
-        IEcliptixActorRegistry actorRegistry,
-        IMobileNumberValidator phoneNumberValidator,
-        IGrpcCipherService grpcCipherService,
-        IOptions<SecurityConfiguration> securityConfig)
-    {
-        _service = new GrpcSecurityService(grpcCipherService, securityConfig);
-        _verificationFlowManagerActor = actorRegistry.Get(ActorIds.VerificationFlowManagerActor);
-        _phoneNumberValidator = phoneNumberValidator;
-        _grpcCipherService = grpcCipherService;
-    }
 
     public async Task InitiateVerification(
         SecureEnvelope request,
@@ -60,7 +50,7 @@ public sealed class VerificationFlowHandler
                                 SingleWriter = false
                             };
 
-                        using CancellationTokenSource linkedCts =
+                        using CancellationTokenSource linkedCancellationTokenSource =
                             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, context.CancellationToken);
 
                         Channel<Result<OtpCountdownUpdate, VerificationFlowFailure>> channel =
@@ -72,13 +62,13 @@ public sealed class VerificationFlowHandler
                         Log.Information("[verification.flow.grpc.start] ConnectId {ConnectId} Purpose {Purpose}",
                             connectId, initiateRequest.Purpose);
 
-                        Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context, linkedCts.Token);
+                        Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context, linkedCancellationTokenSource.Token);
 
                         Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
 
                         Task<Result<Unit, VerificationFlowFailure>> initiationTask =
                             _verificationFlowManagerActor.Ask<Result<Unit, VerificationFlowFailure>>(
-                                new InitiateVerificationFlowActorEvent(
+                                new InitiateVerificationFlowCommand(
                                     connectId,
                                     Helpers.FromByteStringToGuid(initiateRequest.MobileNumberId),
                                     deviceId,
@@ -87,12 +77,12 @@ public sealed class VerificationFlowHandler
                                     channel.Writer,
                                     _cultureName,
                                     idempotencyKey,
-                                    linkedCts.Token
+                                    linkedCancellationTokenSource.Token
                                 ),
                                 TimeoutConfiguration.Actor.StreamingTimeout);
 
                         Result<Unit, VerificationFlowFailure> initiationResult =
-                            await initiationTask.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+                            await initiationTask.WaitAsync(linkedCancellationTokenSource.Token).ConfigureAwait(false);
 
                         if (initiationResult.IsErr)
                         {
@@ -125,7 +115,7 @@ public sealed class VerificationFlowHandler
             async (message, _, _, cancellationToken) =>
             {
                 Result<MobileNumberValidationResult, VerificationFlowFailure> validationResult =
-                    _phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
+                    phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
 
                 if (validationResult.IsErr)
                 {
@@ -138,7 +128,7 @@ public sealed class VerificationFlowHandler
                 {
                     Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
 
-                    EnsureMobileNumberActorEvent ensureMobileNumberEvent = new(
+                    ValidateMobileNumberCommand ensureMobileNumberEvent = new(
                         phoneValidationResult.ParsedMobileNumberE164.Value!,
                         phoneValidationResult.DetectedRegion.Match(region => region, () => string.Empty),
                         deviceId,
@@ -184,7 +174,7 @@ public sealed class VerificationFlowHandler
             async (message, _, _, cancellationToken) =>
             {
                 Result<MobileNumberValidationResult, VerificationFlowFailure> validationResult =
-                    _phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
+                    phoneNumberValidator.ValidateMobileNumber(message.MobileNumber, _cultureName);
                 if (validationResult.IsErr)
                 {
                     return Result<MobileNumberValidateResponse, FailureBase>.Err(validationResult.UnwrapErr());
@@ -194,7 +184,7 @@ public sealed class VerificationFlowHandler
 
                 if (phoneValidationResult.IsValid)
                 {
-                    VerifyMobileForSecretKeyRecoveryActorEvent verifyMobileEvent = new(
+                    VerifyMobileForSecretKeyRecoveryCommand verifyMobileEvent = new(
                         phoneValidationResult.ParsedMobileNumberE164.Value!,
                         phoneValidationResult.DetectedRegion.Match(region => region, () => string.Empty),
                         cancellationToken);
@@ -240,7 +230,7 @@ public sealed class VerificationFlowHandler
             {
                 Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
 
-                CheckMobileNumberAvailabilityActorEvent actorEvent = new(
+                ExistsMobileNumberQuery actorEvent = new(
                     Helpers.FromByteStringToGuid(message.MobileNumberId),
                     deviceId,
                     cancellationToken);
@@ -273,7 +263,7 @@ public sealed class VerificationFlowHandler
         await _service.ExecuteEncryptedOperationAsync<OtpCodeVerifyRequest, OtpCodeVerifyResponse>(request, context,
             async (message, _, _, cancellationToken) =>
             {
-                VerifyFlowActorEvent actorEvent = new(message.StreamConnectId, message.Code, _cultureName, cancellationToken);
+                VerifyFlowCommand actorEvent = new(message.StreamConnectId, message.Code, _cultureName, cancellationToken);
                 actorEvent = actorEvent with { CancellationToken = cancellationToken };
 
                 Task<Result<OtpCodeVerifyResponse, VerificationFlowFailure>> verifyTask =
@@ -311,18 +301,18 @@ public sealed class VerificationFlowHandler
                     Log.Warning("[verification.flow.grpc.update-error] ConnectId {ConnectId} ErrorType {ErrorType}",
                         connectId, failure.GetType().Name);
 
-                    payload = await _grpcCipherService.CreateFailureResponse(updateResult.UnwrapErr(), connectId, context);
+                    payload = await grpcCipherService.CreateFailureResponse(updateResult.UnwrapErr(), connectId, context);
                 }
                 else
                 {
                     OtpCountdownUpdate update = updateResult.Unwrap();
 
                     Result<SecureEnvelope, FailureBase> encryptResult =
-                        await _grpcCipherService.EncryptEnvelop(update.ToByteArray(), connectId, context);
+                        await grpcCipherService.EncryptEnvelop(update.ToByteArray(), connectId, context);
 
                     if (encryptResult.IsErr)
                     {
-                        payload = await _grpcCipherService.CreateFailureResponse(encryptResult.UnwrapErr(), connectId,
+                        payload = await grpcCipherService.CreateFailureResponse(encryptResult.UnwrapErr(), connectId,
                             context);
                     }
                     else
@@ -331,7 +321,7 @@ public sealed class VerificationFlowHandler
                     }
                 }
 
-                await responseStream.WriteAsync(payload);
+                await responseStream.WriteAsync(payload, cancellationToken);
             }
         }
         catch (OperationCanceledException ex)
@@ -346,10 +336,10 @@ public sealed class VerificationFlowHandler
     {
         return protoPurpose switch
         {
-            OtpVerificationPurpose.Registration => Ecliptix.IdentityAccess.Domain.Memberships.OtpVerificationPurpose.Registration,
-            OtpVerificationPurpose.Login => Ecliptix.IdentityAccess.Domain.Memberships.OtpVerificationPurpose.Login,
-            OtpVerificationPurpose.PasswordRecovery => Ecliptix.IdentityAccess.Domain.Memberships.OtpVerificationPurpose.SecureKeyRecovery,
-            _ => Ecliptix.IdentityAccess.Domain.Memberships.OtpVerificationPurpose.Unspecified
+            OtpVerificationPurpose.Registration => Domain.Memberships.OtpVerificationPurpose.Registration,
+            OtpVerificationPurpose.Login => Domain.Memberships.OtpVerificationPurpose.Login,
+            OtpVerificationPurpose.PasswordRecovery => Domain.Memberships.OtpVerificationPurpose.SecureKeyRecovery,
+            _ => Domain.Memberships.OtpVerificationPurpose.Unspecified
         };
     }
 

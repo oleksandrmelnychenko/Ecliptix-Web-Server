@@ -7,10 +7,10 @@ using Serilog;
 using Ecliptix.Core.Infrastructure.Grpc.Security;
 using Ecliptix.DeviceProvisioning.Domain.Events;
 using Ecliptix.DeviceProvisioning.Domain.Failures;
-using Ecliptix.DeviceProvisioning.Infrastructure.Crypto;
-using Ecliptix.DeviceProvisioning.Infrastructure.SecureChannel;
+using Ecliptix.Security.Certificate.Pinning.Crypto;
+using Ecliptix.Security.Certificate.Pinning.SecureChannel;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
-using Ecliptix.IdentityAccess.Domain.Services.Security;
+using Ecliptix.IdentityAccess.Domain.Services;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Device;
 using Ecliptix.Protobuf.Protocol;
@@ -119,8 +119,8 @@ public static class DeviceProvisioningEventRouteProvider
         IEcliptixActorRegistry actorRegistry = scope.ServiceProvider.GetRequiredService<IEcliptixActorRegistry>();
         IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
 
-        RestoreAppDeviceSecrecyChannelState restoreEvent = new();
-        ForwardToConnectActorEvent forwardEvent = new(connectId, restoreEvent);
+        RestoreProtocolSessionCommand restoreEvent = new();
+        RouteToConnectionCommand forwardEvent = new(connectId, restoreEvent);
 
         Task<Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>> restoreTask =
             protocolActor.Ask<Result<RestoreSecrecyChannelResponse, EcliptixProtocolFailure>>(
@@ -246,18 +246,18 @@ public static class DeviceProvisioningEventRouteProvider
                     EcliptixProtocolFailure.ReplayAttempt("Authenticated secure channel establish"));
             }
 
-            InitializeProtocolWithMasterKeyActorEvent initEvent = new(
+            InitializeProtocolWithMasterKeyCommand initEvent = new(
                 connectId,
                 ctx.ClientExchange,
                 ctx.MembershipId,
                 ctx.AccountId,
                 rootKey);
 
-            ForwardToConnectActorEvent forwardEvent = new(connectId, initEvent);
-            Task<Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>> initTask =
-                protocolActor.Ask<Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>>(
+            RouteToConnectionCommand forwardEvent = new(connectId, initEvent);
+            Task<Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>> initTask =
+                protocolActor.Ask<Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>>(
                     forwardEvent, TimeoutConfiguration.Actor.AskTimeout);
-            Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure> initResult =
+            Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure> initResult =
                 await initTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
             if (initResult.IsErr)
@@ -265,7 +265,7 @@ public static class DeviceProvisioningEventRouteProvider
                 return Result<IMessage, FailureBase>.Err(initResult.UnwrapErr());
             }
 
-            InitializeProtocolWithMasterKeyReply reply = initResult.Unwrap();
+            InitializeProtocolWithMasterKeyResponse reply = initResult.Unwrap();
             int serverExchangeSize = reply.ServerPubKeyExchange.CalculateSize();
             ReadOnlyMemory<byte> serverExchangeMemory = ReadOnlyMemory<byte>.Empty;
             if (serverExchangeSize > 0)
@@ -366,8 +366,8 @@ public static class DeviceProvisioningEventRouteProvider
         Log.Debug("[GetServerPublicKeys] Got server public key, length: {Length}",
             serverPublicKeyResult.Unwrap().Length);
 
-        ForwardToConnectActorEvent forwardEvent =
-            new(connectId, new GetConnectionKyberPublicKeyActorEvent());
+        RouteToConnectionCommand forwardEvent =
+            new(connectId, new GetConnectionKyberPublicKeyQuery());
         Task<Result<byte[], EcliptixProtocolFailure>> kyberTask =
             protocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(
                 forwardEvent, TimeoutConfiguration.Actor.AskTimeout);

@@ -3,30 +3,30 @@ using Ecliptix.SharedKernel.Actors;
 
 namespace Ecliptix.IdentityAccess.Domain.Actors.Membership;
 
-public record OprfCompleteRecoverySecureKeyEvent(
+public record CompleteOprfSecureKeyRecoveryCommand(
     Guid MembershipIdentifier,
     byte[] PeerRecoveryRecord,
     CancellationToken CancellationToken = default) : ICancellableActorEvent;
 
-public record GenerateMembershipOprfRegistrationRequestEvent(
+public record GenerateOprfRegistrationCommand(
     Guid MembershipIdentifier,
     byte[]? OprfRequest,
     CancellationToken CancellationToken = default) : ICancellableActorEvent;
 
-public record OprfInitRecoverySecureKeyEvent(
+public record InitiateOprfSecureKeyRecoveryCommand(
     Guid MembershipIdentifier,
     byte[] OprfRequest,
     string CultureName,
     CancellationToken CancellationToken = default) : ICancellableActorEvent;
 
-public record CompleteRegistrationRecordActorEvent(
+public record CompleteRegistrationCommand(
     Guid MembershipIdentifier,
     byte[] PeerRegistrationRecord,
     CancellationToken CancellationToken = default) : ICancellableActorEvent;
 
 internal record CleanupExpiredPasswordRecovery;
 
-public record UpdateAccountSecureKeyEvent(
+public record UpdateAccountSecureKeyCommand(
     Guid MembershipIdentifier,
     byte[] SecureKey,
     byte[] MaskingKey,

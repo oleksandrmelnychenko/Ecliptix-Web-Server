@@ -1,7 +1,7 @@
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.SharedKernel;
 
-namespace Ecliptix.DeviceProvisioning.Infrastructure.Crypto;
+namespace Ecliptix.Security.Certificate.Pinning.Crypto;
 
 public interface IRsaChunkProcessor
 {

@@ -37,8 +37,8 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
         {
             PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
 
-            EncryptPayloadActorEvent encryptCommand = new(exchangeType, envelop);
-            ForwardToConnectActorEvent encryptForwarder = new(connectId, encryptCommand);
+            EncryptPayloadCommand encryptCommand = new(exchangeType, envelop);
+            RouteToConnectionCommand encryptForwarder = new(connectId, encryptCommand);
 
             Task<Result<SecureEnvelope, EcliptixProtocolFailure>> encryptTask =
                 _protocolActor.Ask<Result<SecureEnvelope, EcliptixProtocolFailure>>(
@@ -70,8 +70,8 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
         {
             PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
 
-            DecryptSecureEnvelopeActorEvent decryptCommand = new(exchangeType, secureEnvelope);
-            ForwardToConnectActorEvent decryptForwarder = new(connectId, decryptCommand);
+            DecryptSecureEnvelopeCommand decryptCommand = new(exchangeType, secureEnvelope);
+            RouteToConnectionCommand decryptForwarder = new(connectId, decryptCommand);
 
             Task<Result<byte[], EcliptixProtocolFailure>> decryptTask =
                 _protocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(

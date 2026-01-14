@@ -19,6 +19,7 @@ namespace Ecliptix.SecureProtocol.Infrastructure.Actors;
 public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentActor, IWithTimers
 {
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(ActorConstants.Timeouts.IdleTimeoutMinutes);
+    private static readonly TimeSpan MinSnapshotInterval = TimeSpan.FromSeconds(30);
     private const int MaxRecoveryRetries = ActorConstants.Recovery.MaxRetries;
     private const string RecoveryRetryTimerKey = ActorConstants.Recovery.RetryTimerKey;
 
@@ -33,6 +34,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     private bool _pendingMessageDeletion;
     private bool _pendingSnapshotDeletion;
     private PubKeyExchangeType? _currentExchangeType;
+    private DateTimeOffset _lastSnapshotTime = DateTimeOffset.MinValue;
 
     public ITimerScheduler Timers { get; set; } = null!;
 
@@ -73,37 +75,37 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     {
         switch (message)
         {
-            case InitializeProtocolWithMasterKeyActorEvent cmd:
+            case InitializeProtocolWithMasterKeyCommand cmd:
                 HandleAuthenticatedProtocolInitialization(cmd);
                 return true;
-            case DeriveSharedSecretActorEvent cmd:
+            case DeriveSharedSecretCommand cmd:
                 HandleInitialKeyExchange(cmd);
                 return true;
-            case EncryptPayloadActorEvent cmd:
+            case EncryptPayloadCommand cmd:
                 HandleEncrypt(cmd);
                 return true;
-            case DecryptSecureEnvelopeActorEvent cmd:
+            case DecryptSecureEnvelopeCommand cmd:
                 HandleDecrypt(cmd);
                 return true;
-            case EncryptPayloadComponentsActorEvent cmd:
+            case EncryptPayloadComponentsCommand cmd:
                 HandleEncryptComponents(cmd);
                 return true;
-            case DecryptPayloadWithHeaderActorEvent cmd:
+            case DecryptPayloadWithHeaderCommand cmd:
                 HandleDecryptWithHeader(cmd);
                 return true;
-            case CleanupProtocolForTypeActorEvent cmd:
+            case CleanupProtocolForTypeCommand cmd:
                 HandleCleanupProtocolForType(cmd);
                 return true;
             case ProtocolCleanupRequiredEvent evt:
                 HandleProtocolCleanupRequired(evt);
                 return true;
-            case RestoreAppDeviceSecrecyChannelState:
+            case RestoreProtocolSessionCommand:
                 HandleRestoreSecrecyChannelState();
                 return true;
-            case GetProtocolStateActorEvent:
+            case GetProtocolStateQuery:
                 HandleGetProtocolState();
                 return true;
-            case GetConnectionKyberPublicKeyActorEvent:
+            case GetConnectionKyberPublicKeyQuery:
                 HandleGetConnectionKyberPublicKey();
                 return true;
             case KeepAlive:
@@ -266,11 +268,11 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
         if (_state == null)
         {
-            Sender.Tell(new GetProtocolStateReply(null));
+            Sender.Tell(new GetProtocolStateResponse(null));
             return;
         }
 
-        GetProtocolStateReply reply = new(_state);
+        GetProtocolStateResponse reply = new(_state);
         Sender.Tell(reply);
 
         Context.GetLogger().Debug("[GET-PROTOCOL-STATE] Session state retrieved for ConnectId: {ConnectId}", connectId);
@@ -327,14 +329,14 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         Sender.Tell(kyberResult);
     }
 
-    private void HandleNewAnonymousSession(DeriveSharedSecretActorEvent cmd)
+    private void HandleNewAnonymousSession(DeriveSharedSecretCommand cmd)
     {
         Result<(ProtocolSession Session, EcliptixSessionState State, PubKeyExchange Reply), EcliptixProtocolFailure>
             sessionResult = CreateNewAnonymousSession(cmd.ConnectId, cmd.PubKeyExchange);
 
         if (sessionResult.IsErr)
         {
-            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(sessionResult.UnwrapErr()));
+            Sender.Tell(Result<DeriveSharedSecretResponse, EcliptixProtocolFailure>.Err(sessionResult.UnwrapErr()));
             return;
         }
 
@@ -365,7 +367,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             Context.SetReceiveTimeout(IdleTimeout);
 
             originalSender.Tell(
-                Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(new DeriveSharedSecretReply(reply)));
+                Result<DeriveSharedSecretResponse, EcliptixProtocolFailure>.Ok(new DeriveSharedSecretResponse(reply)));
             MaybeSaveSnapshot();
         });
     }
@@ -379,10 +381,10 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         Context.SetReceiveTimeout(null);
 
         originalSender.Tell(
-            Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(new DeriveSharedSecretReply(reply)));
+            Result<DeriveSharedSecretResponse, EcliptixProtocolFailure>.Ok(new DeriveSharedSecretResponse(reply)));
     }
 
-    private bool TryHandleExistingAnonymousSession(DeriveSharedSecretActorEvent cmd, ProtocolSession existingSession)
+    private bool TryHandleExistingAnonymousSession(DeriveSharedSecretCommand cmd, ProtocolSession existingSession)
     {
         Context.GetLogger().Info(ActorConstants.LogMessages.UsingExistingSession, cmd.ConnectId, cmd.PubKeyExchange.OfType);
 
@@ -421,7 +423,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
             existingSession.Dispose();
             _sessions.Remove(cmd.PubKeyExchange.OfType);
-            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(handshakeResult.UnwrapErr()));
+            Sender.Tell(Result<DeriveSharedSecretResponse, EcliptixProtocolFailure>.Err(handshakeResult.UnwrapErr()));
             return true;
         }
 
@@ -432,7 +434,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
             existingSession.Dispose();
             _sessions.Remove(cmd.PubKeyExchange.OfType);
-            Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Err(completeResult.UnwrapErr()));
+            Sender.Tell(Result<DeriveSharedSecretResponse, EcliptixProtocolFailure>.Err(completeResult.UnwrapErr()));
             return true;
         }
 
@@ -444,7 +446,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         ConfigureSessionTimeout(cmd.PubKeyExchange.OfType);
 
         PubKeyExchange pubKeyReply = PubKeyExchange.Parser.ParseFrom(handshakeResult.Unwrap());
-        Sender.Tell(Result<DeriveSharedSecretReply, EcliptixProtocolFailure>.Ok(new DeriveSharedSecretReply(pubKeyReply)));
+        Sender.Tell(Result<DeriveSharedSecretResponse, EcliptixProtocolFailure>.Ok(new DeriveSharedSecretResponse(pubKeyReply)));
 
         return true;
     }
@@ -489,7 +491,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         });
     }
 
-    private void HandleInitialKeyExchange(DeriveSharedSecretActorEvent cmd)
+    private void HandleInitialKeyExchange(DeriveSharedSecretCommand cmd)
     {
         bool existingSessionFound = _sessions.TryGetValue(cmd.PubKeyExchange.OfType, out ProtocolSession? existingSession)
                                     && _state != null;
@@ -516,7 +518,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         HandleNewAnonymousSession(cmd);
     }
 
-    private void ProcessAndReplyToExistingSession(InitializeProtocolWithMasterKeyActorEvent cmd, ProtocolSession existingSession)
+    private void ProcessAndReplyToExistingSession(InitializeProtocolWithMasterKeyCommand cmd, ProtocolSession existingSession)
     {
         PubKeyExchangeType exchangeType = cmd.ClientPubKeyExchange.OfType;
 
@@ -529,7 +531,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             Context.GetLogger().Warning(
                 "[AUTH-HANDSHAKE] Client did not provide Kyber public key for existing session. ConnectId: {0}",
                 cmd.ConnectId);
-            Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(
+            Sender.Tell(Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Decode(
                     "Client must provide Kyber public key for post-quantum hybrid authenticated handshake")));
             return;
@@ -542,7 +544,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             CryptographicOperations.ZeroMemory(cmd.RootKey);
             existingSession.Dispose();
             _sessions.Remove(exchangeType);
-            Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(handshakeResult.UnwrapErr()));
+            Sender.Tell(Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>.Err(handshakeResult.UnwrapErr()));
             return;
         }
 
@@ -554,7 +556,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         {
             existingSession.Dispose();
             _sessions.Remove(exchangeType);
-            Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(completeResult.UnwrapErr()));
+            Sender.Tell(Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>.Err(completeResult.UnwrapErr()));
             return;
         }
 
@@ -583,14 +585,14 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 _currentExchangeType = exchangeType;
                 Context.SetReceiveTimeout(IdleTimeout);
                 sender.Tell(
-                    Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Ok(
-                        new InitializeProtocolWithMasterKeyReply(pubKeyReply)));
+                    Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>.Ok(
+                        new InitializeProtocolWithMasterKeyResponse(pubKeyReply)));
                 MaybeSaveSnapshot();
             });
         }
         else
         {
-            sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(newStateResult.UnwrapErr()));
+            sender.Tell(Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>.Err(newStateResult.UnwrapErr()));
         }
     }
 
@@ -600,10 +602,10 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         Context.SetReceiveTimeout(null);
 
         sender.Tell(
-            Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Ok(
-                new InitializeProtocolWithMasterKeyReply(pubKeyReply)));
+            Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>.Ok(
+                new InitializeProtocolWithMasterKeyResponse(pubKeyReply)));
     }
-    private bool TryHandleExistingAuthenticatedSession(InitializeProtocolWithMasterKeyActorEvent cmd, ProtocolSession existingSession)
+    private bool TryHandleExistingAuthenticatedSession(InitializeProtocolWithMasterKeyCommand cmd, ProtocolSession existingSession)
     {
         if (_state != null && !_state.IdentitySeed.IsEmpty)
         {
@@ -615,7 +617,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         return false;
     }
 
-    private void HandleNewAuthenticatedSession(InitializeProtocolWithMasterKeyActorEvent cmd)
+    private void HandleNewAuthenticatedSession(InitializeProtocolWithMasterKeyCommand cmd)
     {
         Result<(ProtocolSession Session, EcliptixSessionState State, PubKeyExchange Reply), EcliptixProtocolFailure>
             sessionResult = CreateNewAuthenticatedSession(cmd.ConnectId, cmd.AccountId, cmd.MembershipId,
@@ -623,7 +625,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
         if (sessionResult.IsErr)
         {
-            Sender.Tell(Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Err(sessionResult.UnwrapErr()));
+            Sender.Tell(Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>.Err(sessionResult.UnwrapErr()));
             return;
         }
 
@@ -654,8 +656,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             SaveSnapshot(_state);
 
             originalSender.Tell(
-                Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Ok(
-                    new InitializeProtocolWithMasterKeyReply(reply)));
+                Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>.Ok(
+                    new InitializeProtocolWithMasterKeyResponse(reply)));
         });
     }
 
@@ -667,8 +669,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         Context.SetReceiveTimeout(null);
 
         originalSender.Tell(
-            Result<InitializeProtocolWithMasterKeyReply, EcliptixProtocolFailure>.Ok(
-                new InitializeProtocolWithMasterKeyReply(reply)));
+            Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>.Ok(
+                new InitializeProtocolWithMasterKeyResponse(reply)));
     }
 
     private void HandleKeyMismatch(PubKeyExchangeType exchangeType)
@@ -685,7 +687,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
     }
 
-    private void HandleAuthenticatedProtocolInitialization(InitializeProtocolWithMasterKeyActorEvent cmd)
+    private void HandleAuthenticatedProtocolInitialization(InitializeProtocolWithMasterKeyCommand cmd)
     {
         PubKeyExchangeType exchangeType = cmd.ClientPubKeyExchange.OfType;
 
@@ -699,7 +701,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         HandleNewAuthenticatedSession(cmd);
     }
 
-    private void HandleEncrypt(EncryptPayloadActorEvent cmd)
+    private void HandleEncrypt(EncryptPayloadCommand cmd)
     {
         if (!_sessions.TryGetValue(cmd.PubKeyExchangeType, out ProtocolSession? system))
         {
@@ -750,7 +752,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         }
     }
 
-    private void HandleDecrypt(DecryptSecureEnvelopeActorEvent actorEvent)
+    private void HandleDecrypt(DecryptSecureEnvelopeCommand actorEvent)
     {
         if (!_sessions.TryGetValue(actorEvent.PubKeyExchangeType, out ProtocolSession? session))
         {
@@ -807,7 +809,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         }
     }
 
-    private void HandleCleanupProtocolForType(CleanupProtocolForTypeActorEvent cmd)
+    private void HandleCleanupProtocolForType(CleanupProtocolForTypeCommand cmd)
     {
         if (_sessions.TryGetValue(cmd.ExchangeType, out ProtocolSession? system))
         {
@@ -853,6 +855,13 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             return;
         }
 
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        if (now - _lastSnapshotTime < MinSnapshotInterval)
+        {
+            return;
+        }
+
+        _lastSnapshotTime = now;
         SaveSnapshot(_state);
         Context.GetLogger().Debug(
             "[SNAPSHOT-SAVE] Snapshot saved. ConnectId: {0}, SeqNr: {1}, Sending: {2}, Receiving: {3}",
@@ -908,6 +917,18 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     {
         _identity?.Dispose();
         _identity = null;
+
+        if (_identitySeed != null)
+        {
+            CryptographicOperations.ZeroMemory(_identitySeed);
+            _identitySeed = null;
+        }
+
+        if (_cachedKyberPublicKey != null)
+        {
+            CryptographicOperations.ZeroMemory(_cachedKyberPublicKey);
+            _cachedKyberPublicKey = null;
+        }
     }
 
     private void AttemptSystemRecreation()
@@ -1056,7 +1077,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         _sessions[exchangeType] = session;
     }
 
-    private void HandleEncryptComponents(EncryptPayloadComponentsActorEvent cmd)
+    private void HandleEncryptComponents(EncryptPayloadComponentsCommand cmd)
     {
 
         if (!_sessions.TryGetValue(cmd.ExchangeType, out ProtocolSession? session))
@@ -1108,7 +1129,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         }
     }
 
-    private void HandleDecryptWithHeader(DecryptPayloadWithHeaderActorEvent cmd)
+    private void HandleDecryptWithHeader(DecryptPayloadWithHeaderCommand cmd)
     {
         if (!_sessions.TryGetValue(cmd.ExchangeType, out ProtocolSession? session))
         {
@@ -1173,10 +1194,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     private void HandleAuthenticatedToAnonymousTransition()
     {
         DisposeAllSessions();
-        _state = null;
-        _identitySeed = null;
-        _cachedKyberPublicKey = null;
         DisposeIdentity();
+        _state = null;
         SaveSnapshot(new EcliptixSessionState());
     }
 
@@ -1192,6 +1211,12 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
     private static bool IsIndexDesyncError(EcliptixProtocolFailure error)
     {
+        if (error.FailureType == EcliptixProtocolFailureType.IndexDesynchronized ||
+            error.FailureType == EcliptixProtocolFailureType.ChainIndexMismatch)
+        {
+            return true;
+        }
+
         string message = error.Message;
         if (error.InnerException?.Message is { Length: > 0 } innerMessage)
         {
@@ -1283,8 +1308,6 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         Result<ProtocolSession, EcliptixProtocolFailure> sessionResult =
             _protocolServer.CreateSession(identityResult.Unwrap(), OnProtocolStateChanged);
 
-        // CreateSession moves the native identity_keys into the protocol system.
-        // Detach to avoid double-free while allowing a fresh identity for GetPublicKyber if needed.
         _identity?.Detach();
         _identity = null;
 
@@ -1372,8 +1395,6 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         Result<ProtocolSession, EcliptixProtocolFailure> sessionResult =
             _protocolServer.CreateSession(identityResult.Unwrap(), OnProtocolStateChanged);
 
-        // CreateSession moves the native identity_keys into the protocol system.
-        // Detach to avoid double-free while allowing a fresh identity for GetPublicKyber if needed.
         _identity?.Detach();
         _identity = null;
 
@@ -1640,8 +1661,6 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             _state.NativeState.ToByteArray(),
             OnProtocolStateChanged);
 
-        // ImportState moves the native identity_keys into the protocol system, invalidating the identity handle.
-        // Clear _identity so EnsureIdentity will create a fresh one if needed for GetPublicKyber.
         _identity?.Dispose();
         _identity = null;
 
