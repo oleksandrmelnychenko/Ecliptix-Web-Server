@@ -40,16 +40,16 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
     {
         ReceivePersistorCommand<ValidatePasswordRecoveryFlowCommand, PasswordRecoveryFlowValidationResponse>(
             ValidatePasswordRecoveryFlowAsync,
-            "ValidatePasswordRecoveryFlow");
+            PersistorOperation.ValidatePasswordRecoveryFlow);
 
         ReceivePersistorCommand<ExpirePasswordRecoveryFlowsCommand, Unit>(
             ExpirePasswordRecoveryFlowsAsync,
-            "ExpirePasswordRecoveryFlows");
+            PersistorOperation.ExpirePasswordRecoveryFlows);
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
         Func<EcliptixSchemaContext, TMessage, CancellationToken, Task<Result<TResult, SecretKeyRecoveryFailure>>> handler,
-        string operationName)
+        PersistorOperation operationName)
         where TMessage : class, ICancellableActorEvent
     {
         Receive<TMessage>(message =>
@@ -73,7 +73,7 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
     private async Task<Result<PasswordRecoveryFlowValidationResponse, SecretKeyRecoveryFailure>>
         ValidatePasswordRecoveryFlowAsync(
             EcliptixSchemaContext schemaContext,
-            ValidatePasswordRecoveryFlowCommand cmd,
+            ValidatePasswordRecoveryFlowCommand command,
             CancellationToken cancellationToken)
     {
         try
@@ -83,13 +83,13 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
                 DateTimeOffset.UtcNow - persistorSettings.PasswordRecoveryValidationWindow;
 
             MembershipEntity? membership = await schemaContext.Memberships
-                .Where(m => m.UniqueId == cmd.MembershipIdentifier && !m.IsDeleted)
+                .Where(m => m.UniqueId == command.MembershipIdentifier && !m.IsDeleted)
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (membership == null)
             {
                 Log.Warning("[PASSWORD-RECOVERY-VALIDATION] Membership not found: {MembershipId}",
-                    cmd.MembershipIdentifier);
+                    command.MembershipIdentifier);
                 return Result<PasswordRecoveryFlowValidationResponse, SecretKeyRecoveryFailure>.Ok(
                     new PasswordRecoveryFlowValidationResponse(false, null));
             }
@@ -113,14 +113,14 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
                     TimeSpan elapsed = DateTimeOffset.UtcNow - existingFlow.UpdatedAt;
                     Log.Warning(
                         "[PASSWORD-RECOVERY-VALIDATION] Recovery flow invalid. MembershipId: {MembershipId}, FlowId: {FlowId}, Purpose: {Purpose}, Status: {Status}, ElapsedMinutes: {Minutes}",
-                        cmd.MembershipIdentifier, existingFlow.UniqueId, existingFlow.Purpose, existingFlow.Status,
+                        command.MembershipIdentifier, existingFlow.UniqueId, existingFlow.Purpose, existingFlow.Status,
                         elapsed.TotalMinutes);
                 }
                 else
                 {
                     Log.Warning(
                         "[PASSWORD-RECOVERY-VALIDATION] No verification flow found for membership: {MembershipId}, ExpectedFlowId: {FlowId}",
-                        cmd.MembershipIdentifier, membership.VerificationFlowId);
+                        command.MembershipIdentifier, membership.VerificationFlowId);
                 }
 
                 return Result<PasswordRecoveryFlowValidationResponse, SecretKeyRecoveryFailure>.Ok(
@@ -129,7 +129,7 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
 
             Log.Information(
                 "[PASSWORD-RECOVERY-VALIDATION] Valid recovery flow found. MembershipId: {MembershipId}, FlowId: {FlowId}",
-                cmd.MembershipIdentifier, recoveryFlow.UniqueId);
+                command.MembershipIdentifier, recoveryFlow.UniqueId);
 
             return Result<PasswordRecoveryFlowValidationResponse, SecretKeyRecoveryFailure>.Ok(
                 new PasswordRecoveryFlowValidationResponse(true, recoveryFlow.UniqueId));
@@ -137,28 +137,28 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
         catch (Exception ex)
         {
             Log.Error(ex, "[PASSWORD-RECOVERY-VALIDATION] Exception during validation for MembershipId: {MembershipId}",
-                cmd.MembershipIdentifier);
+                command.MembershipIdentifier);
             return Result<PasswordRecoveryFlowValidationResponse, SecretKeyRecoveryFailure>.Err(
                 SecretKeyRecoveryFailure.VerificationFailed(ex.Message));
         }
     }
 
     private static async Task<Result<Unit, SecretKeyRecoveryFailure>> ExpirePasswordRecoveryFlowsAsync(
-        EcliptixSchemaContext schemaContext, ExpirePasswordRecoveryFlowsCommand cmd, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext, ExpirePasswordRecoveryFlowsCommand command, CancellationToken cancellationToken)
     {
         await using IDbContextTransaction transaction =
             await schemaContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             MembershipEntity? membership = await schemaContext.Memberships
-                .Where(m => m.UniqueId == cmd.MembershipIdentifier && !m.IsDeleted)
+                .Where(m => m.UniqueId == command.MembershipIdentifier && !m.IsDeleted)
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (membership == null)
             {
                 await RollbackSilentlyAsync(transaction);
                 Log.Warning("[PASSWORD-RECOVERY-EXPIRE] Membership not found: {MembershipId}",
-                    cmd.MembershipIdentifier);
+                    command.MembershipIdentifier);
                 return Result<Unit, SecretKeyRecoveryFailure>.Ok(Unit.Value);
             }
 
@@ -175,13 +175,13 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
             {
                 Log.Information(
                     "[PASSWORD-RECOVERY-EXPIRE] Expired {Count} recovery flow(s) for MembershipId: {MembershipId}, FlowId: {FlowId}",
-                    rowsAffected, cmd.MembershipIdentifier, membership.VerificationFlowId);
+                    rowsAffected, command.MembershipIdentifier, membership.VerificationFlowId);
             }
             else
             {
                 Log.Warning(
                     "[PASSWORD-RECOVERY-EXPIRE] No verified recovery flows to expire for MembershipId: {MembershipId}, FlowId: {FlowId}",
-                    cmd.MembershipIdentifier, membership.VerificationFlowId);
+                    command.MembershipIdentifier, membership.VerificationFlowId);
             }
 
             await transaction.CommitAsync(cancellationToken);
@@ -191,7 +191,7 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
         {
             await RollbackSilentlyAsync(transaction);
             Log.Error(ex, "[PASSWORD-RECOVERY-EXPIRE] Exception while expiring flows for MembershipId: {MembershipId}",
-                cmd.MembershipIdentifier);
+                command.MembershipIdentifier);
             return Result<Unit, SecretKeyRecoveryFailure>.Err(
                 SecretKeyRecoveryFailure.PersistorAccess(ex.Message, ex));
         }

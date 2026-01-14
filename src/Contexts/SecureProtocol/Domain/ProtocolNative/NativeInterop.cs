@@ -7,7 +7,7 @@ internal static class NativeInterop
 {
     private const string LibraryName = "epp_relay";
 
-    internal enum EcliptixErrorCode
+    internal enum EppErrorCode
     {
         Success = 0,
         ErrorGeneric = 1,
@@ -32,16 +32,16 @@ internal static class NativeInterop
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct EcliptixBuffer
+    internal struct EppBuffer
     {
         public IntPtr Data;
         public nuint Length;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct EcliptixError
+    internal struct EppError
     {
-        public EcliptixErrorCode Code;
+        public EppErrorCode Code;
         public IntPtr Message;
 
         public readonly string GetMessage()
@@ -51,77 +51,77 @@ internal static class NativeInterop
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void EcliptixProtocolEventCallback(uint connectionId, IntPtr userData);
+    internal delegate void EppEventCallback(uint connectionId, IntPtr userData);
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct EcliptixCallbacks
+    internal struct EppCallbacks
     {
-        public EcliptixProtocolEventCallback? OnProtocolStateChanged;
+        public EppEventCallback? OnProtocolStateChanged;
         public IntPtr UserData;
     }
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-    internal static extern IntPtr ecliptix_get_version();
+    internal static extern IntPtr epp_version();
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_initialize();
+    internal static extern EppErrorCode epp_init();
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void ecliptix_shutdown();
+    internal static extern void epp_shutdown();
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_identity_keys_create(
+    internal static extern EppErrorCode epp_identity_create(
         out IntPtr outHandle,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_identity_keys_create_from_seed(
+    internal static extern EppErrorCode epp_identity_create_from_seed(
         [In] byte[] seed,
         nuint seedLength,
         out IntPtr outHandle,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-    internal static extern EcliptixErrorCode ecliptix_identity_keys_create_from_seed_with_context(
+    internal static extern EppErrorCode epp_identity_create_with_context(
         [In] byte[] seed,
         nuint seedLength,
         string membershipId,
         nuint membershipIdLength,
         out IntPtr outHandle,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_identity_keys_get_public_x25519(
+    internal static extern EppErrorCode epp_identity_get_x25519_public(
         IntPtr handle,
         [Out] byte[] outKey,
         nuint outKeyLength,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_identity_keys_get_public_ed25519(
+    internal static extern EppErrorCode epp_identity_get_ed25519_public(
         IntPtr handle,
         [Out] byte[] outKey,
         nuint outKeyLength,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_identity_keys_get_public_kyber(
+    internal static extern EppErrorCode epp_identity_get_kyber_public(
         IntPtr handle,
         [Out] byte[] outKey,
         nuint outKeyLength,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void ecliptix_identity_keys_destroy(IntPtr handle);
+    internal static extern void epp_identity_destroy(IntPtr handle);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_create(
+    internal static extern EppErrorCode epp_server_create(
         IntPtr identityKeys,
         out IntPtr outHandle,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_create_from_root(
+    internal static extern EppErrorCode epp_server_create_from_root(
         IntPtr identityKeys,
         [In] byte[] rootKey,
         nuint rootKeyLength,
@@ -129,137 +129,137 @@ internal static class NativeInterop
         nuint peerBundleLength,
         [MarshalAs(UnmanagedType.I1)] bool isInitiator,
         out IntPtr outHandle,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_import_state(
+    internal static extern EppErrorCode epp_server_deserialize(
         IntPtr identityKeys,
         [In] byte[] stateBytes,
         nuint stateBytesLength,
         out IntPtr outHandle,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_set_callbacks(
+    internal static extern EppErrorCode epp_server_set_callbacks(
         IntPtr handle,
-        in EcliptixCallbacks callbacks,
-        out EcliptixError outError);
+        in EppCallbacks callbacks,
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_begin_handshake(
+    internal static extern EppErrorCode epp_server_begin_handshake(
         IntPtr handle,
         uint connectionId,
         byte exchangeType,
         IntPtr outHandshakeMessage,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_begin_handshake_with_peer_kyber(
+    internal static extern EppErrorCode epp_server_begin_handshake_with_peer_kyber(
         IntPtr handle,
         uint connectionId,
         byte exchangeType,
         [In] byte[] peerKyberPublicKey,
         nuint peerKyberPublicKeyLength,
         IntPtr outHandshakeMessage,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_complete_handshake(
+    internal static extern EppErrorCode epp_server_complete_handshake(
         IntPtr handle,
         [In] byte[] peerHandshakeMessage,
         nuint peerHandshakeMessageLength,
         [In] byte[] rootKey,
         nuint rootKeyLength,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_complete_handshake_auto(
+    internal static extern EppErrorCode epp_server_complete_handshake_auto(
         IntPtr handle,
         [In] byte[] peerHandshakeMessage,
         nuint peerHandshakeMessageLength,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_send_message(
+    internal static extern EppErrorCode epp_server_encrypt(
         IntPtr handle,
         [In] byte[] plaintext,
         nuint plaintextLength,
         IntPtr outEncryptedEnvelope,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_receive_message(
+    internal static extern EppErrorCode epp_server_decrypt(
         IntPtr handle,
         [In] byte[] encryptedEnvelope,
         nuint encryptedEnvelopeLength,
         IntPtr outPlaintext,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_has_connection(
+    internal static extern EppErrorCode epp_server_is_established(
         IntPtr handle,
         out bool outHasConnection,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_get_connection_id(
+    internal static extern EppErrorCode epp_server_get_id(
         IntPtr handle,
         out uint outConnectionId,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_get_chain_indices(
+    internal static extern EppErrorCode epp_server_get_chain_indices(
         IntPtr handle,
         out uint outSendingIndex,
         out uint outReceivingIndex,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_get_selected_opk_id(
+    internal static extern EppErrorCode epp_server_get_used_prekey_id(
         IntPtr handle,
         [MarshalAs(UnmanagedType.I1)] out bool outHasOpkId,
         out uint outOpkId,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_export_state(
+    internal static extern EppErrorCode epp_server_serialize(
         IntPtr handle,
         IntPtr outState,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_protocol_server_system_set_kyber_secrets(
+    internal static extern EppErrorCode epp_server_set_kyber_secrets(
         IntPtr handle,
         [In] byte[] kyberCiphertext,
         nuint kyberCiphertextLength,
         [In] byte[] kyberSharedSecret,
         nuint kyberSharedSecretLength,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_connection_get_session_age_seconds(
+    internal static extern EppErrorCode epp_session_age_seconds(
         IntPtr handle,
         out ulong outAgeSeconds,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_envelope_validate_hybrid_requirements(
+    internal static extern EppErrorCode epp_envelope_validate(
         [In] byte[] encryptedEnvelope,
         nuint encryptedEnvelopeLength,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_derive_root_from_opaque_session_key(
+    internal static extern EppErrorCode epp_derive_root_key(
         [In] byte[] opaqueSessionKey,
         nuint opaqueSessionKeyLength,
         [In] byte[] userContext,
         nuint userContextLength,
         [Out] byte[] outRootKey,
         nuint outRootKeyLength,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_secret_sharing_split(
+    internal static extern EppErrorCode epp_shamir_split(
         [In] byte[] secret,
         nuint secretLength,
         byte threshold,
@@ -268,10 +268,10 @@ internal static class NativeInterop
         nuint authKeyLength,
         IntPtr outShares,
         out nuint outShareLength,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_secret_sharing_reconstruct(
+    internal static extern EppErrorCode epp_shamir_reconstruct(
         [In] byte[] shares,
         nuint sharesLength,
         nuint shareLength,
@@ -279,26 +279,26 @@ internal static class NativeInterop
         [In] byte[]? authKey,
         nuint authKeyLength,
         IntPtr outSecret,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void ecliptix_protocol_server_system_destroy(IntPtr handle);
+    internal static extern void epp_server_destroy(IntPtr handle);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr ecliptix_buffer_allocate(nuint capacity);
+    internal static extern IntPtr epp_buffer_alloc(nuint capacity);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void ecliptix_buffer_free(IntPtr buffer);
+    internal static extern void epp_buffer_free(IntPtr buffer);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void ecliptix_error_free(ref EcliptixError error);
+    internal static extern void epp_error_free(ref EppError error);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-    internal static extern IntPtr ecliptix_error_code_to_string(EcliptixErrorCode code);
+    internal static extern IntPtr epp_error_string(EppErrorCode code);
 
-    internal static string ErrorCodeToString(EcliptixErrorCode code)
+    internal static string ErrorCodeToString(EppErrorCode code)
     {
-        IntPtr messagePtr = ecliptix_error_code_to_string(code);
+        IntPtr messagePtr = epp_error_string(code);
         return Marshal.PtrToStringAnsi(messagePtr) ?? "unknown error";
     }
 }

@@ -4,9 +4,9 @@ using Ecliptix.SharedKernel.Actors;
 
 namespace Ecliptix.SecureProtocol.Infrastructure.Actors;
 
-public sealed class EcliptixProtocolSystemActor : ReceiveActor
+public sealed class EcliptixProtectionProtocolActor : ReceiveActor
 {
-    public EcliptixProtocolSystemActor()
+    public EcliptixProtectionProtocolActor()
     {
         Become(Ready);
     }
@@ -122,6 +122,6 @@ public sealed class EcliptixProtocolSystemActor : ReceiveActor
 
     public static Props Build()
     {
-        return Props.Create(() => new EcliptixProtocolSystemActor());
+        return Props.Create(() => new EcliptixProtectionProtocolActor());
     }
 }

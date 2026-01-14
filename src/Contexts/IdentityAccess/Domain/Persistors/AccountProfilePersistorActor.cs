@@ -29,18 +29,18 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
     private void Ready()
     {
         ReceivePersistorCommand<GetAccountProfileQuery, Option<AccountProfileInfo>>(
-            GetAccountProfileAsync, "GetAccountProfile");
+            GetAccountProfileAsync, PersistorOperation.GetAccountProfile);
 
         ReceivePersistorCommand<ExistsProfileNameQuery, bool>(
-            CheckProfileNameAvailabilityAsync, "CheckProfileNameAvailability");
+            CheckProfileNameAvailabilityAsync, PersistorOperation.CheckProfileNameAvailability);
 
         ReceivePersistorCommand<UpdateAccountProfileCommand, AccountProfileInfo>(
-            UpdateAccountProfileAsync, "UpdateAccountProfile");
+            UpdateAccountProfileAsync, PersistorOperation.UpdateAccountProfile);
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
         Func<EcliptixSchemaContext, TMessage, CancellationToken, Task<Result<TResult, AccountProfileFailure>>> handler,
-        string operationName)
+        PersistorOperation operationName)
         where TMessage : class, ICancellableActorEvent
     {
         Receive<TMessage>(message =>
@@ -59,17 +59,17 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
     }
 
     private static async Task<Result<Option<AccountProfileInfo>, AccountProfileFailure>> GetAccountProfileAsync(
-        EcliptixSchemaContext schemaContext, GetAccountProfileQuery cmd, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext, GetAccountProfileQuery query, CancellationToken cancellationToken)
     {
         try
         {
             Option<AccountProfileEntity> profileOpt = Option<AccountProfileEntity>.None;
 
-            switch (cmd.Criteria)
+            switch (query.Criteria)
             {
                 case SearchByMobile mobileCriteria:
                     profileOpt = await AccountProfileQueries.GetPrimaryAccountProfileByMobileNumber(
-                        schemaContext, mobileCriteria.MobileNumber, cmd.CurrentAccountId);
+                        schemaContext, mobileCriteria.MobileNumber, query.CurrentAccountId);
                     break;
 
                 case SearchById idCriteria:
@@ -100,11 +100,11 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
     }
 
     private static async Task<Result<bool, AccountProfileFailure>> CheckProfileNameAvailabilityAsync(
-        EcliptixSchemaContext schemaContext, ExistsProfileNameQuery cmd, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext, ExistsProfileNameQuery query, CancellationToken cancellationToken)
     {
         try
         {
-            bool isTaken = await AccountProfileQueries.IsProfileNameTaken(schemaContext, cmd.ProfileName);
+            bool isTaken = await AccountProfileQueries.IsProfileNameTaken(schemaContext, query.ProfileName);
 
             return Result<bool, AccountProfileFailure>.Ok(!isTaken);
         }
@@ -115,13 +115,13 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
     }
 
     private static async Task<Result<AccountProfileInfo, AccountProfileFailure>> UpdateAccountProfileAsync(
-        EcliptixSchemaContext schemaContext, UpdateAccountProfileCommand cmd, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext, UpdateAccountProfileCommand command, CancellationToken cancellationToken)
     {
         try
         {
 
             Option<AccountProfileEntity> profileOpt =
-                await AccountProfileQueries.GetByAccountIdTracking(schemaContext, cmd.AccountId);
+                await AccountProfileQueries.GetByAccountIdTracking(schemaContext, command.AccountId);
 
             AccountProfileEntity profile;
 
@@ -129,15 +129,15 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
             {
                 profile = profileOpt.Value!;
 
-                profile.ProfileName = cmd.ProfileName;
-                profile.DisplayName = cmd.DisplayName;
+                profile.ProfileName = command.ProfileName;
+                profile.DisplayName = command.DisplayName;
                 profile.UpdatedAt = DateTimeOffset.UtcNow;
 
             }
             else
             {
                 bool accountExists = await schemaContext.Accounts
-                    .AnyAsync(a => a.UniqueId == cmd.AccountId, cancellationToken);
+                    .AnyAsync(a => a.UniqueId == command.AccountId, cancellationToken);
 
                 if (!accountExists)
                 {
@@ -147,9 +147,9 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
 
                 profile = new AccountProfileEntity
                 {
-                    AccountId = cmd.AccountId,
-                    ProfileName = cmd.ProfileName,
-                    DisplayName = cmd.DisplayName,
+                    AccountId = command.AccountId,
+                    ProfileName = command.ProfileName,
+                    DisplayName = command.DisplayName,
                     UpdatedAt = DateTimeOffset.UtcNow,
                 };
 
@@ -171,7 +171,7 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
                                              { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             return Result<AccountProfileInfo, AccountProfileFailure>.Err(
-                AccountProfileFailure.AlreadyExists($"Profile name '{cmd.ProfileName}' is already taken."));
+                AccountProfileFailure.AlreadyExists($"Profile name '{command.ProfileName}' is already taken."));
         }
         catch (Exception ex)
         {

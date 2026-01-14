@@ -23,8 +23,8 @@ public sealed class ProtocolServerAdapter : IProtocolServer
 
             if (!_nativeInitialized)
             {
-                Native.EcliptixErrorCode result = Native.ecliptix_initialize();
-                if (result != Native.EcliptixErrorCode.Success)
+                Native.EppErrorCode result = Native.epp_init();
+                if (result != Native.EppErrorCode.Success)
                 {
                     return Result<Unit, EcliptixProtocolFailure>.Err(
                         EcliptixProtocolFailure.Generic(
@@ -56,7 +56,7 @@ public sealed class ProtocolServerAdapter : IProtocolServer
                 _nativeInitRefCount--;
                 if (_nativeInitRefCount == 0)
                 {
-                    Native.ecliptix_shutdown();
+                    Native.epp_shutdown();
                     _nativeInitialized = false;
                 }
             }

@@ -14,7 +14,7 @@ public abstract class PersistorBase<TFailure>(IDbContextFactory<EcliptixSchemaCo
 
     protected async Task<Result<TResult, TFailure>> ExecuteWithContext<TResult>(
         Func<EcliptixSchemaContext, CancellationToken, Task<Result<TResult, TFailure>>> operation,
-        string operationName,
+        PersistorOperation operationName,
         CancellationToken cancellationToken = default)
     {
         TimeSpan operationTimeout = GetOperationTimeout(operationName);
@@ -33,30 +33,59 @@ public abstract class PersistorBase<TFailure>(IDbContextFactory<EcliptixSchemaCo
             cancellationToken);
     }
 
-    private static TimeSpan GetOperationTimeout(string operationName)
+    private static TimeSpan GetOperationTimeout(PersistorOperation operation)
     {
-        return operationName switch
+        return operation switch
         {
-            "CreateMembership" => TimeoutConfiguration.Database.CreateTimeout,
-            "UpdateMembershipSecureKey" => TimeoutConfiguration.Database.UpdateTimeout,
-            "LoginMembership" => TimeoutConfiguration.Database.QueryTimeout,
-            "SignInMembership" => TimeoutConfiguration.Database.QueryTimeout,
-            "GetMembershipByVerificationFlow" => TimeoutConfiguration.Database.GetTimeout,
-            "GetMembershipByUniqueId" => TimeoutConfiguration.Database.GetTimeout,
-            "CreateDefaultAccount" => TimeoutConfiguration.Database.CreateTimeout,
-            "ValidatePasswordRecoveryFlow" => TimeoutConfiguration.Database.QueryTimeout,
-            "ExpirePasswordRecoveryFlows" => TimeoutConfiguration.Database.UpdateTimeout,
-            "UpdateMembershipVerificationFlow" => TimeoutConfiguration.Database.UpdateTimeout,
-            "CreateOtp" => TimeoutConfiguration.Database.CreateTimeout,
-            "UpdateOtpStatus" => TimeoutConfiguration.Database.UpdateTimeout,
-            "GetOtp" => TimeoutConfiguration.Database.GetTimeout,
-            "CreateVerificationFlow" => TimeoutConfiguration.Database.CreateTimeout,
-            "UpdateVerificationFlowStatus" => TimeoutConfiguration.Database.UpdateTimeout,
-            "GetVerificationFlow" => TimeoutConfiguration.Database.GetTimeout,
-            "EnsureMobileNumber" => TimeoutConfiguration.Database.CreateTimeout,
-            "GetMobileNumber" => TimeoutConfiguration.Database.GetTimeout,
-            "RecordLogout" => TimeoutConfiguration.Database.CreateTimeout,
-            _ => TimeoutConfiguration.Database.CommandTimeout
+            PersistorOperation.CreateMembership => TimeoutConfiguration.Database.CreateTimeout,
+            PersistorOperation.CreateDefaultAccount => TimeoutConfiguration.Database.CreateTimeout,
+            PersistorOperation.CreateVerificationFlow => TimeoutConfiguration.Database.CreateTimeout,
+            PersistorOperation.CreateOtp => TimeoutConfiguration.Database.CreateTimeout,
+            PersistorOperation.EnsureMobileNumber => TimeoutConfiguration.Database.CreateTimeout,
+            PersistorOperation.RecordLogout => TimeoutConfiguration.Database.CreateTimeout,
+            PersistorOperation.InsertMasterKeyShares => TimeoutConfiguration.Database.CreateTimeout,
+            PersistorOperation.LogFailedAttempt => TimeoutConfiguration.Database.CreateTimeout,
+
+            PersistorOperation.UpdateAccountSecureKey => TimeoutConfiguration.Database.UpdateTimeout,
+            PersistorOperation.UpdateMembershipVerificationFlow => TimeoutConfiguration.Database.UpdateTimeout,
+            PersistorOperation.UpdateMembershipCreationStatus => TimeoutConfiguration.Database.UpdateTimeout,
+            PersistorOperation.UpdateVerificationFlowStatus => TimeoutConfiguration.Database.UpdateTimeout,
+            PersistorOperation.UpdateOtpStatus => TimeoutConfiguration.Database.UpdateTimeout,
+            PersistorOperation.UpdateAccountProfile => TimeoutConfiguration.Database.UpdateTimeout,
+            PersistorOperation.ExpirePasswordRecoveryFlows => TimeoutConfiguration.Database.UpdateTimeout,
+            PersistorOperation.IncrementOtpAttemptCount => TimeoutConfiguration.Database.UpdateTimeout,
+            PersistorOperation.DeleteMasterKeyShares => TimeoutConfiguration.Database.UpdateTimeout,
+
+            PersistorOperation.GetMembershipByVerificationFlow => TimeoutConfiguration.Database.GetTimeout,
+            PersistorOperation.GetMembershipByUniqueId => TimeoutConfiguration.Database.GetTimeout,
+            PersistorOperation.GetVerificationFlow => TimeoutConfiguration.Database.GetTimeout,
+            PersistorOperation.GetOtp => TimeoutConfiguration.Database.GetTimeout,
+            PersistorOperation.GetMobileNumber => TimeoutConfiguration.Database.GetTimeout,
+            PersistorOperation.GetDefaultAccountId => TimeoutConfiguration.Database.GetTimeout,
+            PersistorOperation.GetAccountProfile => TimeoutConfiguration.Database.GetTimeout,
+            PersistorOperation.GetMostRecentLogout => TimeoutConfiguration.Database.GetTimeout,
+            PersistorOperation.GetLogoutByDevice => TimeoutConfiguration.Database.GetTimeout,
+            PersistorOperation.GetOtpAttemptCount => TimeoutConfiguration.Database.GetTimeout,
+
+            PersistorOperation.LoginMembership => TimeoutConfiguration.Database.QueryTimeout,
+            PersistorOperation.SignInMembership => TimeoutConfiguration.Database.QueryTimeout,
+            PersistorOperation.ValidatePasswordRecoveryFlow => TimeoutConfiguration.Database.QueryTimeout,
+            PersistorOperation.CheckMobileNumberAvailability => TimeoutConfiguration.Database.QueryTimeout,
+            PersistorOperation.CheckExistingMembership => TimeoutConfiguration.Database.QueryTimeout,
+            PersistorOperation.CheckProfileNameAvailability => TimeoutConfiguration.Database.QueryTimeout,
+            PersistorOperation.GetAccountsByMembershipId => TimeoutConfiguration.Database.QueryTimeout,
+            PersistorOperation.GetLogoutHistory => TimeoutConfiguration.Database.QueryTimeout,
+            PersistorOperation.GetMasterKeyShares => TimeoutConfiguration.Database.QueryTimeout,
+            PersistorOperation.InitiateVerificationFlow => TimeoutConfiguration.Database.QueryTimeout,
+            PersistorOperation.RequestResendOtp => TimeoutConfiguration.Database.QueryTimeout,
+            PersistorOperation.VerifyMobileForSecretKeyRecovery => TimeoutConfiguration.Database.QueryTimeout,
+            PersistorOperation.QueryFlowStatusByConnectionId => TimeoutConfiguration.Database.QueryTimeout,
+
+            // Device operations
+            PersistorOperation.RegisterAppDevice => TimeoutConfiguration.Database.CreateTimeout,
+
+            // Default fallback for any future operations
+            _ => TimeoutConfiguration.Database.QueryTimeout
         };
     }
 

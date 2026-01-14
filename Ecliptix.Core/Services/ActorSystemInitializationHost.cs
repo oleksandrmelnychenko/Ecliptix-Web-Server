@@ -34,7 +34,7 @@ public sealed class ActorSystemInitializationHost(
     public Task StartAsync(CancellationToken cancellationToken)
     {
         IActorRef protocolSystemActor = actorSystem.ActorOf(
-            Props.Create(() => new EcliptixProtocolSystemActor()),
+            Props.Create(() => new EcliptixProtectionProtocolActor()),
             ApplicationConstants.ActorNames.ProtocolSystem);
 
         IActorRef appDevicePersistor = actorSystem.ActorOf(
@@ -93,7 +93,7 @@ public sealed class ActorSystemInitializationHost(
             AccountProfileActor.Build(accountProfilePersistorActor),
             ApplicationConstants.ActorNames.AccountProfileActor);
 
-        registry.Register(ActorIds.EcliptixProtocolSystemActor, protocolSystemActor);
+        registry.Register(ActorIds.EcliptixProtectionProtocolActor, protocolSystemActor);
         registry.Register(ActorIds.AppDevicePersistorActor, appDevicePersistor);
         registry.Register(ActorIds.VerificationFlowPersistorActor, verificationFlowPersistorActor);
         registry.Register(ActorIds.VerificationFlowManagerActor, verificationFlowManagerActor);

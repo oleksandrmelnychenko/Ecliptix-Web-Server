@@ -56,7 +56,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             Result<Unit, MembershipFailure> result = await ExecuteWithContext(
                 (schemaContext, cancellationToken) => UpdateMembershipVerificationFlowAsync(schemaContext, command, cancellationToken),
-                "UpdateMembershipVerificationFlow");
+                PersistorOperation.UpdateMembershipVerificationFlow);
 
             result.Match(
                 _ =>
@@ -83,29 +83,29 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
     {
         ReceivePersistorCommand<CreateMembershipCommand, MembershipQueryRecord>(
             CreateMembershipAsync,
-            "CreateMembership");
+            PersistorOperation.CreateMembership);
 
         ReceivePersistorCommand<SignInMembershipCommand, MembershipQueryRecord>(
             SignInMembershipAsync,
-            "LoginMembership");
+            PersistorOperation.LoginMembership);
 
         ReceivePersistorCommand<GetMembershipByVerificationFlowQuery, MembershipQueryRecord>(
             GetMembershipByVerificationFlowAsync,
-            "GetMembershipByVerificationFlow");
+            PersistorOperation.GetMembershipByVerificationFlow);
 
         ReceivePersistorCommand<GetMembershipByUniqueIdQuery, MembershipQueryRecord>(
             GetMembershipByUniqueIdAsync,
-            "GetMembershipByUniqueId");
+            PersistorOperation.GetMembershipByUniqueId);
 
         ReceivePersistorCommand<UpdateMembershipCreationStatusCommand, Unit>(
             UpdateMembershipCreationStatusAsync,
-            "UpdateMembershipCreationStatus");
+            PersistorOperation.UpdateMembershipCreationStatus);
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
         Func<EcliptixSchemaContext, TMessage, CancellationToken, Task<Result<TResult, MembershipFailure>>>
             handler,
-        string operationName)
+        PersistorOperation operationName)
         where TMessage : class, ICancellableActorEvent
     {
         Receive<TMessage>(message =>
@@ -214,7 +214,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
     private async Task<Result<MembershipQueryRecord, MembershipFailure>> SignInMembershipAsync(
         EcliptixSchemaContext schemaContext,
-        SignInMembershipCommand cmd,
+        SignInMembershipCommand command,
         CancellationToken cancellationToken)
     {
         MembershipPersistorSettings persistorSettings = _securityConfig.CurrentValue.MembershipPersistor;
@@ -226,7 +226,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             DateTimeOffset now = DateTimeOffset.UtcNow;
 
             Option<LoginAttemptEntity> lockoutMarkerOpt =
-                await LoginAttemptQueries.GetMostRecentLockout(schemaContext, cmd.MobileNumber, cancellationToken);
+                await LoginAttemptQueries.GetMostRecentLockout(schemaContext, command.MobileNumber, cancellationToken);
             if (lockoutMarkerOpt.IsSome && lockoutMarkerOpt.Value!.LockedUntil != null)
             {
                 LoginAttemptEntity lockoutMarker = lockoutMarkerOpt.Value!;
@@ -240,7 +240,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 }
 
                 await schemaContext.LoginAttempts
-                    .Where(la => la.MobileNumber == cmd.MobileNumber &&
+                    .Where(la => la.MobileNumber == command.MobileNumber &&
                                  la.AttemptedAt <= lockoutMarker.AttemptedAt &&
                                  !la.IsDeleted)
                     .ExecuteDeleteAsync(cancellationToken);
@@ -248,7 +248,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             DateTimeOffset failedLoginLookback = now - persistorSettings.FailedLoginLookback;
             int failedCount =
-                await LoginAttemptQueries.CountFailedSince(schemaContext, cmd.MobileNumber, failedLoginLookback,
+                await LoginAttemptQueries.CountFailedSince(schemaContext, command.MobileNumber, failedLoginLookback,
                     cancellationToken);
 
             if (failedCount >= persistorSettings.MaxLoginAttemptsInPeriod)
@@ -257,7 +257,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 int lockoutDurationMinutes = (int)Math.Ceiling(persistorSettings.LoginLockoutDuration.TotalMinutes);
                 LoginAttemptEntity lockoutAttempt = new()
                 {
-                    MobileNumber = cmd.MobileNumber,
+                    MobileNumber = command.MobileNumber,
                     LockedUntil = lockedUntil,
                     Outcome = "rate_limit_exceeded",
                     IsSuccess = false,
@@ -274,9 +274,9 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                         $"Too many login attempts. Try again in {lockoutDurationMinutes} minutes."));
             }
 
-            if (string.IsNullOrEmpty(cmd.MobileNumber))
+            if (string.IsNullOrEmpty(command.MobileNumber))
             {
-                LogLoginAttempt(schemaContext, cmd.MobileNumber, "mobile_number_cannot_be_empty", false, now);
+                LogLoginAttempt(schemaContext, command.MobileNumber, "mobile_number_cannot_be_empty", false, now);
                 await schemaContext.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return Result<MembershipQueryRecord, MembershipFailure>.Err(
@@ -284,10 +284,10 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             }
 
             Option<MembershipEntity> membershipOpt =
-                await MembershipQueries.GetByMobileNumber(schemaContext, cmd.MobileNumber, cancellationToken);
+                await MembershipQueries.GetByMobileNumber(schemaContext, command.MobileNumber, cancellationToken);
             if (!membershipOpt.IsSome)
             {
-                LogLoginAttempt(schemaContext, cmd.MobileNumber, "mobile_number_not_found", false, now);
+                LogLoginAttempt(schemaContext, command.MobileNumber, "mobile_number_not_found", false, now);
                 await schemaContext.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return Result<MembershipQueryRecord, MembershipFailure>.Err(
@@ -301,7 +301,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             if (!defaultAccountOpt.IsSome)
             {
-                LogLoginAttempt(schemaContext, cmd.MobileNumber, "default_account_not_found", false, now);
+                LogLoginAttempt(schemaContext, command.MobileNumber, "default_account_not_found", false, now);
                 await schemaContext.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return Result<MembershipQueryRecord, MembershipFailure>.Err(
@@ -313,7 +313,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             if (!defaultAuthOpt.IsSome)
             {
-                LogLoginAttempt(schemaContext, cmd.MobileNumber, "secure_key_not_set", false, now);
+                LogLoginAttempt(schemaContext, command.MobileNumber, "secure_key_not_set", false, now);
                 await schemaContext.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return Result<MembershipQueryRecord, MembershipFailure>.Err(
@@ -322,17 +322,17 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             if (membership.Status != MembershipStatus.Active)
             {
-                LogLoginAttempt(schemaContext, cmd.MobileNumber, "inactive_membership", false, now);
+                LogLoginAttempt(schemaContext, command.MobileNumber, "inactive_membership", false, now);
                 await schemaContext.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return Result<MembershipQueryRecord, MembershipFailure>.Err(
                     MembershipFailure.InvalidStatus("Membership is inactive"));
             }
 
-            LogLoginAttempt(schemaContext, cmd.MobileNumber, "success", true, now, membershipId: membership.UniqueId);
+            LogLoginAttempt(schemaContext, command.MobileNumber, "success", true, now, membershipId: membership.UniqueId);
 
             await schemaContext.LoginAttempts
-                .Where(la => la.MobileNumber == cmd.MobileNumber &&
+                .Where(la => la.MobileNumber == command.MobileNumber &&
                              (!la.IsSuccess || la.LockedUntil != null) &&
                              !la.IsDeleted)
                 .ExecuteDeleteAsync(cancellationToken);
@@ -342,7 +342,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             DeviceContextEntity? deviceContext = await schemaContext.DeviceContexts
                 .Where(dc => dc.MembershipId == membership.UniqueId &&
-                             dc.DeviceId == cmd.DeviceId &&
+                             dc.DeviceId == command.DeviceId &&
                              dc.IsActive &&
                              !dc.IsDeleted)
                 .FirstOrDefaultAsync(cancellationToken);
@@ -353,7 +353,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             if (deviceContext == null)
             {
                 bool deviceExists = await schemaContext.Devices
-                    .Where(d => d.DeviceId == cmd.DeviceId && !d.IsDeleted)
+                    .Where(d => d.DeviceId == command.DeviceId && !d.IsDeleted)
                     .AnyAsync(cancellationToken);
 
                 if (deviceExists)
@@ -364,7 +364,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                         pendingDeviceContext = new DeviceContextEntity
                         {
                             MembershipId = membership.UniqueId,
-                            DeviceId = cmd.DeviceId,
+                            DeviceId = command.DeviceId,
                             ActiveAccountId = defaultAccount.AccountId,
                             ContextEstablishedAt = now,
                             ContextExpiresAt = now + persistorSettings.DeviceContextExpiration,
@@ -380,7 +380,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 {
                     Log.Warning(
                         "[SIGN-IN] Device {DeviceId} not found, skipping device context creation. Membership: {MembershipId}",
-                        cmd.DeviceId, membership.UniqueId);
+                        command.DeviceId, membership.UniqueId);
                 }
             }
 
@@ -392,7 +392,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 {
                     Log.Information(
                         "[SIGN-IN] Created device context for Device: {DeviceId}, Membership: {MembershipId}",
-                        cmd.DeviceId, membership.UniqueId);
+                        command.DeviceId, membership.UniqueId);
                 }
             }
             catch (DbUpdateException dbEx) when (createdDeviceContext &&
@@ -413,7 +413,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 authOpt = await AccountSecureKeyAuthQueries.GetPrimaryForActiveAccount(
                     freshContext,
                     membership.UniqueId,
-                    cmd.DeviceId);
+                    command.DeviceId);
             }
 
             if (!authOpt.IsSome)

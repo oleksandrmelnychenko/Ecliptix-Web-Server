@@ -1845,9 +1845,9 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         Sender.Tell(new FlowValidityResponse(isValid));
     }
 
-    private async Task HandleReplaceChannelWriter(ReplaceChannelWriterCommand cmd)
+    private async Task HandleReplaceChannelWriter(ReplaceChannelWriterCommand command)
     {
-        if (cmd.ConnectId != _connectId)
+        if (command.ConnectId != _connectId)
         {
             return;
         }
@@ -1858,7 +1858,7 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
 
         CompleteWriter();
 
-        _writer = cmd.NewWriter;
+        _writer = command.NewWriter;
         _writerCompleted = false;
 
         bool sessionExpired = _sessionDeadline != default && DateTimeOffset.UtcNow >= _sessionDeadline;

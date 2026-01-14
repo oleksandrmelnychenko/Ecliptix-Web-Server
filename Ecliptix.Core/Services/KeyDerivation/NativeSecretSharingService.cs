@@ -89,15 +89,15 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                 IntPtr bufferPtr = IntPtr.Zero;
                 try
                 {
-                    bufferPtr = NativeSecretSharingInterop.ecliptix_buffer_allocate(0);
+                    bufferPtr = NativeSecretSharingInterop.epp_buffer_alloc(0);
                     if (bufferPtr == IntPtr.Zero)
                     {
                         return Result<KeySplitResult, KeySplittingFailure>.Err(
                             KeySplittingFailure.AllocationFailed("Failed to allocate share buffer"));
                     }
 
-                    NativeSecretSharingInterop.EcliptixErrorCode result =
-                        NativeSecretSharingInterop.ecliptix_secret_sharing_split(
+                    NativeSecretSharingInterop.EppErrorCode result =
+                        NativeSecretSharingInterop.epp_shamir_split(
                             keyBytes,
                             (nuint)keyBytes.Length,
                             (byte)threshold,
@@ -106,18 +106,18 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                             (nuint)(authKeyBytes?.Length ?? 0),
                             bufferPtr,
                             out nuint shareLength,
-                            out NativeSecretSharingInterop.EcliptixError error);
+                            out NativeSecretSharingInterop.EppError error);
 
-                    if (result != NativeSecretSharingInterop.EcliptixErrorCode.Success)
+                    if (result != NativeSecretSharingInterop.EppErrorCode.Success)
                     {
                         string message = error.GetMessage();
-                        NativeSecretSharingInterop.ecliptix_error_free(ref error);
+                        NativeSecretSharingInterop.epp_error_free(ref error);
                         return Result<KeySplitResult, KeySplittingFailure>.Err(
                             MapSplitError(result, message));
                     }
 
-                    NativeSecretSharingInterop.EcliptixBuffer buffer =
-                        Marshal.PtrToStructure<NativeSecretSharingInterop.EcliptixBuffer>(bufferPtr);
+                    NativeSecretSharingInterop.EppBuffer buffer =
+                        Marshal.PtrToStructure<NativeSecretSharingInterop.EppBuffer>(bufferPtr);
 
                     if (buffer.Length == 0 || shareLength == 0)
                     {
@@ -184,7 +184,7 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                 {
                     if (bufferPtr != IntPtr.Zero)
                     {
-                        NativeSecretSharingInterop.ecliptix_buffer_free(bufferPtr);
+                        NativeSecretSharingInterop.epp_buffer_free(bufferPtr);
                     }
                 }
             });
@@ -289,15 +289,15 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                 IntPtr bufferPtr = IntPtr.Zero;
                 try
                 {
-                    bufferPtr = NativeSecretSharingInterop.ecliptix_buffer_allocate(0);
+                    bufferPtr = NativeSecretSharingInterop.epp_buffer_alloc(0);
                     if (bufferPtr == IntPtr.Zero)
                     {
                         return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
                             KeySplittingFailure.AllocationFailed("Failed to allocate secret buffer"));
                     }
 
-                    NativeSecretSharingInterop.EcliptixErrorCode result =
-                        NativeSecretSharingInterop.ecliptix_secret_sharing_reconstruct(
+                    NativeSecretSharingInterop.EppErrorCode result =
+                        NativeSecretSharingInterop.epp_shamir_reconstruct(
                             sharesBlob,
                             (nuint)sharesBlob.Length,
                             (nuint)shareSize,
@@ -305,18 +305,18 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                             authKeyBytes,
                             (nuint)(authKeyBytes?.Length ?? 0),
                             bufferPtr,
-                            out NativeSecretSharingInterop.EcliptixError error);
+                            out NativeSecretSharingInterop.EppError error);
 
-                    if (result != NativeSecretSharingInterop.EcliptixErrorCode.Success)
+                    if (result != NativeSecretSharingInterop.EppErrorCode.Success)
                     {
                         string message = error.GetMessage();
-                        NativeSecretSharingInterop.ecliptix_error_free(ref error);
+                        NativeSecretSharingInterop.epp_error_free(ref error);
                         return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
                             MapReconstructError(result, message));
                     }
 
-                    NativeSecretSharingInterop.EcliptixBuffer buffer =
-                        Marshal.PtrToStructure<NativeSecretSharingInterop.EcliptixBuffer>(bufferPtr);
+                    NativeSecretSharingInterop.EppBuffer buffer =
+                        Marshal.PtrToStructure<NativeSecretSharingInterop.EppBuffer>(bufferPtr);
                     if (buffer.Length == 0)
                     {
                         return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
@@ -351,7 +351,7 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                 {
                     if (bufferPtr != IntPtr.Zero)
                     {
-                        NativeSecretSharingInterop.ecliptix_buffer_free(bufferPtr);
+                        NativeSecretSharingInterop.epp_buffer_free(bufferPtr);
                     }
                 }
             });
@@ -366,28 +366,28 @@ public sealed class NativeSecretSharingService : ISecretSharingService
     }
 
     private static KeySplittingFailure MapSplitError(
-        NativeSecretSharingInterop.EcliptixErrorCode code,
+        NativeSecretSharingInterop.EppErrorCode code,
         string message)
     {
         return code switch
         {
-            NativeSecretSharingInterop.EcliptixErrorCode.ErrorInvalidInput =>
+            NativeSecretSharingInterop.EppErrorCode.ErrorInvalidInput =>
                 KeySplittingFailure.InvalidKeyData(message),
-            NativeSecretSharingInterop.EcliptixErrorCode.ErrorOutOfMemory =>
+            NativeSecretSharingInterop.EppErrorCode.ErrorOutOfMemory =>
                 KeySplittingFailure.AllocationFailed(message),
             _ => KeySplittingFailure.KeySplittingFailed(message)
         };
     }
 
     private static KeySplittingFailure MapReconstructError(
-        NativeSecretSharingInterop.EcliptixErrorCode code,
+        NativeSecretSharingInterop.EppErrorCode code,
         string message)
     {
         return code switch
         {
-            NativeSecretSharingInterop.EcliptixErrorCode.ErrorInvalidInput =>
+            NativeSecretSharingInterop.EppErrorCode.ErrorInvalidInput =>
                 KeySplittingFailure.InvalidShareData(message),
-            NativeSecretSharingInterop.EcliptixErrorCode.ErrorOutOfMemory =>
+            NativeSecretSharingInterop.EppErrorCode.ErrorOutOfMemory =>
                 KeySplittingFailure.AllocationFailed(message),
             _ => KeySplittingFailure.KeyReconstructionFailed(message)
         };
@@ -468,7 +468,7 @@ internal static class NativeSecretSharingInterop
 {
     private const string LibraryName = "epp_relay";
 
-    internal enum EcliptixErrorCode
+    internal enum EppErrorCode
     {
         Success = 0,
         ErrorGeneric = 1,
@@ -493,16 +493,16 @@ internal static class NativeSecretSharingInterop
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct EcliptixBuffer
+    internal struct EppBuffer
     {
         public IntPtr Data;
         public nuint Length;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct EcliptixError
+    internal struct EppError
     {
-        public EcliptixErrorCode Code;
+        public EppErrorCode Code;
         public IntPtr Message;
 
         public readonly string GetMessage()
@@ -512,7 +512,7 @@ internal static class NativeSecretSharingInterop
     }
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_secret_sharing_split(
+    internal static extern EppErrorCode epp_shamir_split(
         [In] byte[] secret,
         nuint secretLength,
         byte threshold,
@@ -521,10 +521,10 @@ internal static class NativeSecretSharingInterop
         nuint authKeyLength,
         IntPtr outShares,
         out nuint outShareLength,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EcliptixErrorCode ecliptix_secret_sharing_reconstruct(
+    internal static extern EppErrorCode epp_shamir_reconstruct(
         [In] byte[] shares,
         nuint sharesLength,
         nuint shareLength,
@@ -532,14 +532,14 @@ internal static class NativeSecretSharingInterop
         [In] byte[]? authKey,
         nuint authKeyLength,
         IntPtr outSecret,
-        out EcliptixError outError);
+        out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr ecliptix_buffer_allocate(nuint capacity);
+    internal static extern IntPtr epp_buffer_alloc(nuint capacity);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void ecliptix_buffer_free(IntPtr buffer);
+    internal static extern void epp_buffer_free(IntPtr buffer);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void ecliptix_error_free(ref EcliptixError error);
+    internal static extern void epp_error_free(ref EppError error);
 }

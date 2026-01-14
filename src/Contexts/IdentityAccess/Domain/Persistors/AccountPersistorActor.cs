@@ -34,24 +34,24 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
     {
         ReceivePersistorCommand<UpdateAccountSecureKeyCommand, AccountSecureKeyUpdateResult>(
             UpdateAccountSecureKeyAsync,
-            "UpdateAccountSecureKey");
+            PersistorOperation.UpdateAccountSecureKey);
 
         ReceivePersistorCommand<CreateDefaultAccountCommand, AccountCreationResult>(
             CreateDefaultAccountAsync,
-            "CreateDefaultAccount");
+            PersistorOperation.CreateDefaultAccount);
 
         ReceivePersistorCommand<GetDefaultAccountIdQuery, Option<Guid>>(
             GetDefaultAccountIdAsync,
-            "GetDefaultAccountId");
+            PersistorOperation.GetDefaultAccountId);
 
         ReceivePersistorCommand<GetAccountsByMembershipIdQuery, List<AccountInfo>>(
             GetAccountsByMembershipIdAsync,
-            "GetAccountsByMembershipId");
+            PersistorOperation.GetAccountsByMembershipId);
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
         Func<EcliptixSchemaContext, TMessage, CancellationToken, Task<Result<TResult, AccountFailure>>> handler,
-        string operationName)
+        PersistorOperation operationName)
         where TMessage : class, ICancellableActorEvent
     {
         Receive<TMessage>(message =>
@@ -73,13 +73,13 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         message.CancellationToken;
 
     private static async Task<Result<AccountSecureKeyUpdateResult, AccountFailure>> UpdateAccountSecureKeyAsync(
-        EcliptixSchemaContext schemaContext, UpdateAccountSecureKeyCommand cmd, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext, UpdateAccountSecureKeyCommand command, CancellationToken cancellationToken)
     {
         await using IDbContextTransaction transaction = await schemaContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         try
         {
             Option<MembershipEntity> membershipOpt =
-                await MembershipQueries.GetByUniqueId(schemaContext, cmd.MembershipIdentifier, cancellationToken);
+                await MembershipQueries.GetByUniqueId(schemaContext, command.MembershipIdentifier, cancellationToken);
             if (!membershipOpt.IsSome)
             {
                 await transaction.RollbackAsync(cancellationToken);
@@ -90,9 +90,9 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
             MembershipEntity membership = membershipOpt.Value!;
 
             AccountEntity account;
-            if (cmd.AccountId.HasValue)
+            if (command.AccountId.HasValue)
             {
-                Option<AccountEntity> accountOpt = await AccountQueries.GetAccountById(schemaContext, cmd.AccountId.Value);
+                Option<AccountEntity> accountOpt = await AccountQueries.GetAccountById(schemaContext, command.AccountId.Value);
                 if (!accountOpt.IsSome)
                 {
                     await transaction.RollbackAsync(cancellationToken);
@@ -134,10 +134,10 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
                 await schemaContext.AccountSecureKeyAuths
                     .Where(a => a.UniqueId == existingAuth.UniqueId && !a.IsDeleted)
                     .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(a => a.SecureKey, cmd.SecureKey)
-                        .SetProperty(a => a.MaskingKey, cmd.MaskingKey)
+                        .SetProperty(a => a.SecureKey, command.SecureKey)
+                        .SetProperty(a => a.MaskingKey, command.MaskingKey)
                         .SetProperty(a => a.CredentialsVersion, a => a.CredentialsVersion + 1)
-                        .SetProperty(a => a.OpaqueKeyVersion, cmd.OpaqueKeyVersion)
+                        .SetProperty(a => a.OpaqueKeyVersion, command.OpaqueKeyVersion)
                         .SetProperty(a => a.UpdatedAt, DateTimeOffset.UtcNow), cancellationToken);
 
                 newCredentialsVersion = existingAuth.CredentialsVersion + 1;
@@ -147,10 +147,10 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
                 AccountSecureKeyAuthEntity newAuth = new()
                 {
                     AccountId = account.UniqueId,
-                    SecureKey = cmd.SecureKey,
-                    MaskingKey = cmd.MaskingKey,
+                    SecureKey = command.SecureKey,
+                    MaskingKey = command.MaskingKey,
                     CredentialsVersion = 1,
-                    OpaqueKeyVersion = cmd.OpaqueKeyVersion,
+                    OpaqueKeyVersion = command.OpaqueKeyVersion,
                     IsPrimary = true,
                     IsEnabled = true
                 };
@@ -164,11 +164,11 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
             return Result<AccountSecureKeyUpdateResult, AccountFailure>.Ok(
                 new AccountSecureKeyUpdateResult(
                     account.UniqueId,
-                    cmd.MembershipIdentifier,
+                    command.MembershipIdentifier,
                     newCredentialsVersion,
-                    cmd.OpaqueKeyVersion,
-                    cmd.SecureKey,
-                    cmd.MaskingKey));
+                    command.OpaqueKeyVersion,
+                    command.SecureKey,
+                    command.MaskingKey));
         }
         catch (Exception ex)
         {
@@ -179,22 +179,22 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
     }
 
     private static async Task<Result<AccountCreationResult, AccountFailure>> CreateDefaultAccountAsync(
-        EcliptixSchemaContext schemaContext, CreateDefaultAccountCommand cmd, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext, CreateDefaultAccountCommand command, CancellationToken cancellationToken)
     {
         await using IDbContextTransaction transaction = await schemaContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         try
         {
             AccountEntity personalAccount = new()
             {
-                MembershipId = cmd.MembershipId,
+                MembershipId = command.MembershipId,
                 AccountType = Protobuf.Account.AccountType.Personal,
                 Status = Protobuf.Account.AccountStatus.Active,
                 IsDefaultAccount = true
             };
 
-            if (cmd.AccountId.HasValue && cmd.AccountId.Value != Guid.Empty)
+            if (command.AccountId.HasValue && command.AccountId.Value != Guid.Empty)
             {
-                personalAccount.UniqueId = cmd.AccountId.Value;
+                personalAccount.UniqueId = command.AccountId.Value;
             }
 
             schemaContext.Accounts.Add(personalAccount);
@@ -205,7 +205,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
             [
                 new(
                     personalAccount.UniqueId,
-                    cmd.MembershipId,
+                    command.MembershipId,
                     Protobuf.Account.AccountType.Personal,
                     true,
                     Protobuf.Account.AccountStatus.Active)
@@ -218,19 +218,19 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         catch (Exception ex)
         {
             await RollbackSilentlyAsync(transaction);
-            Log.Error(ex, "Failed to create default account for MembershipId: {MembershipId}", cmd.MembershipId);
+            Log.Error(ex, "Failed to create default account for MembershipId: {MembershipId}", command.MembershipId);
             return Result<AccountCreationResult, AccountFailure>.Err(
                 AccountFailure.CreationFailed(ex));
         }
     }
 
     private static async Task<Result<Option<Guid>, AccountFailure>> GetDefaultAccountIdAsync(
-        EcliptixSchemaContext schemaContext, GetDefaultAccountIdQuery cmd, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext, GetDefaultAccountIdQuery query, CancellationToken cancellationToken)
     {
         try
         {
             Option<AccountEntity> accountOption =
-                await AccountQueries.GetDefaultAccountByMembershipId(schemaContext, cmd.MembershipId);
+                await AccountQueries.GetDefaultAccountByMembershipId(schemaContext, query.MembershipId);
 
             return Result<Option<Guid>, AccountFailure>.Ok(!accountOption.IsSome
                 ? Option<Guid>.None
@@ -238,24 +238,24 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to get default account for MembershipId: {MembershipId}", cmd.MembershipId);
+            Log.Error(ex, "Failed to get default account for MembershipId: {MembershipId}", query.MembershipId);
             return Result<Option<Guid>, AccountFailure>.Err(
                 AccountFailure.QueryFailed(ex));
         }
     }
 
     private static async Task<Result<List<AccountInfo>, AccountFailure>> GetAccountsByMembershipIdAsync(
-        EcliptixSchemaContext schemaContext, GetAccountsByMembershipIdQuery cmd, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext, GetAccountsByMembershipIdQuery query, CancellationToken cancellationToken)
     {
         try
         {
             List<AccountInfo> accounts =
-                await AccountQueries.GetAccountsByMembershipId(schemaContext, cmd.MembershipId, cancellationToken);
+                await AccountQueries.GetAccountsByMembershipId(schemaContext, query.MembershipId, cancellationToken);
             return Result<List<AccountInfo>, AccountFailure>.Ok(accounts);
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to get accounts for MembershipId: {MembershipId}", cmd.MembershipId);
+            Log.Error(ex, "Failed to get accounts for MembershipId: {MembershipId}", query.MembershipId);
             return Result<List<AccountInfo>, AccountFailure>.Err(
                 AccountFailure.QueryFailed(ex));
         }

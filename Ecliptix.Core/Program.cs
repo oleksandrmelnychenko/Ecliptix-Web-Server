@@ -245,7 +245,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
         IRsaChunkProcessor rsaChunkProcessor = serviceProvider.GetRequiredService<IRsaChunkProcessor>();
         CertificatePinningService certificatePinningService = serviceProvider.GetRequiredService<CertificatePinningService>();
         IEcliptixActorRegistry actorRegistry = serviceProvider.GetRequiredService<IEcliptixActorRegistry>();
-        IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
+        IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtectionProtocolActor);
 
         return new RsaSecureChannelEstablisher(rsaChunkProcessor, certificatePinningService, protocolActor);
     });

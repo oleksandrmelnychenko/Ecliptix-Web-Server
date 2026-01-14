@@ -117,7 +117,7 @@ public static class DeviceProvisioningEventRouteProvider
         using IServiceScope scope = services.CreateScope();
 
         IEcliptixActorRegistry actorRegistry = scope.ServiceProvider.GetRequiredService<IEcliptixActorRegistry>();
-        IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
+        IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtectionProtocolActor);
 
         RestoreProtocolSessionCommand restoreEvent = new();
         RouteToConnectionCommand forwardEvent = new(connectId, restoreEvent);
@@ -179,7 +179,7 @@ public static class DeviceProvisioningEventRouteProvider
         IServerNonceStore nonceStore = scope.ServiceProvider.GetRequiredService<IServerNonceStore>();
         IRsaChunkProcessor rsaProcessor = scope.ServiceProvider.GetRequiredService<IRsaChunkProcessor>();
         CertificatePinningService certPinning = scope.ServiceProvider.GetRequiredService<CertificatePinningService>();
-        IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
+        IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtectionProtocolActor);
 
         byte[]? rootKey = null;
         byte[]? masterKeyFingerprint = null;
@@ -351,7 +351,7 @@ public static class DeviceProvisioningEventRouteProvider
         IOpaqueKeyRingService opaqueService = scope.ServiceProvider.GetRequiredService<IOpaqueKeyRingService>();
         IEcliptixActorRegistry actorRegistry = scope.ServiceProvider.GetRequiredService<IEcliptixActorRegistry>();
         IServerNonceStore nonceStore = scope.ServiceProvider.GetRequiredService<IServerNonceStore>();
-        IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
+        IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtectionProtocolActor);
 
         Result<byte[], OpaqueServerFailure> serverPublicKeyResult = opaqueService.GetServerPublicKey();
         if (serverPublicKeyResult.IsErr)

@@ -4,7 +4,7 @@ public static class ApplicationConstants
 {
     public static class ActorSystem
     {
-        public const string SystemName = "EcliptixProtocolSystemActor";
+        public const string SystemName = "EcliptixProtectionProtocolActor";
     }
 
     public static class ActorNames

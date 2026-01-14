@@ -27,38 +27,38 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
 
     private void Ready()
     {
-        Receive<RecordLogoutCommand>(cmd =>
+        Receive<RecordLogoutCommand>(command =>
         {
-            CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((schemaContext, token) => RecordLogoutAsync(schemaContext, cmd, token), "RecordLogout", cancellationToken)
+            CancellationToken cancellationToken = command.CancellationToken;
+            ExecuteWithContext((schemaContext, token) => RecordLogoutAsync(schemaContext, command, token), PersistorOperation.RecordLogout, cancellationToken)
                 .PipeTo(Sender);
         });
 
-        Receive<GetLogoutHistoryQuery>(cmd =>
+        Receive<GetLogoutHistoryQuery>(query =>
         {
-            CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((schemaContext, _) => GetLogoutHistoryAsync(schemaContext, cmd), "GetLogoutHistory", cancellationToken)
+            CancellationToken cancellationToken = query.CancellationToken;
+            ExecuteWithContext((schemaContext, _) => GetLogoutHistoryAsync(schemaContext, query), PersistorOperation.GetLogoutHistory, cancellationToken)
                 .PipeTo(Sender);
         });
 
-        Receive<GetMostRecentLogoutQuery>(cmd =>
+        Receive<GetMostRecentLogoutQuery>(query =>
         {
-            CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((schemaContext, _) => GetMostRecentLogoutAsync(schemaContext, cmd), "GetMostRecentLogout", cancellationToken)
+            CancellationToken cancellationToken = query.CancellationToken;
+            ExecuteWithContext((schemaContext, _) => GetMostRecentLogoutAsync(schemaContext, query), PersistorOperation.GetMostRecentLogout, cancellationToken)
                 .PipeTo(Sender);
         });
 
-        Receive<GetLogoutByDeviceQuery>(cmd =>
+        Receive<GetLogoutByDeviceQuery>(query =>
         {
-            CancellationToken cancellationToken = cmd.CancellationToken;
-            ExecuteWithContext((schemaContext, _) => GetLogoutByDeviceAsync(schemaContext, cmd), "GetLogoutByDevice", cancellationToken)
+            CancellationToken cancellationToken = query.CancellationToken;
+            ExecuteWithContext((schemaContext, _) => GetLogoutByDeviceAsync(schemaContext, query), PersistorOperation.GetLogoutByDevice, cancellationToken)
                 .PipeTo(Sender);
         });
     }
 
     private static async Task<Result<Unit, LogoutFailure>> RecordLogoutAsync(
         EcliptixSchemaContext schemaContext,
-        RecordLogoutCommand cmd,
+        RecordLogoutCommand command,
         CancellationToken cancellationToken)
     {
         await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
@@ -67,13 +67,13 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
         {
             LogoutAuditEntity audit = new()
             {
-                MembershipId = cmd.MembershipUniqueId,
-                AccountId = cmd.AccountId,
-                DeviceId = cmd.DeviceId,
-                Reason = cmd.Reason,
+                MembershipId = command.MembershipUniqueId,
+                AccountId = command.AccountId,
+                DeviceId = command.DeviceId,
+                Reason = command.Reason,
                 LoggedOutAt = DateTimeOffset.UtcNow,
-                IpAddress = cmd.IpAddress,
-                Platform = cmd.Platform
+                IpAddress = command.IpAddress,
+                Platform = command.Platform
             };
 
             schemaContext.LogoutAudits.Add(audit);
@@ -83,14 +83,14 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
 
             Log.Information(
                 "Logout audit recorded - MembershipId: {MembershipId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}",
-                cmd.MembershipUniqueId, cmd.DeviceId, cmd.AccountId, cmd.Reason);
+                command.MembershipUniqueId, command.DeviceId, command.AccountId, command.Reason);
 
             return Result<Unit, LogoutFailure>.Ok(Unit.Value);
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync(CancellationToken.None);
-            Log.Error(ex, "Failed to record logout audit for MembershipId: {MembershipId}", cmd.MembershipUniqueId);
+            Log.Error(ex, "Failed to record logout audit for MembershipId: {MembershipId}", command.MembershipUniqueId);
             return Result<Unit, LogoutFailure>.Err(
                 LogoutFailure.RecordFailed("Failed to record logout audit", ex));
         }
@@ -125,24 +125,24 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
 
     private static async Task<Result<List<LogoutAuditEntity>, LogoutFailure>> GetLogoutHistoryAsync(
         EcliptixSchemaContext schemaContext,
-        GetLogoutHistoryQuery cmd)
+        GetLogoutHistoryQuery query)
     {
         try
         {
             List<LogoutAuditEntity> history = await LogoutAuditQueries.GetLogoutHistory(
                 schemaContext,
-                cmd.MembershipUniqueId,
-                cmd.Limit);
+                query.MembershipUniqueId,
+                query.Limit);
 
             Log.Information(
                 "Retrieved {Count} logout history records for MembershipId: {MembershipId}",
-                history.Count, cmd.MembershipUniqueId);
+                history.Count, query.MembershipUniqueId);
 
             return Result<List<LogoutAuditEntity>, LogoutFailure>.Ok(history);
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to get logout history for MembershipId: {MembershipId}", cmd.MembershipUniqueId);
+            Log.Error(ex, "Failed to get logout history for MembershipId: {MembershipId}", query.MembershipUniqueId);
             return Result<List<LogoutAuditEntity>, LogoutFailure>.Err(
                 LogoutFailure.QueryFailed("Failed to retrieve logout history", ex));
         }
@@ -150,32 +150,32 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
 
     private static async Task<Result<Option<LogoutAuditEntity>, LogoutFailure>> GetMostRecentLogoutAsync(
         EcliptixSchemaContext schemaContext,
-        GetMostRecentLogoutQuery cmd)
+        GetMostRecentLogoutQuery query)
     {
         try
         {
             Option<LogoutAuditEntity> result = await LogoutAuditQueries.GetMostRecentByMembership(
                 schemaContext,
-                cmd.MembershipUniqueId);
+                query.MembershipUniqueId);
 
             if (result.IsSome)
             {
                 Log.Information(
                     "Retrieved most recent logout for MembershipId: {MembershipId}, LoggedOutAt: {LoggedOutAt}",
-                    cmd.MembershipUniqueId, result.Value!.LoggedOutAt);
+                    query.MembershipUniqueId, result.Value!.LoggedOutAt);
             }
             else
             {
                 Log.Information(
                     "No logout records found for MembershipId: {MembershipId}",
-                    cmd.MembershipUniqueId);
+                    query.MembershipUniqueId);
             }
 
             return Result<Option<LogoutAuditEntity>, LogoutFailure>.Ok(result);
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to get most recent logout for MembershipId: {MembershipId}", cmd.MembershipUniqueId);
+            Log.Error(ex, "Failed to get most recent logout for MembershipId: {MembershipId}", query.MembershipUniqueId);
             return Result<Option<LogoutAuditEntity>, LogoutFailure>.Err(
                 LogoutFailure.QueryFailed("Failed to retrieve most recent logout", ex));
         }
@@ -183,32 +183,32 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
 
     private static async Task<Result<Option<LogoutAuditEntity>, LogoutFailure>> GetLogoutByDeviceAsync(
         EcliptixSchemaContext schemaContext,
-        GetLogoutByDeviceQuery cmd)
+        GetLogoutByDeviceQuery query)
     {
         try
         {
             Option<LogoutAuditEntity> result = await LogoutAuditQueries.GetByDeviceId(
                 schemaContext,
-                cmd.DeviceId);
+                query.DeviceId);
 
             if (result.IsSome)
             {
                 Log.Information(
                     "Retrieved logout for DeviceId: {DeviceId}, LoggedOutAt: {LoggedOutAt}",
-                    cmd.DeviceId, result.Value!.LoggedOutAt);
+                    query.DeviceId, result.Value!.LoggedOutAt);
             }
             else
             {
                 Log.Information(
                     "No logout records found for DeviceId: {DeviceId}",
-                    cmd.DeviceId);
+                    query.DeviceId);
             }
 
             return Result<Option<LogoutAuditEntity>, LogoutFailure>.Ok(result);
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to get logout by device for DeviceId: {DeviceId}", cmd.DeviceId);
+            Log.Error(ex, "Failed to get logout by device for DeviceId: {DeviceId}", query.DeviceId);
             return Result<Option<LogoutAuditEntity>, LogoutFailure>.Err(
                 LogoutFailure.QueryFailed("Failed to retrieve logout by device", ex));
         }

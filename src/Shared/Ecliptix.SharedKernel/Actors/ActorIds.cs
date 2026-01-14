@@ -2,7 +2,7 @@ namespace Ecliptix.SharedKernel.Actors;
 
 public static class ActorIds
 {
-    public const int EcliptixProtocolSystemActor = 1;
+    public const int EcliptixProtectionProtocolActor = 1;
     public const int AppDevicePersistorActor = 2;
     public const int VerificationFlowPersistorActor = 3;
     public const int VerificationFlowManagerActor = 4;
@@ -20,7 +20,7 @@ public static class ActorTypeMap
 {
     private static readonly Dictionary<int, string> ActorNames = new()
     {
-        { ActorIds.EcliptixProtocolSystemActor, "EcliptixProtocolSystemActor" },
+        { ActorIds.EcliptixProtectionProtocolActor, "EcliptixProtectionProtocolActor" },
         { ActorIds.AppDevicePersistorActor, "AppDevicePersistorActor" },
         { ActorIds.VerificationFlowPersistorActor, "VerificationFlowPersistorActor" },
         { ActorIds.VerificationFlowManagerActor, "VerificationFlowManagerActor" },

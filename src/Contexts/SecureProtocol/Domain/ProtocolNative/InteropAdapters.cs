@@ -21,14 +21,14 @@ public sealed class EcliptixIdentityKeys : IDisposable
 
     public static Result<EcliptixIdentityKeys, EcliptixProtocolFailure> Create()
     {
-        Native.EcliptixErrorCode result = Native.ecliptix_identity_keys_create(
+        Native.EppErrorCode result = Native.epp_identity_create(
             out IntPtr handle,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<EcliptixIdentityKeys, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.KeyGeneration(message));
         }
@@ -49,18 +49,18 @@ public sealed class EcliptixIdentityKeys : IDisposable
             return CreateFromSeed(seed);
         }
 
-        Native.EcliptixErrorCode result = Native.ecliptix_identity_keys_create_from_seed_with_context(
+        Native.EppErrorCode result = Native.epp_identity_create_with_context(
             seed,
             (nuint)seed.Length,
             context,
             (nuint)context.Length,
             out IntPtr handle,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<EcliptixIdentityKeys, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.KeyGeneration(message));
         }
@@ -78,19 +78,19 @@ public sealed class EcliptixIdentityKeys : IDisposable
     {
         Console.WriteLine($"[IDENTITY-CREATE] Creating identity from seed, seed length: {seed.Length}");
 
-        Native.EcliptixErrorCode result = Native.ecliptix_identity_keys_create_from_seed(
+        Native.EppErrorCode result = Native.epp_identity_create_from_seed(
             seed,
             (nuint)seed.Length,
             out IntPtr handle,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
         Console.WriteLine($"[IDENTITY-CREATE] Native call returned: {result}, handle: 0x{handle:X}");
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
             Console.WriteLine($"[IDENTITY-CREATE] Failed: {message}");
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<EcliptixIdentityKeys, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.KeyGeneration(message));
         }
@@ -117,16 +117,16 @@ public sealed class EcliptixIdentityKeys : IDisposable
         }
 
         byte[] publicKey = new byte[32];
-        Native.EcliptixErrorCode result = Native.ecliptix_identity_keys_get_public_x25519(
+        Native.EppErrorCode result = Native.epp_identity_get_x25519_public(
             _handle,
             publicKey,
             (nuint)publicKey.Length,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.KeyGeneration(message));
         }
@@ -145,16 +145,16 @@ public sealed class EcliptixIdentityKeys : IDisposable
         }
 
         byte[] publicKey = new byte[32];
-        Native.EcliptixErrorCode result = Native.ecliptix_identity_keys_get_public_ed25519(
+        Native.EppErrorCode result = Native.epp_identity_get_ed25519_public(
             _handle,
             publicKey,
             (nuint)publicKey.Length,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.KeyGeneration(message));
         }
@@ -175,21 +175,21 @@ public sealed class EcliptixIdentityKeys : IDisposable
         }
 
         byte[] publicKey = new byte[1184]; // ML-KEM-768 public key size
-        Console.WriteLine($"[GET-KYBER] Calling native ecliptix_identity_keys_get_public_kyber with handle 0x{_handle:X}");
+        Console.WriteLine($"[GET-KYBER] Calling native epp_identity_get_kyber_public with handle 0x{_handle:X}");
 
-        Native.EcliptixErrorCode result = Native.ecliptix_identity_keys_get_public_kyber(
+        Native.EppErrorCode result = Native.epp_identity_get_kyber_public(
             _handle,
             publicKey,
             (nuint)publicKey.Length,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
         Console.WriteLine($"[GET-KYBER] Native call returned: {result}");
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
             Console.WriteLine($"[GET-KYBER] Failed: {message}");
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.KeyGeneration(message));
         }
@@ -219,7 +219,7 @@ public sealed class EcliptixIdentityKeys : IDisposable
 
         if (_ownsHandle && _handle != IntPtr.Zero)
         {
-            Native.ecliptix_identity_keys_destroy(_handle);
+            Native.epp_identity_destroy(_handle);
             _handle = IntPtr.Zero;
         }
 
@@ -242,7 +242,7 @@ public sealed class EcliptixProtocolSystem : IDisposable
     private readonly EcliptixIdentityKeys _identityKeys;
     private bool _disposed;
     private GCHandle _callbackHandle;
-    private Native.EcliptixCallbacks _callbacks;
+    private Native.EppCallbacks _callbacks;
 
     private EcliptixProtocolSystem(IntPtr handle, EcliptixIdentityKeys identityKeys)
     {
@@ -254,15 +254,15 @@ public sealed class EcliptixProtocolSystem : IDisposable
 
     public static Result<EcliptixProtocolSystem, EcliptixProtocolFailure> Create(EcliptixIdentityKeys identityKeys)
     {
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_create(
+        Native.EppErrorCode result = Native.epp_server_create(
             identityKeys.Handle,
             out IntPtr handle,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -276,7 +276,7 @@ public sealed class EcliptixProtocolSystem : IDisposable
         byte[] peerBundle,
         bool isInitiator)
     {
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_create_from_root(
+        Native.EppErrorCode result = Native.epp_server_create_from_root(
             identityKeys.Handle,
             rootKey,
             (nuint)rootKey.Length,
@@ -284,12 +284,12 @@ public sealed class EcliptixProtocolSystem : IDisposable
             (nuint)peerBundle.Length,
             isInitiator,
             out IntPtr handle,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -301,17 +301,17 @@ public sealed class EcliptixProtocolSystem : IDisposable
         EcliptixIdentityKeys identityKeys,
         byte[] stateBytes)
     {
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_import_state(
+        Native.EppErrorCode result = Native.epp_server_deserialize(
             identityKeys.Handle,
             stateBytes,
             (nuint)stateBytes.Length,
             out IntPtr handle,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<EcliptixProtocolSystem, EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -330,24 +330,24 @@ public sealed class EcliptixProtocolSystem : IDisposable
 
         if (onProtocolStateChanged != null)
         {
-            Native.EcliptixProtocolEventCallback callback = (connectionId, _) => onProtocolStateChanged(connectionId);
+            Native.EppEventCallback callback = (connectionId, _) => onProtocolStateChanged(connectionId);
             _callbackHandle = GCHandle.Alloc(callback);
 
-            _callbacks = new Native.EcliptixCallbacks
+            _callbacks = new Native.EppCallbacks
             {
                 OnProtocolStateChanged = callback,
                 UserData = IntPtr.Zero
             };
 
-            Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_set_callbacks(
+            Native.EppErrorCode result = Native.epp_server_set_callbacks(
                 _handle,
                 in _callbacks,
-                out Native.EcliptixError error);
+                out Native.EppError error);
 
-            if (result != Native.EcliptixErrorCode.Success)
+            if (result != Native.EppErrorCode.Success)
             {
                 string message = error.GetMessage();
-                Native.ecliptix_error_free(ref error);
+                Native.epp_error_free(ref error);
                 _callbackHandle.Free();
                 return Result<Unit, EcliptixProtocolFailure>.Err(
                     EcliptixProtocolFailure.Generic($"Failed to set callbacks: {message}"));
@@ -355,13 +355,13 @@ public sealed class EcliptixProtocolSystem : IDisposable
         }
         else
         {
-            _callbacks = new Native.EcliptixCallbacks
+            _callbacks = new Native.EppCallbacks
             {
                 OnProtocolStateChanged = null,
                 UserData = IntPtr.Zero
             };
 
-            Native.ecliptix_protocol_server_system_set_callbacks(
+            Native.epp_server_set_callbacks(
                 _handle,
                 in _callbacks,
                 out _);
@@ -374,19 +374,19 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        IntPtr bufferPtr = Native.ecliptix_buffer_allocate(0);
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_begin_handshake(
+        IntPtr bufferPtr = Native.epp_buffer_alloc(0);
+        Native.EppErrorCode result = Native.epp_server_begin_handshake(
             _handle,
             connectionId,
             (byte)exchangeType,
             bufferPtr,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
-            Native.ecliptix_buffer_free(bufferPtr);
+            Native.epp_error_free(ref error);
+            Native.epp_buffer_free(bufferPtr);
             return Result<byte[], EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -400,22 +400,22 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        IntPtr bufferPtr = Native.ecliptix_buffer_allocate(0);
-        Native.EcliptixErrorCode result = Native
-            .ecliptix_protocol_server_system_begin_handshake_with_peer_kyber(
+        IntPtr bufferPtr = Native.epp_buffer_alloc(0);
+        Native.EppErrorCode result = Native
+            .epp_server_begin_handshake_with_peer_kyber(
                 _handle,
                 connectionId,
                 (byte)exchangeType,
                 peerKyberPublicKey,
                 (nuint)peerKyberPublicKey.Length,
                 bufferPtr,
-                out Native.EcliptixError error);
+                out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
-            Native.ecliptix_buffer_free(bufferPtr);
+            Native.epp_error_free(ref error);
+            Native.epp_buffer_free(bufferPtr);
             return Result<byte[], EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -426,18 +426,18 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_complete_handshake(
+        Native.EppErrorCode result = Native.epp_server_complete_handshake(
             _handle,
             peerHandshakeMessage,
             (nuint)peerHandshakeMessage.Length,
             rootKey,
             (nuint)rootKey.Length,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<Unit, EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -448,16 +448,16 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_complete_handshake_auto(
+        Native.EppErrorCode result = Native.epp_server_complete_handshake_auto(
             _handle,
             peerHandshakeMessage,
             (nuint)peerHandshakeMessage.Length,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<Unit, EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -468,19 +468,19 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        IntPtr bufferPtr = Native.ecliptix_buffer_allocate(0);
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_send_message(
+        IntPtr bufferPtr = Native.epp_buffer_alloc(0);
+        Native.EppErrorCode result = Native.epp_server_encrypt(
             _handle,
             plaintext,
             (nuint)plaintext.Length,
             bufferPtr,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
-            Native.ecliptix_buffer_free(bufferPtr);
+            Native.epp_error_free(ref error);
+            Native.epp_buffer_free(bufferPtr);
             return Result<byte[], EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -491,19 +491,19 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        IntPtr bufferPtr = Native.ecliptix_buffer_allocate(0);
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_receive_message(
+        IntPtr bufferPtr = Native.epp_buffer_alloc(0);
+        Native.EppErrorCode result = Native.epp_server_decrypt(
             _handle,
             encryptedEnvelope,
             (nuint)encryptedEnvelope.Length,
             bufferPtr,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
-            Native.ecliptix_buffer_free(bufferPtr);
+            Native.epp_error_free(ref error);
+            Native.epp_buffer_free(bufferPtr);
             return Result<byte[], EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -514,15 +514,15 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_has_connection(
+        Native.EppErrorCode result = Native.epp_server_is_established(
             _handle,
             out bool hasConnection,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<bool, EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -533,15 +533,15 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_get_connection_id(
+        Native.EppErrorCode result = Native.epp_server_get_id(
             _handle,
             out uint connectionId,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<uint, EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -552,16 +552,16 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_get_chain_indices(
+        Native.EppErrorCode result = Native.epp_server_get_chain_indices(
             _handle,
             out uint sendingIndex,
             out uint receivingIndex,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<(uint, uint), EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -572,16 +572,16 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_get_selected_opk_id(
+        Native.EppErrorCode result = Native.epp_server_get_used_prekey_id(
             _handle,
             out bool hasOpkId,
             out uint opkId,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<uint?, EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -592,16 +592,16 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        IntPtr bufferPtr = Native.ecliptix_buffer_allocate(0);
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_export_state(
+        IntPtr bufferPtr = Native.epp_buffer_alloc(0);
+        Native.EppErrorCode result = Native.epp_server_serialize(
             _handle,
             bufferPtr,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<byte[], EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -612,15 +612,15 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        Native.EcliptixErrorCode result = Native.ecliptix_connection_get_session_age_seconds(
+        Native.EppErrorCode result = Native.epp_session_age_seconds(
             _handle,
             out ulong ageSeconds,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<ulong, EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -631,18 +631,18 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         ThrowIfDisposed();
 
-        Native.EcliptixErrorCode result = Native.ecliptix_protocol_server_system_set_kyber_secrets(
+        Native.EppErrorCode result = Native.epp_server_set_kyber_secrets(
             _handle,
             kyberCiphertext,
             (nuint)kyberCiphertext.Length,
             kyberSharedSecret,
             (nuint)kyberSharedSecret.Length,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<Unit, EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -651,15 +651,15 @@ public sealed class EcliptixProtocolSystem : IDisposable
 
     public static Result<Unit, EcliptixProtocolFailure> ValidateEnvelopeHybridRequirements(byte[] encryptedEnvelope)
     {
-        Native.EcliptixErrorCode result = Native.ecliptix_envelope_validate_hybrid_requirements(
+        Native.EppErrorCode result = Native.epp_envelope_validate(
             encryptedEnvelope,
             (nuint)encryptedEnvelope.Length,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<Unit, EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -671,19 +671,19 @@ public sealed class EcliptixProtocolSystem : IDisposable
         byte[] userContext)
     {
         byte[] rootKey = new byte[32];
-        Native.EcliptixErrorCode result = Native.ecliptix_derive_root_from_opaque_session_key(
+        Native.EppErrorCode result = Native.epp_derive_root_key(
             opaqueSessionKey,
             (nuint)opaqueSessionKey.Length,
             userContext,
             (nuint)userContext.Length,
             rootKey,
             (nuint)rootKey.Length,
-            out Native.EcliptixError error);
+            out Native.EppError error);
 
-        if (result != Native.EcliptixErrorCode.Success)
+        if (result != Native.EppErrorCode.Success)
         {
             string message = error.GetMessage();
-            Native.ecliptix_error_free(ref error);
+            Native.epp_error_free(ref error);
             return Result<byte[], EcliptixProtocolFailure>.Err(ConvertError(result, message));
         }
 
@@ -704,7 +704,7 @@ public sealed class EcliptixProtocolSystem : IDisposable
 
         if (_handle != IntPtr.Zero)
         {
-            Native.ecliptix_protocol_server_system_destroy(_handle);
+            Native.epp_server_destroy(_handle);
             _handle = IntPtr.Zero;
         }
 
@@ -716,7 +716,7 @@ public sealed class EcliptixProtocolSystem : IDisposable
     {
         try
         {
-            Native.EcliptixBuffer buffer = Marshal.PtrToStructure<Native.EcliptixBuffer>(bufferPtr);
+            Native.EppBuffer buffer = Marshal.PtrToStructure<Native.EppBuffer>(bufferPtr);
             byte[] data = new byte[buffer.Length];
             Marshal.Copy(buffer.Data, data, 0, (int)buffer.Length);
             return Result<byte[], EcliptixProtocolFailure>.Ok(data);
@@ -725,31 +725,31 @@ public sealed class EcliptixProtocolSystem : IDisposable
         {
             if (bufferPtr != IntPtr.Zero)
             {
-                Native.ecliptix_buffer_free(bufferPtr);
+                Native.epp_buffer_free(bufferPtr);
             }
         }
     }
 
-    private static EcliptixProtocolFailure ConvertError(Native.EcliptixErrorCode code, string message) =>
+    private static EcliptixProtocolFailure ConvertError(Native.EppErrorCode code, string message) =>
         code switch
         {
-            Native.EcliptixErrorCode.ErrorInvalidInput => EcliptixProtocolFailure.InvalidInput(message),
-            Native.EcliptixErrorCode.ErrorKeyGeneration => EcliptixProtocolFailure.KeyGeneration(message),
-            Native.EcliptixErrorCode.ErrorDeriveKey => EcliptixProtocolFailure.DeriveKey(message),
-            Native.EcliptixErrorCode.ErrorHandshake => EcliptixProtocolFailure.Handshake(message),
-            Native.EcliptixErrorCode.ErrorDecode => EcliptixProtocolFailure.Decode(message),
-            Native.EcliptixErrorCode.ErrorEncode => EcliptixProtocolFailure.Decode(message),
-            Native.EcliptixErrorCode.ErrorBufferTooSmall => EcliptixProtocolFailure.BufferTooSmall(message),
-            Native.EcliptixErrorCode.ErrorEncryption => EcliptixProtocolFailure.SessionAuthFailed(message),
-            Native.EcliptixErrorCode.ErrorDecryption => EcliptixProtocolFailure.SessionAuthFailed(message),
-            Native.EcliptixErrorCode.ErrorObjectDisposed => EcliptixProtocolFailure.ObjectDisposed(message),
-            Native.EcliptixErrorCode.ErrorPrepareLocal => EcliptixProtocolFailure.PrepareLocal(message),
-            Native.EcliptixErrorCode.ErrorReplayAttack => EcliptixProtocolFailure.ReplayAttempt(message),
-            Native.EcliptixErrorCode.ErrorSessionExpired => EcliptixProtocolFailure.SessionAuthFailed(message),
-            Native.EcliptixErrorCode.ErrorOutOfMemory => EcliptixProtocolFailure.Generic(message),
-            Native.EcliptixErrorCode.ErrorNullPointer => EcliptixProtocolFailure.InvalidInput(message),
-            Native.EcliptixErrorCode.ErrorInvalidState => EcliptixProtocolFailure.InvalidInput(message),
-            Native.EcliptixErrorCode.ErrorPqMissing => EcliptixProtocolFailure.Decode(message),
+            Native.EppErrorCode.ErrorInvalidInput => EcliptixProtocolFailure.InvalidInput(message),
+            Native.EppErrorCode.ErrorKeyGeneration => EcliptixProtocolFailure.KeyGeneration(message),
+            Native.EppErrorCode.ErrorDeriveKey => EcliptixProtocolFailure.DeriveKey(message),
+            Native.EppErrorCode.ErrorHandshake => EcliptixProtocolFailure.Handshake(message),
+            Native.EppErrorCode.ErrorDecode => EcliptixProtocolFailure.Decode(message),
+            Native.EppErrorCode.ErrorEncode => EcliptixProtocolFailure.Decode(message),
+            Native.EppErrorCode.ErrorBufferTooSmall => EcliptixProtocolFailure.BufferTooSmall(message),
+            Native.EppErrorCode.ErrorEncryption => EcliptixProtocolFailure.SessionAuthFailed(message),
+            Native.EppErrorCode.ErrorDecryption => EcliptixProtocolFailure.SessionAuthFailed(message),
+            Native.EppErrorCode.ErrorObjectDisposed => EcliptixProtocolFailure.ObjectDisposed(message),
+            Native.EppErrorCode.ErrorPrepareLocal => EcliptixProtocolFailure.PrepareLocal(message),
+            Native.EppErrorCode.ErrorReplayAttack => EcliptixProtocolFailure.ReplayAttempt(message),
+            Native.EppErrorCode.ErrorSessionExpired => EcliptixProtocolFailure.SessionAuthFailed(message),
+            Native.EppErrorCode.ErrorOutOfMemory => EcliptixProtocolFailure.Generic(message),
+            Native.EppErrorCode.ErrorNullPointer => EcliptixProtocolFailure.InvalidInput(message),
+            Native.EppErrorCode.ErrorInvalidState => EcliptixProtocolFailure.InvalidInput(message),
+            Native.EppErrorCode.ErrorPqMissing => EcliptixProtocolFailure.Decode(message),
             _ => EcliptixProtocolFailure.Generic(message)
         };
 

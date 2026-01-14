@@ -14,7 +14,7 @@ namespace Ecliptix.Core.Infrastructure.Grpc;
 
 public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCipherService
 {
-    private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor);
+    private readonly IActorRef _protocolActor = actorRegistry.Get(ActorIds.EcliptixProtectionProtocolActor);
 
     private static PubKeyExchangeType GetExchangeTypeFromMetadata(ServerCallContext context)
     {

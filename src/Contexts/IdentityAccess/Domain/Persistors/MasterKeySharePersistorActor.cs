@@ -28,45 +28,45 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
 
     private void Ready()
     {
-        Receive<CreateMasterKeySharesCommand>(cmd =>
+        Receive<CreateMasterKeySharesCommand>(command =>
             ExecuteWithContext(
-                    (schemaContext, cancellationToken) => InsertMasterKeySharesAsync(schemaContext, cmd, cancellationToken),
-                    "InsertMasterKeyShares",
-                    cmd.CancellationToken)
+                    (schemaContext, cancellationToken) => InsertMasterKeySharesAsync(schemaContext, command, cancellationToken),
+                    PersistorOperation.InsertMasterKeyShares,
+                    command.CancellationToken)
                 .PipeTo(Sender));
 
-        Receive<GetMasterKeySharesQuery>(cmd =>
+        Receive<GetMasterKeySharesQuery>(query =>
             ExecuteWithContext(
-                    (schemaContext, cancellationToken) => GetMasterKeySharesByAccountIdAsync(schemaContext, cmd, cancellationToken),
-                    "GetMasterKeyShares",
-                    cmd.CancellationToken)
+                    (schemaContext, cancellationToken) => GetMasterKeySharesByAccountIdAsync(schemaContext, query, cancellationToken),
+                    PersistorOperation.GetMasterKeyShares,
+                    query.CancellationToken)
                 .PipeTo(Sender));
 
-        Receive<DeleteMasterKeySharesCommand>(cmd =>
+        Receive<DeleteMasterKeySharesCommand>(command =>
             ExecuteWithContext(
-                    (schemaContext, cancellationToken) => DeleteMasterKeySharesAsync(schemaContext, cmd, cancellationToken),
-                    "DeleteMasterKeyShares",
-                    cmd.CancellationToken)
+                    (schemaContext, cancellationToken) => DeleteMasterKeySharesAsync(schemaContext, command, cancellationToken),
+                    PersistorOperation.DeleteMasterKeyShares,
+                    command.CancellationToken)
                 .PipeTo(Sender));
     }
 
     private static async Task<Result<InsertMasterKeySharesResult, MasterKeyFailure>> InsertMasterKeySharesAsync(
         EcliptixSchemaContext schemaContext,
-        CreateMasterKeySharesCommand cmd,
+        CreateMasterKeySharesCommand command,
         CancellationToken cancellationToken)
     {
         await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
             await schemaContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
-            if (cmd.Shares.Count == 0)
+            if (command.Shares.Count == 0)
             {
                 return Result<InsertMasterKeySharesResult, MasterKeyFailure>.Err(
                     MasterKeyFailure.NoSharesProvided());
             }
 
             Option<AccountEntity> accountOpt =
-                await AccountQueries.GetAccountById(schemaContext, cmd.AccountUniqueId);
+                await AccountQueries.GetAccountById(schemaContext, command.AccountUniqueId);
             if (!accountOpt.IsSome)
             {
                 await transaction.RollbackAsync(CancellationToken.None);
@@ -75,7 +75,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
             }
 
             Option<CredentialsRecord> credentialsOpt =
-                await AccountSecureKeyAuthQueries.GetCredentialsForAccount(schemaContext, cmd.AccountUniqueId);
+                await AccountSecureKeyAuthQueries.GetCredentialsForAccount(schemaContext, command.AccountUniqueId);
 
             if (!credentialsOpt.IsSome)
             {
@@ -88,7 +88,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
             int credentialsVersion = credentials.Version;
 
             List<MasterKeyShareEntity> existingShares =
-                await MasterKeyShareQueries.GetByAccountId(schemaContext, cmd.AccountUniqueId,
+                await MasterKeyShareQueries.GetByAccountId(schemaContext, command.AccountUniqueId,
                     cancellationToken);
             if (existingShares.Count != 0)
             {
@@ -97,14 +97,14 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
                     MasterKeyFailure.SharesAlreadyExist());
             }
 
-            int shareCount = cmd.Shares.Count;
+            int shareCount = command.Shares.Count;
             HashSet<int> seenIndexes = new(shareCount);
             int minIndex = int.MaxValue;
             int maxIndex = int.MinValue;
 
             for (int i = 0; i < shareCount; i++)
             {
-                int shareIndex = cmd.Shares[i].ShareIndex;
+                int shareIndex = command.Shares[i].ShareIndex;
 
                 if (!seenIndexes.Add(shareIndex))
                 {
@@ -124,21 +124,21 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
                 }
             }
 
-            if (minIndex != 1 || maxIndex != cmd.Shares.Count)
+            if (minIndex != 1 || maxIndex != command.Shares.Count)
             {
                 await transaction.RollbackAsync(CancellationToken.None);
                 return Result<InsertMasterKeySharesResult, MasterKeyFailure>.Err(
                     MasterKeyFailure.KeySplittingFailed(
-                        $"Share indexes must be sequential starting from 1 (expected 1-{cmd.Shares.Count}, got {minIndex}-{maxIndex})"));
+                        $"Share indexes must be sequential starting from 1 (expected 1-{command.Shares.Count}, got {minIndex}-{maxIndex})"));
             }
 
             List<MasterKeyShareEntity> sharesToInsert = new(shareCount);
             for (int i = 0; i < shareCount; i++)
             {
-                ShareData share = cmd.Shares[i];
+                ShareData share = command.Shares[i];
                 sharesToInsert.Add(new MasterKeyShareEntity
                 {
-                    AccountId = cmd.AccountUniqueId,
+                    AccountId = command.AccountUniqueId,
                     ShareIndex = share.ShareIndex,
                     EncryptedShare = share.EncryptedShare,
                     ShareMetadata = share.ShareMetadata,
@@ -166,13 +166,13 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
     private static async Task<Result<MasterKeyShareQueryRecord[], MasterKeyFailure>>
         GetMasterKeySharesByAccountIdAsync(
             EcliptixSchemaContext schemaContext,
-            GetMasterKeySharesQuery cmd,
+            GetMasterKeySharesQuery query,
             CancellationToken cancellationToken)
     {
         try
         {
             List<MasterKeyShareEntity> shares =
-                await MasterKeyShareQueries.GetByAccountId(schemaContext, cmd.AccountUniqueId,
+                await MasterKeyShareQueries.GetByAccountId(schemaContext, query.AccountUniqueId,
                     cancellationToken);
 
             if (shares.Count == 0)
@@ -208,7 +208,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
 
     private static async Task<Result<Unit, MasterKeyFailure>> DeleteMasterKeySharesAsync(
         EcliptixSchemaContext schemaContext,
-        DeleteMasterKeySharesCommand cmd,
+        DeleteMasterKeySharesCommand command,
         CancellationToken cancellationToken)
     {
         await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
@@ -216,7 +216,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
         try
         {
             await schemaContext.MasterKeyShares
-                .Where(mks => mks.AccountId == cmd.AccountId && !mks.IsDeleted)
+                .Where(mks => mks.AccountId == command.AccountId && !mks.IsDeleted)
                 .ExecuteDeleteAsync(cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);

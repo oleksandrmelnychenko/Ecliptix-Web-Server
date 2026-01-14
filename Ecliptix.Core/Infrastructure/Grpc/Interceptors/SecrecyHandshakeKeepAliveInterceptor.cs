@@ -7,7 +7,7 @@ namespace Ecliptix.Core.Infrastructure.Grpc.Interceptors;
 
 public class SecrecyHandshakeKeepAliveInterceptor(IEcliptixActorRegistry actorRegistry) : Interceptor
 {
-    private readonly Lazy<IActorRef> _protocolSystemActor = new(() => actorRegistry.Get(ActorIds.EcliptixProtocolSystemActor));
+    private readonly Lazy<IActorRef> _protocolSystemActor = new(() => actorRegistry.Get(ActorIds.EcliptixProtectionProtocolActor));
 
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
         TRequest request,

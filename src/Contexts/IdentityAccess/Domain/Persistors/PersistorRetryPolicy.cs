@@ -12,7 +12,7 @@ namespace Ecliptix.IdentityAccess.Domain.Persistors;
 public static class PersistorRetryPolicy
 {
     private static AsyncRetryPolicy CreateRetryPolicy(
-        string operationName,
+        PersistorOperation operation,
         int maxRetries = 3)
     {
         return Policy
@@ -24,13 +24,13 @@ public static class PersistorRetryPolicy
                 retryAttempt => TimeSpan.FromMilliseconds(Math.Pow(2, retryAttempt) * 200),
                 onRetry: (exception, delay, retryCount, _) =>
                 {
-                    Log.Debug("Persistor operation '{OperationName}' retry {RetryCount}/{MaxRetries} after {Delay}ms due to {ExceptionType}",
-                        operationName, retryCount, maxRetries, delay.TotalMilliseconds, exception.GetType().Name);
+                    Log.Debug("Persistor operation '{Operation}' retry {RetryCount}/{MaxRetries} after {Delay}ms due to {ExceptionType}",
+                        operation, retryCount, maxRetries, delay.TotalMilliseconds, exception.GetType().Name);
                 });
     }
 
     private static AsyncTimeoutPolicy CreateTimeoutPolicy(
-        string operationName,
+        PersistorOperation operation,
         TimeSpan operationTimeout)
     {
         return Policy.TimeoutAsync(
@@ -38,24 +38,24 @@ public static class PersistorRetryPolicy
             TimeoutStrategy.Pessimistic,
             onTimeoutAsync: (_, timeout, _, _) =>
             {
-                Log.Warning("Persistor operation '{OperationName}' timed out after {Timeout}s",
-                    operationName, timeout.TotalSeconds);
+                Log.Warning("Persistor operation '{Operation}' timed out after {Timeout}s",
+                    operation, timeout.TotalSeconds);
                 return Task.CompletedTask;
             });
     }
 
     public static async Task<Result<TResult, TFailure>> ExecuteWithRetryAsync<TResult, TFailure>(
         Func<CancellationToken, Task<Result<TResult, TFailure>>> operation,
-        string operationName,
+        PersistorOperation operationType,
         TimeSpan operationTimeout,
-        Func<DbException, string, TFailure> dbExceptionMapper,
-        Func<TimeoutException, string, TFailure> timeoutExceptionMapper,
-        Func<Exception, string, TFailure> genericExceptionMapper,
+        Func<DbException, PersistorOperation, TFailure> dbExceptionMapper,
+        Func<TimeoutException, PersistorOperation, TFailure> timeoutExceptionMapper,
+        Func<Exception, PersistorOperation, TFailure> genericExceptionMapper,
         CancellationToken cancellationToken = default)
         where TFailure : IFailureBase
     {
-        AsyncTimeoutPolicy timeoutPolicy = CreateTimeoutPolicy(operationName, operationTimeout);
-        AsyncRetryPolicy retryPolicy = CreateRetryPolicy(operationName);
+        AsyncTimeoutPolicy timeoutPolicy = CreateTimeoutPolicy(operationType, operationTimeout);
+        AsyncRetryPolicy retryPolicy = CreateRetryPolicy(operationType);
         AsyncPolicyWrap policyWrap = Policy.WrapAsync(retryPolicy, timeoutPolicy);
 
         try
@@ -66,16 +66,16 @@ public static class PersistorRetryPolicy
         }
         catch (TimeoutRejectedException timeoutEx)
         {
-            Log.Error(timeoutEx, "Persistor operation '{OperationName}' exceeded timeout of {Timeout}s",
-                operationName, operationTimeout.TotalSeconds);
+            Log.Error(timeoutEx, "Persistor operation '{Operation}' exceeded timeout of {Timeout}s",
+                operationType, operationTimeout.TotalSeconds);
             return Result<TResult, TFailure>.Err(timeoutExceptionMapper(
-                new TimeoutException($"Operation '{operationName}' timed out after {operationTimeout.TotalSeconds}s", timeoutEx),
-                operationName));
+                new TimeoutException($"Operation '{operationType}' timed out after {operationTimeout.TotalSeconds}s", timeoutEx),
+                operationType));
         }
         catch (DbException dbEx)
         {
-            Log.Error(dbEx, "Persistor operation '{OperationName}' failed with database exception", operationName);
-            return Result<TResult, TFailure>.Err(dbExceptionMapper(dbEx, operationName));
+            Log.Error(dbEx, "Persistor operation '{Operation}' failed with database exception", operationType);
+            return Result<TResult, TFailure>.Err(dbExceptionMapper(dbEx, operationType));
         }
         catch (OperationCanceledException)
         {
@@ -83,13 +83,13 @@ public static class PersistorRetryPolicy
         }
         catch (TimeoutException timeoutEx)
         {
-            Log.Error(timeoutEx, "Persistor operation '{OperationName}' timed out", operationName);
-            return Result<TResult, TFailure>.Err(timeoutExceptionMapper(timeoutEx, operationName));
+            Log.Error(timeoutEx, "Persistor operation '{Operation}' timed out", operationType);
+            return Result<TResult, TFailure>.Err(timeoutExceptionMapper(timeoutEx, operationType));
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Persistor operation '{OperationName}' failed with unexpected exception", operationName);
-            return Result<TResult, TFailure>.Err(genericExceptionMapper(ex, operationName));
+            Log.Error(ex, "Persistor operation '{Operation}' failed with unexpected exception", operationType);
+            return Result<TResult, TFailure>.Err(genericExceptionMapper(ex, operationType));
         }
     }
 
