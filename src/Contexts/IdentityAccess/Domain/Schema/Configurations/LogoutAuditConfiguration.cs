@@ -10,9 +10,9 @@ public class LogoutAuditConfiguration : EntityBaseMap<LogoutAuditEntity>
     {
         base.Map(builder);
 
-        builder.ToTable("LogoutAudits");
+        builder.ToTable("logout_audits");
 
-        builder.Property(e => e.MembershipUniqueId)
+        builder.Property(e => e.MembershipId)
             .IsRequired();
 
         builder.Property(e => e.AccountId)
@@ -36,7 +36,7 @@ public class LogoutAuditConfiguration : EntityBaseMap<LogoutAuditEntity>
             .IsRequired()
             .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-        builder.HasIndex(e => new { e.MembershipUniqueId, e.LoggedOutAt })
+        builder.HasIndex(e => new { e.MembershipId, e.LoggedOutAt })
             .IsDescending(false, true)
             .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_LogoutAudits_Membership_LoggedOutAt");
@@ -52,7 +52,7 @@ public class LogoutAuditConfiguration : EntityBaseMap<LogoutAuditEntity>
 
         builder.HasOne(e => e.Membership)
             .WithMany()
-            .HasForeignKey(e => e.MembershipUniqueId)
+            .HasForeignKey(e => e.MembershipId)
             .HasPrincipalKey(m => m.UniqueId)
             .OnDelete(DeleteBehavior.Cascade)
             .IsRequired()

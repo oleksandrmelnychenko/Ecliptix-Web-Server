@@ -12,7 +12,7 @@ public class OtpCodeConfiguration : EntityBaseMap<OtpCodeEntity>
     {
         base.Map(builder);
 
-        builder.ToTable("OtpCodes");
+        builder.ToTable("otp_codes");
 
         builder.Property(e => e.VerificationFlowId)
             .IsRequired();

@@ -13,7 +13,7 @@ public class VerificationLogConfiguration : EntityBaseMap<VerificationLogEntity>
     {
         base.Map(builder);
 
-        builder.ToTable("VerificationLogs");
+        builder.ToTable("verification_logs");
 
         builder.Property(e => e.MembershipId)
             .IsRequired();

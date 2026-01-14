@@ -11,7 +11,7 @@ public static class LogoutAuditQueries
         GetMostRecentByMembershipCompiled = EF.CompileAsyncQuery(
             (EcliptixSchemaContext ctx, Guid membershipUniqueId) =>
                 ctx.LogoutAudits
-                    .Where(l => l.MembershipUniqueId == membershipUniqueId &&
+                    .Where(l => l.MembershipId == membershipUniqueId &&
                                 !l.IsDeleted)
                     .OrderByDescending(l => l.LoggedOutAt)
                     .AsNoTracking()
@@ -31,7 +31,7 @@ public static class LogoutAuditQueries
         int limit)
     {
         return await ctx.LogoutAudits
-            .Where(l => l.MembershipUniqueId == membershipUniqueId &&
+            .Where(l => l.MembershipId == membershipUniqueId &&
                         !l.IsDeleted)
             .OrderByDescending(l => l.LoggedOutAt)
             .Take(limit)

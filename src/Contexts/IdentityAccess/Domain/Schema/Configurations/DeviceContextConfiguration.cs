@@ -11,7 +11,7 @@ public class DeviceContextConfiguration : EntityBaseMap<DeviceContextEntity>
     {
         base.Map(builder);
 
-        builder.ToTable("DeviceContexts");
+        builder.ToTable("device_contexts");
 
         builder.Property(e => e.MembershipId)
             .IsRequired();

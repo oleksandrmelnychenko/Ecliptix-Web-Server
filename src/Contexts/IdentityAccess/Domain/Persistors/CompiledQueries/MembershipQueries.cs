@@ -37,7 +37,7 @@ public static class MembershipQueries
                 ctx.Memberships
                     .AsNoTracking()
                     .FirstOrDefault(m => m.MobileNumberId == mobileUniqueId &&
-                                        m.AppDeviceId == deviceId &&
+                                        m.DeviceId == deviceId &&
                                         !m.IsDeleted));
 
     public static async Task<Option<MembershipEntity>> GetByMobileUniqueIdAndDevice(

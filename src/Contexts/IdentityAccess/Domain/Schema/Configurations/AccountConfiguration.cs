@@ -10,7 +10,7 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
     {
         base.Map(builder);
 
-        builder.ToTable("Accounts");
+        builder.ToTable("accounts");
 
         builder.Property(e => e.MembershipId)
             .IsRequired();

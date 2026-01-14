@@ -12,12 +12,12 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntit
     {
         base.Map(builder);
 
-        builder.ToTable("VerificationFlows");
+        builder.ToTable("verification_flows");
 
         builder.Property(e => e.MobileNumberId)
             .IsRequired();
 
-        builder.Property(e => e.AppDeviceId)
+        builder.Property(e => e.DeviceId)
             .IsRequired();
 
         builder.Property(e => e.Status)
@@ -50,8 +50,8 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntit
         builder.HasIndex(e => e.MobileNumberId)
             .HasDatabaseName("IX_VerificationFlows_MobileNumberId");
 
-        builder.HasIndex(e => e.AppDeviceId)
-            .HasDatabaseName("IX_VerificationFlows_AppDeviceId");
+        builder.HasIndex(e => e.DeviceId)
+            .HasDatabaseName("IX_VerificationFlows_DeviceId");
 
         builder.HasIndex(e => e.Status)
             .HasFilter("is_deleted = false")
@@ -72,9 +72,9 @@ public class VerificationFlowConfiguration : EntityBaseMap<VerificationFlowEntit
             .OnDelete(DeleteBehavior.Cascade)
             .HasConstraintName("FK_VerificationFlows_MobileNumbers");
 
-        builder.HasOne(e => e.AppDevice)
+        builder.HasOne(e => e.Device)
             .WithMany(d => d.VerificationFlows)
-            .HasForeignKey(e => e.AppDeviceId)
+            .HasForeignKey(e => e.DeviceId)
             .HasPrincipalKey(d => d.DeviceId)
             .OnDelete(DeleteBehavior.Cascade)
             .HasConstraintName("FK_VerificationFlows_Devices");

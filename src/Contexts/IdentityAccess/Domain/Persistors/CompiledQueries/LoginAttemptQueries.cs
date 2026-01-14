@@ -54,7 +54,7 @@ public static class LoginAttemptQueries
                 ctx.LoginAttempts
                     .AsNoTracking()
                     .Join(ctx.Memberships,
-                        la => la.MembershipUniqueId,
+                        la => la.MembershipId,
                         m => m.UniqueId,
                         (la, m) => new { la, m })
                     .Count(x => x.m.MobileNumberId == mobileUniqueId &&
@@ -79,7 +79,7 @@ public static class LoginAttemptQueries
                 ctx.LoginAttempts
                     .AsNoTracking()
                     .Join(ctx.Memberships,
-                        la => la.MembershipUniqueId,
+                        la => la.MembershipId,
                         m => m.UniqueId,
                         (la, m) => new { la, m })
                     .Where(x => x.m.MobileNumberId == mobileUniqueId &&

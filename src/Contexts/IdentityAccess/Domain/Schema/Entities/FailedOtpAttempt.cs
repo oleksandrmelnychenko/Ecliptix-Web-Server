@@ -4,13 +4,13 @@ namespace Ecliptix.IdentityAccess.Domain.Schema.Entities;
 
 public class FailedOtpAttemptEntity : EntityBase
 {
-    public long OtpRecordId { get; set; }
+    public long OtpCodeId { get; set; }
 
     public string AttemptedValue { get; set; } = string.Empty;
     public string FailureReason { get; set; } = string.Empty;
 
     public DateTimeOffset AttemptedAt { get; set; } = DateTimeOffset.UtcNow;
 
-    [ForeignKey(nameof(OtpRecordId))]
-    public OtpCodeEntity OtpRecord { get; set; } = null!;
+    [ForeignKey(nameof(OtpCodeId))]
+    public OtpCodeEntity OtpCode { get; set; } = null!;
 }

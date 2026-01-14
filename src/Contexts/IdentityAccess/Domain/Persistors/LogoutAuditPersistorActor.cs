@@ -67,7 +67,7 @@ public class LogoutAuditPersistorActor : PersistorBase<LogoutFailure>
         {
             LogoutAuditEntity audit = new()
             {
-                MembershipUniqueId = cmd.MembershipUniqueId,
+                MembershipId = cmd.MembershipUniqueId,
                 AccountId = cmd.AccountId,
                 DeviceId = cmd.DeviceId,
                 Reason = cmd.Reason,

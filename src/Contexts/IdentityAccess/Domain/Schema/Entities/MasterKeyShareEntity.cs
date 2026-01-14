@@ -2,7 +2,7 @@ namespace Ecliptix.IdentityAccess.Domain.Schema.Entities;
 
 public class MasterKeyShareEntity : EntityBase
 {
-    public Guid AccountUniqueId { get; set; }
+    public Guid AccountId { get; set; }
 
     public int ShareIndex { get; set; }
     public byte[] EncryptedShare { get; set; } = null!;

@@ -10,7 +10,7 @@ public class DeviceConfiguration : EntityBaseMap<DeviceEntity>
     {
         base.Map(builder);
 
-        builder.ToTable("Devices");
+        builder.ToTable("devices");
 
         builder.Property(e => e.AppInstanceId)
             .IsRequired();

@@ -2,7 +2,7 @@ namespace Ecliptix.IdentityAccess.Domain.Schema.Entities;
 
 public class LogoutAuditEntity : EntityBase
 {
-    public Guid MembershipUniqueId { get; set; }
+    public Guid MembershipId { get; set; }
     public Guid? AccountId { get; set; }
     public Guid? DeviceId { get; set; }
 

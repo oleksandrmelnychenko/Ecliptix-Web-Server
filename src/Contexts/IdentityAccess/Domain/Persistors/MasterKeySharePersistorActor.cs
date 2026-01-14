@@ -88,7 +88,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
             int credentialsVersion = credentials.Version;
 
             List<MasterKeyShareEntity> existingShares =
-                await MasterKeyShareQueries.GetByAccountUniqueId(schemaContext, cmd.AccountUniqueId,
+                await MasterKeyShareQueries.GetByAccountId(schemaContext, cmd.AccountUniqueId,
                     cancellationToken);
             if (existingShares.Count != 0)
             {
@@ -138,7 +138,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
                 ShareData share = cmd.Shares[i];
                 sharesToInsert.Add(new MasterKeyShareEntity
                 {
-                    AccountUniqueId = cmd.AccountUniqueId,
+                    AccountId = cmd.AccountUniqueId,
                     ShareIndex = share.ShareIndex,
                     EncryptedShare = share.EncryptedShare,
                     ShareMetadata = share.ShareMetadata,
@@ -172,7 +172,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
         try
         {
             List<MasterKeyShareEntity> shares =
-                await MasterKeyShareQueries.GetByAccountUniqueId(schemaContext, cmd.AccountUniqueId,
+                await MasterKeyShareQueries.GetByAccountId(schemaContext, cmd.AccountUniqueId,
                     cancellationToken);
 
             if (shares.Count == 0)
@@ -187,7 +187,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
                 MasterKeyShareEntity s = shares[i];
                 queryRecords[i] = new MasterKeyShareQueryRecord
                 {
-                    AccountUniqueId = s.AccountUniqueId,
+                    AccountUniqueId = s.AccountId,
                     ShareIndex = s.ShareIndex,
                     EncryptedShare = s.EncryptedShare,
                     ShareMetadata = s.ShareMetadata,
@@ -216,7 +216,7 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
         try
         {
             await schemaContext.MasterKeyShares
-                .Where(mks => mks.AccountUniqueId == cmd.AccountId && !mks.IsDeleted)
+                .Where(mks => mks.AccountId == cmd.AccountId && !mks.IsDeleted)
                 .ExecuteDeleteAsync(cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);

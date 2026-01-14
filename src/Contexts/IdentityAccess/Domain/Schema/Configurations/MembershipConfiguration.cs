@@ -12,12 +12,12 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
     {
         base.Map(builder);
 
-        builder.ToTable("Memberships");
+        builder.ToTable("memberships");
 
         builder.Property(e => e.MobileNumberId)
             .IsRequired();
 
-        builder.Property(e => e.AppDeviceId)
+        builder.Property(e => e.DeviceId)
             .IsRequired();
 
         builder.Property(e => e.VerificationFlowId)
@@ -48,8 +48,8 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
             .HasFilter("is_deleted = false")
             .HasDatabaseName("UQ_Memberships_ActiveMembership");
 
-        builder.HasIndex(e => e.AppDeviceId)
-            .HasDatabaseName("IX_Memberships_AppDeviceId");
+        builder.HasIndex(e => e.DeviceId)
+            .HasDatabaseName("IX_Memberships_DeviceId");
 
         builder.HasIndex(e => e.Status)
             .HasFilter("is_deleted = false")
@@ -62,9 +62,9 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
             .OnDelete(DeleteBehavior.NoAction)
             .HasConstraintName("FK_Memberships_MobileNumbers");
 
-        builder.HasOne(e => e.AppDevice)
+        builder.HasOne(e => e.Device)
             .WithMany(d => d.Memberships)
-            .HasForeignKey(e => e.AppDeviceId)
+            .HasForeignKey(e => e.DeviceId)
             .HasPrincipalKey(d => d.DeviceId)
             .OnDelete(DeleteBehavior.NoAction)
             .HasConstraintName("FK_Memberships_Devices");

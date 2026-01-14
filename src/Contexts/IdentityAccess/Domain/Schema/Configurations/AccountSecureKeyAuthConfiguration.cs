@@ -10,7 +10,7 @@ public class AccountSecureKeyAuthConfiguration : EntityBaseMap<AccountSecureKeyA
     {
         base.Map(builder);
 
-        builder.ToTable("AccountSecureKeyAuth");
+        builder.ToTable("account_secure_key_auth");
 
         builder.Property(e => e.AccountId)
             .IsRequired();

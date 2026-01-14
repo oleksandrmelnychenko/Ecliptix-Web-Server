@@ -10,7 +10,7 @@ public class AccountPinAuthConfiguration : EntityBaseMap<AccountPinAuthEntity>
     {
         base.Map(builder);
 
-        builder.ToTable("AccountPinAuth");
+        builder.ToTable("account_pin_auth");
 
         builder.Property(e => e.AccountId)
             .IsRequired();

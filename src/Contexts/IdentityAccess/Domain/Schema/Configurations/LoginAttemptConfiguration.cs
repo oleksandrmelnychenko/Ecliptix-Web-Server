@@ -10,9 +10,9 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
     {
         base.Map(builder);
 
-        builder.ToTable("LoginAttempts");
+        builder.ToTable("login_attempts");
 
-        builder.Property(e => e.MembershipUniqueId)
+        builder.Property(e => e.MembershipId)
             .IsRequired(false);
 
         builder.Property(e => e.AccountId)
@@ -63,7 +63,7 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
             .HasFilter("is_deleted = false AND is_success = false AND locked_until IS NULL")
             .HasDatabaseName("IX_LoginAttempts_CountFailed");
 
-        builder.HasIndex(e => new { e.MembershipUniqueId, e.Outcome, e.AttemptedAt })
+        builder.HasIndex(e => new { e.MembershipId, e.Outcome, e.AttemptedAt })
             .IsDescending(false, false, false)
             .HasFilter("is_deleted = false AND is_success = false AND outcome = 'membership_creation'")
             .HasDatabaseName("IX_LoginAttempts_MembershipCreation");
@@ -74,7 +74,7 @@ public class LoginAttemptConfiguration : EntityBaseMap<LoginAttemptEntity>
 
         builder.HasOne(e => e.Membership)
             .WithMany(m => m.LoginAttempts)
-            .HasForeignKey(e => e.MembershipUniqueId)
+            .HasForeignKey(e => e.MembershipId)
             .HasPrincipalKey(m => m.UniqueId)
             .OnDelete(DeleteBehavior.Cascade)
             .IsRequired(false)

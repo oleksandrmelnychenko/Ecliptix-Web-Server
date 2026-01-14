@@ -426,7 +426,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             CredentialsRecord credentials = new(auth.SecureKey, auth.MaskingKey, auth.CredentialsVersion, auth.OpaqueKeyVersion);
             return BuildMembershipResult(
                 membership.UniqueId,
-                membership.AppDeviceId,
+                membership.DeviceId,
                 membership.Status switch
                 {
                     MembershipStatus.Active => Membership.Types.ActivityStatus.Active,
@@ -460,7 +460,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
     {
         LoginAttemptEntity attempt = new()
         {
-            MembershipUniqueId = membershipId,
+            MembershipId = membershipId,
             MobileNumber = mobileNumber,
             Outcome = outcome,
             IsSuccess = isSuccess,
@@ -514,7 +514,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
                     LoginAttemptEntity rateLimitAttempt = new()
                     {
-                        MembershipUniqueId = mobileUniqueId,
+                        MembershipId = mobileUniqueId,
                         MobileNumber = mobileNumber,
                         Outcome = DefaultOutcome,
                         IsSuccess = false,
@@ -534,14 +534,14 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             }
 
             Option<MembershipEntity> existingMembershipOpt = await MembershipQueries.GetByMobileUniqueIdAndDevice(
-                schemaContext, mobileUniqueId, flow.AppDeviceId, cancellationToken);
+                schemaContext, mobileUniqueId, flow.DeviceId, cancellationToken);
 
             if (existingMembershipOpt.IsSome)
             {
                 MembershipEntity existingMembership = existingMembershipOpt.Value!;
                 LoginAttemptEntity attempt = new()
                 {
-                    MembershipUniqueId = existingMembership.UniqueId,
+                    MembershipId = existingMembership.UniqueId,
                     MobileNumber = mobileNumber,
                     Outcome = DefaultOutcome,
                     IsSuccess = false,
@@ -568,7 +568,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
                 return BuildMembershipResult(
                     existingMembership.UniqueId,
-                    existingMembership.AppDeviceId,
+                    existingMembership.DeviceId,
                     existingMembership.Status switch
                     {
                         MembershipStatus.Active => Membership.Types.ActivityStatus.Active,
@@ -585,7 +585,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             MembershipEntity newMembership = new()
             {
                 MobileNumberId = mobileUniqueId,
-                AppDeviceId = flow.AppDeviceId,
+                DeviceId = flow.DeviceId,
                 VerificationFlowId = flow.UniqueId,
                 Status = MembershipStatus.Active,
                 CreationStatus = command.CreationStatus switch
@@ -616,7 +616,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             LoginAttemptEntity successAttempt = new()
             {
-                MembershipUniqueId = newMembership.UniqueId,
+                MembershipId = newMembership.UniqueId,
                 MobileNumber = mobileNumber,
                 Outcome = DefaultOutcome,
                 IsSuccess = true,
@@ -631,7 +631,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             List<long> failedAttemptIds = await schemaContext.LoginAttempts
                 .Join(schemaContext.Memberships,
-                    la => la.MembershipUniqueId,
+                    la => la.MembershipId,
                     m => m.UniqueId,
                     (la, m) => new LoginAttemptMembershipQueryRecord { LoginAttempt = la, Membership = m })
                 .Where(x => x.Membership.MobileNumberId == mobileUniqueId &&
@@ -671,7 +671,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             return BuildMembershipResult(
                 newMembership.UniqueId,
-                newMembership.AppDeviceId,
+                newMembership.DeviceId,
                 newMembership.Status switch
                 {
                     MembershipStatus.Active => Membership.Types.ActivityStatus.Active,
@@ -753,7 +753,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             return BuildMembershipResult(
                 membership.UniqueId,
-                membership.AppDeviceId,
+                membership.DeviceId,
                 membership.Status switch
                 {
                     MembershipStatus.Active => Membership.Types.ActivityStatus.Active,
@@ -804,7 +804,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
             return BuildMembershipResult(
                 membership.UniqueId,
-                membership.AppDeviceId,
+                membership.DeviceId,
                 membership.Status switch
                 {
                     MembershipStatus.Active => Membership.Types.ActivityStatus.Active,

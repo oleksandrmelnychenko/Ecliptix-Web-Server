@@ -96,7 +96,7 @@ public static class VerificationFlowQueries
     {
         return await ctx.VerificationFlows
             .Where(vf => vf.MobileNumberId == mobileUniqueId &&
-                        vf.AppDeviceId == deviceId &&
+                        vf.DeviceId == deviceId &&
                         vf.Purpose == purpose &&
                         vf.Status == VerificationFlowStatus.Pending &&
                         vf.ExpiresAt > DateTimeOffset.UtcNow &&
@@ -114,7 +114,7 @@ public static class VerificationFlowQueries
     {
         VerificationFlowEntity? result = await ctx.VerificationFlows
             .Where(vf => vf.MobileNumberId == mobileUniqueId &&
-                        vf.AppDeviceId == deviceId &&
+                        vf.DeviceId == deviceId &&
                         vf.Purpose == purpose &&
                         vf.Status == VerificationFlowStatus.Pending &&
                         vf.ExpiresAt > DateTimeOffset.UtcNow &&
@@ -145,7 +145,7 @@ public static class VerificationFlowQueries
         CancellationToken cancellationToken = default)
     {
         return await ctx.VerificationFlows
-            .Where(f => f.AppDeviceId == deviceId &&
+            .Where(f => f.DeviceId == deviceId &&
                         f.CreatedAt > since &&
                         !f.IsDeleted)
             .AsNoTracking()

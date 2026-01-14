@@ -10,9 +10,9 @@ public class FailedOtpAttemptConfiguration : EntityBaseMap<FailedOtpAttemptEntit
     {
         base.Map(builder);
 
-        builder.ToTable("FailedOtpAttempts");
+        builder.ToTable("failed_otp_attempts");
 
-        builder.Property(e => e.OtpRecordId)
+        builder.Property(e => e.OtpCodeId)
             .IsRequired();
 
         builder.Property(e => e.AttemptedValue)
@@ -26,17 +26,17 @@ public class FailedOtpAttemptConfiguration : EntityBaseMap<FailedOtpAttemptEntit
         builder.Property(e => e.AttemptedAt)
             .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-        builder.HasIndex(e => e.OtpRecordId)
-            .HasDatabaseName("IX_FailedOtpAttempts_OtpRecordId");
+        builder.HasIndex(e => e.OtpCodeId)
+            .HasDatabaseName("IX_FailedOtpAttempts_OtpCodeId");
 
         builder.HasIndex(e => e.AttemptedAt)
             .IsDescending()
             .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_FailedOtpAttempts_AttemptedAt");
 
-        builder.HasOne(e => e.OtpRecord)
+        builder.HasOne(e => e.OtpCode)
             .WithMany(o => o.FailedAttempts)
-            .HasForeignKey(e => e.OtpRecordId)
+            .HasForeignKey(e => e.OtpCodeId)
             .OnDelete(DeleteBehavior.Cascade)
             .HasConstraintName("FK_FailedOtpAttempts_OtpCodes");
     }

@@ -315,7 +315,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         {
             UniqueId = Guid.NewGuid(),
             MobileNumberId = mobileUniqueId,
-            AppDeviceId = cmd.AppDeviceId,
+            DeviceId = cmd.AppDeviceId,
             Purpose = cmd.Purpose,
             Status = VerificationFlowStatus.Pending,
             ExpiresAt = now + persistorSettings.FlowExpiration,
@@ -493,7 +493,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             schemaContext, mobileUniqueId, recoveryLookbackTime, cancellationToken);
 
         int recoveryCountByDevice = await schemaContext.VerificationFlows
-            .Where(f => f.AppDeviceId == cmd.AppDeviceId &&
+            .Where(f => f.DeviceId == cmd.AppDeviceId &&
                         f.Purpose == OtpVerificationPurpose.SecureKeyRecovery &&
                         f.CreatedAt >= recoveryLookbackTime &&
                         !f.IsDeleted)
@@ -820,7 +820,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                     MembershipId = m.UniqueId,
                     Status = m.Status,
                     CreationStatus = m.CreationStatus,
-                    DeviceId = m.AppDeviceId,
+                    DeviceId = m.DeviceId,
                     CreatedAt = m.CreatedAt,
                     HasDefaultAccount = m.Accounts.Any(a => a.IsDefaultAccount && !a.IsDeleted),
                     AccountUniqueId = m.Accounts
@@ -1272,7 +1272,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
         {
             UniqueIdentifier = flow.UniqueId,
             MobileNumberIdentifier = flow.MobileNumber?.UniqueId ?? Guid.Empty,
-            AppDeviceIdentifier = flow.AppDeviceId,
+            AppDeviceIdentifier = flow.DeviceId,
             ConnectId = flow.ConnectionId.HasValue
                 ? Option<uint>.Some((uint)flow.ConnectionId.Value)
                 : Option<uint>.None,
@@ -1358,7 +1358,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             FailedOtpAttemptEntity failedAttempt = new()
             {
-                OtpRecordId = otp.Id,
+                OtpCodeId = otp.Id,
                 AttemptedValue = "***",
                 FailureReason = cmd.FailureReason,
                 AttemptedAt = DateTimeOffset.UtcNow,

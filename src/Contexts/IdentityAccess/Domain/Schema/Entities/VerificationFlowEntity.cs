@@ -4,7 +4,7 @@ namespace Ecliptix.IdentityAccess.Domain.Schema.Entities;
 public class VerificationFlowEntity : EntityBase
 {
     public Guid MobileNumberId { get; set; }
-    public Guid AppDeviceId { get; set; }
+    public Guid DeviceId { get; set; }
 
     public VerificationFlowStatus Status { get; set; } = VerificationFlowStatus.Pending;
     public OtpVerificationPurpose Purpose { get; set; } = OtpVerificationPurpose.Unspecified;
@@ -16,7 +16,7 @@ public class VerificationFlowEntity : EntityBase
     public DateTimeOffset ExpiresAt { get; set; }
 
     public MobileNumberEntity MobileNumber { get; set; } = null!;
-    public DeviceEntity AppDevice { get; set; } = null!;
+    public DeviceEntity Device { get; set; } = null!;
 
     public List<OtpCodeEntity> OtpCodes
     {

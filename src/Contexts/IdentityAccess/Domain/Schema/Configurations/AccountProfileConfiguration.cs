@@ -10,7 +10,7 @@ public class AccountProfileConfiguration : EntityBaseMap<AccountProfileEntity>
     {
         base.Map(builder);
 
-        builder.ToTable("AccountProfiles");
+        builder.ToTable("account_profiles");
 
         builder.Property(e => e.AccountId)
             .IsRequired();

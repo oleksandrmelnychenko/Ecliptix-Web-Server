@@ -10,7 +10,7 @@ public class MobileNumberConfiguration : EntityBaseMap<MobileNumberEntity>
     {
         base.Map(builder);
 
-        builder.ToTable("MobileNumbers");
+        builder.ToTable("mobile_numbers");
 
         builder.Property(e => e.Number)
             .IsRequired()
