@@ -58,7 +58,7 @@ public static class IdentityAccessEventRouteProvider
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
         WithMembership(services, envelope, metadata,
-            static (handler, request, context, _) => handler.OpaqueSignInInitRequest(request, context),
+            static (handler, request, context, meta) => handler.OpaqueSignInInitRequest(request, context, meta),
             cancellationToken);
 
     [EventRoute(TransportEventType.IdentityOpaqueSigninComplete, IdentityAccessContext, IdempotencyRequired = true)]
@@ -78,7 +78,7 @@ public static class IdentityAccessEventRouteProvider
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
         WithMembership(services, envelope, metadata,
-            static (handler, request, context, _) => handler.Logout(request, context),
+            static (handler, request, context, meta) => handler.Logout(request, context, meta),
             cancellationToken);
 
     [EventRoute(TransportEventType.IdentitySessionLogoutAnonymous, IdentityAccessContext, IdempotencyRequired = true)]
@@ -88,7 +88,7 @@ public static class IdentityAccessEventRouteProvider
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
         WithMembership(services, envelope, metadata,
-            static (handler, request, context, _) => handler.AnonymousLogout(request, context),
+            static (handler, request, context, meta) => handler.AnonymousLogout(request, context, meta),
             cancellationToken);
 
     [EventRoute(TransportEventType.IdentityOtpVerify, IdentityAccessContext)]
@@ -98,7 +98,7 @@ public static class IdentityAccessEventRouteProvider
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
         WithVerification(services, envelope, metadata,
-            static (handler, request, context) => handler.VerifyOtp(request, context),
+            static (handler, request, context, _) => handler.VerifyOtp(request, context),
             cancellationToken);
 
     [EventRoute(TransportEventType.IdentityMobileNumberValidate, IdentityAccessContext)]
@@ -108,7 +108,7 @@ public static class IdentityAccessEventRouteProvider
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
         WithVerification(services, envelope, metadata,
-            static (handler, request, context) => handler.ValidateMobileNumber(request, context),
+            static (handler, request, context, meta) => handler.ValidateMobileNumber(request, context, meta),
             cancellationToken);
 
     [EventRoute(TransportEventType.IdentityMobileNumberAvailability, IdentityAccessContext)]
@@ -118,7 +118,7 @@ public static class IdentityAccessEventRouteProvider
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
         WithVerification(services, envelope, metadata,
-            static (handler, request, context) => handler.CheckMobileNumberAvailability(request, context),
+            static (handler, request, context, meta) => handler.CheckMobileNumberAvailability(request, context, meta),
             cancellationToken);
 
     [EventRoute(TransportEventType.IdentityRecoveryMobileVerify, IdentityAccessContext)]
@@ -128,7 +128,7 @@ public static class IdentityAccessEventRouteProvider
         EventMetadata metadata,
         CancellationToken cancellationToken) =>
         WithVerification(services, envelope, metadata,
-            static (handler, request, context) => handler.RecoverySecretKeyMobileVerification(request, context),
+            static (handler, request, context, _) => handler.RecoverySecretKeyMobileVerification(request, context),
             cancellationToken);
 
     [EventRoute(TransportEventType.IdentityProfileNameAvailability, IdentityAccessContext, IdempotencyRequired = true)]
@@ -179,14 +179,14 @@ public static class IdentityAccessEventRouteProvider
 
         SecureEnvelopeStreamAdapter streamAdapter = new(responseStream, metadata);
 
-        await handler.InitiateVerification(envelope, streamAdapter, context);
+        await handler.InitiateVerification(envelope, streamAdapter, context, metadata);
     }
 
     private static async Task<Result<IMessage, FailureBase>> WithMembership(
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
-        Func<MembershipEventHandler, SecureEnvelope, GrpcCallContext, CancellationToken, Task<SecureEnvelope>> invoke,
+        Func<MembershipEventHandler, SecureEnvelope, GrpcCallContext, EventMetadata, Task<SecureEnvelope>> invoke,
         CancellationToken cancellationToken)
     {
         uint connectId = GrpcCallContextFactory.ResolveConnectId(metadata);
@@ -196,7 +196,7 @@ public static class IdentityAccessEventRouteProvider
         MembershipEventHandler handler =
             ActivatorUtilities.CreateInstance<MembershipEventHandler>(scope.ServiceProvider);
 
-        SecureEnvelope response = await invoke(handler, envelope, context, cancellationToken);
+        SecureEnvelope response = await invoke(handler, envelope, context, metadata);
         return Result<IMessage, FailureBase>.Ok(response);
     }
 
@@ -204,7 +204,7 @@ public static class IdentityAccessEventRouteProvider
         IServiceProvider services,
         SecureEnvelope envelope,
         EventMetadata metadata,
-        Func<VerificationFlowHandler, SecureEnvelope, GrpcCallContext, Task<SecureEnvelope>> invoke,
+        Func<VerificationFlowHandler, SecureEnvelope, GrpcCallContext, EventMetadata, Task<SecureEnvelope>> invoke,
         CancellationToken cancellationToken)
     {
         uint connectId = GrpcCallContextFactory.ResolveConnectId(metadata);
@@ -213,7 +213,7 @@ public static class IdentityAccessEventRouteProvider
             metadata, connectId, cancellationToken);
         VerificationFlowHandler handler =
             ActivatorUtilities.CreateInstance<VerificationFlowHandler>(scope.ServiceProvider);
-        SecureEnvelope response = await invoke(handler, envelope, context);
+        SecureEnvelope response = await invoke(handler, envelope, context, metadata);
         return Result<IMessage, FailureBase>.Ok(response);
     }
 

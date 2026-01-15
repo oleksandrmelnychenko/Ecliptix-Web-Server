@@ -11,11 +11,11 @@ using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.IdentityAccess.Domain.Services;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Membership;
+using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel.Failures.Sodium;
 using Ecliptix.SharedKernel.Grpc;
-using Ecliptix.SharedKernel.Grpc.Utilities;
 using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
 using Ecliptix.SharedKernel.KeyDerivation;
 using Google.Protobuf;
@@ -51,7 +51,7 @@ public sealed class MembershipEventHandler(
     private readonly SecurityConfiguration _securityConfig = securityConfig.Value;
 
     public async Task<SecureEnvelope> OpaqueSignInInitRequest(SecureEnvelope request,
-        ServerCallContext context)
+        ServerCallContext context, EventMetadata metadata)
     {
         return await _service.ExecuteEncryptedOperationAsync<OpaqueSignInInitRequest, OpaqueSignInInitResponse>(
             request, context,
@@ -85,7 +85,7 @@ public sealed class MembershipEventHandler(
                     });
                 }
 
-                Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+                Guid deviceId = new(metadata.Client.DeviceId.Span);
 
                 SignInMembershipCommand signInEvent = new(
                     connectId,
@@ -505,7 +505,7 @@ public sealed class MembershipEventHandler(
     private async Task<Result<LogoutResponse, FailureBase>> ProcessLogoutAsync(
         LogoutRequest message,
         uint connectId,
-        ServerCallContext context,
+        EventMetadata metadata,
         CancellationToken cancellationToken)
     {
         Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipId);
@@ -536,7 +536,7 @@ public sealed class MembershipEventHandler(
         }
 
         LogoutReason reason = ParseLogoutReason(message.LogoutReason);
-        Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+        Guid deviceId = new(metadata.Client.DeviceId.Span);
 
         await RecordLogoutAuditAsync(membershipId, accountId, deviceId, reason, cancellationToken);
 
@@ -638,7 +638,7 @@ public sealed class MembershipEventHandler(
         });
     }
 
-    public async Task<SecureEnvelope> Logout(SecureEnvelope request, ServerCallContext context)
+    public async Task<SecureEnvelope> Logout(SecureEnvelope request, ServerCallContext context, EventMetadata metadata)
     {
         SecureEnvelope response = await _service.ExecuteEncryptedOperationAsync<LogoutRequest, LogoutResponse>(
             request, context,
@@ -646,7 +646,7 @@ public sealed class MembershipEventHandler(
             {
                 try
                 {
-                    return await ProcessLogoutAsync(message, connectId, context, cancellationToken);
+                    return await ProcessLogoutAsync(message, connectId, metadata, cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -751,7 +751,7 @@ public sealed class MembershipEventHandler(
     private async Task<Result<LogoutResponse, FailureBase>> ProcessAnonymousLogoutAsync(
         LogoutRequest message,
         uint connectId,
-        ServerCallContext context,
+        EventMetadata metadata,
         CancellationToken cancellationToken)
     {
         Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipId);
@@ -784,7 +784,7 @@ public sealed class MembershipEventHandler(
         }
 
         LogoutReason reason = ParseLogoutReason(message.LogoutReason);
-        Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+        Guid deviceId = new(metadata.Client.DeviceId.Span);
 
         Log.Information(
             "[LOGOUT-ANONYMOUS] Processing anonymous logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
@@ -870,7 +870,7 @@ public sealed class MembershipEventHandler(
         return Result<Unit, LogoutResponse>.Ok(Unit.Value);
     }
 
-    public async Task<SecureEnvelope> AnonymousLogout(SecureEnvelope request, ServerCallContext context)
+    public async Task<SecureEnvelope> AnonymousLogout(SecureEnvelope request, ServerCallContext context, EventMetadata metadata)
     {
         SecureEnvelope response =
             await _service.ExecuteEncryptedOperationAsync<LogoutRequest, LogoutResponse>(
@@ -879,7 +879,7 @@ public sealed class MembershipEventHandler(
                 {
                     try
                     {
-                        return await ProcessAnonymousLogoutAsync(message, connectId, context, cancellationToken);
+                        return await ProcessAnonymousLogoutAsync(message, connectId, metadata, cancellationToken);
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                     {
@@ -904,5 +904,4 @@ public sealed class MembershipEventHandler(
     public Task<SecureEnvelope> GetMasterKeyShares(SecureEnvelope _, ServerCallContext __) =>
         Task.FromException<SecureEnvelope>(new RpcException(new Status(StatusCode.Unimplemented,
             "GetMasterKeyShares is not implemented in gateway mode")));
-
 }

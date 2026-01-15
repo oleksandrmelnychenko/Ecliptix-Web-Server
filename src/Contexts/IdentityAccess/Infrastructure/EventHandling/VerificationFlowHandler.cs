@@ -12,10 +12,11 @@ using Ecliptix.Protobuf.Membership;
 using Google.Protobuf;
 using Grpc.Core;
 using Ecliptix.SharedKernel.Grpc;
-using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
 using Ecliptix.SharedKernel.Grpc.Utilities;
+using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
 using Serilog;
 using Ecliptix.SharedKernel.Configuration;
+using Ecliptix.Protobuf.Transport.Common;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -34,7 +35,8 @@ public sealed class VerificationFlowHandler(
     public async Task InitiateVerification(
         SecureEnvelope request,
         IServerStreamWriter<SecureEnvelope> responseStream,
-        ServerCallContext context)
+        ServerCallContext context,
+        EventMetadata metadata)
     {
         Result<SecureEnvelope, FailureBase> result =
             await _service
@@ -64,7 +66,7 @@ public sealed class VerificationFlowHandler(
 
                         Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context, linkedCancellationTokenSource.Token);
 
-                        Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+                        Guid deviceId = new(metadata.Client.DeviceId.Span);
 
                         Task<Result<Unit, VerificationFlowFailure>> initiationTask =
                             _verificationFlowManagerActor.Ask<Result<Unit, VerificationFlowFailure>>(
@@ -109,7 +111,7 @@ public sealed class VerificationFlowHandler(
         }
     }
 
-    public async Task<SecureEnvelope> ValidateMobileNumber(SecureEnvelope request, ServerCallContext context) =>
+    public async Task<SecureEnvelope> ValidateMobileNumber(SecureEnvelope request, ServerCallContext context, EventMetadata metadata) =>
         await _service.ExecuteEncryptedOperationAsync<MobileNumberValidateRequest, MobileNumberValidateResponse>(
             request, context,
             async (message, _, _, cancellationToken) =>
@@ -126,7 +128,7 @@ public sealed class VerificationFlowHandler(
 
                 if (phoneValidationResult.IsValid)
                 {
-                    Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+                    Guid deviceId = new(metadata.Client.DeviceId.Span);
 
                     ValidateMobileNumberCommand ensureMobileNumberEvent = new(
                         phoneValidationResult.ParsedMobileNumberE164.Value!,
@@ -223,12 +225,12 @@ public sealed class VerificationFlowHandler(
                 }
             });
 
-    public async Task<SecureEnvelope> CheckMobileNumberAvailability(SecureEnvelope request, ServerCallContext context) =>
+    public async Task<SecureEnvelope> CheckMobileNumberAvailability(SecureEnvelope request, ServerCallContext context, EventMetadata metadata) =>
         await _service.ExecuteEncryptedOperationAsync<MobileNumberAvailabilityRequest, MobileNumberAvailabilityResponse>(
             request, context,
             async (message, _, _, cancellationToken) =>
             {
-                Guid deviceId = DeviceIdResolver.ResolveDeviceIdFromContext(context);
+                Guid deviceId = new(metadata.Client.DeviceId.Span);
 
                 ExistsMobileNumberQuery actorEvent = new(
                     Helpers.FromByteStringToGuid(message.MobileNumberId),
