@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Akka.Actor;
+using Ecliptix.SharedKernel.Logging;
 using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
@@ -88,7 +89,7 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
 
             if (membership == null)
             {
-                Log.Warning("[PASSWORD-RECOVERY-VALIDATION] Membership not found: {MembershipId}",
+                Log.Warning(LogTags.PasswordRecovery.Validation + " Membership not found: {MembershipId}",
                     command.MembershipIdentifier);
                 return Result<PasswordRecoveryFlowValidationResponse, SecretKeyRecoveryFailure>.Ok(
                     new PasswordRecoveryFlowValidationResponse(false, null));
@@ -112,14 +113,14 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
                 {
                     TimeSpan elapsed = DateTimeOffset.UtcNow - existingFlow.UpdatedAt;
                     Log.Warning(
-                        "[PASSWORD-RECOVERY-VALIDATION] Recovery flow invalid. MembershipId: {MembershipId}, FlowId: {FlowId}, Purpose: {Purpose}, Status: {Status}, ElapsedMinutes: {Minutes}",
+                        LogTags.PasswordRecovery.Validation + " Recovery flow invalid. MembershipId: {MembershipId}, FlowId: {FlowId}, Purpose: {Purpose}, Status: {Status}, ElapsedMinutes: {Minutes}",
                         command.MembershipIdentifier, existingFlow.UniqueId, existingFlow.Purpose, existingFlow.Status,
                         elapsed.TotalMinutes);
                 }
                 else
                 {
                     Log.Warning(
-                        "[PASSWORD-RECOVERY-VALIDATION] No verification flow found for membership: {MembershipId}, ExpectedFlowId: {FlowId}",
+                        LogTags.PasswordRecovery.Validation + " No verification flow found for membership: {MembershipId}, ExpectedFlowId: {FlowId}",
                         command.MembershipIdentifier, membership.VerificationFlowId);
                 }
 
@@ -128,7 +129,7 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
             }
 
             Log.Information(
-                "[PASSWORD-RECOVERY-VALIDATION] Valid recovery flow found. MembershipId: {MembershipId}, FlowId: {FlowId}",
+                LogTags.PasswordRecovery.Validation + " Valid recovery flow found. MembershipId: {MembershipId}, FlowId: {FlowId}",
                 command.MembershipIdentifier, recoveryFlow.UniqueId);
 
             return Result<PasswordRecoveryFlowValidationResponse, SecretKeyRecoveryFailure>.Ok(
@@ -136,7 +137,7 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "[PASSWORD-RECOVERY-VALIDATION] Exception during validation for MembershipId: {MembershipId}",
+            Log.Error(ex, LogTags.PasswordRecovery.Validation + " Exception during validation for MembershipId: {MembershipId}",
                 command.MembershipIdentifier);
             return Result<PasswordRecoveryFlowValidationResponse, SecretKeyRecoveryFailure>.Err(
                 SecretKeyRecoveryFailure.VerificationFailed(ex.Message));
@@ -157,7 +158,7 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
             if (membership == null)
             {
                 await RollbackSilentlyAsync(transaction);
-                Log.Warning("[PASSWORD-RECOVERY-EXPIRE] Membership not found: {MembershipId}",
+                Log.Warning(LogTags.PasswordRecovery.Expire + " Membership not found: {MembershipId}",
                     command.MembershipIdentifier);
                 return Result<Unit, SecretKeyRecoveryFailure>.Ok(Unit.Value);
             }
@@ -174,13 +175,13 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
             if (rowsAffected > 0)
             {
                 Log.Information(
-                    "[PASSWORD-RECOVERY-EXPIRE] Expired {Count} recovery flow(s) for MembershipId: {MembershipId}, FlowId: {FlowId}",
+                    LogTags.PasswordRecovery.Expire + " Expired {Count} recovery flow(s) for MembershipId: {MembershipId}, FlowId: {FlowId}",
                     rowsAffected, command.MembershipIdentifier, membership.VerificationFlowId);
             }
             else
             {
                 Log.Warning(
-                    "[PASSWORD-RECOVERY-EXPIRE] No verified recovery flows to expire for MembershipId: {MembershipId}, FlowId: {FlowId}",
+                    LogTags.PasswordRecovery.Expire + " No verified recovery flows to expire for MembershipId: {MembershipId}, FlowId: {FlowId}",
                     command.MembershipIdentifier, membership.VerificationFlowId);
             }
 
@@ -190,7 +191,7 @@ public class PasswordRecoveryPersistorActor : PersistorBase<SecretKeyRecoveryFai
         catch (Exception ex)
         {
             await RollbackSilentlyAsync(transaction);
-            Log.Error(ex, "[PASSWORD-RECOVERY-EXPIRE] Exception while expiring flows for MembershipId: {MembershipId}",
+            Log.Error(ex, LogTags.PasswordRecovery.Expire + " Exception while expiring flows for MembershipId: {MembershipId}",
                 command.MembershipIdentifier);
             return Result<Unit, SecretKeyRecoveryFailure>.Err(
                 SecretKeyRecoveryFailure.PersistorAccess(ex.Message, ex));

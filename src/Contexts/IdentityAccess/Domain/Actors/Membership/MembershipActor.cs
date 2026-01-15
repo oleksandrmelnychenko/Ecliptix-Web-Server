@@ -59,14 +59,6 @@ internal sealed class PendingOpaqueContext
 public sealed class MembershipActor : ReceivePersistentActor
 {
     private const string PersistenceIdValue = "membership-actor-v2";
-    private static readonly TimeSpan PendingPasswordRecoveryTimeout = TimeSpan.FromMinutes(15);
-    private const int OpaqueAccountIdLength = 16;
-    private const int OpaqueMaskingKeyLength = 32;
-
-    private const int MaxPendingSignIns = 1000;
-    private const int MaxPendingMaskingKeys = 1000;
-    private const int MaxPendingSessionKeys = 1000;
-    private const int MaxPendingRecoveryTimestamps = 1000;
 
     private readonly ILocalizationService _localizationService;
     private readonly IActorRef _membershipPersistor;
@@ -351,7 +343,7 @@ public sealed class MembershipActor : ReceivePersistentActor
                 command.MembershipIdentifier,
                 accountId);
         }
-        byte[] maskingKeyForStorage = new byte[OpaqueMaskingKeyLength];
+        byte[] maskingKeyForStorage = new byte[MembershipActorLimits.Opaque.MaskingKeyLength];
 
         if (command.PeerRegistrationRecord is null ||
             command.PeerRegistrationRecord.Length != OpaqueConstants.REGISTRATION_RECORD_LENGTH)
@@ -482,11 +474,11 @@ public sealed class MembershipActor : ReceivePersistentActor
         }
 
         TimeSpan elapsed = now - initTimestamp;
-        if (elapsed > PendingPasswordRecoveryTimeout)
+        if (elapsed > MembershipActorLimits.PasswordRecovery.DefaultTimeout)
         {
             Log.Warning(
                 "[PASSWORD-RECOVERY-COMPLETE] Password recovery timeout exceeded for membership {0}. Elapsed: {1}, Max: {2}",
-                command.MembershipIdentifier, elapsed, PendingPasswordRecoveryTimeout);
+                command.MembershipIdentifier, elapsed, MembershipActorLimits.PasswordRecovery.DefaultTimeout);
             ClearPendingRecoverySession(command.MembershipIdentifier);
             replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Err(
                 SecretKeyRecoveryFailure.TokenExpired(
@@ -526,7 +518,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             return;
         }
 
-        byte[] maskingKeyForStorage = new byte[OpaqueMaskingKeyLength];
+        byte[] maskingKeyForStorage = new byte[MembershipActorLimits.Opaque.MaskingKeyLength];
 
         Log.Info("[PASSWORD-RECOVERY] Credentials will be updated. Master key will be derived on next auth. MembershipId: {0}", command.MembershipIdentifier);
 
@@ -641,9 +633,9 @@ public sealed class MembershipActor : ReceivePersistentActor
         if (_pendingRecoveryTimestamps.TryGetValue(command.MembershipIdentifier, out DateTimeOffset existingTimestamp))
         {
             TimeSpan elapsed = DateTimeOffset.UtcNow - existingTimestamp;
-            if (elapsed < PendingPasswordRecoveryTimeout)
+            if (elapsed < MembershipActorLimits.PasswordRecovery.DefaultTimeout)
             {
-                int remainingSeconds = (int)(PendingPasswordRecoveryTimeout - elapsed).TotalSeconds;
+                int remainingSeconds = (int)(MembershipActorLimits.PasswordRecovery.DefaultTimeout - elapsed).TotalSeconds;
                 Log.Warning(
                     "Password recovery already in progress for membership {0}. Time remaining: {1}s",
                     command.MembershipIdentifier, remainingSeconds);
@@ -1418,7 +1410,7 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private static Guid? TryParseAccountId(byte[] pendingAccountIdBytes)
     {
-        if (pendingAccountIdBytes.Length != OpaqueAccountIdLength)
+        if (pendingAccountIdBytes.Length != MembershipActorLimits.Opaque.AccountIdLength)
         {
             return null;
         }
@@ -1517,7 +1509,7 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private void EnforceSignInCapacity()
     {
-        if (_pendingSignIns.Count < MaxPendingSignIns)
+        if (_pendingSignIns.Count < MembershipActorLimits.QueueCapacity.MaxPendingSignIns)
         {
             return;
         }
@@ -1536,7 +1528,7 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private void EnforceMaskingKeyCapacity()
     {
-        if (_pendingMaskingKeys.Count < MaxPendingMaskingKeys)
+        if (_pendingMaskingKeys.Count < MembershipActorLimits.QueueCapacity.MaxPendingMaskingKeys)
         {
             return;
         }
@@ -1551,7 +1543,7 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private void EnforceSessionKeyCapacity()
     {
-        if (_pendingSessionKeys.Count < MaxPendingSessionKeys)
+        if (_pendingSessionKeys.Count < MembershipActorLimits.QueueCapacity.MaxPendingSessionKeys)
         {
             return;
         }
@@ -1571,7 +1563,7 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private void EnforceRecoveryTimestampCapacity()
     {
-        if (_pendingRecoveryTimestamps.Count < MaxPendingRecoveryTimestamps)
+        if (_pendingRecoveryTimestamps.Count < MembershipActorLimits.QueueCapacity.MaxPendingRecoveryTimestamps)
         {
             return;
         }

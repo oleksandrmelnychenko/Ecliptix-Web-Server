@@ -33,13 +33,6 @@ namespace Ecliptix.Core.Infrastructure.Grpc.Routing.Providers;
 public static class DeviceProvisioningEventRouteProvider
 {
     private const EventContext DeviceProvisioningContext = EventContext.DeviceProvisioning;
-    private const int ProofLength = 32;
-    private const int MinNonceLength = 16;
-    private const int MaxNonceLength = 64;
-    private const int ServerNonceLength = 32;
-    private const string AuthenticatedEstablishReplayScope = "device_provisioning.auth_establish";
-    private static readonly TimeSpan AuthenticatedEstablishReplayTtl = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan ServerNonceTtl = TimeSpan.FromMinutes(5);
 
     private static ReadOnlySpan<byte> AuthenticatedEstablishProofContext =>
         "Ecliptix.AuthenticatedEstablish.v1"u8;
@@ -239,7 +232,7 @@ public static class DeviceProvisioningEventRouteProvider
 
             replayKey = $"{ctx.AccountId:N}:{ctx.IdempotencyKey}";
             replayClaimed = replayProtection.TryBegin(
-                AuthenticatedEstablishReplayScope, replayKey, AuthenticatedEstablishReplayTtl);
+                DeviceProvisioningConstants.ReplayProtection.AuthenticatedEstablishScope, replayKey, DeviceProvisioningConstants.ReplayProtection.AuthenticatedEstablishTtl);
             if (!replayClaimed)
             {
                 return Result<IMessage, FailureBase>.Err(
@@ -313,7 +306,7 @@ public static class DeviceProvisioningEventRouteProvider
         {
             if (replayClaimed && !success && replayKey != null)
             {
-                replayProtection.Release(AuthenticatedEstablishReplayScope, replayKey);
+                replayProtection.Release(DeviceProvisioningConstants.ReplayProtection.AuthenticatedEstablishScope, replayKey);
             }
 
             if (rootKey != null)
@@ -384,8 +377,8 @@ public static class DeviceProvisioningEventRouteProvider
 
         Log.Debug("[GetServerPublicKeys] Got Kyber public key, length: {Length}", kyberPublicKeyResult.Unwrap().Length);
 
-        byte[] serverNonce = RandomNumberGenerator.GetBytes(ServerNonceLength);
-        nonceStore.Store(connectId, serverNonce, ServerNonceTtl);
+        byte[] serverNonce = RandomNumberGenerator.GetBytes(DeviceProvisioningConstants.Nonce.ServerLength);
+        nonceStore.Store(connectId, serverNonce, DeviceProvisioningConstants.ReplayProtection.ServerNonceTtl);
 
         ServerPublicKeysResponse response = new()
         {
@@ -495,19 +488,19 @@ public static class DeviceProvisioningEventRouteProvider
                 SecureChannelFailure.InvalidPayload("PubKeyExchange is required"));
         }
 
-        if (crypto.ClientNonce.Length is < MinNonceLength or > MaxNonceLength)
+        if (crypto.ClientNonce.Length is < DeviceProvisioningConstants.Nonce.MinLength or > DeviceProvisioningConstants.Nonce.MaxLength)
         {
             return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
                 SecureChannelFailure.InvalidPayload("ClientNonce has invalid length"));
         }
 
-        if (crypto.ServerNonce.Length is < MinNonceLength or > MaxNonceLength)
+        if (crypto.ServerNonce.Length is < DeviceProvisioningConstants.Nonce.MinLength or > DeviceProvisioningConstants.Nonce.MaxLength)
         {
             return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
                 SecureChannelFailure.InvalidPayload("ServerNonce has invalid length"));
         }
 
-        if (crypto.Proof.Length != ProofLength)
+        if (crypto.Proof.Length != DeviceProvisioningConstants.Proof.Length)
         {
             return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
                 SecureChannelFailure.InvalidPayload("Proof has invalid length"));

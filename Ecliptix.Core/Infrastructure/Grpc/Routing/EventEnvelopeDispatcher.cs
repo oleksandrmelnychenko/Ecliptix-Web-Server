@@ -12,15 +12,7 @@ public sealed class EventEnvelopeDispatcher(
     IEventRouteResolver resolver,
     ILocalizationService localizationService)
 {
-    private static readonly Regex IdempotencyPattern = new("^[A-Za-z0-9._:-]{1,128}$", RegexOptions.Compiled);
-    private const int MaxEventIdLength = 128;
-    private const int MaxRequestIdLength = 128;
-    private const int MaxPlatformLength = 64;
-    private const int MaxVersionLength = 32;
-    private const int MaxAppDeviceLength = 128;
-    private const int MaxApplicationInstanceLength = 128;
-    private const int MaxLocaleLength = 16;
-    private const int MaxTenantLength = 64;
+    private static readonly Regex IdempotencyPattern = new($"^[A-Za-z0-9._:-]{{1,{EventMetadataLimits.MaxIdempotencyKeyLength}}}$", RegexOptions.Compiled);
 
     public Task<EventEnvelope> DispatchAsync(EventEnvelope envelope, CancellationToken cancellationToken)
     {
@@ -182,14 +174,14 @@ public sealed class EventEnvelopeDispatcher(
     private static Result<DispatchContext, DispatchFailure> ValidateFieldLengths(DispatchContext dispatchContext)
     {
         return Ok(dispatchContext)
-            .Bind(c => ValidateLength(c, c.Metadata.Identity?.EventId, MaxEventIdLength, DispatcherErrorCodes.EventIdTooLong))
-            .Bind(c => ValidateLength(c, c.Metadata.Client?.RequestId, MaxRequestIdLength, DispatcherErrorCodes.RequestIdTooLong))
-            .Bind(c => ValidateLength(c, c.Metadata.Client?.Platform, MaxPlatformLength, DispatcherErrorCodes.PlatformTooLong))
-            .Bind(c => ValidateLength(c, c.Metadata.Client?.Version, MaxVersionLength, DispatcherErrorCodes.VersionTooLong))
-            .Bind(c => ValidateByteStringLength(c, c.Metadata.Client?.DeviceId, MaxAppDeviceLength, DispatcherErrorCodes.AppDeviceIdTooLong))
-            .Bind(c => ValidateByteStringLength(c, c.Metadata.Client?.ApplicationInstanceId, MaxApplicationInstanceLength, DispatcherErrorCodes.ApplicationInstanceIdTooLong))
-            .Bind(c => ValidateLength(c, c.Metadata.Client?.Locale, MaxLocaleLength, DispatcherErrorCodes.LocaleTooLong))
-            .Bind(c => ValidateLength(c, c.Metadata.Client?.Tenant, MaxTenantLength, DispatcherErrorCodes.TenantTooLong));
+            .Bind(c => ValidateLength(c, c.Metadata.Identity?.EventId, EventMetadataLimits.MaxEventIdLength, DispatcherErrorCodes.EventIdTooLong))
+            .Bind(c => ValidateLength(c, c.Metadata.Client?.RequestId, EventMetadataLimits.MaxRequestIdLength, DispatcherErrorCodes.RequestIdTooLong))
+            .Bind(c => ValidateLength(c, c.Metadata.Client?.Platform, EventMetadataLimits.MaxPlatformLength, DispatcherErrorCodes.PlatformTooLong))
+            .Bind(c => ValidateLength(c, c.Metadata.Client?.Version, EventMetadataLimits.MaxVersionLength, DispatcherErrorCodes.VersionTooLong))
+            .Bind(c => ValidateByteStringLength(c, c.Metadata.Client?.DeviceId, EventMetadataLimits.MaxAppDeviceLength, DispatcherErrorCodes.AppDeviceIdTooLong))
+            .Bind(c => ValidateByteStringLength(c, c.Metadata.Client?.ApplicationInstanceId, EventMetadataLimits.MaxApplicationInstanceLength, DispatcherErrorCodes.ApplicationInstanceIdTooLong))
+            .Bind(c => ValidateLength(c, c.Metadata.Client?.Locale, EventMetadataLimits.MaxLocaleLength, DispatcherErrorCodes.LocaleTooLong))
+            .Bind(c => ValidateLength(c, c.Metadata.Client?.Tenant, EventMetadataLimits.MaxTenantLength, DispatcherErrorCodes.TenantTooLong));
     }
 
     private static Result<DispatchContext, DispatchFailure> ValidateLength(

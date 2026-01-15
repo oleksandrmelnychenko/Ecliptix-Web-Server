@@ -209,20 +209,12 @@ public sealed class ProtocolServerAdapter : IProtocolServer
     public Result<byte[], EcliptixProtocolFailure> BeginHandshake(
         ProtocolSession session,
         uint connectionId,
-        PubKeyExchangeType exchangeType)
-    {
-        return EnsureSessionActive(session, () => session.Handle.BeginHandshake(connectionId, exchangeType));
-    }
-
-    public Result<byte[], EcliptixProtocolFailure> BeginHandshakeWithKyber(
-        ProtocolSession session,
-        uint connectionId,
         PubKeyExchangeType exchangeType,
         byte[] peerKyberPublicKey)
     {
         return EnsureSessionActive(
             session,
-            () => session.Handle.BeginHandshakeWithKyber(connectionId, exchangeType, peerKyberPublicKey));
+            () => session.Handle.BeginHandshake(connectionId, exchangeType, peerKyberPublicKey));
     }
 
     public Result<Unit, EcliptixProtocolFailure> CompleteHandshake(
@@ -258,11 +250,6 @@ public sealed class ProtocolServerAdapter : IProtocolServer
     public Result<uint, EcliptixProtocolFailure> GetConnectionId(ProtocolSession session)
     {
         return EnsureSessionActive(session, () => session.Handle.GetConnectionId());
-    }
-
-    public Result<(uint Sending, uint Receiving), EcliptixProtocolFailure> GetChainIndices(ProtocolSession session)
-    {
-        return EnsureSessionActive(session, () => session.Handle.GetChainIndices());
     }
 
     public Result<uint?, EcliptixProtocolFailure> GetSelectedOpkId(ProtocolSession session)

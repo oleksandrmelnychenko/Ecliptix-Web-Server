@@ -150,14 +150,6 @@ internal static class NativeInterop
         IntPtr handle,
         uint connectionId,
         byte exchangeType,
-        IntPtr outHandshakeMessage,
-        out EppError outError);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EppErrorCode epp_server_begin_handshake_with_peer_kyber(
-        IntPtr handle,
-        uint connectionId,
-        byte exchangeType,
         [In] byte[] peerKyberPublicKey,
         nuint peerKyberPublicKeyLength,
         IntPtr outHandshakeMessage,
@@ -205,13 +197,6 @@ internal static class NativeInterop
     internal static extern EppErrorCode epp_server_get_id(
         IntPtr handle,
         out uint outConnectionId,
-        out EppError outError);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EppErrorCode epp_server_get_chain_indices(
-        IntPtr handle,
-        out uint outSendingIndex,
-        out uint outReceivingIndex,
         out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

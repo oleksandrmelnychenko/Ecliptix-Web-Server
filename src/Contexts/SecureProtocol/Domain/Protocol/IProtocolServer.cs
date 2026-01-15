@@ -33,10 +33,6 @@ public interface IProtocolServer : IDisposable
     Result<byte[], EcliptixProtocolFailure> BeginHandshake(
         ProtocolSession session,
         uint connectionId,
-        PubKeyExchangeType exchangeType);
-    Result<byte[], EcliptixProtocolFailure> BeginHandshakeWithKyber(
-        ProtocolSession session,
-        uint connectionId,
         PubKeyExchangeType exchangeType,
         byte[] peerKyberPublicKey);
 
@@ -54,7 +50,6 @@ public interface IProtocolServer : IDisposable
 
     Result<bool, EcliptixProtocolFailure> HasConnection(ProtocolSession session);
     Result<uint, EcliptixProtocolFailure> GetConnectionId(ProtocolSession session);
-    Result<(uint Sending, uint Receiving), EcliptixProtocolFailure> GetChainIndices(ProtocolSession session);
     Result<uint?, EcliptixProtocolFailure> GetSelectedOpkId(ProtocolSession session);
 
     Result<byte[], EcliptixProtocolFailure> ExportState(ProtocolSession session);

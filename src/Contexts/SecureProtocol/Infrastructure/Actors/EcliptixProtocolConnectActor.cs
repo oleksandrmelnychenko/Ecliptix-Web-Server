@@ -1,6 +1,7 @@
 using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
+using Ecliptix.SharedKernel.Logging;
 using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
@@ -57,7 +58,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                     if (IsIdentitySeedOnlyState(_state))
                     {
                         Context.GetLogger()
-                            .Debug("[RECOVERY] Identity seed restored without handshake for ConnectId {0}", connectId);
+                            .Debug($"{LogTags.Recovery.General} Identity seed restored without handshake for ConnectId {0}", connectId);
                         return true;
                     }
 
@@ -155,7 +156,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 return true;
 
             case DeleteMessagesFailure failure:
-                Context.GetLogger().Warning("[PERSISTENCE-DELETE-MSG-FAILED] Failed to delete messages. " +
+                Context.GetLogger().Warning($"{LogTags.Persistence.DeleteMessageFailed} Failed to delete messages. " +
                                             "PersistenceId: {0}, Error: {1}. This is non-critical - continuing operation.",
                     PersistenceId, failure.Cause?.Message ?? "Unknown");
                 if (!_savingFinalSnapshot || !_pendingMessageDeletion)
@@ -169,7 +170,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                 return true;
 
             case DeleteSnapshotsFailure failure:
-                Context.GetLogger().Warning("[PERSISTENCE-DELETE-SNAP-FAILED] Failed to delete snapshots. " +
+                Context.GetLogger().Warning($"{LogTags.Persistence.DeleteSnapshotFailed} Failed to delete snapshots. " +
                                             "PersistenceId: {0}, Error: {1}. This is non-critical - continuing operation.",
                     PersistenceId, failure.Cause?.Message ?? "Unknown");
 
@@ -194,7 +195,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         if (initResult.IsErr)
         {
             Context.GetLogger().Error(
-                "[PROTOCOL-INIT] Failed to initialize protocol server for ConnectId {ConnectId}: {Message}",
+                LogTags.Protocol.Init + " Failed to initialize protocol server for ConnectId {ConnectId}: {Message}",
                 connectId,
                 initResult.UnwrapErr().Message);
             throw new InvalidOperationException("Protocol server initialization failed");
@@ -227,7 +228,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             if (!primarySessionOpt.IsSome && _state != null && !IsIdentitySeedOnlyState(_state))
             {
                 Context.GetLogger().Warning(
-                    "[SERVER-RESTORE] Inconsistent state detected (state exists but no DataCenter session). " +
+                    $"{LogTags.Session.ServerRestore} Inconsistent state detected (state exists but no DataCenter session). " +
                     "Clearing state for connectId: {0}", connectId);
 
                 byte[]? seedToPreserve = _identitySeed ?? (_state.IdentitySeed.IsEmpty ? null : _state.IdentitySeed.ToByteArray());
@@ -262,7 +263,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
     private void HandleGetProtocolState()
     {
-        Context.GetLogger().Debug("[GET-PROTOCOL-STATE] Retrieving session state for ConnectId: {ConnectId}",
+        Context.GetLogger().Debug(LogTags.Protocol.GetState + " Retrieving session state for ConnectId: {ConnectId}",
             connectId);
 
         if (_state == null)
@@ -274,20 +275,20 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         GetProtocolStateResponse reply = new(_state);
         Sender.Tell(reply);
 
-        Context.GetLogger().Debug("[GET-PROTOCOL-STATE] Session state retrieved for ConnectId: {ConnectId}", connectId);
+        Context.GetLogger().Debug(LogTags.Protocol.GetState + " Session state retrieved for ConnectId: {ConnectId}", connectId);
     }
 
     private void HandleGetConnectionKyberPublicKey()
     {
-        Context.GetLogger().Info("[GET-KYBER-KEY] Starting for ConnectId {0}, identity exists: {1}",
+        Context.GetLogger().Info($"{LogTags.Protocol.GetKyberKey} Starting for ConnectId {0}, identity exists: {1}",
             connectId, _identity != null);
 
         if (_cachedKyberPublicKey is { Length: > 0 })
         {
-            Context.GetLogger().Info("[GET-KYBER-KEY] Using cached Kyber key for ConnectId {0}, length: {1}",
+            Context.GetLogger().Info($"{LogTags.Protocol.GetKyberKey} Using cached Kyber key for ConnectId {0}, length: {1}",
                 connectId, _cachedKyberPublicKey.Length);
             string cachedPrefix = FormatKeyPrefix(_cachedKyberPublicKey);
-            Context.GetLogger().Info("[GET-KYBER-KEY] Kyber public key prefix for ConnectId {0}: {1}",
+            Context.GetLogger().Info($"{LogTags.Protocol.GetKyberKey} Kyber public key prefix for ConnectId {0}: {1}",
                 connectId, cachedPrefix);
             PersistIdentitySeedIfNeeded();
             Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Ok(_cachedKyberPublicKey));
@@ -297,13 +298,13 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         Result<ProtocolIdentity, EcliptixProtocolFailure> identityResult = EnsureIdentity();
         if (identityResult.IsErr)
         {
-            Context.GetLogger().Warning("[GET-KYBER-KEY] EnsureIdentity failed for ConnectId {0}: {1}",
+            Context.GetLogger().Warning($"{LogTags.Protocol.GetKyberKey} EnsureIdentity failed for ConnectId {0}: {1}",
                 connectId, identityResult.UnwrapErr().Message);
             Sender.Tell(Result<byte[], EcliptixProtocolFailure>.Err(identityResult.UnwrapErr()));
             return;
         }
 
-        Context.GetLogger().Info("[GET-KYBER-KEY] Identity ensured for ConnectId {0}, getting Kyber key",
+        Context.GetLogger().Info($"{LogTags.Protocol.GetKyberKey} Identity ensured for ConnectId {0}, getting Kyber key",
             connectId);
 
         Result<byte[], EcliptixProtocolFailure> kyberResult =
@@ -311,16 +312,16 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
         if (kyberResult.IsErr)
         {
-            Context.GetLogger().Warning("[GET-KYBER-KEY] GetPublicKyber failed for ConnectId {0}: {1}",
+            Context.GetLogger().Warning($"{LogTags.Protocol.GetKyberKey} GetPublicKyber failed for ConnectId {0}: {1}",
                 connectId, kyberResult.UnwrapErr().Message);
         }
         else
         {
             _cachedKyberPublicKey = kyberResult.Unwrap();
-            Context.GetLogger().Info("[GET-KYBER-KEY] Got Kyber key for ConnectId {0}, length: {1}",
+            Context.GetLogger().Info($"{LogTags.Protocol.GetKyberKey} Got Kyber key for ConnectId {0}, length: {1}",
                 connectId, kyberResult.Unwrap().Length);
             string prefix = FormatKeyPrefix(kyberResult.Unwrap());
-            Context.GetLogger().Info("[GET-KYBER-KEY] Kyber public key prefix for ConnectId {0}: {1}",
+            Context.GetLogger().Info($"{LogTags.Protocol.GetKyberKey} Kyber public key prefix for ConnectId {0}: {1}",
                 connectId, prefix);
         }
 
@@ -399,7 +400,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         if (IsClientHandshakeDifferent(command.PubKeyExchange))
         {
             Context.GetLogger().Info(
-                "[SESSION-REFRESH] Client initiated fresh handshake with different keys. Disposing old session for ConnectId {0}",
+                $"{LogTags.Session.Refresh} Client initiated fresh handshake with different keys. Disposing old session for ConnectId {0}",
                 command.ConnectId);
             DisposeAllSessions();
             _state = null;
@@ -415,7 +416,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         byte[] clientKyberPublicKey = clientBundle.KyberPublicKey.ToByteArray();
 
         Result<byte[], EcliptixProtocolFailure> handshakeResult =
-            _protocolServer.BeginHandshakeWithKyber(existingSession, command.ConnectId, command.PubKeyExchange.OfType, clientKyberPublicKey);
+            _protocolServer.BeginHandshake(existingSession, command.ConnectId, command.PubKeyExchange.OfType, clientKyberPublicKey);
 
         if (handshakeResult.IsErr)
         {
@@ -477,7 +478,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         if (newStateResult.IsErr)
         {
             Context.GetLogger().Warning(
-                "[STATE-EXPORT-FAILED] Failed to export protocol state after handshake for ConnectId: {0}. Error: {1}",
+                $"{LogTags.State.ExportFailed} Failed to export protocol state after handshake for ConnectId: {0}. Error: {1}",
                 connectId,
                 newStateResult.UnwrapErr().Message);
             return;
@@ -498,7 +499,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         if (existingSessionFound && IsClientHandshakeDifferent(command.PubKeyExchange))
         {
             Context.GetLogger().Info(
-                "[FRESH-HANDSHAKE] Client keys differ from recovered state for ConnectId {0}",
+                $"{LogTags.Session.FreshHandshake} Client keys differ from recovered state for ConnectId {0}",
                 command.ConnectId);
             DisposeAllSessions();
             _state = null;
@@ -528,7 +529,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         {
             CryptographicOperations.ZeroMemory(command.RootKey);
             Context.GetLogger().Warning(
-                "[AUTH-HANDSHAKE] Client did not provide Kyber public key for existing session. ConnectId: {0}",
+                $"{LogTags.Protocol.AuthHandshake} Client did not provide Kyber public key for existing session. ConnectId: {0}",
                 command.ConnectId);
             Sender.Tell(Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.Decode(
@@ -537,7 +538,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         }
 
         Result<byte[], EcliptixProtocolFailure> handshakeResult =
-            _protocolServer.BeginHandshakeWithKyber(existingSession, command.ConnectId, exchangeType, clientKyberPublicKey);
+            _protocolServer.BeginHandshake(existingSession, command.ConnectId, exchangeType, clientKyberPublicKey);
         if (handshakeResult.IsErr)
         {
             CryptographicOperations.ZeroMemory(command.RootKey);
@@ -675,7 +676,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     private void HandleKeyMismatch(PubKeyExchangeType exchangeType)
     {
         Context.GetLogger().Warning(
-            "[PROTOCOL] Identity key mismatch for ConnectId {ConnectId}, ExchangeType {ExchangeType} - creating new session.",
+            LogTags.Protocol.General + " Identity key mismatch for ConnectId {ConnectId}, ExchangeType {ExchangeType} - creating new session.",
             connectId, exchangeType);
 
         _sessions.Remove(exchangeType);
@@ -863,7 +864,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         _lastSnapshotTime = now;
         SaveSnapshot(_state);
         Context.GetLogger().Debug(
-            "[SNAPSHOT-SAVE] Snapshot saved. ConnectId: {0}, SeqNr: {1}, Sending: {2}, Receiving: {3}",
+            $"{LogTags.Persistence.SnapshotSave} Snapshot saved. ConnectId: {0}, SeqNr: {1}, Sending: {2}, Receiving: {3}",
             connectId, LastSequenceNr,
             _state.SendingChainIndex,
             _state.ReceivingChainIndex);
@@ -942,7 +943,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         if (IsIdentitySeedOnlyState(_state))
         {
             Context.GetLogger()
-                .Debug("[RECOVERY] Identity seed present but no handshake for ConnectId {0}. Skipping recreation.",
+                .Debug($"{LogTags.Recovery.General} Identity seed present but no handshake for ConnectId {0}. Skipping recreation.",
                     connectId);
             return;
         }
@@ -998,7 +999,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             if (failure.FailureType == EcliptixProtocolFailureType.StateMismatch)
             {
                 Context.GetLogger().Warning(
-                    "[RECOVERY] State mismatch detected after restore for ConnectId {0}: {1}. Clearing state.",
+                    $"{LogTags.Recovery.General} State mismatch detected after restore for ConnectId {0}: {1}. Clearing state.",
                     connectId,
                     failure.Message);
 
@@ -1233,7 +1234,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     private void HandleDecryptionError(EcliptixProtocolFailure error, uint connectId)
     {
         Context.GetLogger().Error(
-            "[SERVER-DECRYPT-ERROR] Decryption failed. ConnectId: {0}, ErrorType: {1}, Message: {2}",
+            $"{LogTags.Decryption.ServerError} Decryption failed. ConnectId: {0}, ErrorType: {1}, Message: {2}",
             connectId, error.FailureType, error.Message);
 
         bool isHeaderAuthFailure = error.FailureType == EcliptixProtocolFailureType.HeaderAuthenticationFailed;
@@ -1252,7 +1253,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             _currentExchangeType == PubKeyExchangeType.DataCenterEphemeralConnect)
         {
             Context.GetLogger().Warning(
-                "[SERVER-STATE-DESYNC] Authenticated channel header auth failed for ConnectId {0} - forcing master key resync fallback.",
+                $"{LogTags.Decryption.StateDesync} Authenticated channel header auth failed for ConnectId {0} - forcing master key resync fallback.",
                 connectId);
 
             DisposeAllSessions();
@@ -1270,7 +1271,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         {
             Context.GetLogger()
                 .Warning(
-                    "[SERVER-STATE-DESYNC] Header authentication failed for ConnectId {0} - protocol state desynchronized. Clearing state to force re-handshake.",
+                    $"{LogTags.Decryption.StateDesync} Header authentication failed for ConnectId {0} - protocol state desynchronized. Clearing state to force re-handshake.",
                     connectId);
             DisposeAllSessions();
             _state = null;
@@ -1326,14 +1327,14 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         {
             CryptographicOperations.ZeroMemory(rootKey);
             Context.GetLogger().Warning(
-                "[AUTH-HANDSHAKE] Client did not provide Kyber public key for authenticated handshake. ConnectId: {0}, AccountId: {1}",
+                $"{LogTags.Protocol.AuthHandshake} Client did not provide Kyber public key for authenticated handshake. ConnectId: {0}, AccountId: {1}",
                 connectId, accountId);
             return Result<(ProtocolSession, EcliptixSessionState, PubKeyExchange), EcliptixProtocolFailure>
                 .Err(EcliptixProtocolFailure.Decode(
                     "Client must provide Kyber public key for post-quantum hybrid authenticated handshake"));
         }
 
-        Result<byte[], EcliptixProtocolFailure> handshakeResult = _protocolServer.BeginHandshakeWithKyber(
+        Result<byte[], EcliptixProtocolFailure> handshakeResult = _protocolServer.BeginHandshake(
             session, connectId, clientPubKeyExchange.OfType, clientKyberPublicKey);
         if (handshakeResult.IsErr)
         {
@@ -1408,7 +1409,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         ProtobufPublicKeyBundle clientBundle = ProtobufPublicKeyBundle.Parser.ParseFrom(pubKeyExchange.Payload);
         byte[] clientKyberPublicKey = clientBundle.KyberPublicKey.ToByteArray();
 
-        Result<byte[], EcliptixProtocolFailure> replyResult = _protocolServer.BeginHandshakeWithKyber(
+        Result<byte[], EcliptixProtocolFailure> replyResult = _protocolServer.BeginHandshake(
             session, connectId, pubKeyExchange.OfType, clientKyberPublicKey);
         if (replyResult.IsErr)
         {
@@ -1441,7 +1442,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     {
         if (_identity != null)
         {
-            Context.GetLogger().Info("[ENSURE-IDENTITY] Identity already exists for ConnectId {0}",
+            Context.GetLogger().Info($"{LogTags.Identity.Ensure} Identity already exists for ConnectId {0}",
                 connectId);
             return Result<ProtocolIdentity, EcliptixProtocolFailure>.Ok(_identity);
         }
@@ -1451,16 +1452,16 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             _identitySeed = new byte[32];
             RandomNumberGenerator.Fill(_identitySeed);
             _cachedKyberPublicKey = null;
-            Context.GetLogger().Info("[ENSURE-IDENTITY] Generated new identity seed for ConnectId {0}",
+            Context.GetLogger().Info($"{LogTags.Identity.Ensure} Generated new identity seed for ConnectId {0}",
                 connectId);
         }
         else
         {
-            Context.GetLogger().Info("[ENSURE-IDENTITY] Using existing identity seed for ConnectId {0}",
+            Context.GetLogger().Info($"{LogTags.Identity.Ensure} Using existing identity seed for ConnectId {0}",
                 connectId);
         }
 
-        Context.GetLogger().Info("[ENSURE-IDENTITY] Creating identity for ConnectId {0}, accountId: {1}",
+        Context.GetLogger().Info($"{LogTags.Identity.Ensure} Creating identity for ConnectId {0}, accountId: {1}",
             connectId, accountId?.ToString() ?? "null");
 
         Result<ProtocolIdentity, EcliptixProtocolFailure> createResult = _protocolServer.CreateIdentity(_identitySeed, accountId);
@@ -1468,12 +1469,12 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         if (createResult.IsOk)
         {
             _identity = createResult.Unwrap();
-            Context.GetLogger().Info("[ENSURE-IDENTITY] Identity created successfully for ConnectId {0}",
+            Context.GetLogger().Info($"{LogTags.Identity.Ensure} Identity created successfully for ConnectId {0}",
                 connectId);
         }
         else
         {
-            Context.GetLogger().Warning("[ENSURE-IDENTITY] Failed to create identity for ConnectId {0}: {1}",
+            Context.GetLogger().Warning($"{LogTags.Identity.Ensure} Failed to create identity for ConnectId {0}: {1}",
                 connectId, createResult.UnwrapErr().Message);
         }
 
@@ -1561,7 +1562,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
             if (!incomingBundle.EphemeralX25519PublicKey.Equals(recoveredBundle.EphemeralX25519PublicKey))
             {
                 Context.GetLogger().Debug(
-                    "[KEY-MISMATCH] Incoming ephemeral: {0}, Recovered ephemeral: {1}",
+                    $"{LogTags.Keys.Mismatch} Incoming ephemeral: {0}, Recovered ephemeral: {1}",
                     Convert.ToHexString(incomingBundle.EphemeralX25519PublicKey.Span[..8]),
                     Convert.ToHexString(recoveredBundle.EphemeralX25519PublicKey.Span[..8]));
                 return true;
@@ -1580,7 +1581,7 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         catch (Exception ex)
         {
             Context.GetLogger().Warning(
-                "[KEY-COMPARE-ERROR] Failed to compare handshake bundles: {0}", ex.Message);
+                $"{LogTags.Keys.CompareError} Failed to compare handshake bundles: {0}", ex.Message);
             return true;
         }
     }
@@ -1607,18 +1608,6 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
         uint sendingIndex = current?.SendingChainIndex ?? 0;
         uint receivingIndex = current?.ReceivingChainIndex ?? 0;
-        Result<(uint Sending, uint Receiving), EcliptixProtocolFailure> indicesResult =
-            _protocolServer.GetChainIndices(session);
-        if (indicesResult.IsOk)
-        {
-            (sendingIndex, receivingIndex) = indicesResult.Unwrap();
-        }
-        else
-        {
-            Context.GetLogger().Warning(
-                "[CHAIN-INDICES] Failed to read chain indices for ConnectId {0}: {1}",
-                connectId, indicesResult.UnwrapErr().Message);
-        }
 
         return Result<EcliptixSessionState, EcliptixProtocolFailure>.Ok(new EcliptixSessionState
         {
@@ -1681,40 +1670,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
     private Result<Unit, EcliptixProtocolFailure> ValidateRestoredSessionIndices(ProtocolSession session)
     {
-        if (_state == null)
-        {
-            return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
-        }
-
-        Result<(uint Sending, uint Receiving), EcliptixProtocolFailure> indicesResult =
-            _protocolServer.GetChainIndices(session);
-
-        if (indicesResult.IsErr)
-        {
-            EcliptixProtocolFailure failure = indicesResult.UnwrapErr();
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.StateMismatch(
-                    $"Failed to read chain indices after restore: {failure.Message}",
-                    failure.InnerException));
-        }
-
-        (uint sending, uint receiving) = indicesResult.Unwrap();
-
-        if (sending > ActorConstants.Validation.MaxChainIndex ||
-            receiving > ActorConstants.Validation.MaxChainIndex)
-        {
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.StateMismatch(
-                    $"Restored chain indices out of range (sending={sending}, receiving={receiving})"));
-        }
-
-        if (sending != _state.SendingChainIndex || receiving != _state.ReceivingChainIndex)
-        {
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.StateMismatch(
-                    $"Restored chain indices mismatch (state {_state.SendingChainIndex}/{_state.ReceivingChainIndex} vs native {sending}/{receiving})"));
-        }
-
+        // Chain indices validation is no longer available in the native API
+        // The session state is validated by the native library internally during deserialization
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 

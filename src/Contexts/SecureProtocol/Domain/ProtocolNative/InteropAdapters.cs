@@ -370,7 +370,10 @@ public sealed class EcliptixProtocolSystem : IDisposable
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
-    public Result<byte[], EcliptixProtocolFailure> BeginHandshake(uint connectionId, PubKeyExchangeType exchangeType)
+    public Result<byte[], EcliptixProtocolFailure> BeginHandshake(
+        uint connectionId,
+        PubKeyExchangeType exchangeType,
+        byte[] peerKyberPublicKey)
     {
         ThrowIfDisposed();
 
@@ -379,37 +382,10 @@ public sealed class EcliptixProtocolSystem : IDisposable
             _handle,
             connectionId,
             (byte)exchangeType,
+            peerKyberPublicKey,
+            (nuint)peerKyberPublicKey.Length,
             bufferPtr,
             out Native.EppError error);
-
-        if (result != Native.EppErrorCode.Success)
-        {
-            string message = error.GetMessage();
-            Native.epp_error_free(ref error);
-            Native.epp_buffer_free(bufferPtr);
-            return Result<byte[], EcliptixProtocolFailure>.Err(ConvertError(result, message));
-        }
-
-        return CopyAndFree(bufferPtr);
-    }
-
-    public Result<byte[], EcliptixProtocolFailure> BeginHandshakeWithKyber(
-        uint connectionId,
-        PubKeyExchangeType exchangeType,
-        byte[] peerKyberPublicKey)
-    {
-        ThrowIfDisposed();
-
-        IntPtr bufferPtr = Native.epp_buffer_alloc(0);
-        Native.EppErrorCode result = Native
-            .epp_server_begin_handshake_with_peer_kyber(
-                _handle,
-                connectionId,
-                (byte)exchangeType,
-                peerKyberPublicKey,
-                (nuint)peerKyberPublicKey.Length,
-                bufferPtr,
-                out Native.EppError error);
 
         if (result != Native.EppErrorCode.Success)
         {
@@ -546,26 +522,6 @@ public sealed class EcliptixProtocolSystem : IDisposable
         }
 
         return Result<uint, EcliptixProtocolFailure>.Ok(connectionId);
-    }
-
-    public Result<(uint Sending, uint Receiving), EcliptixProtocolFailure> GetChainIndices()
-    {
-        ThrowIfDisposed();
-
-        Native.EppErrorCode result = Native.epp_server_get_chain_indices(
-            _handle,
-            out uint sendingIndex,
-            out uint receivingIndex,
-            out Native.EppError error);
-
-        if (result != Native.EppErrorCode.Success)
-        {
-            string message = error.GetMessage();
-            Native.epp_error_free(ref error);
-            return Result<(uint, uint), EcliptixProtocolFailure>.Err(ConvertError(result, message));
-        }
-
-        return Result<(uint, uint), EcliptixProtocolFailure>.Ok((sendingIndex, receivingIndex));
     }
 
     public Result<uint?, EcliptixProtocolFailure> GetSelectedOpkId()
