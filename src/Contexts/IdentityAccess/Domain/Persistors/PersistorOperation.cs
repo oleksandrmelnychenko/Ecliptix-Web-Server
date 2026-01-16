@@ -18,6 +18,7 @@ public enum PersistorOperation
     // Account operations
     CreateDefaultAccount,
     UpdateAccountSecureKey,
+    EnsureAccountMaskingKey,
     GetDefaultAccountId,
     GetAccountsByMembershipId,
 

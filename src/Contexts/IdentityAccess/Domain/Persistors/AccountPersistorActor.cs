@@ -1,6 +1,8 @@
 using System.Data;
 using System.Data.Common;
+using System.Security.Cryptography;
 using Akka.Actor;
+using Ecliptix.IdentityAccess.Domain.Actors;
 using Ecliptix.IdentityAccess.Domain.Actors.Membership;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
@@ -35,6 +37,10 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         ReceivePersistorCommand<UpdateAccountSecureKeyCommand, AccountSecureKeyUpdateResult>(
             UpdateAccountSecureKeyAsync,
             PersistorOperation.UpdateAccountSecureKey);
+
+        ReceivePersistorCommand<EnsureAccountMaskingKeyCommand, AccountMaskingKeyEnsureResult>(
+            EnsureAccountMaskingKeyAsync,
+            PersistorOperation.EnsureAccountMaskingKey);
 
         ReceivePersistorCommand<CreateDefaultAccountCommand, AccountCreationResult>(
             CreateDefaultAccountAsync,
@@ -75,7 +81,8 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
     private static async Task<Result<AccountSecureKeyUpdateResult, AccountFailure>> UpdateAccountSecureKeyAsync(
         EcliptixSchemaContext schemaContext, UpdateAccountSecureKeyCommand command, CancellationToken cancellationToken)
     {
-        await using IDbContextTransaction transaction = await schemaContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        await using IDbContextTransaction transaction =
+            await schemaContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         try
         {
             Option<MembershipEntity> membershipOpt =
@@ -92,7 +99,8 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
             AccountEntity account;
             if (command.AccountId.HasValue)
             {
-                Option<AccountEntity> accountOpt = await AccountQueries.GetAccountById(schemaContext, command.AccountId.Value);
+                Option<AccountEntity> accountOpt =
+                    await AccountQueries.GetAccountById(schemaContext, command.AccountId.Value);
                 if (!accountOpt.IsSome)
                 {
                     await transaction.RollbackAsync(cancellationToken);
@@ -178,10 +186,88 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         }
     }
 
+    private static async Task<Result<AccountMaskingKeyEnsureResult, AccountFailure>> EnsureAccountMaskingKeyAsync(
+        EcliptixSchemaContext schemaContext, EnsureAccountMaskingKeyCommand command,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (command.MaskingKey.Length != MembershipActorLimits.Opaque.MaskingKeyLength)
+            {
+                return Result<AccountMaskingKeyEnsureResult, AccountFailure>.Err(
+                    AccountFailure.ValidationFailed(
+                        $"Masking key must be {MembershipActorLimits.Opaque.MaskingKeyLength} bytes"));
+            }
+
+            Option<AccountEntity> accountOpt = await AccountQueries.GetAccountById(schemaContext, command.AccountId);
+            if (!accountOpt.IsSome)
+            {
+                return Result<AccountMaskingKeyEnsureResult, AccountFailure>.Err(
+                    AccountFailure.NotFoundById());
+            }
+
+            AccountEntity account = accountOpt.Value!;
+
+            Option<AccountSecureKeyAuthEntity> authOpt =
+                await AccountSecureKeyAuthQueries.GetPrimaryForAccount(schemaContext, account.UniqueId);
+
+            if (!authOpt.IsSome)
+            {
+                return Result<AccountMaskingKeyEnsureResult, AccountFailure>.Err(
+                    AccountFailure.ValidationFailed("Credentials not found for this account"));
+            }
+
+            AccountSecureKeyAuthEntity auth = authOpt.Value!;
+
+            bool needsUpdate = auth.MaskingKey.Length != command.MaskingKey.Length ||
+                               IsAllZero(auth.MaskingKey) ||
+                               !CryptographicOperations.FixedTimeEquals(auth.MaskingKey, command.MaskingKey);
+
+            int credentialsVersion = auth.CredentialsVersion;
+
+            if (needsUpdate)
+            {
+                await schemaContext.AccountSecureKeyAuths
+                    .Where(a => a.UniqueId == auth.UniqueId && !a.IsDeleted)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(a => a.MaskingKey, command.MaskingKey)
+                        .SetProperty(a => a.CredentialsVersion, a => a.CredentialsVersion + 1)
+                        .SetProperty(a => a.UpdatedAt, DateTimeOffset.UtcNow), cancellationToken);
+
+                credentialsVersion = auth.CredentialsVersion + 1;
+            }
+
+            return Result<AccountMaskingKeyEnsureResult, AccountFailure>.Ok(
+                new AccountMaskingKeyEnsureResult(
+                    credentialsVersion,
+                    needsUpdate));
+        }
+        catch (Exception ex)
+        {
+            return Result<AccountMaskingKeyEnsureResult, AccountFailure>.Err(
+                AccountFailure.CredentialUpdateFailed(ex));
+        }
+        finally
+        {
+            if (command.MaskingKey != null)
+            {
+                CryptographicOperations.ZeroMemory(command.MaskingKey);
+            }
+        }
+    }
+
+    private static bool IsAllZero(byte[] data)
+    {
+        byte accumulator = data.Aggregate<byte, byte>(0, (current, value) => (byte)(current | value));
+
+        return accumulator == 0;
+    }
+
     private static async Task<Result<AccountCreationResult, AccountFailure>> CreateDefaultAccountAsync(
         EcliptixSchemaContext schemaContext, CreateDefaultAccountCommand command, CancellationToken cancellationToken)
     {
-        await using IDbContextTransaction transaction = await schemaContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        await using IDbContextTransaction transaction =
+            await schemaContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         try
         {
             AccountEntity personalAccount = new()
@@ -269,7 +355,7 @@ public class AccountPersistorActor : PersistorBase<AccountFailure>
         }
         catch
         {
-
+            // ignored
         }
     }
 

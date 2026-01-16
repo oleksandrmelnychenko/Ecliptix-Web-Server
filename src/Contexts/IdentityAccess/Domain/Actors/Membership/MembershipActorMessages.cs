@@ -34,6 +34,11 @@ public record UpdateAccountSecureKeyCommand(
     Guid? AccountId = null,
     CancellationToken CancellationToken = default) : ICancellableActorEvent;
 
+public record EnsureAccountMaskingKeyCommand(
+    Guid AccountId,
+    byte[] MaskingKey,
+    CancellationToken CancellationToken = default) : ICancellableActorEvent;
+
 internal record CleanupExpiredPendingSignIns;
 
 public record SignInCompleteEvent(uint ConnectId, OpaqueSignInFinalizeRequest Request);

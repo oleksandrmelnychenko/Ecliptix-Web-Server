@@ -59,6 +59,7 @@ internal sealed class PendingOpaqueContext
 public sealed class MembershipActor : ReceivePersistentActor
 {
     private const string PersistenceIdValue = "membership-actor-v2";
+    private static ReadOnlySpan<byte> MaskingKeyInfo => "ecliptix-opaque-masking-key:v1"u8;
 
     private readonly ILocalizationService _localizationService;
     private readonly IActorRef _membershipPersistor;
@@ -1049,11 +1050,27 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         if (finalizeResponse.Result == OpaqueOperationResult.Succeeded &&
             sessionKeyHandle != null &&
-            !sessionKeyHandle.IsInvalid)
+            !sessionKeyHandle.IsInvalid &&
+            masterKeyHandle != null &&
+            !masterKeyHandle.IsInvalid)
         {
             if (state.ActiveAccountId.HasValue)
             {
-                await StoreMasterKeyIfNeeded(state.ActiveAccountId.Value, masterKeyHandle);
+                bool maskingKeyReady = await EnsureAccountMaskingKeyAsync(
+                    state.ActiveAccountId.Value,
+                    state.MembershipId,
+                    masterKeyHandle);
+                if (maskingKeyReady)
+                {
+                    await StoreMasterKeyIfNeeded(state.ActiveAccountId.Value, masterKeyHandle);
+                }
+                else
+                {
+                    Log.Error(
+                        "[MASKING-KEY] Failed to ensure masking key for account {0}. Master key shares not stored.",
+                        state.ActiveAccountId.Value);
+                    masterKeyHandle?.Dispose();
+                }
             }
             else
             {
@@ -1687,6 +1704,87 @@ public sealed class MembershipActor : ReceivePersistentActor
         {
             masterKeyHandle?.Dispose();
         }
+    }
+
+    private async Task<bool> EnsureAccountMaskingKeyAsync(
+        Guid accountId,
+        Guid membershipId,
+        SodiumSecureMemoryHandle masterKeyHandle)
+    {
+        Result<byte[], SodiumFailure> masterKeyReadResult = masterKeyHandle.ReadBytes(masterKeyHandle.Length);
+        if (masterKeyReadResult.IsErr)
+        {
+            Log.Error(
+                "[MASKING-KEY] Failed to read master key bytes for account {0}: {1}",
+                accountId,
+                masterKeyReadResult.UnwrapErr().Message);
+            return false;
+        }
+
+        byte[] masterKeyBytes = masterKeyReadResult.Unwrap();
+        try
+        {
+            byte[] maskingKey = DeriveMaskingKey(masterKeyBytes, accountId);
+            try
+            {
+                Result<AccountMaskingKeyEnsureResult, AccountFailure> updateResult =
+                    await _accountPersistor.Ask<Result<AccountMaskingKeyEnsureResult, AccountFailure>>(
+                        new EnsureAccountMaskingKeyCommand(accountId, maskingKey),
+                        CancellationToken.None);
+
+                if (updateResult.IsErr)
+                {
+                    Log.Error(
+                        "[MASKING-KEY] Failed to update masking key for MembershipId {0}, AccountId {1}: {2}",
+                        membershipId,
+                        accountId,
+                        updateResult.UnwrapErr().Message);
+                    return false;
+                }
+
+                AccountMaskingKeyEnsureResult result = updateResult.Unwrap();
+                if (result.Updated)
+                {
+                    Log.Info(
+                        "[MASKING-KEY] Updated masking key for AccountId {0}. NewVersion={1}",
+                        accountId,
+                        result.CredentialsVersion);
+                }
+                else
+                {
+                    Log.Debug(
+                        "[MASKING-KEY] Masking key already set for AccountId {0}. Version={1}",
+                        accountId,
+                        result.CredentialsVersion);
+                }
+
+                return true;
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(maskingKey);
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(masterKeyBytes);
+        }
+    }
+
+    private static byte[] DeriveMaskingKey(byte[] masterKeyBytes, Guid accountId)
+    {
+        byte[] maskingKey = new byte[MembershipActorLimits.Opaque.MaskingKeyLength];
+        Span<byte> salt = stackalloc byte[MembershipActorLimits.Opaque.AccountIdLength];
+        accountId.TryWriteBytes(salt);
+
+        HKDF.DeriveKey(
+            HashAlgorithmName.SHA256,
+            ikm: masterKeyBytes,
+            output: maskingKey,
+            salt: salt,
+            info: MaskingKeyInfo);
+
+        return maskingKey;
     }
 
 }
