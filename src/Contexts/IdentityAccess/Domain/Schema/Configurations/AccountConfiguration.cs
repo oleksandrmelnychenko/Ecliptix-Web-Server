@@ -52,8 +52,9 @@ public class AccountConfiguration : EntityBaseMap<AccountEntity>
             .HasFilter("is_deleted = false")
             .HasDatabaseName("IX_Accounts_Status");
 
+        // Default accounts must be Active (status = 2); non-default accounts can have any status
         builder.ToTable(t => t.HasCheckConstraint("CHK_Accounts_Default_Active",
-            "(is_default_account = false) OR (status != 2)"));
+            "(is_default_account = false) OR (status = 2)"));
 
         IndexBuilder<AccountEntity> idx = builder.HasIndex(e => e.MembershipId)
             .HasFilter("is_deleted = false AND status = 1");

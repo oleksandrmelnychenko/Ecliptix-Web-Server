@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Ecliptix.IdentityAccess.Domain;
+using Ecliptix.IdentityAccess.Domain.Schema.Auditing;
 using Ecliptix.IdentityAccess.Domain.Services;
 using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.SharedKernel;
@@ -313,6 +314,7 @@ public sealed class EventEnvelopeDispatcher(
 
         try
         {
+            using IDisposable? scope = BeginStatusChangeScope(dispatchContext.Metadata);
             Result<IMessage, FailureBase> result =
                 await dispatchContext.Route.HandleUnaryAsync(dispatchContext.Message!, dispatchContext.Metadata, cancellationToken);
 
@@ -347,6 +349,7 @@ public sealed class EventEnvelopeDispatcher(
 
         try
         {
+            using IDisposable? scope = BeginStatusChangeScope(dispatchContext.Metadata);
             await dispatchContext.Route.HandleServerStreamAsync(dispatchContext.Message!, dispatchContext.Metadata, responseStream, cancellationToken);
         }
         catch (Exception ex)
@@ -375,6 +378,7 @@ public sealed class EventEnvelopeDispatcher(
 
         try
         {
+            using IDisposable? scope = BeginStatusChangeScope(dispatchContext.Metadata);
             Result<IMessage, FailureBase> result =
                 await dispatchContext.Route.HandleClientStreamAsync(messageStream, dispatchContext.Metadata, cancellationToken);
 
@@ -410,6 +414,7 @@ public sealed class EventEnvelopeDispatcher(
 
         try
         {
+            using IDisposable? scope = BeginStatusChangeScope(dispatchContext.Metadata);
             await dispatchContext.Route.HandleBidiStreamAsync(messageStream, dispatchContext.Metadata, responseStream, cancellationToken);
         }
         catch (Exception ex)
@@ -439,6 +444,54 @@ public sealed class EventEnvelopeDispatcher(
             cancellationToken.ThrowIfCancellationRequested();
             yield return route.Deserialize(enumerator.Current.Payload.Memory);
         }
+    }
+
+    private static IDisposable? BeginStatusChangeScope(EventMetadata metadata)
+    {
+        StatusChangeContext context = BuildStatusChangeContext(metadata);
+        return StatusChangeContextAccessor.BeginScope(context);
+    }
+
+    private static StatusChangeContext BuildStatusChangeContext(EventMetadata metadata)
+    {
+        Guid? deviceId = null;
+        if (metadata.Client?.DeviceId != null &&
+            !metadata.Client.DeviceId.IsEmpty &&
+            Helpers.TryFromByteStringToGuid(metadata.Client.DeviceId, out Guid parsedDeviceId))
+        {
+            deviceId = parsedDeviceId;
+        }
+
+        string? correlationId = string.IsNullOrWhiteSpace(metadata.Identity?.CorrelationId)
+            ? metadata.Identity?.EventId
+            : metadata.Identity.CorrelationId;
+
+        Dictionary<string, string>? extraMetadata = null;
+        if (metadata.Identity?.Context is not null && metadata.Identity.Context != EventContext.Unspecified)
+        {
+            extraMetadata ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            extraMetadata["context"] = metadata.Identity.Context.ToString();
+        }
+
+        if (metadata.Identity?.DeliveryKind is not null && metadata.Identity.DeliveryKind != DeliveryKind.Unspecified)
+        {
+            extraMetadata ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            extraMetadata["delivery_kind"] = metadata.Identity.DeliveryKind.ToString();
+        }
+
+        if (metadata.Security?.ConnectId is > 0)
+        {
+            extraMetadata ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            extraMetadata["connect_id"] = metadata.Security.ConnectId.ToString();
+        }
+
+        return new StatusChangeContext
+        {
+            DeviceId = deviceId,
+            Source = metadata.Identity?.EventType.ToString(),
+            CorrelationId = correlationId,
+            Metadata = extraMetadata
+        };
     }
 
     private static Result<DispatchContext, DispatchFailure> SerializeResponse(DispatchContext dispatchContext)

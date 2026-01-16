@@ -144,7 +144,9 @@ static void ConfigureServices(WebApplicationBuilder builder)
                .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
                .EnableSensitiveDataLogging(isDevelopment)
                .EnableDetailedErrors(isDevelopment)
-               .AddInterceptors(new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor())
+               .AddInterceptors(
+                   new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor(),
+                   new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.StatusChangeInterceptor())
                .ConfigureWarnings(warnings =>
                    warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
     }, poolSize: 128);
@@ -158,7 +160,9 @@ static void ConfigureServices(WebApplicationBuilder builder)
                })
                .UseSnakeCaseNamingConvention()
                .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
-               .AddInterceptors(new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor())
+               .AddInterceptors(
+                   new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor(),
+                   new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.StatusChangeInterceptor())
                .ConfigureWarnings(warnings =>
                    warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
     });
