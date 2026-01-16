@@ -608,6 +608,45 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             };
             schemaContext.Accounts.Add(defaultAccount);
 
+            bool deviceExists = await schemaContext.Devices
+                .Where(d => d.DeviceId == flow.DeviceId && !d.IsDeleted)
+                .AnyAsync(cancellationToken);
+
+            if (deviceExists)
+            {
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                schemaContext.DeviceContexts.Add(new DeviceContextEntity
+                {
+                    MembershipId = newMembership.UniqueId,
+                    DeviceId = flow.DeviceId,
+                    ActiveAccountId = null,
+                    ContextEstablishedAt = now,
+                    ContextExpiresAt = now + persistorSettings.DeviceContextExpiration,
+                    LastActivityAt = now,
+                    IsActive = true
+                });
+            }
+            else
+            {
+                Log.Warning(
+                    "[CREATE-MEMBERSHIP] Device {DeviceId} not found, skipping device context creation. Membership: {MembershipId}",
+                    flow.DeviceId,
+                    newMembership.UniqueId);
+            }
+
+            schemaContext.VerificationLogs.Add(new VerificationLogEntity
+            {
+                MembershipId = newMembership.UniqueId,
+                MobileNumberId = flow.MobileNumberId,
+                DeviceId = flow.DeviceId,
+                AccountId = null,
+                Purpose = flow.Purpose,
+                Status = VerificationFlowStatus.Verified,
+                OtpCount = flow.OtpCount,
+                VerifiedAt = DateTimeOffset.UtcNow,
+                ExpiresAt = flow.ExpiresAt
+            });
+
             await schemaContext.OtpCodes
                 .Where(o => o.UniqueId == command.OtpIdentifier && o.VerificationFlowId == flow.Id && !o.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters

@@ -681,12 +681,13 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
 
             VerificationFlowStatus newStatus = command.Status;
             OtpVerificationPurpose purpose = flow.Purpose;
+            DateTimeOffset utcNow = DateTimeOffset.UtcNow;
 
             int rowsAffected = await schemaContext.VerificationFlows
                 .Where(f => f.UniqueId == command.FlowIdentifier && !f.IsDeleted)
                 .ExecuteUpdateAsync(setters => setters
                         .SetProperty(f => f.Status, newStatus)
-                        .SetProperty(f => f.UpdatedAt, DateTimeOffset.UtcNow),
+                        .SetProperty(f => f.UpdatedAt, utcNow),
                     cancellationToken);
 
             if (rowsAffected == 0)
@@ -695,6 +696,39 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 await transaction.RollbackAsync();
                 return Result<Unit, VerificationFlowFailure>.Err(
                     VerificationFlowFailure.FlowNotFound());
+            }
+
+            if (newStatus == VerificationFlowStatus.Verified)
+            {
+                Option<MembershipEntity> membershipOpt =
+                    await MembershipQueries.GetByMobileUniqueId(schemaContext, flow.MobileNumberId, cancellationToken);
+
+                if (membershipOpt.IsSome)
+                {
+                    MembershipEntity membership = membershipOpt.Value!;
+                    Guid? accountId = null;
+                    Option<AccountEntity> accountOpt =
+                        await AccountQueries.GetDefaultAccountByMembershipId(schemaContext, membership.UniqueId);
+                    if (accountOpt.IsSome)
+                    {
+                        accountId = accountOpt.Value!.UniqueId;
+                    }
+
+                    schemaContext.VerificationLogs.Add(new VerificationLogEntity
+                    {
+                        MembershipId = membership.UniqueId,
+                        MobileNumberId = flow.MobileNumberId,
+                        DeviceId = flow.DeviceId,
+                        AccountId = accountId,
+                        Purpose = purpose,
+                        Status = newStatus,
+                        OtpCount = flow.OtpCount,
+                        VerifiedAt = utcNow,
+                        ExpiresAt = flow.ExpiresAt
+                    });
+
+                    await schemaContext.SaveChangesAsync(cancellationToken);
+                }
             }
 
             await transaction.CommitAsync(cancellationToken);
