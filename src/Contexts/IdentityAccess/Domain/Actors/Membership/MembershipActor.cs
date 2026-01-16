@@ -698,8 +698,7 @@ public sealed class MembershipActor : ReceivePersistentActor
             {
                 MembershipId = Helpers.GuidToByteString(command.MembershipIdentifier),
                 Status = ProtoMembership.Types.ActivityStatus.Active,
-                CreationStatus = ProtoMembership.Types.CreationStatus.SecureKeySet,
-                AccountId = Helpers.GuidToByteString(accountId)
+                CreationStatus = ProtoMembership.Types.CreationStatus.SecureKeySet
             },
             PeerOprf = ByteString.CopyFrom(oprfResponse),
             Result = OpaqueOperationResult.Succeeded
@@ -1092,10 +1091,7 @@ public sealed class MembershipActor : ReceivePersistentActor
         {
             MembershipId = Helpers.GuidToByteString(state.MembershipId),
             Status = state.ActivityStatus,
-            CreationStatus = state.CreationStatus,
-            AccountId = state.ActiveAccountId.HasValue
-                ? Helpers.GuidToByteString(state.ActiveAccountId.Value)
-                : ByteString.Empty
+            CreationStatus = state.CreationStatus
         };
 
         if (state.AvailableAccounts != null && state.AvailableAccounts.Any())
@@ -1110,6 +1106,7 @@ public sealed class MembershipActor : ReceivePersistentActor
                     IsDefaultAccount = a.IsDefault
                 }).ToList();
 
+            finalizeResponse.Membership.Accounts.AddRange(availableAccounts);
             finalizeResponse.AvailableAccounts.AddRange(availableAccounts);
 
             if (state.ActiveAccountId.HasValue)

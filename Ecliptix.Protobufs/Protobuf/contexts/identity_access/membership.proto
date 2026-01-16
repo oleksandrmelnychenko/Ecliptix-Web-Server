@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
+import "contexts/identity_access/account.proto";
 
 package ecliptix.proto.membership;
 option csharp_namespace = "Ecliptix.Protobuf.Membership";
@@ -23,7 +24,7 @@ message Membership {
 
   ActivityStatus status = 3;
   optional CreationStatus creation_status = 4;
-  optional bytes account_id = 5;
+  repeated ecliptix.proto.account.Account accounts = 5;
 }
 
 enum MobileNumberAvailabilityStatus {

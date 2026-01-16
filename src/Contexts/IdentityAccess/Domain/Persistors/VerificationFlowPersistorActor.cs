@@ -801,11 +801,21 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             {
                 MembershipId = Helpers.GuidToByteString(membership.UniqueId),
                 Status = activityStatus,
-                CreationStatus = creationStatus,
-                AccountId = accountOpt.IsSome
-                    ? Helpers.GuidToByteString(accountOpt.Value!.UniqueId)
-                    : ByteString.Empty
+                CreationStatus = creationStatus
             };
+
+            if (accountOpt.IsSome)
+            {
+                AccountEntity account = accountOpt.Value!;
+                existingMembership.Accounts.Add(new Protobuf.Account.Account
+                {
+                    AccountId = Helpers.GuidToByteString(account.UniqueId),
+                    MembershipId = Helpers.GuidToByteString(membership.UniqueId),
+                    AccountType = (Protobuf.Account.AccountType)account.AccountType,
+                    Status = (Protobuf.Account.AccountStatus)account.Status,
+                    IsDefaultAccount = account.IsDefaultAccount
+                });
+            }
 
             return Result<ExistingMembershipResult, VerificationFlowFailure>.Ok(
                 new ExistingMembershipResult { MembershipExists = true, Membership = existingMembership });

@@ -612,10 +612,11 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 .Where(d => d.DeviceId == flow.DeviceId && !d.IsDeleted)
                 .AnyAsync(cancellationToken);
 
+            DeviceContextEntity? pendingDeviceContext = null;
             if (deviceExists)
             {
                 DateTimeOffset now = DateTimeOffset.UtcNow;
-                schemaContext.DeviceContexts.Add(new DeviceContextEntity
+                pendingDeviceContext = new DeviceContextEntity
                 {
                     MembershipId = newMembership.UniqueId,
                     DeviceId = flow.DeviceId,
@@ -624,7 +625,8 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                     ContextExpiresAt = now + persistorSettings.DeviceContextExpiration,
                     LastActivityAt = now,
                     IsActive = true
-                });
+                };
+                schemaContext.DeviceContexts.Add(pendingDeviceContext);
             }
             else
             {
@@ -634,7 +636,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                     newMembership.UniqueId);
             }
 
-            schemaContext.VerificationLogs.Add(new VerificationLogEntity
+            VerificationLogEntity verificationLog = new()
             {
                 MembershipId = newMembership.UniqueId,
                 MobileNumberId = flow.MobileNumberId,
@@ -645,7 +647,8 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 OtpCount = flow.OtpCount,
                 VerifiedAt = DateTimeOffset.UtcNow,
                 ExpiresAt = flow.ExpiresAt
-            });
+            };
+            schemaContext.VerificationLogs.Add(verificationLog);
 
             await schemaContext.OtpCodes
                 .Where(o => o.UniqueId == command.OtpIdentifier && o.VerificationFlowId == flow.Id && !o.IsDeleted)
@@ -667,6 +670,24 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             };
             schemaContext.LoginAttempts.Add(successAttempt);
             await schemaContext.SaveChangesAsync(cancellationToken);
+
+            bool needsFollowUpSave = false;
+            if (pendingDeviceContext != null)
+            {
+                pendingDeviceContext.ActiveAccountId = defaultAccount.UniqueId;
+                needsFollowUpSave = true;
+            }
+
+            if (verificationLog.AccountId == null)
+            {
+                verificationLog.AccountId = defaultAccount.UniqueId;
+                needsFollowUpSave = true;
+            }
+
+            if (needsFollowUpSave)
+            {
+                await schemaContext.SaveChangesAsync(cancellationToken);
+            }
 
             List<long> failedAttemptIds = await schemaContext.LoginAttempts
                 .Join(schemaContext.Memberships,
@@ -879,13 +900,16 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             if (rowsAffected == 0)
             {
                 Log.Warning(
-                    "[UPDATE-CREATION-STATUS] Membership not found. MembershipId=");
+                    "[UPDATE-CREATION-STATUS] Membership not found. MembershipId={MembershipId}",
+                    command.MembershipIdentifier);
                 return Result<Unit, MembershipFailure>.Err(
                     MembershipFailure.NotFoundById());
             }
 
             Log.Information(
-                "[UPDATE-CREATION-STATUS] Successfully updated membership  to ");
+                "[UPDATE-CREATION-STATUS] Successfully updated membership {MembershipId} to {CreationStatus}",
+                command.MembershipIdentifier,
+                command.CreationStatus);
 
             return Result<Unit, MembershipFailure>.Ok(Unit.Value);
         }

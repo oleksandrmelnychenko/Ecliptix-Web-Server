@@ -32,7 +32,6 @@ internal sealed class MasterKeyService(
     private readonly int _defaultThreshold = securityConfig.CurrentValue.Cryptography.DefaultThreshold;
     private readonly int _defaultTotalShares = securityConfig.CurrentValue.Cryptography.DefaultTotalShares;
     private readonly int _askTimeoutSeconds = securityConfig.CurrentValue.Cryptography.AskTimeoutSeconds;
-    private readonly IDbContextFactory<EcliptixSchemaContext> _dbContextFactory = dbContextFactory;
 
     private const string ErrorMessageInsufficientShares = "Insufficient shares: found {0}, need at least 3";
     private const string ErrorMessageMetadataDeserializationFailed = "Failed to deserialize share metadata";
@@ -872,7 +871,7 @@ internal sealed class MasterKeyService(
         try
         {
             await using EcliptixSchemaContext schemaContext =
-                await _dbContextFactory.CreateDbContextAsync();
+                await dbContextFactory.CreateDbContextAsync();
 
             Option<CredentialsRecord> credentialsOpt =
                 await AccountSecureKeyAuthQueries.GetCredentialsForAccount(schemaContext, accountId);

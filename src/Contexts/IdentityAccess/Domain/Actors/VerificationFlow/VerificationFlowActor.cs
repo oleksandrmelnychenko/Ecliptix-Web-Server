@@ -1562,18 +1562,32 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     private static Result<OtpCodeVerifyResponse, VerificationFlowFailure>
         CreateSuccessResponse(MembershipQueryRecord membership)
     {
+        ProtoMembership membershipProto = new()
+        {
+            MembershipId = Helpers.GuidToByteString(membership.UniqueIdentifier),
+            Status = membership.ActivityStatus,
+            CreationStatus = membership.CreationStatus
+        };
+
+        if (membership.AvailableAccounts is { Count: > 0 })
+        {
+            foreach (AccountInfo account in membership.AvailableAccounts)
+            {
+                membershipProto.Accounts.Add(new Protobuf.Account.Account
+                {
+                    AccountId = Helpers.GuidToByteString(account.AccountId),
+                    MembershipId = Helpers.GuidToByteString(account.MembershipId),
+                    AccountType = account.Type,
+                    Status = account.Status,
+                    IsDefaultAccount = account.IsDefault
+                });
+            }
+        }
+
         return Result<OtpCodeVerifyResponse, VerificationFlowFailure>.Ok(new OtpCodeVerifyResponse
         {
             Result = OtpVerificationResult.Succeeded,
-            Membership = new ProtoMembership
-            {
-                MembershipId = Helpers.GuidToByteString(membership.UniqueIdentifier),
-                Status = membership.ActivityStatus,
-                CreationStatus = membership.CreationStatus,
-                AccountId = membership.ActiveAccountId.HasValue
-                    ? Helpers.GuidToByteString(membership.ActiveAccountId.Value)
-                    : ByteString.Empty
-            }
+            Membership = membershipProto
         });
     }
 
