@@ -8,6 +8,7 @@ using Ecliptix.SharedKernel.Actors;
 using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel;
 using Google.Protobuf;
+using Serilog;
 using System.Buffers;
 using System.IO;
 
@@ -47,6 +48,10 @@ public class RsaSecureChannelEstablisher(
                 return Result<SecureEnvelope, SecureChannelFailure>.Err(
                     SecureChannelFailure.InvalidPayload($"Invalid PubKeyExchange format: {ex.Message}"));
             }
+
+            Log.Information(
+                "[RsaSecureChannelEstablisher] Parsed PubKeyExchange. ConnectId={ConnectId}, OfType={OfType}, State={State}, PayloadSize={PayloadSize}",
+                connectId, pubKeyExchange.OfType, pubKeyExchange.State, pubKeyExchange.Payload.Length);
 
             InitiateEphemeralConnectCommand actorEvent = new(pubKeyExchange, connectId);
             Result<DeriveSharedSecretResponse, EcliptixProtocolFailure> protocolResult;

@@ -323,7 +323,8 @@ public sealed class VerificationFlowHandler(
                     }
                 }
 
-                await responseStream.WriteAsync(payload, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                await responseStream.WriteAsync(payload);
             }
         }
         catch (OperationCanceledException ex)

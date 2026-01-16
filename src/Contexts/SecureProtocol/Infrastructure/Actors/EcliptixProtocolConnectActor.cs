@@ -2,6 +2,7 @@ using Akka.Actor;
 using Akka.Event;
 using Akka.Persistence;
 using Ecliptix.SharedKernel.Logging;
+using Serilog;
 using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
@@ -331,6 +332,10 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
     private void HandleNewAnonymousSession(DeriveSharedSecretCommand command)
     {
+        Serilog.Log.Information(
+            "[PROTOCOL-ACTOR] HandleNewAnonymousSession: Creating session. ConnectId={ConnectId}, ExchangeType={ExchangeType}",
+            command.ConnectId, command.PubKeyExchange.OfType);
+
         Result<(ProtocolSession Session, EcliptixSessionState State, PubKeyExchange Reply), EcliptixProtocolFailure>
             sessionResult = CreateNewAnonymousSession(command.ConnectId, command.PubKeyExchange);
 
@@ -375,10 +380,18 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
     private void HandleNewNonPersistentSession(PubKeyExchangeType exchangeType, ProtocolSession session,
         PubKeyExchange reply, IActorRef originalSender)
     {
+        Context.GetLogger().Info(
+            "[PROTOCOL-ACTOR] HandleNewNonPersistentSession: Creating non-persistent session. ConnectId={0}, ExchangeType={1}",
+            connectId, exchangeType);
+
         ReplaceSession(exchangeType, session);
         _currentExchangeType = exchangeType;
 
         Context.SetReceiveTimeout(null);
+
+        Context.GetLogger().Info(
+            "[PROTOCOL-ACTOR] HandleNewNonPersistentSession: Session created successfully. ConnectId={0}, ExchangeType={1}, AvailableSessions=[{2}]",
+            connectId, exchangeType, string.Join(", ", _sessions.Keys));
 
         originalSender.Tell(
             Result<DeriveSharedSecretResponse, EcliptixProtocolFailure>.Ok(new DeriveSharedSecretResponse(reply)));
@@ -493,6 +506,14 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
     private void HandleInitialKeyExchange(DeriveSharedSecretCommand command)
     {
+        Serilog.Log.Information(
+            "[PROTOCOL-ACTOR] HandleInitialKeyExchange: ConnectId={ConnectId}, ExchangeType={ExchangeType}, ExistingSessions=[{Sessions}]",
+            command.ConnectId, command.PubKeyExchange.OfType, string.Join(", ", _sessions.Keys));
+
+        Context.GetLogger().Info(
+            "[PROTOCOL-ACTOR] HandleInitialKeyExchange: Received handshake. ConnectId={0}, ExchangeType={1}, ExistingSessions=[{2}]",
+            command.ConnectId, command.PubKeyExchange.OfType, string.Join(", ", _sessions.Keys));
+
         bool existingSessionFound = _sessions.TryGetValue(command.PubKeyExchange.OfType, out ProtocolSession? existingSession)
                                     && _state != null;
 
@@ -703,11 +724,26 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
     private void HandleEncrypt(EncryptPayloadCommand command)
     {
+        Context.GetLogger().Debug(
+            "[PROTOCOL-ACTOR] HandleEncrypt: ConnectId={0}, RequestedExchangeType={1}, AvailableSessions=[{2}], CurrentExchangeType={3}",
+            connectId,
+            command.PubKeyExchangeType,
+            string.Join(", ", _sessions.Keys),
+            _currentExchangeType?.ToString() ?? "null");
+
         if (!_sessions.TryGetValue(command.PubKeyExchangeType, out ProtocolSession? system))
         {
+            Context.GetLogger().Warning(
+                "[PROTOCOL-ACTOR] HandleEncrypt: Session not found for {0}, trying primary session. ConnectId={1}",
+                command.PubKeyExchangeType, connectId);
+
             Option<ProtocolSession> primaryProtocolSystemOpt = GetPrimarySession();
             if (!primaryProtocolSystemOpt.IsSome || _state == null)
             {
+                Context.GetLogger().Error(
+                    "[PROTOCOL-ACTOR] HandleEncrypt: No session available! RequestedType={0}, HasState={1}, ConnectId={2}",
+                    command.PubKeyExchangeType, _state != null, connectId);
+
                 Sender.Tell(
                     Result<SecureEnvelope, EcliptixProtocolFailure>.Err(
                         EcliptixProtocolFailure.StateMismatch(
@@ -754,8 +790,30 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
     private void HandleDecrypt(DecryptSecureEnvelopeCommand actorEvent)
     {
+        Serilog.Log.Information(
+            "[PROTOCOL-ACTOR] HandleDecrypt: Requested ExchangeType={ExchangeType}, AvailableSessions=[{Sessions}]",
+            actorEvent.PubKeyExchangeType, string.Join(", ", _sessions.Keys));
+
+        SecureEnvelope envelope = actorEvent.SecureEnvelope;
+        Serilog.Log.Information(
+            "[PROTOCOL-ACTOR] HandleDecrypt: ConnectId={ConnectId}, CurrentExchangeType={CurrentExchangeType}, Meta={Meta}, Payload={Payload}, AuthTag={AuthTag}, HeaderNonce={HeaderNonce}, DhPublicKey={DhPublicKey}, KyberCiphertext={KyberCiphertext}, ResultCode={ResultCode}, RatchetEpoch={RatchetEpoch}",
+            connectId,
+            _currentExchangeType?.ToString() ?? "null",
+            envelope.MetaData.Length,
+            envelope.EncryptedPayload.Length,
+            envelope.AuthenticationTag.Length,
+            envelope.HeaderNonce.Length,
+            envelope.DhPublicKey.Length,
+            envelope.KyberCiphertext.Length,
+            envelope.ResultCode.Length,
+            envelope.HasRatchetEpoch ? envelope.RatchetEpoch.ToString() : "missing");
+
         if (!_sessions.TryGetValue(actorEvent.PubKeyExchangeType, out ProtocolSession? session))
         {
+            Serilog.Log.Warning(
+                "[PROTOCOL-ACTOR] HandleDecrypt: Session NOT FOUND for {ExchangeType}, falling back to primary session",
+                actorEvent.PubKeyExchangeType);
+
             Option<ProtocolSession> primaryProtocolSystemOpt = GetPrimarySession();
             if (!primaryProtocolSystemOpt.IsSome || _state == null)
             {
@@ -1069,12 +1127,21 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
     private void ReplaceSession(PubKeyExchangeType exchangeType, ProtocolSession session)
     {
+        Context.GetLogger().Debug(
+            "[PROTOCOL-ACTOR] ReplaceSession: Storing session. ConnectId={0}, ExchangeType={1}, ExistingSessionsBeforeReplace=[{2}]",
+            connectId, exchangeType, string.Join(", ", _sessions.Keys));
+
         if (_sessions.TryGetValue(exchangeType, out ProtocolSession? existing))
         {
+            Context.GetLogger().Debug("[PROTOCOL-ACTOR] ReplaceSession: Disposing existing session for {0}", exchangeType);
             existing.Dispose();
         }
 
         _sessions[exchangeType] = session;
+
+        Context.GetLogger().Debug(
+            "[PROTOCOL-ACTOR] ReplaceSession: Session stored. ConnectId={0}, ExchangeType={1}, AllSessions=[{2}]",
+            connectId, exchangeType, string.Join(", ", _sessions.Keys));
     }
 
     private void HandleEncryptComponents(EncryptPayloadComponentsCommand command)
@@ -1231,11 +1298,11 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
                message.Contains("chain index", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void HandleDecryptionError(EcliptixProtocolFailure error, uint connectId)
+    private void HandleDecryptionError(EcliptixProtocolFailure error, uint actualConnectId)
     {
-        Context.GetLogger().Error(
-            $"{LogTags.Decryption.ServerError} Decryption failed. ConnectId: {0}, ErrorType: {1}, Message: {2}",
-            connectId, error.FailureType, error.Message);
+        Serilog.Log.Error(
+            "[SERVER-DECRYPT-ERROR] Decryption failed. ActorConnectId={ActorConnectId}, RequestConnectId={RequestConnectId}, ErrorType={ErrorType}, Message={Message}",
+            connectId, actualConnectId, error.FailureType, error.Message);
 
         bool isHeaderAuthFailure = error.FailureType == EcliptixProtocolFailureType.HeaderAuthenticationFailed;
         bool isMetadataAuthFailure =
@@ -1252,8 +1319,8 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
         if ((isHeaderAuthFailure || isMetadataAuthFailure) &&
             _currentExchangeType == PubKeyExchangeType.DataCenterEphemeralConnect)
         {
-            Context.GetLogger().Warning(
-                $"{LogTags.Decryption.StateDesync} Authenticated channel header auth failed for ConnectId {0} - forcing master key resync fallback.",
+            Serilog.Log.Warning(
+                "[SERVER-DECRYPT-STATE-DESYNC] Authenticated channel header auth failed for ConnectId={ConnectId} - forcing master key resync fallback.",
                 connectId);
 
             DisposeAllSessions();
@@ -1269,10 +1336,9 @@ public sealed class EcliptixProtocolConnectActor(uint connectId) : PersistentAct
 
         if (clearSession)
         {
-            Context.GetLogger()
-                .Warning(
-                    $"{LogTags.Decryption.StateDesync} Header authentication failed for ConnectId {0} - protocol state desynchronized. Clearing state to force re-handshake.",
-                    connectId);
+            Serilog.Log.Warning(
+                "[SERVER-DECRYPT-STATE-DESYNC] Header authentication failed for ConnectId={ConnectId} - protocol state desynchronized. Clearing state to force re-handshake.",
+                connectId);
             DisposeAllSessions();
             _state = null;
             _currentExchangeType = null;

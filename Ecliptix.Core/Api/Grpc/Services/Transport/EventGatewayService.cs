@@ -5,6 +5,7 @@ using Ecliptix.Protobuf.Transport.Gateway;
 using Ecliptix.SharedKernel.Grpc.Utilities;
 using Google.Protobuf;
 using Grpc.Core;
+using Serilog;
 
 namespace Ecliptix.Core.Api.Grpc.Services.Transport;
 
@@ -94,6 +95,8 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
             : metadata.Identity.DeliveryKind;
 
         metadata.Security.ConnectId = ServiceUtilities.ExtractConnectId(context);
+        metadata.Security.KeyExchangeContext = ApplyHeaderIfEmpty(
+            metadata.Security.KeyExchangeContext, headers, MetadataConstants.Keys.ConnectionContextId);
 
         if (string.IsNullOrWhiteSpace(metadata.Identity.PartitionKey) && metadata.Security.ConnectId != 0)
         {
@@ -107,9 +110,23 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
         metadata.Client.Locale = ApplyHeaderIfEmpty(metadata.Client.Locale, headers, MetadataConstants.Keys.Locale);
         metadata.Client.Version = ApplyHeaderIfEmpty(metadata.Client.Version, headers, MetadataConstants.Keys.Version);
         metadata.Client.Tenant = ApplyHeaderIfEmpty(metadata.Client.Tenant, headers, MetadataConstants.Keys.Tenant);
+        metadata.Security.KeyExchangeContext = ApplyHeaderIfEmpty(
+            metadata.Security.KeyExchangeContext,
+            headers,
+            MetadataConstants.Keys.ConnectionContextId);
 
         metadata.Client.DeviceId = ApplyByteStringHeaderIfEmpty(metadata.Client.DeviceId, headers, MetadataConstants.Keys.DeviceId);
         metadata.Client.ApplicationInstanceId = ApplyByteStringHeaderIfEmpty(metadata.Client.ApplicationInstanceId, headers, MetadataConstants.Keys.ApplicationInstanceId);
+
+        if (deliveryKind == DeliveryKind.ServerStream)
+        {
+            string? headerContextId = GetHeaderValue(headers, MetadataConstants.Keys.ConnectionContextId);
+            Log.Information(
+                "[EventGateway] ServerStream metadata: ConnectId={ConnectId}, KeyExchangeContext={KeyExchangeContext}, HeaderContextId={HeaderContextId}",
+                metadata.Security.ConnectId,
+                metadata.Security.KeyExchangeContext,
+                headerContextId ?? "null");
+        }
 
         request.Metadata = metadata;
         return request;

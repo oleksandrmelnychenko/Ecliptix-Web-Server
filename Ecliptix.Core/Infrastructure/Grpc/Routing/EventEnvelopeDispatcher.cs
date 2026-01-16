@@ -5,6 +5,7 @@ using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.SharedKernel;
 using Google.Protobuf;
 using Grpc.Core;
+using Serilog;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Routing;
 
@@ -319,8 +320,11 @@ public sealed class EventEnvelopeDispatcher(
                 ? Ok(dispatchContext.WithResponse(result.Unwrap()))
                 : FailWithDescriptor(dispatchContext, result.UnwrapErr());
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Error(ex, "[EventEnvelopeDispatcher] Unary handler failed for EventType={EventType}, ConnectId={ConnectId}",
+                dispatchContext.Metadata?.Identity?.EventType,
+                dispatchContext.Metadata?.Security?.ConnectId);
             return Fail(dispatchContext, DispatcherErrorCodes.HandlerFailed, retryable: true);
         }
     }
@@ -345,8 +349,11 @@ public sealed class EventEnvelopeDispatcher(
         {
             await dispatchContext.Route.HandleServerStreamAsync(dispatchContext.Message!, dispatchContext.Metadata, responseStream, cancellationToken);
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Error(ex, "[EventEnvelopeDispatcher] ServerStream handler failed for EventType={EventType}, ConnectId={ConnectId}",
+                dispatchContext.Metadata?.Identity?.EventType,
+                dispatchContext.Metadata?.Security?.ConnectId);
             await responseStream.WriteAsync(BuildErrorEnvelope(new DispatchFailure(
                 DispatcherErrorCodes.HandlerFailed,
                 string.Empty,
@@ -375,8 +382,11 @@ public sealed class EventEnvelopeDispatcher(
                 ? Ok(dispatchContext.WithResponse(result.Unwrap()))
                 : FailWithDescriptor(dispatchContext, result.UnwrapErr());
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Error(ex, "[EventEnvelopeDispatcher] ClientStream handler failed for EventType={EventType}, ConnectId={ConnectId}",
+                dispatchContext.Metadata?.Identity?.EventType,
+                dispatchContext.Metadata?.Security?.ConnectId);
             return Fail(dispatchContext, DispatcherErrorCodes.HandlerFailed, retryable: true);
         }
     }
@@ -402,8 +412,11 @@ public sealed class EventEnvelopeDispatcher(
         {
             await dispatchContext.Route.HandleBidiStreamAsync(messageStream, dispatchContext.Metadata, responseStream, cancellationToken);
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Error(ex, "[EventEnvelopeDispatcher] BidiStream handler failed for EventType={EventType}, ConnectId={ConnectId}",
+                dispatchContext.Metadata?.Identity?.EventType,
+                dispatchContext.Metadata?.Security?.ConnectId);
             await responseStream.WriteAsync(BuildErrorEnvelope(new DispatchFailure(
                 DispatcherErrorCodes.HandlerFailed,
                 string.Empty,

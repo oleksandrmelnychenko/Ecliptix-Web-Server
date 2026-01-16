@@ -22,7 +22,7 @@
     <PackageVersion Include="Dapper" Version="2.1.66" />
     <PackageVersion Include="dbup" Version="5.0.41" />
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.0-rc.2" />
-    <PackageVersion Include="EPP.Relay" Version="1.0.0-ci.65" />
+    <PackageVersion Include="EPP.Relay" Version="1.0.0-ci.67" />
     <PackageVersion Include="Ecliptix.OPAQUE.Server" Version="1.0.0-ci.20" />
     <PackageVersion Include="Google.Protobuf" Version="3.33.2" />
     <PackageVersion Include="Grpc.AspNetCore" Version="2.76.0" />

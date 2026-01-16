@@ -20,13 +20,19 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
     {
         Option<string> connectionContextIdOpt = GrpcMetadataHandler.GetConnectionContextId(context.RequestHeaders);
 
+        Log.Debug("[GrpcCipherService] GetExchangeTypeFromMetadata: c-context-id header present={HasHeader}, value={Value}",
+            connectionContextIdOpt.IsSome,
+            connectionContextIdOpt.IsSome ? connectionContextIdOpt.Value : "null");
+
         if (connectionContextIdOpt.IsSome &&
             System.Enum.TryParse(connectionContextIdOpt.Value, true, out PubKeyExchangeType exchangeType) &&
             System.Enum.IsDefined(exchangeType))
         {
+            Log.Debug("[GrpcCipherService] GetExchangeTypeFromMetadata: Parsed exchange type={ExchangeType}", exchangeType);
             return exchangeType;
         }
 
+        Log.Debug("[GrpcCipherService] GetExchangeTypeFromMetadata: Defaulting to DataCenterEphemeralConnect");
         return PubKeyExchangeType.DataCenterEphemeralConnect;
     }
 
