@@ -1,10 +1,10 @@
 using System.Security.Cryptography;
-using Ecliptix.OPAQUE.Server;
+using Ecliptix.OPAQUE.Relay;
 using Ecliptix.Security.Opaque.Constants;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Models.AuthenticationMessages;
 using Ecliptix.Security.Opaque.Models.RegistrationMessages;
-using static Ecliptix.OPAQUE.Server.OpaqueServerNative;
+using static Ecliptix.OPAQUE.Relay.OpaqueServerNative;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Failures.Sodium;
 
@@ -48,19 +48,19 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
         {
             return Result<Unit, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.LibraryInitializationFailed(
-                    $"Native library 'libopaque_server' not found: {ex.Message}"));
+                    $"Native library 'eop.relay' not found: {ex.Message}"));
         }
         catch (BadImageFormatException ex)
         {
             return Result<Unit, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.LibraryInitializationFailed(
-                    $"Native library 'libopaque_server' failed to load: {ex.Message}"));
+                    $"Native library 'eop.relay' failed to load: {ex.Message}"));
         }
         catch (EntryPointNotFoundException ex)
         {
             return Result<Unit, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.LibraryInitializationFailed(
-                    $"Native library 'libopaque_server' entry point missing: {ex.Message}"));
+                    $"Native library 'eop.relay' entry point missing: {ex.Message}"));
         }
         catch (Exception ex)
         {

@@ -12,7 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Ecliptix.OPAQUE.Server" />
+    <PackageReference Include="Ecliptix.OPAQUE.Relay" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Serilog" />
     <PackageReference Include="Google.Protobuf" />
