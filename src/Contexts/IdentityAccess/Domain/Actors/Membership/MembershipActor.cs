@@ -10,7 +10,7 @@ using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
 using Ecliptix.IdentityAccess.Domain.Services;
-using Ecliptix.OPAQUE.Server;
+using Ecliptix.OPAQUE.Relay;
 using Ecliptix.Protobuf.Membership;
 using ProtoMembership = Ecliptix.Protobuf.Membership.Membership;
 using Ecliptix.Security.Opaque.Contracts;
@@ -71,7 +71,6 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private readonly Dictionary<uint, PendingSignInState> _pendingSignIns = new();
     private readonly Dictionary<Guid, PendingOpaqueContext> _pendingMaskingKeys = new();
-    private readonly Dictionary<Guid, SodiumSecureMemoryHandle> _pendingSessionKeys = new();
     private readonly Dictionary<Guid, DateTimeOffset> _pendingRecoveryTimestamps = new();
 
     private ICancelable? _cleanupTimer;
@@ -449,7 +448,6 @@ public sealed class MembershipActor : ReceivePersistentActor
             {
                 Result = OpaqueOperationResult.Succeeded,
                 Message = "Registration completed successfully.",
-                SessionKey = ByteString.Empty,
                 AvailableAccounts = { availableAccounts },
                 ActiveAccount = activeAccount
             }));
@@ -522,24 +520,6 @@ public sealed class MembershipActor : ReceivePersistentActor
         byte[] maskingKeyForStorage = new byte[MembershipActorLimits.Opaque.MaskingKeyLength];
 
         Log.Info("[PASSWORD-RECOVERY] Credentials will be updated. Master key will be derived on next auth. MembershipId: {0}", command.MembershipIdentifier);
-
-        if (!_pendingSessionKeys.TryGetValue(command.MembershipIdentifier,
-                out SodiumSecureMemoryHandle? sessionKeyHandle))
-        {
-            ClearPendingRecoverySession(command.MembershipIdentifier);
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Err(
-                SecretKeyRecoveryFailure.TokenInvalid(
-                    "No session key found for membership during recovery completion")));
-            return;
-        }
-
-        if (sessionKeyHandle.IsInvalid)
-        {
-            ClearPendingRecoverySession(command.MembershipIdentifier);
-            replyTo.Tell(Result<OprfRecoverySecretKeyCompleteResponse, SecretKeyRecoveryFailure>.Err(
-                SecretKeyRecoveryFailure.TokenInvalid("Session key handle is invalid")));
-            return;
-        }
 
         Log.Info("[PASSWORD-RECOVERY-COMPLETE] New master key shares created during password recovery for membership {0}",
             command.MembershipIdentifier);
@@ -673,24 +653,14 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         Guid accountId = accountResult.Unwrap().Value;
 
-        var (oprfResponse, _, sessionKey, keyVersion) =
-            _opaqueProtocolService.ProcessOprfRequestWithSessionKey(command.OprfRequest, accountId);
+        var (oprfResponse, _, keyVersion) =
+            _opaqueProtocolService.ProcessOprfRequest(command.OprfRequest, accountId);
 
         Log.Info(
             "[PASSWORD-RECOVERY-INIT] OPAQUE OPRF response derived during password recovery init. MembershipId: {0}",
             command.MembershipIdentifier);
 
-        if (!TryValidateSessionKey(sessionKey))
-        {
-            CryptographicOperations.ZeroMemory(sessionKey);
-            replyTo.Tell(Result<OprfRecoverySecureKeyInitResponse, SecretKeyRecoveryFailure>.Err(
-                SecretKeyRecoveryFailure.InternalError("Failed to process session key securely")));
-            return;
-        }
-
         byte[] accountIdBytes = accountId.ToByteArray();
-        byte[] sessionKeyCopy = (byte[])sessionKey.Clone();
-        CryptographicOperations.ZeroMemory(sessionKey);
 
         OprfRecoverySecureKeyInitResponse response = new()
         {
@@ -712,7 +682,6 @@ public sealed class MembershipActor : ReceivePersistentActor
             new RecoverySessionStartedEvent(
                 command.MembershipIdentifier,
                 accountIdBytes,
-                sessionKeyCopy,
                 DateTimeOffset.UtcNow,
                 keyVersion),
             evt =>
@@ -1031,7 +1000,10 @@ public sealed class MembershipActor : ReceivePersistentActor
         (SodiumSecureMemoryHandle sessionKeyHandle, SodiumSecureMemoryHandle masterKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) =
             opaqueResult.Unwrap();
 
-        if (!sessionKeyHandle.IsInvalid)
+        bool sessionKeyValid = sessionKeyHandle is not null && !sessionKeyHandle.IsInvalid;
+        bool masterKeyValid = masterKeyHandle is not null && !masterKeyHandle.IsInvalid;
+
+        if (sessionKeyValid)
         {
             Result<byte[], SodiumFailure> sessionKeyBytesResult = sessionKeyHandle.ReadBytes(sessionKeyHandle.Length);
             if (sessionKeyBytesResult.IsOk)
@@ -1048,10 +1020,8 @@ public sealed class MembershipActor : ReceivePersistentActor
         }
 
         if (finalizeResponse.Result == OpaqueOperationResult.Succeeded &&
-            sessionKeyHandle != null &&
-            !sessionKeyHandle.IsInvalid &&
-            masterKeyHandle != null &&
-            !masterKeyHandle.IsInvalid)
+            sessionKeyValid &&
+            masterKeyValid)
         {
             if (state.ActiveAccountId.HasValue)
             {
@@ -1084,6 +1054,7 @@ public sealed class MembershipActor : ReceivePersistentActor
 
             masterKeyHandle?.Dispose();
         }
+        sessionKeyHandle?.Dispose();
 
         RemovePendingSignIn(signInEvent.ConnectId);
 
@@ -1199,7 +1170,6 @@ public sealed class MembershipActor : ReceivePersistentActor
     {
         bool hasState =
             _pendingMaskingKeys.ContainsKey(membershipId) ||
-            _pendingSessionKeys.ContainsKey(membershipId) ||
             _pendingRecoveryTimestamps.ContainsKey(membershipId);
 
         if (!hasState)
@@ -1262,8 +1232,7 @@ public sealed class MembershipActor : ReceivePersistentActor
 
     private void Apply(RecoverySessionStartedEvent evt)
     {
-        StoreMaskingKey(evt.MembershipId, evt.MaskingKey, evt.OpaqueKeyVersion);
-        StoreSessionKey(evt.MembershipId, evt.SessionKey);
+        StoreMaskingKey(evt.MembershipId, evt.AccountIdBytes, evt.OpaqueKeyVersion);
         EnforceRecoveryTimestampCapacity();
         _pendingRecoveryTimestamps[evt.MembershipId] = evt.StartedAt;
     }
@@ -1276,18 +1245,11 @@ public sealed class MembershipActor : ReceivePersistentActor
             _pendingMaskingKeys.Remove(evt.MembershipId);
         }
 
-        if (_pendingSessionKeys.TryGetValue(evt.MembershipId, out SodiumSecureMemoryHandle? sessionKeyHandle))
-        {
-            sessionKeyHandle.Dispose();
-            _pendingSessionKeys.Remove(evt.MembershipId);
-        }
-
         _pendingRecoveryTimestamps.Remove(evt.MembershipId);
     }
 
     private void ApplyRecoverySnapshot(RecoverySessionSnapshot snapshot)
     {
-        StoreSessionKey(snapshot.MembershipId, snapshot.SessionKey);
         EnforceRecoveryTimestampCapacity();
         _pendingRecoveryTimestamps[snapshot.MembershipId] = snapshot.StartedAt;
         if (_pendingMaskingKeys.TryGetValue(snapshot.MembershipId, out PendingOpaqueContext? context))
@@ -1375,17 +1337,10 @@ public sealed class MembershipActor : ReceivePersistentActor
         List<RecoverySessionSnapshot> recoverySessions = new();
         foreach ((Guid membershipId, DateTimeOffset startedAt) in _pendingRecoveryTimestamps)
         {
-            if (_pendingSessionKeys.TryGetValue(membershipId, out SodiumSecureMemoryHandle? handle))
-            {
-                byte[]? sessionKeyBytes = TryReadSessionKeyBytes(handle);
-                if (sessionKeyBytes != null)
-                {
-                    int opaqueKeyVersion = _pendingMaskingKeys.TryGetValue(membershipId, out PendingOpaqueContext? context)
-                        ? context.OpaqueKeyVersion
-                        : 1;
-                    recoverySessions.Add(new RecoverySessionSnapshot(membershipId, sessionKeyBytes, startedAt, opaqueKeyVersion));
-                }
-            }
+            int opaqueKeyVersion = _pendingMaskingKeys.TryGetValue(membershipId, out PendingOpaqueContext? context)
+                ? context.OpaqueKeyVersion
+                : 1;
+            recoverySessions.Add(new RecoverySessionSnapshot(membershipId, startedAt, opaqueKeyVersion));
         }
 
         return new MembershipActorSnapshot(pendingSignIns, pendingMaskingKeys, recoverySessions);
@@ -1458,69 +1413,6 @@ public sealed class MembershipActor : ReceivePersistentActor
         CryptographicOperations.ZeroMemory(source);
     }
 
-    private void StoreSessionKey(Guid membershipId, byte[] sessionKeyBytes)
-    {
-        if (_pendingSessionKeys.TryGetValue(membershipId, out SodiumSecureMemoryHandle? existing))
-        {
-            existing.Dispose();
-        }
-
-        Result<SodiumSecureMemoryHandle, SodiumFailure> allocateResult =
-            SodiumSecureMemoryHandle.Allocate(sessionKeyBytes.Length);
-
-        if (allocateResult.IsErr)
-        {
-            Log.Error("Failed to allocate secure memory for session key: {0}", allocateResult.UnwrapErr().Message);
-            return;
-        }
-
-        SodiumSecureMemoryHandle handle = allocateResult.Unwrap();
-        Result<Unit, SodiumFailure> writeResult = handle.Write(sessionKeyBytes);
-
-        if (writeResult.IsErr)
-        {
-            Log.Error("Failed to write session key to secure memory: {0}", writeResult.UnwrapErr().Message);
-            handle.Dispose();
-            return;
-        }
-
-        EnforceSessionKeyCapacity();
-        _pendingSessionKeys[membershipId] = handle;
-        CryptographicOperations.ZeroMemory(sessionKeyBytes);
-    }
-
-    private static bool TryValidateSessionKey(byte[] sessionKey)
-    {
-        Result<SodiumSecureMemoryHandle, SodiumFailure> allocateResult =
-            SodiumSecureMemoryHandle.Allocate(sessionKey.Length);
-
-        if (allocateResult.IsErr)
-        {
-            return false;
-        }
-
-        using SodiumSecureMemoryHandle handle = allocateResult.Unwrap();
-        Result<Unit, SodiumFailure> writeResult = handle.Write(sessionKey);
-
-        if (writeResult.IsErr)
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static byte[]? TryReadSessionKeyBytes(SodiumSecureMemoryHandle handle)
-    {
-        Result<byte[], SodiumFailure> readResult = handle.ReadBytes(handle.Length);
-        if (readResult.IsErr)
-        {
-            return null;
-        }
-
-        return readResult.Unwrap();
-    }
-
     private void EnforceSignInCapacity()
     {
         if (_pendingSignIns.Count < MembershipActorLimits.QueueCapacity.MaxPendingSignIns)
@@ -1555,26 +1447,6 @@ public sealed class MembershipActor : ReceivePersistentActor
         }
     }
 
-    private void EnforceSessionKeyCapacity()
-    {
-        if (_pendingSessionKeys.Count < MembershipActorLimits.QueueCapacity.MaxPendingSessionKeys)
-        {
-            return;
-        }
-
-        Guid? oldestKey = _pendingRecoveryTimestamps
-            .OrderBy(kvp => kvp.Value)
-            .Select(kvp => (Guid?)kvp.Key)
-            .FirstOrDefault();
-
-        if (oldestKey.HasValue && _pendingSessionKeys.Remove(oldestKey.Value, out SodiumSecureMemoryHandle? removed))
-        {
-            removed.Dispose();
-            _pendingRecoveryTimestamps.Remove(oldestKey.Value);
-            Log.Warning("[CAPACITY-EVICTION] Evicted oldest pending session key for MembershipId {0} due to capacity limit", oldestKey.Value);
-        }
-    }
-
     private void EnforceRecoveryTimestampCapacity()
     {
         if (_pendingRecoveryTimestamps.Count < MembershipActorLimits.QueueCapacity.MaxPendingRecoveryTimestamps)
@@ -1590,10 +1462,6 @@ public sealed class MembershipActor : ReceivePersistentActor
         if (oldestKey.HasValue)
         {
             _pendingRecoveryTimestamps.Remove(oldestKey.Value);
-            if (_pendingSessionKeys.Remove(oldestKey.Value, out SodiumSecureMemoryHandle? sessionHandle))
-            {
-                sessionHandle.Dispose();
-            }
             Log.Warning("[CAPACITY-EVICTION] Evicted oldest recovery timestamp for MembershipId {0} due to capacity limit", oldestKey.Value);
         }
     }
@@ -1614,12 +1482,6 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         _pendingMaskingKeys.Clear();
 
-        foreach (SodiumSecureMemoryHandle sessionKeyHandle in _pendingSessionKeys.Values)
-        {
-            sessionKeyHandle.Dispose();
-        }
-
-        _pendingSessionKeys.Clear();
         _pendingRecoveryTimestamps.Clear();
     }
 

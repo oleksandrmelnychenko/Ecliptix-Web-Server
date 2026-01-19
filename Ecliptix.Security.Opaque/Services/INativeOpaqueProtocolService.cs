@@ -14,8 +14,6 @@ public interface INativeOpaqueProtocolService
 
     Result<KE2, OpaqueServerFailure> GenerateKe2(KE1 ke1, Guid accountId, byte[] registrationRecord);
 
-    Result<SodiumSecureMemoryHandle, OpaqueServerFailure> FinishAuthentication(KE3 ke3);
-
     Result<(SodiumSecureMemoryHandle SessionKey, SodiumSecureMemoryHandle MasterKey), OpaqueServerFailure>
         FinishAuthenticationWithMasterKey(KE3 ke3);
 }

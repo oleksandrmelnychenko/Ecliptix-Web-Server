@@ -55,9 +55,6 @@ public interface IProtocolServer : IDisposable
     Result<byte[], EcliptixProtocolFailure> ExportState(ProtocolSession session);
 
     Result<Unit, EcliptixProtocolFailure> ValidateEnvelopeHybridRequirements(byte[] encryptedEnvelope);
-    Result<byte[], EcliptixProtocolFailure> DeriveRootFromOpaqueSessionKey(
-        byte[] opaqueSessionKey,
-        byte[] userContext);
 }
 
 public sealed class ProtocolIdentity : IDisposable

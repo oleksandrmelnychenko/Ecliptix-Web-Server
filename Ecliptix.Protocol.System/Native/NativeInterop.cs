@@ -234,16 +234,6 @@ internal static class NativeInterop
         out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EppErrorCode epp_derive_root_key(
-        [In] byte[] opaqueSessionKey,
-        nuint opaqueSessionKeyLength,
-        [In] byte[] userContext,
-        nuint userContextLength,
-        [Out] byte[] outRootKey,
-        nuint outRootKeyLength,
-        out EppError outError);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern EppErrorCode epp_shamir_split(
         [In] byte[] secret,
         nuint secretLength,

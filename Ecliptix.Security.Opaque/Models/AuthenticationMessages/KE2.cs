@@ -1,4 +1,4 @@
-using Ecliptix.OPAQUE.Server;
+using Ecliptix.OPAQUE.Relay;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.SharedKernel;
 

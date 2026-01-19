@@ -13,9 +13,6 @@ public static class MembershipActorLimits
         /// <summary>Maximum number of pending masking key operations.</summary>
         public const int MaxPendingMaskingKeys = 1000;
 
-        /// <summary>Maximum number of pending session key operations.</summary>
-        public const int MaxPendingSessionKeys = 1000;
-
         /// <summary>Maximum number of pending recovery timestamp entries.</summary>
         public const int MaxPendingRecoveryTimestamps = 1000;
     }

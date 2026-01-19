@@ -267,13 +267,6 @@ public sealed class ProtocolServerAdapter : IProtocolServer
         return EcliptixProtocolSystem.ValidateEnvelopeHybridRequirements(encryptedEnvelope);
     }
 
-    public Result<byte[], EcliptixProtocolFailure> DeriveRootFromOpaqueSessionKey(
-        byte[] opaqueSessionKey,
-        byte[] userContext)
-    {
-        return EcliptixProtocolSystem.DeriveRootFromOpaqueSessionKey(opaqueSessionKey, userContext);
-    }
-
     public void Dispose()
     {
         Shutdown();

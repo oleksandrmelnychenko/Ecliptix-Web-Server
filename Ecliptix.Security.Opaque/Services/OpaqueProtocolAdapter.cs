@@ -1,5 +1,5 @@
 using System.Buffers;
-using Ecliptix.OPAQUE.Server;
+using Ecliptix.OPAQUE.Relay;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque.Failures;
@@ -17,7 +17,6 @@ public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) 
 {
     private const int ServerOprfResponseSize = OpaqueConstants.PUBLIC_KEY_LENGTH;
     private const int ServerEphemeralKeySize = OpaqueConstants.PUBLIC_KEY_LENGTH;
-    private const int SessionKeyLength = OpaqueConstants.HASH_LENGTH;
     private const int ClientRegistrationRecordSize = OpaqueConstants.REGISTRATION_RECORD_LENGTH;
     private const int ServerCredentialsSize = OpaqueConstants.SERVER_CREDENTIALS_LENGTH;
     private const int ServerMacOffset = OpaqueConstants.NONCE_LENGTH + OpaqueConstants.PUBLIC_KEY_LENGTH + OpaqueConstants.CREDENTIAL_RESPONSE_LENGTH;
@@ -66,53 +65,6 @@ public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) 
                         Convert.ToHexString(ok.Data));
                 }
                 return (ok.Data, accountId, keyVersion);
-            },
-            err => throw new InvalidOperationException($"OPRF processing failed: {err.Message}")
-        );
-    }
-
-    public (byte[] Response, Guid AccountId, byte[] SessionKey, int KeyVersion) ProcessOprfRequestWithSessionKey(
-        byte[] oprfRequest,
-        Guid accountId)
-    {
-        ArgumentNullException.ThrowIfNull(oprfRequest);
-
-        int keyVersion = keyRingService.ActiveKeyVersion;
-        if (Log.IsEnabled(LogEventLevel.Debug))
-        {
-            Log.Debug(
-                "[OPAQUE-OPRF] Request+SessionKey accountId={AccountId} length={Length} data={Data}",
-                accountId,
-                oprfRequest.Length,
-                oprfRequest.Length > 0 ? Convert.ToHexString(oprfRequest) : string.Empty);
-        }
-
-        Result<RegistrationRequest, OpaqueServerFailure> registrationRequestResult =
-            RegistrationRequest.Create(oprfRequest);
-
-        if (registrationRequestResult.IsErr)
-        {
-            throw new InvalidOperationException(
-                $"Invalid OPRF request: {registrationRequestResult.UnwrapErr().Message}");
-        }
-
-        RegistrationRequest registrationRequest = registrationRequestResult.Unwrap();
-        Result<RegistrationResponse, OpaqueServerFailure> result =
-            keyRingService.CreateRegistrationResponse(registrationRequest, accountId, keyVersion);
-
-        return result.Match(
-            ok =>
-            {
-                if (Log.IsEnabled(LogEventLevel.Debug))
-                {
-                    Log.Debug(
-                        "[OPAQUE-OPRF] Response+SessionKey accountId={AccountId} length={Length} data={Data}",
-                        accountId,
-                        ok.Data.Length,
-                        Convert.ToHexString(ok.Data));
-                }
-                byte[] emptySessionKey = new byte[SessionKeyLength];
-                return (ok.Data, accountId, emptySessionKey, keyVersion);
             },
             err => throw new InvalidOperationException($"OPRF processing failed: {err.Message}")
         );
@@ -172,45 +124,6 @@ public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) 
             },
             err => Result<(OpaqueSignInInitResponse, byte[]), OpaqueFailure>.Err(
                 OpaqueFailure.InvalidInput($"KE2 generation failed: {err.Message}")));
-    }
-
-    public Result<(SodiumSecureMemoryHandle SessionKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure> CompleteSignIn(
-        OpaqueSignInFinalizeRequest request,
-        byte[]? serverMac,
-        int keyVersion)
-    {
-        if (serverMac is null)
-        {
-            return Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(
-                OpaqueFailure.InvalidInput("Server MAC is required for sign-in finalization."));
-        }
-
-        Result<KE3, OpaqueFailure> ke3ValidationResult = ValidateKe3(request);
-        if (ke3ValidationResult.IsErr)
-        {
-            return Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(ke3ValidationResult.UnwrapErr());
-        }
-
-        KE3 ke3 = ke3ValidationResult.Unwrap();
-        if (Log.IsEnabled(LogEventLevel.Debug))
-        {
-            Log.Debug(
-                "[OPAQUE-SIGNIN-FINAL] ke3Len={Length} ke3={Data} serverMacLen={ServerMacLen} serverMac={ServerMac}",
-                ke3.Data.Length,
-                Convert.ToHexString(ke3.Data),
-                serverMac.Length,
-                serverMac.Length > 0 ? Convert.ToHexString(serverMac) : string.Empty);
-        }
-
-        Result<SodiumSecureMemoryHandle, OpaqueServerFailure> sessionKeyResult =
-            keyRingService.FinishAuthentication(ke3, keyVersion);
-
-        return sessionKeyResult.Match(
-            ok => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
-                (ok, BuildSuccessfulFinalizeResponse(serverMac))),
-            _ => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
-                (null!, BuildFailedFinalizeResponse()))
-        );
     }
 
     public Result<(SodiumSecureMemoryHandle SessionKeyHandle, SodiumSecureMemoryHandle MasterKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure>

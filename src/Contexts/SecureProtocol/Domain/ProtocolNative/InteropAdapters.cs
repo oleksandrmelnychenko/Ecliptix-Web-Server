@@ -622,30 +622,6 @@ public sealed class EcliptixProtocolSystem : IDisposable
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
     }
 
-    public static Result<byte[], EcliptixProtocolFailure> DeriveRootFromOpaqueSessionKey(
-        byte[] opaqueSessionKey,
-        byte[] userContext)
-    {
-        byte[] rootKey = new byte[32];
-        Native.EppErrorCode result = Native.epp_derive_root_key(
-            opaqueSessionKey,
-            (nuint)opaqueSessionKey.Length,
-            userContext,
-            (nuint)userContext.Length,
-            rootKey,
-            (nuint)rootKey.Length,
-            out Native.EppError error);
-
-        if (result != Native.EppErrorCode.Success)
-        {
-            string message = error.GetMessage();
-            Native.epp_error_free(ref error);
-            return Result<byte[], EcliptixProtocolFailure>.Err(ConvertError(result, message));
-        }
-
-        return Result<byte[], EcliptixProtocolFailure>.Ok(rootKey);
-    }
-
     public void Dispose()
     {
         if (_disposed)

@@ -24,10 +24,6 @@ public interface IOpaqueKeyRingService
         byte[] registrationRecord,
         int keyVersion);
 
-    Result<SodiumSecureMemoryHandle, OpaqueServerFailure> FinishAuthentication(
-        KE3 ke3,
-        int keyVersion);
-
     Result<(SodiumSecureMemoryHandle SessionKey, SodiumSecureMemoryHandle MasterKey), OpaqueServerFailure>
         FinishAuthenticationWithMasterKey(KE3 ke3, int keyVersion);
 

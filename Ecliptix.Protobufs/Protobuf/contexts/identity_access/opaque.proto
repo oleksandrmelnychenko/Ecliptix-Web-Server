@@ -32,7 +32,6 @@ message OpaqueRegistrationCompleteRequest {
 message OpaqueRegistrationCompleteResponse {
   OpaqueOperationResult result = 1;
   optional string message = 2;
-  optional bytes session_key = 3;
   repeated ecliptix.proto.account.Account available_accounts = 4;
   optional ecliptix.proto.account.Account active_account = 5;
 }
