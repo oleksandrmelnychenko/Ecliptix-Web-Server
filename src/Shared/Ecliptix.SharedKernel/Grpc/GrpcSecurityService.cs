@@ -154,7 +154,7 @@ public class GrpcSecurityService
 
     private void ValidateConnectionId(uint connectId)
     {
-        if (connectId == 0 || connectId > int.MaxValue)
+        if (connectId == 0)
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument,
                 GrpcServiceConstants.ErrorMessages.ConnectionIdOutOfRange));
