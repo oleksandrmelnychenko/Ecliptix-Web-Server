@@ -15,7 +15,6 @@
     <Protobuf Include="Protobuf\transport\device_provisioning\session.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
 
     <!-- Common proto files -->
-    <Protobuf Include="Protobuf\common\secure_envelope.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
     <Protobuf Include="Protobuf\common\health_check.proto" GrpcServices="Server" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
 
     <!-- Identity Access context proto files -->
@@ -30,6 +29,12 @@
     <!-- Secure Protocol context proto files -->
     <Protobuf Include="Protobuf\contexts\secure_protocol\key_exchange.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
     <Protobuf Include="Protobuf\contexts\secure_protocol\session_state.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+
+    <!-- Protocol core proto files -->
+    <Protobuf Include="Protobuf\protocol\envelope.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\protocol\error.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\protocol\handshake.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
+    <Protobuf Include="Protobuf\protocol\state.proto" GrpcServices="None" ProtoRoot="Protobuf" AdditionalImportDirs="Protobuf" />
   </ItemGroup>
 
   <ItemGroup>

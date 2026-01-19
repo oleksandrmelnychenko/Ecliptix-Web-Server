@@ -14,19 +14,16 @@ using Ecliptix.Core.Infrastructure.Grpc.Security;
 using Ecliptix.Core.Json;
 using Ecliptix.Core.Resources;
 using Ecliptix.Core.Services;
-using Ecliptix.IdentityAccess.Domain;
 using Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.IdentityAccess.Domain.Providers.Twilio;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.Core.Infrastructure.Grpc.Routing.Generated;
-using Ecliptix.Protobuf.Account;
 using Ecliptix.Security.Certificate.Pinning.Services;
 using Ecliptix.Security.Opaque;
 using Ecliptix.Security.Opaque.Contracts;
 using Ecliptix.Security.Opaque.Failures;
 using Ecliptix.Security.Opaque.Services;
 using Ecliptix.SecureProtocol.Domain.Protocol;
-using Ecliptix.SecureProtocol.Domain.ProtocolNative;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel.Grpc.Utilities;
@@ -106,6 +103,7 @@ static void ConfigureLogging(WebApplicationBuilder builder)
                         return true;
                     }
                 }
+
                 return false;
             });
 
@@ -120,13 +118,13 @@ static void ConfigureLogging(WebApplicationBuilder builder)
 
 static void ConfigureServices(WebApplicationBuilder builder)
 {
-
     DatabaseConfiguration databaseConfig = new();
     builder.Configuration.GetSection(DatabaseConfiguration.SectionName).Bind(databaseConfig);
     if (string.IsNullOrWhiteSpace(databaseConfig.ConnectionString))
     {
         throw new InvalidOperationException("Database connection string is not configured.");
     }
+
     string connectionString = databaseConfig.ConnectionString;
     int commandTimeout = (int)TimeoutConfiguration.Database.CommandTimeout.TotalSeconds;
     bool isDevelopment = builder.Environment.IsDevelopment();
@@ -134,37 +132,39 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddPooledDbContextFactory<EcliptixSchemaContext>(options =>
     {
         options.UseNpgsql(connectionString, npgsqlOptions =>
-               {
-                   npgsqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
-                   npgsqlOptions.MigrationsAssembly(databaseConfig.MigrationsAssembly);
-                   npgsqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
-                   npgsqlOptions.UseRelationalNulls(false);
-               })
-               .UseSnakeCaseNamingConvention()
-               .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
-               .EnableSensitiveDataLogging(isDevelopment)
-               .EnableDetailedErrors(isDevelopment)
-               .AddInterceptors(
-                   new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor(),
-                   new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.StatusChangeInterceptor())
-               .ConfigureWarnings(warnings =>
-                   warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+            {
+                npgsqlOptions.CommandTimeout(commandTimeout);
+                npgsqlOptions.MigrationsAssembly(databaseConfig.MigrationsAssembly);
+                npgsqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+                npgsqlOptions.UseRelationalNulls(false);
+            })
+            .UseSnakeCaseNamingConvention()
+            .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+            .EnableSensitiveDataLogging(isDevelopment)
+            .EnableDetailedErrors(isDevelopment)
+            .AddInterceptors(
+                new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor(),
+                new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.StatusChangeInterceptor())
+            .ConfigureWarnings(warnings =>
+                warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId
+                    .PendingModelChangesWarning));
     }, poolSize: 128);
 
     builder.Services.AddDbContextFactory<EcliptixSchemaContext>(options =>
     {
         options.UseNpgsql(connectionString, npgsqlOptions =>
-               {
-                   npgsqlOptions.CommandTimeout(commandTimeout == int.MaxValue ? 0 : commandTimeout);
-                   npgsqlOptions.MigrationsAssembly(databaseConfig.MigrationsAssembly);
-               })
-               .UseSnakeCaseNamingConvention()
-               .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
-               .AddInterceptors(
-                   new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor(),
-                   new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.StatusChangeInterceptor())
-               .ConfigureWarnings(warnings =>
-                   warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+            {
+                npgsqlOptions.CommandTimeout(commandTimeout);
+                npgsqlOptions.MigrationsAssembly(databaseConfig.MigrationsAssembly);
+            })
+            .UseSnakeCaseNamingConvention()
+            .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+            .AddInterceptors(
+                new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.AuditInterceptor(),
+                new Ecliptix.IdentityAccess.Domain.Schema.Interceptors.StatusChangeInterceptor())
+            .ConfigureWarnings(warnings =>
+                warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId
+                    .PendingModelChangesWarning));
     });
 
     builder.Services.AddSingleton<SecrecyHandshakeKeepAliveInterceptor>();
@@ -238,8 +238,12 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<CertificatePinningService>();
     builder.Services.AddSingleton<IProtocolKeyService, ProtocolKeyService>();
 
-    builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.ISecretSharingService, Ecliptix.Core.Services.KeyDerivation.NativeSecretSharingService>();
-    builder.Services.AddSingleton<Ecliptix.Core.Services.KeyDerivation.IIdentityKeyDerivationService, Ecliptix.Core.Services.KeyDerivation.IdentityKeyDerivationService>();
+    builder.Services
+        .AddSingleton<Ecliptix.Core.Services.KeyDerivation.ISecretSharingService,
+            Ecliptix.Core.Services.KeyDerivation.NativeSecretSharingService>();
+    builder.Services
+        .AddSingleton<Ecliptix.Core.Services.KeyDerivation.IIdentityKeyDerivationService,
+            Ecliptix.Core.Services.KeyDerivation.IdentityKeyDerivationService>();
     builder.Services.AddSingleton<IMasterKeyService, Ecliptix.Core.Services.Security.MasterKeyService>();
 
     builder.Services.AddSingleton<IRsaConfiguration, RsaConfiguration>();
@@ -247,7 +251,8 @@ static void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddSingleton<ISecureChannelEstablisher>(serviceProvider =>
     {
         IRsaChunkProcessor rsaChunkProcessor = serviceProvider.GetRequiredService<IRsaChunkProcessor>();
-        CertificatePinningService certificatePinningService = serviceProvider.GetRequiredService<CertificatePinningService>();
+        CertificatePinningService certificatePinningService =
+            serviceProvider.GetRequiredService<CertificatePinningService>();
         IEcliptixActorRegistry actorRegistry = serviceProvider.GetRequiredService<IEcliptixActorRegistry>();
         IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtectionProtocolActor);
 
@@ -272,7 +277,8 @@ static void ConfigureMiddleware(WebApplication app)
                 httpContext.Request.Headers[SecurityConstants.HttpHeaders.UserAgent].ToString());
             diagnosticContext.Set(AppConstants.DiagnosticContext.Protocol, httpContext.Request.Protocol);
 
-            if (httpContext.Request.Headers.TryGetValue(SecurityConstants.HttpHeaders.XConnectId, out StringValues connectId))
+            if (httpContext.Request.Headers.TryGetValue(SecurityConstants.HttpHeaders.XConnectId,
+                    out StringValues connectId))
             {
                 diagnosticContext.Set(AppConstants.DiagnosticContext.ConnectId, connectId.ToString());
             }
@@ -315,7 +321,9 @@ static void ConfigureEndpoints(WebApplication app)
 
     app.MapGet(AppConstants.Endpoints.Root,
         () => Results.Ok(new
-        { Status = AppConstants.StatusMessages.Success, Message = AppConstants.StatusMessages.ServerRunning }));
+        {
+            Status = AppConstants.StatusMessages.Success, Message = AppConstants.StatusMessages.ServerRunning
+        }));
 }
 
 static void RegisterLocalization(IServiceCollection services)
@@ -396,8 +404,10 @@ static void RegisterGrpc(IServiceCollection services, NetworkConfiguration netwo
 
     services.Configure<KestrelServerOptions>(options =>
     {
-        options.ListenAnyIP(networkConfig.Ports.Grpc, listenOptions => { listenOptions.Protocols = HttpProtocols.Http2; });
-        options.ListenAnyIP(networkConfig.Ports.Http, listenOptions => { listenOptions.Protocols = HttpProtocols.Http1; });
+        options.ListenAnyIP(networkConfig.Ports.Grpc,
+            listenOptions => { listenOptions.Protocols = HttpProtocols.Http2; });
+        options.ListenAnyIP(networkConfig.Ports.Http,
+            listenOptions => { listenOptions.Protocols = HttpProtocols.Http1; });
     });
 }
 
@@ -432,8 +442,10 @@ static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
                     };
                 });
 
-            string? otlpEndpoint = Environment.GetEnvironmentVariable(EnvironmentVariableNames.OtelExporterOtlpEndpoint);
-            string? consoleExporter = Environment.GetEnvironmentVariable(EnvironmentVariableNames.OtelConsoleExporterEnabled);
+            string? otlpEndpoint =
+                Environment.GetEnvironmentVariable(EnvironmentVariableNames.OtelExporterOtlpEndpoint);
+            string? consoleExporter =
+                Environment.GetEnvironmentVariable(EnvironmentVariableNames.OtelConsoleExporterEnabled);
 
             if (!string.IsNullOrEmpty(otlpEndpoint))
             {
@@ -453,7 +465,7 @@ static void InitializeOpaqueService(WebApplication app)
 {
     IOpaqueKeyRingService opaqueService = app.Services.GetRequiredService<IOpaqueKeyRingService>();
     SecurityKeysSettings securityKeysSettings = app.Services.GetRequiredService<IOptions<SecurityKeysSettings>>().Value;
-    Dictionary<int, string> keyRing = securityKeysSettings.OpaqueKeyRing ?? new Dictionary<int, string>();
+    Dictionary<int, string> keyRing = securityKeysSettings.OpaqueKeyRing;
     int activeKeyVersion = securityKeysSettings.OpaqueActiveKeyVersion;
 
     if (keyRing.Count == 0)
@@ -464,10 +476,7 @@ static void InitializeOpaqueService(WebApplication app)
             throw new InvalidOperationException("OPAQUE key ring is empty");
         }
 
-        keyRing = new Dictionary<int, string>
-        {
-            { 1, securityKeysSettings.OpaqueSecretKeySeed }
-        };
+        keyRing = new Dictionary<int, string> { { 1, securityKeysSettings.OpaqueSecretKeySeed } };
         activeKeyVersion = 1;
     }
 
@@ -475,7 +484,8 @@ static void InitializeOpaqueService(WebApplication app)
         opaqueService.Initialize(keyRing, activeKeyVersion);
     if (!initializationResult.IsErr)
     {
-        Log.Information("OPAQUE protocol initialized successfully with {KeyCount} key(s), active version: {ActiveVersion}",
+        Log.Information(
+            "OPAQUE protocol initialized successfully with {KeyCount} key(s), active version: {ActiveVersion}",
             keyRing.Count, activeKeyVersion);
         return;
     }
@@ -483,32 +493,43 @@ static void InitializeOpaqueService(WebApplication app)
     OpaqueServerFailure failure = initializationResult.UnwrapErr();
     Log.Error("OPAQUE server initialization failed: {Error}", failure.Message);
     throw new InvalidOperationException(failure.Message, failure.Exception);
-
 }
 
 static void InitializeEcliptixProtocol()
 {
     try
     {
-        Result<EcliptixIdentityKeys, EcliptixProtocolFailure> keysResult = EcliptixIdentityKeys.Create();
-        if (keysResult.IsErr)
+        using IProtocolServer protocolServer = new ProtocolServerAdapter();
+        Result<Unit, EcliptixProtocolFailure> initResult = protocolServer.Initialize();
+        if (initResult.IsErr)
         {
-            EcliptixProtocolFailure failure = keysResult.UnwrapErr();
+            EcliptixProtocolFailure failure = initResult.UnwrapErr();
             Log.Error("Ecliptix Protocol initialization failed: {Error}", failure.Message);
-            throw new InvalidOperationException($"Ecliptix Protocol initialization failed: {failure.Message}");
+            throw new InvalidOperationException(
+                $"Ecliptix Protocol initialization failed: {failure.Message}",
+                failure.InnerException);
         }
 
-        using EcliptixIdentityKeys testKeys = keysResult.Unwrap();
-
-        Result<EcliptixProtocolSystem, EcliptixProtocolFailure> systemResult = EcliptixProtocolSystem.Create(testKeys);
-        if (systemResult.IsErr)
+        Result<ProtocolIdentity, EcliptixProtocolFailure> identityResult = protocolServer.CreateIdentity();
+        if (identityResult.IsErr)
         {
-            EcliptixProtocolFailure failure = systemResult.UnwrapErr();
-            Log.Error("Ecliptix Protocol System creation failed: {Error}", failure.Message);
-            throw new InvalidOperationException($"Ecliptix Protocol System creation failed: {failure.Message}");
+            EcliptixProtocolFailure failure = identityResult.UnwrapErr();
+            Log.Error("Ecliptix Protocol identity creation failed: {Error}", failure.Message);
+            throw new InvalidOperationException(
+                $"Ecliptix Protocol identity creation failed: {failure.Message}",
+                failure.InnerException);
         }
 
-        using EcliptixProtocolSystem testSystem = systemResult.Unwrap();
+        using ProtocolIdentity identity = identityResult.Unwrap();
+        Result<byte[], EcliptixProtocolFailure> bundleResult = protocolServer.CreatePreKeyBundle(identity);
+        if (bundleResult.IsErr)
+        {
+            EcliptixProtocolFailure failure = bundleResult.UnwrapErr();
+            Log.Error("Ecliptix Protocol prekey bundle creation failed: {Error}", failure.Message);
+            throw new InvalidOperationException(
+                $"Ecliptix Protocol prekey bundle creation failed: {failure.Message}",
+                failure.InnerException);
+        }
 
         Log.Information("Ecliptix Protocol native library initialized successfully");
     }
@@ -554,6 +575,7 @@ static void InitializeProtocolKeyService(WebApplication app)
     {
         seed = Convert.FromBase64String(seedString);
     }
+
     Result<Unit, EcliptixProtocolFailure> initResult = protocolKeyService.Initialize(seed);
 
     if (initResult.IsErr)

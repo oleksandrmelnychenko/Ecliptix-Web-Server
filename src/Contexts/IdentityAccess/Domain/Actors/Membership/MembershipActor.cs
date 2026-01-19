@@ -653,7 +653,7 @@ public sealed class MembershipActor : ReceivePersistentActor
 
         Guid accountId = accountResult.Unwrap().Value;
 
-        var (oprfResponse, _, keyVersion) =
+        var (oprfResponse, keyVersion) =
             _opaqueProtocolService.ProcessOprfRequest(command.OprfRequest, accountId);
 
         Log.Info(
@@ -738,7 +738,7 @@ public sealed class MembershipActor : ReceivePersistentActor
                 command.MembershipIdentifier,
                 accountId);
         }
-        var (oprfResponse, _, keyVersion) = _opaqueProtocolService.ProcessOprfRequest(oprfRequest, accountId);
+        var (oprfResponse, keyVersion) = _opaqueProtocolService.ProcessOprfRequest(oprfRequest, accountId);
         if (Log.IsDebugEnabled)
         {
             Log.Debug(
@@ -982,7 +982,7 @@ public sealed class MembershipActor : ReceivePersistentActor
                 serverMac.Length > 0 ? Convert.ToHexString(serverMac) : string.Empty);
         }
 
-        Result<(SodiumSecureMemoryHandle SessionKeyHandle, SodiumSecureMemoryHandle MasterKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure>
+        Result<(SodiumSecureMemoryHandle MasterKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure>
             opaqueResult =
                 _opaqueProtocolService.CompleteSignInWithMasterKey(signInEvent.Request, serverMac, state.OpaqueKeyVersion);
 
@@ -997,48 +997,28 @@ public sealed class MembershipActor : ReceivePersistentActor
             return;
         }
 
-        (SodiumSecureMemoryHandle sessionKeyHandle, SodiumSecureMemoryHandle masterKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) =
+        (SodiumSecureMemoryHandle masterKeyHandle, OpaqueSignInFinalizeResponse finalizeResponse) =
             opaqueResult.Unwrap();
 
-        bool sessionKeyValid = sessionKeyHandle is not null && !sessionKeyHandle.IsInvalid;
-        bool masterKeyValid = masterKeyHandle is not null && !masterKeyHandle.IsInvalid;
-
-        if (sessionKeyValid)
-        {
-            Result<byte[], SodiumFailure> sessionKeyBytesResult = sessionKeyHandle.ReadBytes(sessionKeyHandle.Length);
-            if (sessionKeyBytesResult.IsOk)
-            {
-                byte[] sessionKeyBytes = sessionKeyBytesResult.Unwrap();
-                CryptographicOperations.ZeroMemory(sessionKeyBytes);
-            }
-        }
-        else
-        {
-            Log.Warning(
-                "[SERVER-OPAQUE-SESSIONKEY] Session key handle is null or invalid. MembershipId: {0}",
-                state.MembershipId);
-        }
-
         if (finalizeResponse.Result == OpaqueOperationResult.Succeeded &&
-            sessionKeyValid &&
-            masterKeyValid)
+            masterKeyHandle is { IsInvalid: false } validMasterKey)
         {
             if (state.ActiveAccountId.HasValue)
             {
                 bool maskingKeyReady = await EnsureAccountMaskingKeyAsync(
                     state.ActiveAccountId.Value,
                     state.MembershipId,
-                    masterKeyHandle);
+                    validMasterKey);
                 if (maskingKeyReady)
                 {
-                    await StoreMasterKeyIfNeeded(state.ActiveAccountId.Value, masterKeyHandle);
+                    await StoreMasterKeyIfNeeded(state.ActiveAccountId.Value, validMasterKey);
                 }
                 else
                 {
                     Log.Error(
                         "[MASKING-KEY] Failed to ensure masking key for account {0}. Master key shares not stored.",
                         state.ActiveAccountId.Value);
-                    masterKeyHandle?.Dispose();
+                    validMasterKey.Dispose();
                 }
             }
             else
@@ -1046,7 +1026,7 @@ public sealed class MembershipActor : ReceivePersistentActor
                 Log.Error(
                     "[MASTER-KEY-STORE] ActiveAccountId missing for MembershipId {0}. Master key shares not stored.",
                     state.MembershipId);
-                masterKeyHandle?.Dispose();
+                validMasterKey.Dispose();
             }
         }
         else
@@ -1054,7 +1034,6 @@ public sealed class MembershipActor : ReceivePersistentActor
 
             masterKeyHandle?.Dispose();
         }
-        sessionKeyHandle?.Dispose();
 
         RemovePendingSignIn(signInEvent.ConnectId);
 

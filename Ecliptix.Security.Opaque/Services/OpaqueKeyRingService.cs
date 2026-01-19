@@ -89,13 +89,12 @@ public sealed class OpaqueKeyRingService : IOpaqueKeyRingService, IDisposable
             : serviceResult.Unwrap().GenerateKe2(ke1, accountId, registrationRecord);
     }
 
-    public Result<(SodiumSecureMemoryHandle SessionKey, SodiumSecureMemoryHandle MasterKey), OpaqueServerFailure>
+    public Result<SodiumSecureMemoryHandle, OpaqueServerFailure>
         FinishAuthenticationWithMasterKey(KE3 ke3, int keyVersion)
     {
         Result<OpaqueProtocolService, OpaqueServerFailure> serviceResult = GetService(keyVersion);
         return serviceResult.IsErr
-            ? Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
-                serviceResult.UnwrapErr())
+            ? Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(serviceResult.UnwrapErr())
             : serviceResult.Unwrap().FinishAuthenticationWithMasterKey(ke3);
     }
 

@@ -13,48 +13,32 @@ public interface IProtocolServer : IDisposable
     Result<byte[], EcliptixProtocolFailure> GetPublicEd25519(ProtocolIdentity identity);
     Result<byte[], EcliptixProtocolFailure> GetPublicX25519(ProtocolIdentity identity);
     Result<byte[], EcliptixProtocolFailure> GetPublicKyber(ProtocolIdentity identity);
+    Result<byte[], EcliptixProtocolFailure> CreatePreKeyBundle(ProtocolIdentity identity);
 
-    Result<ProtocolSession, EcliptixProtocolFailure> CreateSession(
+    Result<ProtocolHandshakeResponderStart, EcliptixProtocolFailure> StartHandshakeResponder(
         ProtocolIdentity identity,
-        Action<uint>? onStateChanged = null);
+        byte[] localPreKeyBundle,
+        byte[] handshakeInit,
+        uint maxMessagesPerChain);
 
-    Result<ProtocolSession, EcliptixProtocolFailure> CreateSessionFromRoot(
-        ProtocolIdentity identity,
-        byte[] rootKey,
-        byte[] peerBundle,
-        bool isInitiator,
-        Action<uint>? onStateChanged = null);
+    Result<ProtocolSession, EcliptixProtocolFailure> FinishHandshakeResponder(
+        ProtocolHandshakeResponder responder);
 
-    Result<ProtocolSession, EcliptixProtocolFailure> ImportState(
-        ProtocolIdentity identity,
-        byte[] stateBytes,
-        Action<uint>? onStateChanged = null);
-
-    Result<byte[], EcliptixProtocolFailure> BeginHandshake(
+    Result<byte[], EcliptixProtocolFailure> Encrypt(
         ProtocolSession session,
-        uint connectionId,
-        PubKeyExchangeType exchangeType,
-        byte[] peerKyberPublicKey);
+        byte[] plaintext,
+        EnvelopeType envelopeType,
+        uint envelopeId,
+        string? correlationId = null);
 
-    Result<Unit, EcliptixProtocolFailure> CompleteHandshake(
+    Result<ProtocolDecryptResult, EcliptixProtocolFailure> Decrypt(
         ProtocolSession session,
-        byte[] peerHandshakeMessage,
-        byte[] rootKey);
-
-    Result<Unit, EcliptixProtocolFailure> CompleteHandshakeAuto(
-        ProtocolSession session,
-        byte[] peerHandshakeMessage);
-
-    Result<byte[], EcliptixProtocolFailure> SendMessage(ProtocolSession session, byte[] plaintext);
-    Result<byte[], EcliptixProtocolFailure> ReceiveMessage(ProtocolSession session, byte[] encryptedEnvelope);
-
-    Result<bool, EcliptixProtocolFailure> HasConnection(ProtocolSession session);
-    Result<uint, EcliptixProtocolFailure> GetConnectionId(ProtocolSession session);
-    Result<uint?, EcliptixProtocolFailure> GetSelectedOpkId(ProtocolSession session);
+        byte[] encryptedEnvelope);
 
     Result<byte[], EcliptixProtocolFailure> ExportState(ProtocolSession session);
+    Result<ProtocolSession, EcliptixProtocolFailure> ImportState(byte[] stateBytes);
 
-    Result<Unit, EcliptixProtocolFailure> ValidateEnvelopeHybridRequirements(byte[] encryptedEnvelope);
+    Result<Unit, EcliptixProtocolFailure> ValidateEnvelope(byte[] encryptedEnvelope);
 }
 
 public sealed class ProtocolIdentity : IDisposable
@@ -100,12 +84,12 @@ public sealed class ProtocolIdentity : IDisposable
 
 public sealed class ProtocolSession : IDisposable
 {
-    internal ProtocolSession(EcliptixProtocolSystem handle)
+    internal ProtocolSession(EcliptixSession handle)
     {
         Handle = handle;
     }
 
-    internal EcliptixProtocolSystem Handle { get; }
+    internal EcliptixSession Handle { get; }
 
     public bool IsDisposed { get; private set; }
 
@@ -124,5 +108,58 @@ public sealed class ProtocolSession : IDisposable
     ~ProtocolSession()
     {
         Dispose();
+    }
+}
+
+public sealed class ProtocolHandshakeResponder : IDisposable
+{
+    internal ProtocolHandshakeResponder(HandshakeResponder handle)
+    {
+        Handle = handle;
+    }
+
+    internal HandshakeResponder Handle { get; }
+
+    public bool IsDisposed { get; private set; }
+
+    public void Dispose()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        Handle.Dispose();
+        IsDisposed = true;
+        GC.SuppressFinalize(this);
+    }
+
+    ~ProtocolHandshakeResponder()
+    {
+        Dispose();
+    }
+}
+
+public sealed class ProtocolHandshakeResponderStart
+{
+    public ProtocolHandshakeResponder Responder { get; }
+    public byte[] HandshakeAck { get; }
+
+    internal ProtocolHandshakeResponderStart(ProtocolHandshakeResponder responder, byte[] handshakeAck)
+    {
+        Responder = responder;
+        HandshakeAck = handshakeAck;
+    }
+}
+
+public sealed class ProtocolDecryptResult
+{
+    public byte[] Plaintext { get; }
+    public byte[] Metadata { get; }
+
+    internal ProtocolDecryptResult(byte[] plaintext, byte[] metadata)
+    {
+        Plaintext = plaintext;
+        Metadata = metadata;
     }
 }

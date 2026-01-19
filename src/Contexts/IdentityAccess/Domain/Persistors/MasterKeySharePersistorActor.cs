@@ -99,8 +99,8 @@ public class MasterKeySharePersistorActor : PersistorBase<MasterKeyFailure>
 
             int shareCount = command.Shares.Count;
             HashSet<int> seenIndexes = new(shareCount);
-            int minIndex = int.MaxValue;
-            int maxIndex = int.MinValue;
+            int minIndex = command.Shares[0].ShareIndex;
+            int maxIndex = minIndex;
 
             for (int i = 0; i < shareCount; i++)
             {

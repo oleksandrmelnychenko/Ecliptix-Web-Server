@@ -139,12 +139,6 @@ public sealed class CertificatePinningService : IDisposable
                     actualPlaintextLen = plaintextLen;
                 }
 
-                if (actualPlaintextLen > int.MaxValue)
-                {
-                    return Result<byte[], CertificatePinningFailure>.Err(
-                        CertificatePinningFailure.DecryptionFailed("Plaintext too large"));
-                }
-
                 byte[] resultArray = new byte[actualPlaintextLen];
                 plaintext.AsSpan(0, (int)actualPlaintextLen).CopyTo(resultArray);
                 return Result<byte[], CertificatePinningFailure>.Ok(resultArray);
@@ -156,10 +150,7 @@ public sealed class CertificatePinningService : IDisposable
         }
         finally
         {
-            if (actualPlaintextLen is > 0 and <= int.MaxValue)
-            {
-                CryptographicOperations.ZeroMemory(plaintext.AsSpan(0, (int)actualPlaintextLen));
-            }
+            CryptographicOperations.ZeroMemory(plaintext.AsSpan(0, (int)actualPlaintextLen));
 
             ArrayPool<byte>.Shared.Return(plaintext, clearArray: true);
             ExitOperation();
@@ -215,12 +206,6 @@ public sealed class CertificatePinningService : IDisposable
                         string error = GetErrorString();
                         return Result<byte[], CertificatePinningFailure>.Err(
                             CertificatePinningFailure.SigningFailed(error));
-                    }
-
-                    if (signatureLen > int.MaxValue)
-                    {
-                        return Result<byte[], CertificatePinningFailure>.Err(
-                            CertificatePinningFailure.SigningFailed("Signature too large"));
                     }
 
                     byte[] resultArray = new byte[signatureLen];

@@ -1,5 +1,5 @@
 using Ecliptix.IdentityAccess.Infrastructure.EventHandling;
-using Ecliptix.Protobuf.Common;
+using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.SharedKernel;
 using Google.Protobuf;

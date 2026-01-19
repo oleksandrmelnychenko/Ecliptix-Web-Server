@@ -1831,13 +1831,13 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
         catch (InvalidOperationException)
         {
             Log.Warning(
-                "[verification.channel.drop] Channel closed while writing update for ConnectId {ConnectId}",
+                "[verification.channel.drop] Channel closed while writing update for ConnectId {0}",
                 _connectId);
             CompleteWriter();
         }
         catch (OperationCanceledException)
         {
-            Log.Warning("[verification.channel.drop] Write cancelled for ConnectId {ConnectId}", _connectId);
+            Log.Warning("[verification.channel.drop] Write cancelled for ConnectId {0}", _connectId);
             if (!_currentRequestCancellationToken.IsCancellationRequested)
             {
                 CompleteWriter();

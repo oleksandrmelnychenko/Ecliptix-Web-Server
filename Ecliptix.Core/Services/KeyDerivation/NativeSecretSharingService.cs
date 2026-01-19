@@ -86,16 +86,9 @@ public sealed class NativeSecretSharingService : ISecretSharingService
 
             return await Task.Run(() =>
             {
-                IntPtr bufferPtr = IntPtr.Zero;
+                NativeSecretSharingInterop.EppBuffer buffer = default;
                 try
                 {
-                    bufferPtr = NativeSecretSharingInterop.epp_buffer_alloc(0);
-                    if (bufferPtr == IntPtr.Zero)
-                    {
-                        return Result<KeySplitResult, KeySplittingFailure>.Err(
-                            KeySplittingFailure.AllocationFailed("Failed to allocate share buffer"));
-                    }
-
                     NativeSecretSharingInterop.EppErrorCode result =
                         NativeSecretSharingInterop.epp_shamir_split(
                             keyBytes,
@@ -104,7 +97,7 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                             (byte)totalShares,
                             authKeyBytes,
                             (nuint)(authKeyBytes?.Length ?? 0),
-                            bufferPtr,
+                            out buffer,
                             out nuint shareLength,
                             out NativeSecretSharingInterop.EppError error);
 
@@ -115,9 +108,6 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                         return Result<KeySplitResult, KeySplittingFailure>.Err(
                             MapSplitError(result, message));
                     }
-
-                    NativeSecretSharingInterop.EppBuffer buffer =
-                        Marshal.PtrToStructure<NativeSecretSharingInterop.EppBuffer>(bufferPtr);
 
                     if (buffer.Length == 0 || shareLength == 0)
                     {
@@ -182,10 +172,7 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                 }
                 finally
                 {
-                    if (bufferPtr != IntPtr.Zero)
-                    {
-                        NativeSecretSharingInterop.epp_buffer_free(bufferPtr);
-                    }
+                    NativeSecretSharingInterop.epp_buffer_release(ref buffer);
                 }
             });
         }
@@ -286,16 +273,9 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                     Buffer.BlockCopy(shares[i].ShareData, 0, sharesBlob, i * shareSize, shareSize);
                 }
 
-                IntPtr bufferPtr = IntPtr.Zero;
+                NativeSecretSharingInterop.EppBuffer buffer = default;
                 try
                 {
-                    bufferPtr = NativeSecretSharingInterop.epp_buffer_alloc(0);
-                    if (bufferPtr == IntPtr.Zero)
-                    {
-                        return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
-                            KeySplittingFailure.AllocationFailed("Failed to allocate secret buffer"));
-                    }
-
                     NativeSecretSharingInterop.EppErrorCode result =
                         NativeSecretSharingInterop.epp_shamir_reconstruct(
                             sharesBlob,
@@ -304,7 +284,7 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                             (nuint)shares.Length,
                             authKeyBytes,
                             (nuint)(authKeyBytes?.Length ?? 0),
-                            bufferPtr,
+                            out buffer,
                             out NativeSecretSharingInterop.EppError error);
 
                     if (result != NativeSecretSharingInterop.EppErrorCode.Success)
@@ -315,8 +295,6 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                             MapReconstructError(result, message));
                     }
 
-                    NativeSecretSharingInterop.EppBuffer buffer =
-                        Marshal.PtrToStructure<NativeSecretSharingInterop.EppBuffer>(bufferPtr);
                     if (buffer.Length == 0)
                     {
                         return Result<SodiumSecureMemoryHandle, KeySplittingFailure>.Err(
@@ -349,10 +327,7 @@ public sealed class NativeSecretSharingService : ISecretSharingService
                 }
                 finally
                 {
-                    if (bufferPtr != IntPtr.Zero)
-                    {
-                        NativeSecretSharingInterop.epp_buffer_free(bufferPtr);
-                    }
+                    NativeSecretSharingInterop.epp_buffer_release(ref buffer);
                 }
             });
         }
@@ -519,7 +494,7 @@ internal static class NativeSecretSharingInterop
         byte shareCount,
         [In] byte[]? authKey,
         nuint authKeyLength,
-        IntPtr outShares,
+        out EppBuffer outShares,
         out nuint outShareLength,
         out EppError outError);
 
@@ -531,14 +506,11 @@ internal static class NativeSecretSharingInterop
         nuint shareCount,
         [In] byte[]? authKey,
         nuint authKeyLength,
-        IntPtr outSecret,
+        out EppBuffer outSecret,
         out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr epp_buffer_alloc(nuint capacity);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void epp_buffer_free(IntPtr buffer);
+    internal static extern void epp_buffer_release(ref EppBuffer buffer);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void epp_error_free(ref EppError error);

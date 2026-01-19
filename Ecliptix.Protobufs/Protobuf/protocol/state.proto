@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package ecliptix.proto.protocol;
+option csharp_namespace = "Ecliptix.Protobuf.Protocol";
+
+import "google/protobuf/timestamp.proto";
+
+message ProtocolState {
+  uint32 version = 1;
+  bool is_initiator = 2;
+  google.protobuf.Timestamp created_at = 3;
+  bytes session_id = 4;
+  uint64 state_counter = 5;
+  uint64 send_ratchet_epoch = 6;
+  uint64 recv_ratchet_epoch = 7;
+
+  bytes root_key = 10;
+  ChainState send_chain = 11;
+  ChainState recv_chain = 12;
+
+  DhKeyPair dh_local = 13;
+  bytes dh_remote_public = 14;
+  bytes dh_local_initial_public = 15;
+  bytes dh_remote_initial_public = 16;
+
+  bytes metadata_key = 17;
+
+  KyberKeyPair kyber_local = 18;
+  bytes kyber_remote_public = 19;
+
+  NonceState nonce_generator = 20;
+  bytes state_hmac = 21;
+  uint32 max_messages_per_chain = 22;
+
+  // Identity binding - cryptographically ties session to peer identities
+  bytes local_identity_ed25519_public = 30;   // 32 bytes
+  bytes local_identity_x25519_public = 31;    // 32 bytes
+  bytes peer_identity_ed25519_public = 32;    // 32 bytes
+  bytes peer_identity_x25519_public = 33;     // 32 bytes
+  bytes identity_binding_hash = 34;           // 32 bytes, SHA256(sorted(local_x25519 || peer_x25519))
+}
+
+message ChainState {
+  uint64 message_index = 1;
+  bytes chain_key = 2;
+  repeated CachedMessageKey skipped_message_keys = 3;
+}
+
+message CachedMessageKey {
+  uint64 message_index = 1;
+  bytes message_key = 2;
+}
+
+message DhKeyPair {
+  bytes private_key = 1;
+  bytes public_key = 2;
+}
+
+message KyberKeyPair {
+  bytes secret_key = 1;
+  bytes public_key = 2;
+}
+
+message NonceState {
+  bytes prefix = 1;
+  uint64 counter = 2;
+}

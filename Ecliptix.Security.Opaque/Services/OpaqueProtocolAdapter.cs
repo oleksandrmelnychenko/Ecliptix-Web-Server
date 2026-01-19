@@ -26,7 +26,7 @@ public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) 
     private const string AuthenticationSuccessful = "Authentication successful";
     private const string AuthenticationFailed = "Authentication failed";
 
-    public (byte[] Response, Guid AccountId, int KeyVersion) ProcessOprfRequest(byte[] oprfRequest, Guid accountId)
+    public (byte[] Response, int KeyVersion) ProcessOprfRequest(byte[] oprfRequest, Guid accountId)
     {
         ArgumentNullException.ThrowIfNull(oprfRequest);
 
@@ -64,7 +64,7 @@ public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) 
                         ok.Data.Length,
                         Convert.ToHexString(ok.Data));
                 }
-                return (ok.Data, accountId, keyVersion);
+                return (ok.Data, keyVersion);
             },
             err => throw new InvalidOperationException($"OPRF processing failed: {err.Message}")
         );
@@ -126,19 +126,19 @@ public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) 
                 OpaqueFailure.InvalidInput($"KE2 generation failed: {err.Message}")));
     }
 
-    public Result<(SodiumSecureMemoryHandle SessionKeyHandle, SodiumSecureMemoryHandle MasterKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure>
+    public Result<(SodiumSecureMemoryHandle MasterKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure>
         CompleteSignInWithMasterKey(OpaqueSignInFinalizeRequest request, byte[]? serverMac, int keyVersion)
     {
         if (serverMac is null)
         {
-            return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(
+            return Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(
                 OpaqueFailure.InvalidInput("Server MAC is required for sign-in finalization."));
         }
 
         Result<KE3, OpaqueFailure> ke3ValidationResult = ValidateKe3(request);
         if (ke3ValidationResult.IsErr)
         {
-            return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(
+            return Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Err(
                 ke3ValidationResult.UnwrapErr());
         }
 
@@ -153,14 +153,14 @@ public sealed class OpaqueProtocolAdapter(IOpaqueKeyRingService keyRingService) 
                 serverMac.Length > 0 ? Convert.ToHexString(serverMac) : string.Empty);
         }
 
-        Result<(SodiumSecureMemoryHandle SessionKey, SodiumSecureMemoryHandle MasterKey), OpaqueServerFailure> result =
+        Result<SodiumSecureMemoryHandle, OpaqueServerFailure> result =
             keyRingService.FinishAuthenticationWithMasterKey(ke3, keyVersion);
 
         return result.Match(
-            ok => Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
-                (ok.SessionKey, ok.MasterKey, BuildSuccessfulFinalizeResponse(serverMac))),
-            _ => Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
-                (null!, null!, BuildFailedFinalizeResponse()))
+            ok => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
+                (ok, BuildSuccessfulFinalizeResponse(serverMac))),
+            _ => Result<(SodiumSecureMemoryHandle, OpaqueSignInFinalizeResponse), OpaqueFailure>.Ok(
+                (null!, BuildFailedFinalizeResponse()))
         );
     }
 

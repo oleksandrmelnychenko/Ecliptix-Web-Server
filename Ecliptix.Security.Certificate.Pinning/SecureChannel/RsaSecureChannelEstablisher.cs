@@ -1,6 +1,5 @@
 using Akka.Actor;
 using Ecliptix.Security.Certificate.Pinning.Crypto;
-using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.Security.Certificate.Pinning.Services;
@@ -8,6 +7,7 @@ using Ecliptix.SharedKernel.Actors;
 using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel;
 using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 using Serilog;
 using System.Buffers;
 using System.IO;
@@ -23,6 +23,7 @@ public class RsaSecureChannelEstablisher(
     public async Task<Result<SecureEnvelope, SecureChannelFailure>> EstablishAsync(
         SecureEnvelope request,
         uint connectId,
+        PubKeyExchangeType exchangeType,
         CancellationToken cancellationToken = default)
     {
         try
@@ -38,22 +39,13 @@ public class RsaSecureChannelEstablisher(
                     SecureChannelFailure.FromCertificateFailure(failure));
             }
 
-            PubKeyExchange pubKeyExchange;
-            try
-            {
-                pubKeyExchange = PubKeyExchange.Parser.ParseFrom(decryptResult.Unwrap());
-            }
-            catch (Exception ex)
-            {
-                return Result<SecureEnvelope, SecureChannelFailure>.Err(
-                    SecureChannelFailure.InvalidPayload($"Invalid PubKeyExchange format: {ex.Message}"));
-            }
+            byte[] handshakeInit = decryptResult.Unwrap();
 
             Log.Information(
-                "[RsaSecureChannelEstablisher] Parsed PubKeyExchange. ConnectId={ConnectId}, OfType={OfType}, State={State}, PayloadSize={PayloadSize}",
-                connectId, pubKeyExchange.OfType, pubKeyExchange.State, pubKeyExchange.Payload.Length);
+                "[RsaSecureChannelEstablisher] Parsed handshake init. ConnectId={ConnectId}, ExchangeType={ExchangeType}, PayloadSize={PayloadSize}",
+                connectId, exchangeType, handshakeInit.Length);
 
-            InitiateEphemeralConnectCommand actorEvent = new(pubKeyExchange, connectId);
+            InitiateEphemeralConnectCommand actorEvent = new(exchangeType, handshakeInit, connectId);
             Result<DeriveSharedSecretResponse, EcliptixProtocolFailure> protocolResult;
 
             try
@@ -81,19 +73,16 @@ public class RsaSecureChannelEstablisher(
                     SecureChannelFailure.ProtocolError(failure.Message));
             }
 
-            PubKeyExchange responsePubKeyExchange = protocolResult.Unwrap().PubKeyExchange;
+            byte[] handshakeAck = protocolResult.Unwrap().HandshakeAck;
             byte[]? responseBuffer = null;
             int responseSize = 0;
 
             try
             {
-                responseSize = responsePubKeyExchange.CalculateSize();
+                responseSize = handshakeAck.Length;
                 responseBuffer = ArrayPool<byte>.Shared.Rent(responseSize);
 
-                using MemoryStream stream = new(responseBuffer, 0, responseSize, writable: true, publiclyVisible: true);
-                using CodedOutputStream output = new(stream, leaveOpen: true);
-                responsePubKeyExchange.WriteTo(output);
-                output.Flush();
+                Buffer.BlockCopy(handshakeAck, 0, responseBuffer, 0, responseSize);
 
                 ReadOnlyMemory<byte> responseMemory = new(responseBuffer, 0, responseSize);
                 Result<byte[], CertificatePinningFailure> encryptResult =
@@ -118,10 +107,12 @@ public class RsaSecureChannelEstablisher(
 
                 SecureEnvelope responseEnvelope = new()
                 {
+                    Version = 1,
                     EncryptedPayload = ByteString.CopyFrom(encryptResult.Unwrap()),
-                    AuthenticationTag = ByteString.CopyFrom(signResult.Unwrap()),
-                    MetaData = ByteString.Empty,
-                    ResultCode = ByteString.Empty
+                    EncryptedMetadata = ByteString.CopyFrom(signResult.Unwrap()),
+                    HeaderNonce = ByteString.Empty,
+                    RatchetEpoch = 0,
+                    SentAt = Timestamp.FromDateTime(DateTime.UtcNow)
                 };
 
                 return Result<SecureEnvelope, SecureChannelFailure>.Ok(responseEnvelope);

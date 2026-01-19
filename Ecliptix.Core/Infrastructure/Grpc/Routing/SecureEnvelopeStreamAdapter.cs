@@ -1,4 +1,4 @@
-using Ecliptix.Protobuf.Common;
+using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.Transport.Common;
 using Google.Protobuf;
 using Grpc.Core;

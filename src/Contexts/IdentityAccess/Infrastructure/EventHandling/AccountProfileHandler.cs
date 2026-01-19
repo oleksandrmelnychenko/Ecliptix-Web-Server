@@ -4,7 +4,7 @@ using Ecliptix.IdentityAccess.Domain.Actors.Membership;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.Protobuf.Account;
-using Ecliptix.Protobuf.Common;
+using Ecliptix.Protobuf.Protocol;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel.Actors;

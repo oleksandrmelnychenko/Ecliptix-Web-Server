@@ -9,7 +9,7 @@ using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.IdentityAccess.Domain.Services;
-using Ecliptix.Protobuf.Common;
+using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.Membership;
 using Ecliptix.Protobuf.Transport.Common;
 using Ecliptix.SharedKernel;

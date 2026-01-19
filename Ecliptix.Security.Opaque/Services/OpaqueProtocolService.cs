@@ -9,7 +9,7 @@ using Ecliptix.SharedKernel.Failures.Sodium;
 
 namespace Ecliptix.Security.Opaque.Services;
 
-public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDisposable
+public sealed class OpaqueProtocolService : IDisposable
 {
     private OpaqueServer? _server;
     private AuthenticationState? _currentServerState;
@@ -165,17 +165,16 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
         }
     }
 
-    public Result<(SodiumSecureMemoryHandle SessionKey, SodiumSecureMemoryHandle MasterKey), OpaqueServerFailure>
-        FinishAuthenticationWithMasterKey(KE3 ke3)
+    public Result<SodiumSecureMemoryHandle, OpaqueServerFailure> FinishAuthenticationWithMasterKey(KE3 ke3)
     {
         if (!TryEnsureReady(out OpaqueServerFailure failure))
         {
-            return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(failure);
+            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(failure);
         }
 
         if (_currentServerState == null)
         {
-            return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
+            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages.NoActiveServerState));
         }
 
@@ -188,68 +187,46 @@ public sealed class OpaqueProtocolService : INativeOpaqueProtocolService, IDispo
             sessionKeyBuffer = keys.SessionKey;
             masterKeyBuffer = keys.MasterKey;
 
-            Result<SodiumSecureMemoryHandle, SodiumFailure> sessionHandleResult =
-                SodiumSecureMemoryHandle.Allocate(OpaqueConstants.HASH_LENGTH);
-
-            if (sessionHandleResult.IsErr)
-            {
-                return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
-                    OpaqueServerFailure.MemoryAllocationFailed(sessionHandleResult.UnwrapErr().Message));
-            }
-
-            SodiumSecureMemoryHandle sessionHandle = sessionHandleResult.Unwrap();
-
-            Result<Unit, SodiumFailure> writeResult = sessionHandle.Write(sessionKeyBuffer);
-            if (writeResult.IsErr)
-            {
-                sessionHandle.Dispose();
-                return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
-                    OpaqueServerFailure.MemoryWriteFailed(writeResult.UnwrapErr().Message));
-            }
-
             Result<SodiumSecureMemoryHandle, SodiumFailure> masterHandleResult =
                 SodiumSecureMemoryHandle.Allocate(OpaqueConstants.MASTER_KEY_LENGTH);
 
             if (masterHandleResult.IsErr)
             {
-                sessionHandle.Dispose();
-                return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
+                return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
                     OpaqueServerFailure.MemoryAllocationFailed(masterHandleResult.UnwrapErr().Message));
             }
 
             SodiumSecureMemoryHandle masterHandle = masterHandleResult.Unwrap();
 
-            writeResult = masterHandle.Write(masterKeyBuffer);
+            Result<Unit, SodiumFailure> writeResult = masterHandle.Write(masterKeyBuffer);
             if (writeResult.IsErr)
             {
-                sessionHandle.Dispose();
                 masterHandle.Dispose();
-                return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
+                return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
                     OpaqueServerFailure.MemoryWriteFailed(writeResult.UnwrapErr().Message));
             }
 
-            return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Ok(
-                (sessionHandle, masterHandle));
+            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Ok(masterHandle);
         }
         catch (ArgumentException ex)
         {
-            return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
+            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.InvalidInput(ex.Message));
         }
         catch (OpaqueException ex)
         {
-            return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
+            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.AuthenticationFailed(
                     $"{OpaqueServerConstants.ErrorMessages.FailedToFinishAuthentication}: {ex.ResultCode}"));
         }
         catch (ObjectDisposedException)
         {
-            return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
+            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.ServiceDisposed());
         }
         catch (Exception ex)
         {
-            return Result<(SodiumSecureMemoryHandle, SodiumSecureMemoryHandle), OpaqueServerFailure>.Err(
+            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
                 OpaqueServerFailure.CryptographicException(ex));
         }
         finally

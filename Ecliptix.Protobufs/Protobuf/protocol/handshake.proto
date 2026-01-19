@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package ecliptix.proto.protocol;
+option csharp_namespace = "Ecliptix.Protobuf.Protocol";
+
+message OneTimePreKey {
+  uint32 one_time_pre_key_id = 1;
+  bytes public_key = 2;
+}
+
+message PreKeyBundle {
+  uint32 version = 1;
+  bytes identity_ed25519_public = 2;
+  bytes identity_x25519_public = 3;
+  uint32 signed_pre_key_id = 4;
+  bytes signed_pre_key_public = 5;
+  bytes signed_pre_key_signature = 6;
+  repeated OneTimePreKey one_time_pre_keys = 7;
+  bytes kyber_public = 8;
+}
+
+message HandshakeInit {
+  uint32 version = 1;
+  bytes initiator_identity_ed25519_public = 2;
+  bytes initiator_identity_x25519_public = 3;
+  bytes initiator_ephemeral_x25519_public = 4;
+  optional uint32 one_time_pre_key_id = 5;
+  bytes kyber_ciphertext = 6;
+  bytes key_confirmation_mac = 7;
+  bytes initiator_kyber_public = 8;
+  uint32 max_messages_per_chain = 9;
+}
+
+message HandshakeAck {
+  uint32 version = 1;
+  bytes key_confirmation_mac = 2;
+}

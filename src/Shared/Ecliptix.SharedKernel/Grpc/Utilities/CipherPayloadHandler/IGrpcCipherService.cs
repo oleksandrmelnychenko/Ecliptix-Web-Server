@@ -1,4 +1,4 @@
-using Ecliptix.Protobuf.Common;
+using Ecliptix.Protobuf.Protocol;
 using Ecliptix.SharedKernel;
 using Grpc.Core;
 

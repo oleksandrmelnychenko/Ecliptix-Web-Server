@@ -1501,7 +1501,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
             FlowStatusQueryRecord notFoundResult = new(
                 IsFound: false,
                 Status: VerificationFlowStatus.Pending,
-                ExpiresAt: DateTimeOffset.MinValue);
+                ExpiresAt: DateTimeOffset.UtcNow);
 
             return Result<FlowStatusQueryRecord, VerificationFlowFailure>.Ok(notFoundResult);
         }

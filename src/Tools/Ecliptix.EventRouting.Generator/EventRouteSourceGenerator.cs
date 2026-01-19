@@ -15,7 +15,7 @@ public sealed class EventRouteSourceGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor InvalidSignature = new(
         id: "EVTROUTE001",
         title: "Invalid event route handler signature",
-        messageFormat: "Method '{0}' has invalid signature for delivery kind {1}. Expected: {2}",
+        messageFormat: "Method '{0}' has invalid signature for delivery kind {1}. Expected: {2}.",
         category: "EventRouting",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);

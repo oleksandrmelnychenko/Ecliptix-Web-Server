@@ -1,4 +1,4 @@
-using Ecliptix.Protobuf.Common;
+using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Security.Certificate.Pinning.Failures;
 using Ecliptix.SharedKernel;
 
@@ -9,5 +9,6 @@ public interface ISecureChannelEstablisher
     Task<Result<SecureEnvelope, SecureChannelFailure>> EstablishAsync(
         SecureEnvelope request,
         uint connectId,
+        PubKeyExchangeType exchangeType,
         CancellationToken cancellationToken = default);
 }

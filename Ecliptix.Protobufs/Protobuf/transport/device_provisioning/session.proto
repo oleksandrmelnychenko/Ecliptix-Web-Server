@@ -25,7 +25,7 @@ message AuthenticatedSessionHandshakeRequest {
 
   message Cryptography {
     bytes master_key_fingerprint = 1;
-    bytes pub_key_exchange = 2;
+    bytes handshake_init = 2;
     bytes client_nonce = 3;
     bytes proof = 4;
     bytes server_nonce = 5;
@@ -39,6 +39,6 @@ message ServerPublicKeysRequest {}
 
 message ServerPublicKeysResponse {
   bytes server_public_key = 1;
-  bytes server_kyber_public_key = 2;
+  bytes server_prekey_bundle = 2;
   bytes server_nonce = 3;
 }

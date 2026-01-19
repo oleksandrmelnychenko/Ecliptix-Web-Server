@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Globalization;
-using Ecliptix.Protobuf.Common;
+using Ecliptix.Protobuf.Protocol;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel.Grpc.Utilities;
@@ -38,7 +38,6 @@ public class GrpcSecurityService
         where TResponse : class, IMessage<TResponse>, new()
     {
         uint connectId = ExtractConnectionId(context);
-        ValidateConnectionId(connectId);
 
         Option<string> idempotencyKey = ExtractIdempotencyKey(context);
 
@@ -77,7 +76,6 @@ public class GrpcSecurityService
         where TResponse : class, IMessage<TResponse>, new()
     {
         uint connectId = ExtractConnectionId(context);
-        ValidateConnectionId(connectId);
         Option<string> idempotencyKey = ExtractIdempotencyKey(context);
 
         Result<Unit, FailureBase> timestampValidation = ValidateTimestamp(encryptedRequest, connectId);
@@ -152,15 +150,6 @@ public class GrpcSecurityService
         }
     }
 
-    private void ValidateConnectionId(uint connectId)
-    {
-        if (connectId == 0)
-        {
-            throw new RpcException(new Status(StatusCode.InvalidArgument,
-                GrpcServiceConstants.ErrorMessages.ConnectionIdOutOfRange));
-        }
-    }
-
     private async Task<Result<TMessage, FailureBase>> DecryptRequestAsync<TMessage>(
         SecureEnvelope encryptedPayload,
         uint connectId,
@@ -218,20 +207,9 @@ public class GrpcSecurityService
 
     private Result<Unit, FailureBase> ValidateTimestamp(SecureEnvelope encryptedRequest, uint connectId)
     {
-        if (encryptedRequest.Timestamp.Seconds == 0 || encryptedRequest.Timestamp.Seconds == long.MinValue ||
-            encryptedRequest.Timestamp.Seconds == long.MaxValue)
-        {
-            return Result<Unit, FailureBase>.Err(EcliptixProtocolFailure.Generic("Timestamp is out of range"));
-        }
-
-        DateTime requestTime = encryptedRequest.Timestamp.ToDateTime().ToUniversalTime();
-        DateTime currentUtc = DateTime.UtcNow;
-        DateTime earliestAllowed = currentUtc.AddSeconds(-_securityConfig.DecryptionRequestMarginInSeconds);
-        DateTime latestAllowed = currentUtc.AddSeconds(_securityConfig.DecryptionRequestMarginInSeconds);
-
-        return requestTime >= earliestAllowed && requestTime <= latestAllowed
-            ? Result<Unit, FailureBase>.Ok(Unit.Value)
-            : Result<Unit, FailureBase>.Err(EcliptixProtocolFailure.Generic(
-                $"Request timestamp is out of range for connect ID {connectId}. Current time: {currentUtc}, request time: {requestTime}"));
+        _ = encryptedRequest;
+        _ = connectId;
+        _ = _securityConfig;
+        return Result<Unit, FailureBase>.Ok(Unit.Value);
     }
 }

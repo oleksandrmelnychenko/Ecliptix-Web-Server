@@ -1,9 +1,12 @@
 using Akka.Actor;
-using Ecliptix.Protobuf.Common;
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Actors;
 using Ecliptix.SharedKernel.Configuration;
+using Ecliptix.SharedKernel.Grpc.Utilities;
 using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
@@ -41,21 +44,8 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
     {
         try
         {
-            PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
-
-            EncryptPayloadCommand encryptCommand = new(exchangeType, envelop);
-            RouteToConnectionCommand encryptForwarder = new(connectId, encryptCommand);
-
-            Task<Result<SecureEnvelope, EcliptixProtocolFailure>> encryptTask =
-                _protocolActor.Ask<Result<SecureEnvelope, EcliptixProtocolFailure>>(
-                    encryptForwarder,
-                    TimeoutConfiguration.Actor.AskTimeout);
-            Result<SecureEnvelope, EcliptixProtocolFailure> result =
-                await encryptTask.WaitAsync(context.CancellationToken).ConfigureAwait(false);
-
-            return result.IsErr
-                ? Result<SecureEnvelope, FailureBase>.Err(result.UnwrapErr())
-                : Result<SecureEnvelope, FailureBase>.Ok(result.Unwrap());
+            return await EncryptEnvelopeInternal(envelop, connectId, context, EnvelopeType.Response)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
         {
@@ -128,7 +118,8 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
 
         byte[] errorBytes = errorPayload.ToByteArray();
 
-        Result<SecureEnvelope, FailureBase> encryptResult = await EncryptEnvelop([], connectId, context);
+        Result<SecureEnvelope, FailureBase> encryptResult =
+            await EncryptEnvelopeInternal(errorBytes, connectId, context, EnvelopeType.ErrorResponse);
         if (encryptResult.IsErr)
         {
             FailureBase encryptFailure = encryptResult.UnwrapErr();
@@ -139,8 +130,53 @@ public class GrpcCipherService(IEcliptixActorRegistry actorRegistry) : IGrpcCiph
             throw new RpcException(descriptor.CreateStatus(clientError.MessageKey));
         }
 
-        SecureEnvelope envelope = encryptResult.Unwrap();
-        envelope.ErrorDetails = ByteString.CopyFrom(errorBytes);
-        return envelope;
+        return encryptResult.Unwrap();
+    }
+
+    private async Task<Result<SecureEnvelope, FailureBase>> EncryptEnvelopeInternal(
+        byte[] payload,
+        uint connectId,
+        ServerCallContext context,
+        EnvelopeType envelopeType)
+    {
+        PubKeyExchangeType exchangeType = GetExchangeTypeFromMetadata(context);
+        uint envelopeId = ResolveEnvelopeId(context, connectId);
+        string? correlationId = GetCorrelationId(context);
+
+        EncryptPayloadCommand encryptCommand =
+            new(exchangeType, envelopeType, envelopeId, payload, correlationId);
+        RouteToConnectionCommand encryptForwarder = new(connectId, encryptCommand);
+
+        Task<Result<SecureEnvelope, EcliptixProtocolFailure>> encryptTask =
+            _protocolActor.Ask<Result<SecureEnvelope, EcliptixProtocolFailure>>(
+                encryptForwarder,
+                TimeoutConfiguration.Actor.AskTimeout);
+        Result<SecureEnvelope, EcliptixProtocolFailure> result =
+            await encryptTask.WaitAsync(context.CancellationToken).ConfigureAwait(false);
+
+        return result.IsErr
+            ? Result<SecureEnvelope, FailureBase>.Err(result.UnwrapErr())
+            : Result<SecureEnvelope, FailureBase>.Ok(result.Unwrap());
+    }
+
+    private static string? GetCorrelationId(ServerCallContext context)
+    {
+        return context.RequestHeaders.FirstOrDefault(h =>
+                string.Equals(h.Key, MetadataConstants.Keys.CorrelationId, StringComparison.OrdinalIgnoreCase))
+            ?.Value;
+    }
+
+    private static uint ResolveEnvelopeId(ServerCallContext context, uint connectId)
+    {
+        string? correlationId = GetCorrelationId(context);
+        if (string.IsNullOrWhiteSpace(correlationId))
+        {
+            return connectId;
+        }
+
+        byte[] bytes = Encoding.UTF8.GetBytes(correlationId);
+        Span<byte> hash = stackalloc byte[32];
+        SHA256.TryHashData(bytes, hash, out _);
+        return BinaryPrimitives.ReadUInt32BigEndian(hash[..4]);
     }
 }

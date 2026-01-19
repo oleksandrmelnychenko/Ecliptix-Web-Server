@@ -7,7 +7,7 @@ using Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
 using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Actors;
-using Ecliptix.Protobuf.Common;
+using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.Membership;
 using Google.Protobuf;
 using Grpc.Core;
@@ -18,7 +18,6 @@ using Serilog;
 using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.Protobuf.Transport.Common;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Ecliptix.IdentityAccess.Infrastructure.EventHandling;
 
@@ -26,11 +25,13 @@ public sealed class VerificationFlowHandler(
     IEcliptixActorRegistry actorRegistry,
     IMobileNumberValidator phoneNumberValidator,
     IGrpcCipherService grpcCipherService,
-    IOptions<SecurityConfiguration> securityConfig)
+    IOptions<SecurityConfiguration> securityConfig,
+    ActorSystem actorSystem)
 {
     private readonly GrpcSecurityService _service = new(grpcCipherService, securityConfig);
     private readonly IActorRef _verificationFlowManagerActor = actorRegistry.Get(ActorIds.VerificationFlowManagerActor);
     private readonly string _cultureName = CultureInfo.CurrentCulture.Name;
+    private readonly ActorSystem _actorSystem = actorSystem;
 
     public async Task InitiateVerification(
         SecureEnvelope request,
@@ -58,8 +59,10 @@ public sealed class VerificationFlowHandler(
                         Channel<Result<OtpCountdownUpdate, VerificationFlowFailure>> channel =
                             Channel.CreateBounded<Result<OtpCountdownUpdate, VerificationFlowFailure>>(
                                 channelOptions);
+
+                        // Use injected ActorSystem for cancellation cleanup
                         using IDisposable registration = context.CancellationToken.Register(() =>
-                            StopVerificationFlowActor(context, connectId));
+                            StopVerificationFlowActor(_actorSystem, connectId));
 
                         Log.Information("[verification.flow.grpc.start] ConnectId {ConnectId} Purpose {Purpose}",
                             connectId, initiateRequest.Purpose);
@@ -346,10 +349,8 @@ public sealed class VerificationFlowHandler(
         };
     }
 
-    private static void StopVerificationFlowActor(ServerCallContext context, uint connectId)
+    private static void StopVerificationFlowActor(ActorSystem actorSystem, uint connectId)
     {
-        ActorSystem actorSystem = context.GetHttpContext().RequestServices.GetRequiredService<ActorSystem>();
-
         string actorName = string.Format(GrpcServiceConstants.ActorPaths.FlowActorNameFormat, connectId);
         string actorPath = string.Format(GrpcServiceConstants.ActorPaths.VerificationFlowActorPathFormat,
             nameof(VerificationFlowManagerActor), actorName);

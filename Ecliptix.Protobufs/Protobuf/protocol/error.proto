@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package ecliptix.proto.protocol;
+option csharp_namespace = "Ecliptix.Protobuf.Protocol";
+
+import "google/protobuf/timestamp.proto";
+
+message EnvelopeError {
+  string error_code = 1;
+  string error_message = 2;
+  optional uint32 retry_after_seconds = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+}

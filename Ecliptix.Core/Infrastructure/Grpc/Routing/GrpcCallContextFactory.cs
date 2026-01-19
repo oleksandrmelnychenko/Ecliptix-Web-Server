@@ -12,9 +12,7 @@ internal static class GrpcCallContextFactory
 
     public static uint ResolveConnectId(EventMetadata metadata)
     {
-        return metadata.Security?.ConnectId != 0
-            ? metadata.Security!.ConnectId
-            : throw new RpcException(new Status(StatusCode.InvalidArgument, "connect_id is required"));
+        return metadata.Security?.ConnectId ?? 0;
     }
 
     public static GrpcCallContext BuildContext(

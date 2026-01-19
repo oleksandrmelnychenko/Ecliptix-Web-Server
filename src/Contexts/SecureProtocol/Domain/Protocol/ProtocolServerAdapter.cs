@@ -115,156 +115,110 @@ public sealed class ProtocolServerAdapter : IProtocolServer
         return identity.Handle.GetPublicKyber();
     }
 
-    public Result<ProtocolSession, EcliptixProtocolFailure> CreateSession(
-        ProtocolIdentity identity,
-        Action<uint>? onStateChanged = null)
+    public Result<byte[], EcliptixProtocolFailure> CreatePreKeyBundle(ProtocolIdentity identity)
     {
         if (identity.IsDisposed)
         {
-            return Result<ProtocolSession, EcliptixProtocolFailure>.Err(
+            return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(ProtocolIdentity)));
         }
 
-        Result<EcliptixProtocolSystem, EcliptixProtocolFailure> createResult =
-            EcliptixProtocolSystem.Create(identity.Handle);
-
-        if (createResult.IsErr)
-        {
-            return Result<ProtocolSession, EcliptixProtocolFailure>.Err(createResult.UnwrapErr());
-        }
-
-        EcliptixProtocolSystem wrapper = createResult.Unwrap();
-        Result<Unit, EcliptixProtocolFailure> callbackResult = wrapper.SetEventHandler(onStateChanged);
-        if (callbackResult.IsErr)
-        {
-            wrapper.Dispose();
-            return Result<ProtocolSession, EcliptixProtocolFailure>.Err(callbackResult.UnwrapErr());
-        }
-
-        return Result<ProtocolSession, EcliptixProtocolFailure>.Ok(new ProtocolSession(wrapper));
+        return identity.Handle.CreatePreKeyBundle();
     }
 
-    public Result<ProtocolSession, EcliptixProtocolFailure> CreateSessionFromRoot(
+    public Result<ProtocolHandshakeResponderStart, EcliptixProtocolFailure> StartHandshakeResponder(
         ProtocolIdentity identity,
-        byte[] rootKey,
-        byte[] peerBundle,
-        bool isInitiator,
-        Action<uint>? onStateChanged = null)
+        byte[] localPreKeyBundle,
+        byte[] handshakeInit,
+        uint maxMessagesPerChain)
     {
         if (identity.IsDisposed)
         {
-            return Result<ProtocolSession, EcliptixProtocolFailure>.Err(
+            return Result<ProtocolHandshakeResponderStart, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.ObjectDisposed(nameof(ProtocolIdentity)));
         }
 
-        Result<EcliptixProtocolSystem, EcliptixProtocolFailure> createResult =
-            EcliptixProtocolSystem.CreateFromRoot(identity.Handle, rootKey, peerBundle, isInitiator);
+        Result<HandshakeResponderStart, EcliptixProtocolFailure> startResult =
+            HandshakeResponder.Start(identity.Handle, localPreKeyBundle, handshakeInit, maxMessagesPerChain);
 
-        if (createResult.IsErr)
+        if (startResult.IsErr)
         {
-            return Result<ProtocolSession, EcliptixProtocolFailure>.Err(createResult.UnwrapErr());
+            return Result<ProtocolHandshakeResponderStart, EcliptixProtocolFailure>.Err(startResult.UnwrapErr());
         }
 
-        EcliptixProtocolSystem wrapper = createResult.Unwrap();
-        Result<Unit, EcliptixProtocolFailure> callbackResult = wrapper.SetEventHandler(onStateChanged);
-        if (callbackResult.IsErr)
-        {
-            wrapper.Dispose();
-            return Result<ProtocolSession, EcliptixProtocolFailure>.Err(callbackResult.UnwrapErr());
-        }
-
-        return Result<ProtocolSession, EcliptixProtocolFailure>.Ok(new ProtocolSession(wrapper));
+        HandshakeResponderStart start = startResult.Unwrap();
+        return Result<ProtocolHandshakeResponderStart, EcliptixProtocolFailure>.Ok(
+            new ProtocolHandshakeResponderStart(
+                new ProtocolHandshakeResponder(start.Responder),
+                start.HandshakeAck));
     }
 
-    public Result<ProtocolSession, EcliptixProtocolFailure> ImportState(
-        ProtocolIdentity identity,
-        byte[] stateBytes,
-        Action<uint>? onStateChanged = null)
+    public Result<ProtocolSession, EcliptixProtocolFailure> FinishHandshakeResponder(
+        ProtocolHandshakeResponder responder)
     {
-        if (identity.IsDisposed)
+        if (responder.IsDisposed)
         {
             return Result<ProtocolSession, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.ObjectDisposed(nameof(ProtocolIdentity)));
+                EcliptixProtocolFailure.ObjectDisposed(nameof(ProtocolHandshakeResponder)));
         }
 
-        Result<EcliptixProtocolSystem, EcliptixProtocolFailure> importResult =
-            EcliptixProtocolSystem.ImportState(identity.Handle, stateBytes);
+        Result<EcliptixSession, EcliptixProtocolFailure> finishResult = responder.Handle.Finish();
+        if (finishResult.IsErr)
+        {
+            return Result<ProtocolSession, EcliptixProtocolFailure>.Err(finishResult.UnwrapErr());
+        }
 
+        return Result<ProtocolSession, EcliptixProtocolFailure>.Ok(new ProtocolSession(finishResult.Unwrap()));
+    }
+
+    public Result<byte[], EcliptixProtocolFailure> Encrypt(
+        ProtocolSession session,
+        byte[] plaintext,
+        EnvelopeType envelopeType,
+        uint envelopeId,
+        string? correlationId = null)
+    {
+        return EnsureSessionActive(
+            session,
+            () => session.Handle.Encrypt(plaintext, envelopeType, envelopeId, correlationId));
+    }
+
+    public Result<ProtocolDecryptResult, EcliptixProtocolFailure> Decrypt(
+        ProtocolSession session,
+        byte[] encryptedEnvelope)
+    {
+        Result<SessionDecryptResult, EcliptixProtocolFailure> decryptResult =
+            EnsureSessionActive(session, () => session.Handle.Decrypt(encryptedEnvelope));
+
+        if (decryptResult.IsErr)
+        {
+            return Result<ProtocolDecryptResult, EcliptixProtocolFailure>.Err(decryptResult.UnwrapErr());
+        }
+
+        SessionDecryptResult decrypted = decryptResult.Unwrap();
+        return Result<ProtocolDecryptResult, EcliptixProtocolFailure>.Ok(
+            new ProtocolDecryptResult(decrypted.Plaintext, decrypted.Metadata));
+    }
+
+    public Result<byte[], EcliptixProtocolFailure> ExportState(ProtocolSession session)
+    {
+        return EnsureSessionActive(session, () => session.Handle.Serialize());
+    }
+
+    public Result<ProtocolSession, EcliptixProtocolFailure> ImportState(byte[] stateBytes)
+    {
+        Result<EcliptixSession, EcliptixProtocolFailure> importResult = EcliptixSession.Deserialize(stateBytes);
         if (importResult.IsErr)
         {
             return Result<ProtocolSession, EcliptixProtocolFailure>.Err(importResult.UnwrapErr());
         }
 
-        EcliptixProtocolSystem wrapper = importResult.Unwrap();
-        Result<Unit, EcliptixProtocolFailure> callbackResult = wrapper.SetEventHandler(onStateChanged);
-        if (callbackResult.IsErr)
-        {
-            wrapper.Dispose();
-            return Result<ProtocolSession, EcliptixProtocolFailure>.Err(callbackResult.UnwrapErr());
-        }
-
-        return Result<ProtocolSession, EcliptixProtocolFailure>.Ok(new ProtocolSession(wrapper));
+        return Result<ProtocolSession, EcliptixProtocolFailure>.Ok(new ProtocolSession(importResult.Unwrap()));
     }
 
-    public Result<byte[], EcliptixProtocolFailure> BeginHandshake(
-        ProtocolSession session,
-        uint connectionId,
-        PubKeyExchangeType exchangeType,
-        byte[] peerKyberPublicKey)
+    public Result<Unit, EcliptixProtocolFailure> ValidateEnvelope(byte[] encryptedEnvelope)
     {
-        return EnsureSessionActive(
-            session,
-            () => session.Handle.BeginHandshake(connectionId, exchangeType, peerKyberPublicKey));
-    }
-
-    public Result<Unit, EcliptixProtocolFailure> CompleteHandshake(
-        ProtocolSession session,
-        byte[] peerHandshakeMessage,
-        byte[] rootKey)
-    {
-        return EnsureSessionActive(session, () => session.Handle.CompleteHandshake(peerHandshakeMessage, rootKey));
-    }
-
-    public Result<Unit, EcliptixProtocolFailure> CompleteHandshakeAuto(
-        ProtocolSession session,
-        byte[] peerHandshakeMessage)
-    {
-        return EnsureSessionActive(session, () => session.Handle.CompleteHandshakeAuto(peerHandshakeMessage));
-    }
-
-    public Result<byte[], EcliptixProtocolFailure> SendMessage(ProtocolSession session, byte[] plaintext)
-    {
-        return EnsureSessionActive(session, () => session.Handle.SendMessage(plaintext));
-    }
-
-    public Result<byte[], EcliptixProtocolFailure> ReceiveMessage(ProtocolSession session, byte[] encryptedEnvelope)
-    {
-        return EnsureSessionActive(session, () => session.Handle.ReceiveMessage(encryptedEnvelope));
-    }
-
-    public Result<bool, EcliptixProtocolFailure> HasConnection(ProtocolSession session)
-    {
-        return EnsureSessionActive(session, () => session.Handle.HasConnection());
-    }
-
-    public Result<uint, EcliptixProtocolFailure> GetConnectionId(ProtocolSession session)
-    {
-        return EnsureSessionActive(session, () => session.Handle.GetConnectionId());
-    }
-
-    public Result<uint?, EcliptixProtocolFailure> GetSelectedOpkId(ProtocolSession session)
-    {
-        return EnsureSessionActive(session, () => session.Handle.GetSelectedOpkId());
-    }
-
-    public Result<byte[], EcliptixProtocolFailure> ExportState(ProtocolSession session)
-    {
-        return EnsureSessionActive(session, () => session.Handle.ExportState());
-    }
-
-    public Result<Unit, EcliptixProtocolFailure> ValidateEnvelopeHybridRequirements(byte[] encryptedEnvelope)
-    {
-        return EcliptixProtocolSystem.ValidateEnvelopeHybridRequirements(encryptedEnvelope);
+        return ProtocolUtilities.ValidateEnvelope(encryptedEnvelope);
     }
 
     public void Dispose()

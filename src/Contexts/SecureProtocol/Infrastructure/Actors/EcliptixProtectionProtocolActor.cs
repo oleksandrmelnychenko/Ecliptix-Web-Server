@@ -38,7 +38,8 @@ public sealed class EcliptixProtectionProtocolActor : ReceiveActor
         }
 
         IActorRef connectActor = connectActorResult.Unwrap();
-        DeriveSharedSecretCommand deriveSharedSecretEvent = new(connectId, actorEvent.PubKeyExchange);
+        DeriveSharedSecretCommand deriveSharedSecretEvent =
+            new(connectId, actorEvent.ExchangeType, actorEvent.HandshakeInit);
         Result<DeriveSharedSecretResponse, EcliptixProtocolFailure> result =
             await connectActor.Ask<Result<DeriveSharedSecretResponse, EcliptixProtocolFailure>>(deriveSharedSecretEvent);
 

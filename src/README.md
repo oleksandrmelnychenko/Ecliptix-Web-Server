@@ -71,6 +71,6 @@ Example envelope (IdentityAccess RegistrationInit, unary):
     "version": "1.0.0",
     "request_id": "req-123"
   },
-  "payload": "..." // SecureEnvelope bytes
+  "payload": "..." // Ecliptix.Protobuf.Protocol.SecureEnvelope bytes
 }
 ```

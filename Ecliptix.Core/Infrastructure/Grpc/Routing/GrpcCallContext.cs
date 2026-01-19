@@ -9,10 +9,12 @@ public sealed class GrpcCallContext(
     CancellationToken cancellationToken)
     : ServerCallContext
 {
+    private static readonly DateTime DefaultDeadline = DateTime.UtcNow.AddYears(100);
+
     protected override string MethodCore => method;
     protected override string HostCore => host;
     protected override string PeerCore => string.Empty;
-    protected override DateTime DeadlineCore => DateTime.MaxValue;
+    protected override DateTime DeadlineCore => DefaultDeadline;
     protected override Metadata RequestHeadersCore => requestHeaders;
     protected override CancellationToken CancellationTokenCore => cancellationToken;
     protected override Metadata ResponseTrailersCore { get; } = [];

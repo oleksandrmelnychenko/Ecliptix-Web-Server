@@ -244,11 +244,6 @@ public sealed class EventEnvelopeDispatcher(
             dispatchContext.Metadata.Security.ConnectId = parsed;
         }
 
-        if (dispatchContext.Metadata.Security.ConnectId == 0)
-        {
-            return Fail(dispatchContext, DispatcherErrorCodes.ConnectIdRequired);
-        }
-
         if (string.IsNullOrWhiteSpace(dispatchContext.Metadata.Identity.PartitionKey))
         {
             dispatchContext.Metadata.Identity.PartitionKey = dispatchContext.Metadata.Security.ConnectId.ToString();
@@ -343,7 +338,7 @@ public sealed class EventEnvelopeDispatcher(
                 string.Empty,
                 string.Empty,
                 false,
-                dispatchContext.Metadata)));
+                EnsureMetadata(dispatchContext.Metadata))));
             return;
         }
 
@@ -362,7 +357,7 @@ public sealed class EventEnvelopeDispatcher(
                 string.Empty,
                 string.Empty,
                 true,
-                dispatchContext.Metadata)));
+                EnsureMetadata(dispatchContext.Metadata))));
         }
     }
 
@@ -408,7 +403,7 @@ public sealed class EventEnvelopeDispatcher(
                 string.Empty,
                 string.Empty,
                 false,
-                dispatchContext.Metadata)));
+                EnsureMetadata(dispatchContext.Metadata))));
             return;
         }
 
@@ -427,7 +422,7 @@ public sealed class EventEnvelopeDispatcher(
                 string.Empty,
                 string.Empty,
                 true,
-                dispatchContext.Metadata)));
+                EnsureMetadata(dispatchContext.Metadata))));
         }
     }
 
@@ -580,12 +575,15 @@ public sealed class EventEnvelopeDispatcher(
         };
     }
 
+    private static EventMetadata EnsureMetadata(EventMetadata? metadata)
+        => metadata ?? new EventMetadata();
+
     private static Result<DispatchContext, DispatchFailure> Ok(DispatchContext dispatchContext)
         => Result<DispatchContext, DispatchFailure>.Ok(dispatchContext);
 
     private static Result<DispatchContext, DispatchFailure> Fail(DispatchContext dispatchContext, string errorCode, bool retryable = false)
         => Result<DispatchContext, DispatchFailure>.Err(
-            new DispatchFailure(errorCode, string.Empty, string.Empty, retryable, dispatchContext.Metadata));
+            new DispatchFailure(errorCode, string.Empty, string.Empty, retryable, EnsureMetadata(dispatchContext.Metadata)));
 
     private Result<DispatchContext, DispatchFailure> FailWithDescriptor(DispatchContext dispatchContext, FailureBase failure)
     {
@@ -599,6 +597,6 @@ public sealed class EventEnvelopeDispatcher(
                 descriptor.I18nKey,
                 localizedMessage,
                 descriptor.Retryable,
-                dispatchContext.Metadata));
+                EnsureMetadata(dispatchContext.Metadata)));
     }
 }

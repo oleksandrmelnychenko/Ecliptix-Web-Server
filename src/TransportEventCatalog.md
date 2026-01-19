@@ -9,7 +9,7 @@ Server exposes only `EventGateway` (see `Protobuf/transport/gateway.proto`). Cli
 - `connect_id` (or `partition_key` parsable as connect_id) required for secure flows
 - `idempotency_key`: required for mutating operations
 
-## IdentityAccess (payload: `Ecliptix.Protobuf.Common.SecureEnvelope`)
+## IdentityAccess (payload: `Ecliptix.Protobuf.Protocol.SecureEnvelope`)
 - `IdentityAccessRegistrationInit` (idempotency required)
 - `IdentityAccessRegistrationComplete` (idempotency required)
 - `IdentityAccessRecoveryInit` (idempotency required)
@@ -27,10 +27,10 @@ Server exposes only `EventGateway` (see `Protobuf/transport/gateway.proto`). Cli
 - `IdentityAccessGetProfile`
 
 ## DeviceProvisioning
-- `DeviceProvisioningRegisterDevice` — payload: `SecureEnvelope` (idempotency required)
-- `DeviceProvisioningSecureChannelEstablish` — payload: `SecureEnvelope` (idempotency required)
+- `DeviceProvisioningRegisterDevice` — payload: `Ecliptix.Protobuf.Protocol.SecureEnvelope` (idempotency required)
+- `DeviceProvisioningSecureChannelEstablish` — payload: `Ecliptix.Protobuf.Protocol.SecureEnvelope` (idempotency required)
 - `DeviceProvisioningSecureChannelRestore` — payload: `RestoreChannelRequest` (response: `RestoreChannelResponse`, idempotency required). Request is empty; connect_id supplied via metadata.
-- `DeviceProvisioningSecureChannelAuthEstablish` — payload: `AuthenticatedEstablishRequest` (response: `SecureEnvelope`, idempotency required)
+- `DeviceProvisioningSecureChannelAuthEstablish` — payload: `AuthenticatedSessionHandshakeRequest` (response: `Ecliptix.Protobuf.Protocol.SecureEnvelope`, idempotency required)
 
 ## Example request (unary)
 ```json

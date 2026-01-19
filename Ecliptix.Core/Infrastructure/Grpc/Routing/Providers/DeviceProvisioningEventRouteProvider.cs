@@ -11,7 +11,6 @@ using Ecliptix.Security.Certificate.Pinning.Crypto;
 using Ecliptix.Security.Certificate.Pinning.SecureChannel;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Services;
-using Ecliptix.Protobuf.Common;
 using Ecliptix.Protobuf.Device;
 using Ecliptix.Protobuf.Protocol;
 using Ecliptix.Protobuf.Transport.Common;
@@ -26,6 +25,7 @@ using Ecliptix.SharedKernel.Configuration;
 using Ecliptix.SharedKernel.Grpc;
 using Ecliptix.SharedKernel.Grpc.Utilities.CipherPayloadHandler;
 using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 using Microsoft.Extensions.Options;
 
 namespace Ecliptix.Core.Infrastructure.Grpc.Routing.Providers;
@@ -90,8 +90,9 @@ public static class DeviceProvisioningEventRouteProvider
         using IServiceScope scope = services.CreateScope();
 
         ISecureChannelEstablisher establisher = scope.ServiceProvider.GetRequiredService<ISecureChannelEstablisher>();
+        PubKeyExchangeType exchangeType = ResolveExchangeType(metadata);
         Result<SecureEnvelope, SecureChannelFailure> result = await establisher.EstablishAsync(
-            envelope, connectId, cancellationToken);
+            envelope, connectId, exchangeType, cancellationToken);
 
         return result.Match(
             Result<IMessage, FailureBase>.Ok,
@@ -177,7 +178,6 @@ public static class DeviceProvisioningEventRouteProvider
         byte[]? rootKey = null;
         byte[]? masterKeyFingerprint = null;
         byte[]? serverNonce = null;
-        byte[]? serverExchangeBuffer = null;
         string? replayKey = null;
         bool replayClaimed = false;
         bool success = false;
@@ -214,7 +214,7 @@ public static class DeviceProvisioningEventRouteProvider
                 request.Identity!.MembershipId.Span,
                 request.Identity.AccountId.Span,
                 requestFingerprint,
-                ctx.Crypto.PubKeyExchange.Span,
+                ctx.HandshakeInit,
                 ctx.Crypto.ClientNonce.Span,
                 serverNonce,
                 ctx.IdempotencyKey,
@@ -239,18 +239,19 @@ public static class DeviceProvisioningEventRouteProvider
                     EcliptixProtocolFailure.ReplayAttempt("Authenticated secure channel establish"));
             }
 
-            InitializeProtocolWithMasterKeyCommand initEvent = new(
+            PubKeyExchangeType exchangeType = ResolveExchangeType(metadata);
+            InitializeAuthenticatedSessionCommand initEvent = new(
                 connectId,
-                ctx.ClientExchange,
+                exchangeType,
+                ctx.HandshakeInit,
                 ctx.MembershipId,
-                ctx.AccountId,
-                rootKey);
+                ctx.AccountId);
 
             RouteToConnectionCommand forwardEvent = new(connectId, initEvent);
-            Task<Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>> initTask =
-                protocolActor.Ask<Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure>>(
+            Task<Result<InitializeAuthenticatedSessionResponse, EcliptixProtocolFailure>> initTask =
+                protocolActor.Ask<Result<InitializeAuthenticatedSessionResponse, EcliptixProtocolFailure>>(
                     forwardEvent, TimeoutConfiguration.Actor.AskTimeout);
-            Result<InitializeProtocolWithMasterKeyResponse, EcliptixProtocolFailure> initResult =
+            Result<InitializeAuthenticatedSessionResponse, EcliptixProtocolFailure> initResult =
                 await initTask.WaitAsync(cancellationToken).ConfigureAwait(false);
 
             if (initResult.IsErr)
@@ -258,22 +259,11 @@ public static class DeviceProvisioningEventRouteProvider
                 return Result<IMessage, FailureBase>.Err(initResult.UnwrapErr());
             }
 
-            InitializeProtocolWithMasterKeyResponse reply = initResult.Unwrap();
-            int serverExchangeSize = reply.ServerPubKeyExchange.CalculateSize();
-            ReadOnlyMemory<byte> serverExchangeMemory = ReadOnlyMemory<byte>.Empty;
-            if (serverExchangeSize > 0)
-            {
-                serverExchangeBuffer = ArrayPool<byte>.Shared.Rent(serverExchangeSize);
-                using MemoryStream stream = new(serverExchangeBuffer, 0, serverExchangeSize, writable: true,
-                    publiclyVisible: true);
-                using CodedOutputStream output = new(stream, leaveOpen: true);
-                reply.ServerPubKeyExchange.WriteTo(output);
-                output.Flush();
-                serverExchangeMemory = new ReadOnlyMemory<byte>(serverExchangeBuffer, 0, serverExchangeSize);
-            }
+            InitializeAuthenticatedSessionResponse reply = initResult.Unwrap();
+            byte[] handshakeAck = reply.HandshakeAck;
 
             Result<byte[], CertificatePinningFailure> encryptResult =
-                await rsaProcessor.EncryptChunkedAsync(serverExchangeMemory, cancellationToken);
+                await rsaProcessor.EncryptChunkedAsync(handshakeAck, cancellationToken);
             if (encryptResult.IsErr)
             {
                 return Result<IMessage, FailureBase>.Err(
@@ -293,10 +283,12 @@ public static class DeviceProvisioningEventRouteProvider
 
             SecureEnvelope envelope = new()
             {
+                Version = 1,
                 EncryptedPayload = ByteString.CopyFrom(encryptedPayload),
-                AuthenticationTag = ByteString.CopyFrom(signature),
-                MetaData = ByteString.Empty,
-                ResultCode = ByteString.Empty
+                EncryptedMetadata = ByteString.CopyFrom(signature),
+                HeaderNonce = ByteString.Empty,
+                RatchetEpoch = 0,
+                SentAt = Timestamp.FromDateTime(DateTime.UtcNow)
             };
 
             success = true;
@@ -324,10 +316,6 @@ public static class DeviceProvisioningEventRouteProvider
                 CryptographicOperations.ZeroMemory(serverNonce);
             }
 
-            if (serverExchangeBuffer != null)
-            {
-                ArrayPool<byte>.Shared.Return(serverExchangeBuffer, clearArray: true);
-            }
         }
     }
 
@@ -360,22 +348,22 @@ public static class DeviceProvisioningEventRouteProvider
             serverPublicKeyResult.Unwrap().Length);
 
         RouteToConnectionCommand forwardEvent =
-            new(connectId, new GetConnectionKyberPublicKeyQuery());
-        Task<Result<byte[], EcliptixProtocolFailure>> kyberTask =
+            new(connectId, new GetPreKeyBundleQuery());
+        Task<Result<byte[], EcliptixProtocolFailure>> bundleTask =
             protocolActor.Ask<Result<byte[], EcliptixProtocolFailure>>(
                 forwardEvent, TimeoutConfiguration.Actor.AskTimeout);
-        Result<byte[], EcliptixProtocolFailure> kyberPublicKeyResult =
-            await kyberTask.WaitAsync(cancellationToken).ConfigureAwait(false);
-        if (kyberPublicKeyResult.IsErr)
+        Result<byte[], EcliptixProtocolFailure> bundleResult =
+            await bundleTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (bundleResult.IsErr)
         {
-            Log.Error("[GetServerPublicKeys] Failed to get server Kyber public key: {Error}",
-                kyberPublicKeyResult.UnwrapErr().Message);
+            Log.Error("[GetServerPublicKeys] Failed to get server prekey bundle: {Error}",
+                bundleResult.UnwrapErr().Message);
             return Result<IMessage, FailureBase>.Err(
                 SecureChannelFailure.ProtocolError(
-                    $"Failed to get server Kyber public key: {kyberPublicKeyResult.UnwrapErr().Message}"));
+                    $"Failed to get server prekey bundle: {bundleResult.UnwrapErr().Message}"));
         }
 
-        Log.Debug("[GetServerPublicKeys] Got Kyber public key, length: {Length}", kyberPublicKeyResult.Unwrap().Length);
+        Log.Debug("[GetServerPublicKeys] Got prekey bundle, length: {Length}", bundleResult.Unwrap().Length);
 
         byte[] serverNonce = RandomNumberGenerator.GetBytes(DeviceProvisioningConstants.Nonce.ServerLength);
         nonceStore.Store(connectId, serverNonce, DeviceProvisioningConstants.ReplayProtection.ServerNonceTtl);
@@ -383,13 +371,13 @@ public static class DeviceProvisioningEventRouteProvider
         ServerPublicKeysResponse response = new()
         {
             ServerPublicKey = ByteString.CopyFrom(serverPublicKeyResult.Unwrap()),
-            ServerKyberPublicKey = ByteString.CopyFrom(kyberPublicKeyResult.Unwrap()),
+            ServerPrekeyBundle = ByteString.CopyFrom(bundleResult.Unwrap()),
             ServerNonce = ByteString.CopyFrom(serverNonce)
         };
 
         Log.Information(
-            "[GetServerPublicKeys] Successfully prepared response with X25519 ({X25519Size} bytes) and Kyber ({KyberSize} bytes) public keys",
-            serverPublicKeyResult.Unwrap().Length, kyberPublicKeyResult.Unwrap().Length);
+            "[GetServerPublicKeys] Successfully prepared response with OPAQUE ({OpaqueSize} bytes) and prekey bundle ({BundleSize} bytes)",
+            serverPublicKeyResult.Unwrap().Length, bundleResult.Unwrap().Length);
 
         return Result<IMessage, FailureBase>.Ok(response);
     }
@@ -398,7 +386,7 @@ public static class DeviceProvisioningEventRouteProvider
         ReadOnlySpan<byte> membershipId,
         ReadOnlySpan<byte> accountId,
         ReadOnlySpan<byte> masterKeyFingerprint,
-        ReadOnlySpan<byte> clientPubKeyExchange,
+        ReadOnlySpan<byte> handshakeInit,
         ReadOnlySpan<byte> clientNonce,
         ReadOnlySpan<byte> serverNonce,
         string idempotencyKey,
@@ -417,7 +405,7 @@ public static class DeviceProvisioningEventRouteProvider
                           + membershipId.Length
                           + accountId.Length
                           + masterKeyFingerprint.Length
-                          + clientPubKeyExchange.Length
+                          + handshakeInit.Length
                           + clientNonce.Length
                           + serverNonce.Length
                           + idempotencyByteCount
@@ -432,7 +420,7 @@ public static class DeviceProvisioningEventRouteProvider
         WriteSpanPart(span, ref offset, membershipId);
         WriteSpanPart(span, ref offset, accountId);
         WriteSpanPart(span, ref offset, masterKeyFingerprint);
-        WriteSpanPart(span, ref offset, clientPubKeyExchange);
+        WriteSpanPart(span, ref offset, handshakeInit);
         WriteSpanPart(span, ref offset, clientNonce);
         WriteSpanPart(span, ref offset, serverNonce);
 
@@ -482,10 +470,10 @@ public static class DeviceProvisioningEventRouteProvider
                 MasterKeyFailure.InvalidIdentifier("AccountId is required for authenticated channel setup"));
         }
 
-        if (crypto == null || crypto.PubKeyExchange.IsEmpty)
+        if (crypto == null || crypto.HandshakeInit.IsEmpty)
         {
             return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
-                SecureChannelFailure.InvalidPayload("PubKeyExchange is required"));
+                SecureChannelFailure.InvalidPayload("HandshakeInit is required"));
         }
 
         if (crypto.ClientNonce.Length is < DeviceProvisioningConstants.Nonce.MinLength or > DeviceProvisioningConstants.Nonce.MaxLength)
@@ -532,16 +520,16 @@ public static class DeviceProvisioningEventRouteProvider
                 MasterKeyFailure.InvalidIdentifier("AccountId is invalid"));
         }
 
-        if (!Helpers.TryParseProto(crypto.PubKeyExchange, PubKeyExchange.Parser, out PubKeyExchange? clientExchange))
+        if (!Helpers.TryParseProto(crypto.HandshakeInit, HandshakeInit.Parser, out HandshakeInit? _))
         {
             return Result<AuthenticatedHandshakeContext, FailureBase>.Err(
-                SecureChannelFailure.InvalidPayload("PubKeyExchange is invalid"));
+                SecureChannelFailure.InvalidPayload("HandshakeInit is invalid"));
         }
 
         return Result<AuthenticatedHandshakeContext, FailureBase>.Ok(new AuthenticatedHandshakeContext(
             membershipId,
             accountId,
-            clientExchange!,
+            crypto.HandshakeInit.ToByteArray(),
             serverNonce,
             crypto,
             metadata.Client!.IdempotencyKey));
@@ -550,8 +538,21 @@ public static class DeviceProvisioningEventRouteProvider
     private sealed record AuthenticatedHandshakeContext(
         Guid MembershipId,
         Guid AccountId,
-        PubKeyExchange ClientExchange,
+        byte[] HandshakeInit,
         byte[] ServerNonce,
         AuthenticatedSessionHandshakeRequest.Types.Cryptography Crypto,
         string IdempotencyKey);
+
+    private static PubKeyExchangeType ResolveExchangeType(EventMetadata metadata)
+    {
+        string? context = metadata.Security?.KeyExchangeContext;
+        if (!string.IsNullOrWhiteSpace(context) &&
+            System.Enum.TryParse(context, true, out PubKeyExchangeType exchangeType) &&
+            System.Enum.IsDefined(exchangeType))
+        {
+            return exchangeType;
+        }
+
+        return PubKeyExchangeType.DataCenterEphemeralConnect;
+    }
 }
