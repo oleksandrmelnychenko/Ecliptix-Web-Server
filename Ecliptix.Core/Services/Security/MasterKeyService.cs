@@ -483,7 +483,7 @@ internal sealed class MasterKeyService(
 
     private static byte[] DeriveMasterKeyFingerprint(byte[] masterKeyBytes, Guid accountId)
     {
-        const int infoPrefixLength = 36;
+        const int infoPrefixLength = 35;
         const int guidStringLength = 36;
         const int totalInfoLength = infoPrefixLength + guidStringLength;
         const int hmacOutputSize = 32;
