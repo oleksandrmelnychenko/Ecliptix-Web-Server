@@ -1,4 +1,3 @@
-using System;
 using System.Runtime.InteropServices;
 using System.Text;
 using Ecliptix.Protobuf.Protocol;
@@ -189,15 +188,16 @@ public sealed class EcliptixIdentityKeys : IDisposable
             (nuint)publicKey.Length,
             out NativeInterop.EppError error);
 
-        if (result != NativeInterop.EppErrorCode.Success)
+        if (result == NativeInterop.EppErrorCode.Success)
         {
-            string message = error.GetMessage();
-            NativeInterop.epp_error_free(ref error);
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.KeyGeneration(message));
+            return Result<byte[], EcliptixProtocolFailure>.Ok(publicKey);
         }
 
-        return Result<byte[], EcliptixProtocolFailure>.Ok(publicKey);
+        string message = error.GetMessage();
+        NativeInterop.epp_error_free(ref error);
+
+        return Result<byte[], EcliptixProtocolFailure>.Err(
+            EcliptixProtocolFailure.KeyGeneration(message));
     }
 
     public Result<byte[], EcliptixProtocolFailure> CreatePreKeyBundle()
@@ -209,15 +209,15 @@ public sealed class EcliptixIdentityKeys : IDisposable
             out NativeInterop.EppBuffer buffer,
             out NativeInterop.EppError error);
 
-        if (result != NativeInterop.EppErrorCode.Success)
+        if (result == NativeInterop.EppErrorCode.Success)
         {
-            string message = error.GetMessage();
-            NativeInterop.epp_error_free(ref error);
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                InteropHelpers.ConvertError(result, message));
+            return InteropHelpers.CopyBuffer(ref buffer, "PreKey bundle");
         }
 
-        return InteropHelpers.CopyBuffer(ref buffer, "PreKey bundle");
+        string message = error.GetMessage();
+        NativeInterop.epp_error_free(ref error);
+        return Result<byte[], EcliptixProtocolFailure>.Err(
+            InteropHelpers.ConvertError(result, message));
     }
 
     internal void Detach()
@@ -263,30 +263,16 @@ public sealed class HandshakeResponder : IDisposable
     private IntPtr _handle;
     private bool _disposed;
 
-    internal IntPtr Handle => _handle;
-
     public static Result<HandshakeResponderStart, EcliptixProtocolFailure> Start(
         EcliptixIdentityKeys identityKeys,
         byte[] localPreKeyBundle,
         byte[] handshakeInit,
         uint maxMessagesPerChain)
     {
-        if (identityKeys == null || identityKeys.IsDisposed)
+        if (identityKeys.IsDisposed)
         {
             return Result<HandshakeResponderStart, EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput("Identity keys are null or disposed"));
-        }
-
-        if (localPreKeyBundle == null)
-        {
-            return Result<HandshakeResponderStart, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Local prekey bundle is null"));
-        }
-
-        if (handshakeInit == null)
-        {
-            return Result<HandshakeResponderStart, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Handshake init is null"));
         }
 
         if (maxMessagesPerChain == 0)
@@ -402,31 +388,24 @@ public sealed class EcliptixSession : IDisposable
     private IntPtr _handle;
     private bool _disposed;
 
-    internal IntPtr Handle => _handle;
-
     public static Result<EcliptixSession, EcliptixProtocolFailure> Deserialize(byte[] state)
     {
-        if (state == null)
-        {
-            return Result<EcliptixSession, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("State bytes are null"));
-        }
-
         NativeInterop.EppErrorCode result = NativeInterop.epp_session_deserialize(
             state,
             (nuint)state.Length,
             out IntPtr handle,
             out NativeInterop.EppError error);
 
-        if (result != NativeInterop.EppErrorCode.Success)
+        if (result == NativeInterop.EppErrorCode.Success)
         {
-            string message = error.GetMessage();
-            NativeInterop.epp_error_free(ref error);
-            return Result<EcliptixSession, EcliptixProtocolFailure>.Err(
-                InteropHelpers.ConvertError(result, message));
+            return Result<EcliptixSession, EcliptixProtocolFailure>.Ok(new EcliptixSession(handle));
         }
 
-        return Result<EcliptixSession, EcliptixProtocolFailure>.Ok(new EcliptixSession(handle));
+        string message = error.GetMessage();
+        NativeInterop.epp_error_free(ref error);
+        return Result<EcliptixSession, EcliptixProtocolFailure>.Err(
+            InteropHelpers.ConvertError(result, message));
+
     }
 
     public Result<byte[], EcliptixProtocolFailure> Encrypt(
@@ -441,12 +420,6 @@ public sealed class EcliptixSession : IDisposable
         {
             return Result<byte[], EcliptixProtocolFailure>.Err(
                 EcliptixProtocolFailure.InvalidInput($"Unsupported envelope type: {envelopeType}"));
-        }
-
-        if (plaintext == null)
-        {
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Plaintext is null"));
         }
 
         byte[]? correlationBytes = null;
@@ -508,12 +481,6 @@ public sealed class EcliptixSession : IDisposable
     {
         ThrowIfDisposed();
 
-        if (encryptedEnvelope == null)
-        {
-            return Result<SessionDecryptResult, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Encrypted envelope is null"));
-        }
-
         NativeInterop.EppErrorCode result = NativeInterop.epp_session_decrypt(
             _handle,
             encryptedEnvelope,
@@ -530,14 +497,14 @@ public sealed class EcliptixSession : IDisposable
                 InteropHelpers.ConvertError(result, message));
         }
 
-        var plaintextResult = InteropHelpers.CopyBuffer(ref plaintextBuffer, "Plaintext");
+        Result<byte[], EcliptixProtocolFailure> plaintextResult = InteropHelpers.CopyBuffer(ref plaintextBuffer, "Plaintext");
         if (plaintextResult.IsErr)
         {
             NativeInterop.epp_buffer_release(ref metadataBuffer);
             return Result<SessionDecryptResult, EcliptixProtocolFailure>.Err(plaintextResult.UnwrapErr());
         }
 
-        var metadataResult = InteropHelpers.CopyBuffer(ref metadataBuffer, "Metadata");
+        Result<byte[], EcliptixProtocolFailure> metadataResult = InteropHelpers.CopyBuffer(ref metadataBuffer, "Metadata");
         if (metadataResult.IsErr)
         {
             return Result<SessionDecryptResult, EcliptixProtocolFailure>.Err(metadataResult.UnwrapErr());
@@ -619,12 +586,6 @@ public static class ProtocolUtilities
 {
     public static Result<Unit, EcliptixProtocolFailure> ValidateEnvelope(byte[] encryptedEnvelope)
     {
-        if (encryptedEnvelope == null)
-        {
-            return Result<Unit, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Encrypted envelope is null"));
-        }
-
         NativeInterop.EppErrorCode result = NativeInterop.epp_envelope_validate(
             encryptedEnvelope,
             (nuint)encryptedEnvelope.Length,
@@ -639,153 +600,6 @@ public static class ProtocolUtilities
         }
 
         return Result<Unit, EcliptixProtocolFailure>.Ok(Unit.Value);
-    }
-
-    public static Result<byte[], EcliptixProtocolFailure> DeriveRootKey(
-        byte[] opaqueSessionKey,
-        byte[] userContext)
-    {
-        if (opaqueSessionKey == null || opaqueSessionKey.Length == 0)
-        {
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Opaque session key is null or empty"));
-        }
-
-        if (userContext == null || userContext.Length == 0)
-        {
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("User context is null or empty"));
-        }
-
-        byte[] rootKey = new byte[32];
-        NativeInterop.EppErrorCode result = NativeInterop.epp_derive_root_key(
-            opaqueSessionKey,
-            (nuint)opaqueSessionKey.Length,
-            userContext,
-            (nuint)userContext.Length,
-            rootKey,
-            (nuint)rootKey.Length,
-            out NativeInterop.EppError error);
-
-        if (result != NativeInterop.EppErrorCode.Success)
-        {
-            string message = error.GetMessage();
-            NativeInterop.epp_error_free(ref error);
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                InteropHelpers.ConvertError(result, message));
-        }
-
-        return Result<byte[], EcliptixProtocolFailure>.Ok(rootKey);
-    }
-
-    public static Result<ShamirSplitResult, EcliptixProtocolFailure> ShamirSplit(
-        byte[] secret,
-        byte threshold,
-        byte shareCount,
-        byte[] authKey)
-    {
-        if (secret == null || secret.Length == 0)
-        {
-            return Result<ShamirSplitResult, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Secret is null or empty"));
-        }
-
-        if (authKey == null)
-        {
-            return Result<ShamirSplitResult, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Auth key is null"));
-        }
-
-        NativeInterop.EppErrorCode result = NativeInterop.epp_shamir_split(
-            secret,
-            (nuint)secret.Length,
-            threshold,
-            shareCount,
-            authKey,
-            (nuint)authKey.Length,
-            out NativeInterop.EppBuffer sharesBuffer,
-            out nuint shareLength,
-            out NativeInterop.EppError error);
-
-        if (result != NativeInterop.EppErrorCode.Success)
-        {
-            string message = error.GetMessage();
-            NativeInterop.epp_error_free(ref error);
-            return Result<ShamirSplitResult, EcliptixProtocolFailure>.Err(
-                InteropHelpers.ConvertError(result, message));
-        }
-
-        var sharesResult = InteropHelpers.CopyBuffer(ref sharesBuffer, "Shares");
-        if (sharesResult.IsErr)
-        {
-            return Result<ShamirSplitResult, EcliptixProtocolFailure>.Err(sharesResult.UnwrapErr());
-        }
-
-        if (shareLength > int.MaxValue)
-        {
-            return Result<ShamirSplitResult, EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.DataTooLarge("Share length exceeds maximum array size"));
-        }
-
-        return Result<ShamirSplitResult, EcliptixProtocolFailure>.Ok(
-            new ShamirSplitResult(sharesResult.Unwrap(), (int)shareLength));
-    }
-
-    public static Result<byte[], EcliptixProtocolFailure> ShamirReconstruct(
-        byte[] shares,
-        int shareLength,
-        int shareCount,
-        byte[] authKey)
-    {
-        if (shares == null || shares.Length == 0)
-        {
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Shares are null or empty"));
-        }
-
-        if (shareLength <= 0 || shareCount <= 0)
-        {
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Share length or count is invalid"));
-        }
-
-        if (authKey == null)
-        {
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                EcliptixProtocolFailure.InvalidInput("Auth key is null"));
-        }
-
-        NativeInterop.EppErrorCode result = NativeInterop.epp_shamir_reconstruct(
-            shares,
-            (nuint)shares.Length,
-            (nuint)shareLength,
-            (nuint)shareCount,
-            authKey,
-            (nuint)authKey.Length,
-            out NativeInterop.EppBuffer secretBuffer,
-            out NativeInterop.EppError error);
-
-        if (result != NativeInterop.EppErrorCode.Success)
-        {
-            string message = error.GetMessage();
-            NativeInterop.epp_error_free(ref error);
-            return Result<byte[], EcliptixProtocolFailure>.Err(
-                InteropHelpers.ConvertError(result, message));
-        }
-
-        return InteropHelpers.CopyBuffer(ref secretBuffer, "Secret");
-    }
-}
-
-public sealed class ShamirSplitResult
-{
-    public byte[] Shares { get; }
-    public int ShareLength { get; }
-
-    internal ShamirSplitResult(byte[] shares, int shareLength)
-    {
-        Shares = shares;
-        ShareLength = shareLength;
     }
 }
 

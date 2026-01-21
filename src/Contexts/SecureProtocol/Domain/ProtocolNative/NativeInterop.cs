@@ -190,39 +190,6 @@ internal static class NativeInterop
         out EppError outError);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EppErrorCode epp_derive_root_key(
-        [In] byte[] opaqueSessionKey,
-        nuint opaqueSessionKeyLength,
-        [In] byte[] userContext,
-        nuint userContextLength,
-        [Out] byte[] outRootKey,
-        nuint outRootKeyLength,
-        out EppError outError);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EppErrorCode epp_shamir_split(
-        [In] byte[] secret,
-        nuint secretLength,
-        byte threshold,
-        byte shareCount,
-        [In] byte[] authKey,
-        nuint authKeyLength,
-        out EppBuffer outShares,
-        out nuint outShareLength,
-        out EppError outError);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern EppErrorCode epp_shamir_reconstruct(
-        [In] byte[] shares,
-        nuint sharesLength,
-        nuint shareLength,
-        nuint shareCount,
-        [In] byte[] authKey,
-        nuint authKeyLength,
-        out EppBuffer outSecret,
-        out EppError outError);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void epp_buffer_release(ref EppBuffer buffer);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -234,8 +201,13 @@ internal static class NativeInterop
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void epp_error_free(ref EppError error);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
     internal static extern IntPtr epp_error_string(EppErrorCode code);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern EppErrorCode epp_secure_wipe(
+        IntPtr data,
+        nuint length);
 
     internal static string GetVersion() => Marshal.PtrToStringAnsi(epp_version()) ?? "unknown";
 

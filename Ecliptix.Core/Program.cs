@@ -567,7 +567,7 @@ static void InitializeProtocolKeyService(WebApplication app)
     {
         seed = Convert.FromBase64String(seedString);
     }
-    else if (seedString.Length == 64 && seedString.All(c => Uri.IsHexDigit(c)))
+    else if (seedString.Length == 64 && seedString.All(Uri.IsHexDigit))
     {
         seed = Convert.FromHexString(seedString);
     }
