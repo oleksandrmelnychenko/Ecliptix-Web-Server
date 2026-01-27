@@ -11,29 +11,33 @@ namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
 public static class PersistorRetryPolicy
 {
-    private static AsyncRetryPolicy CreateRetryPolicy(
+    private static AsyncRetryPolicy<Result<TResult, TFailure>> CreateRetryPolicy<TResult, TFailure>(
         PersistorOperation operation,
         int maxRetries = 3)
+        where TFailure : IFailureBase
     {
-        return Policy
-            .Handle<DbException>(ShouldRetryDbException)
+        return Policy<Result<TResult, TFailure>>
+            .HandleResult(result => result.IsErr && result.UnwrapErr().Retryable)
+            .Or<DbException>(ShouldRetryDbException)
             .Or<TimeoutRejectedException>()
             .Or<TimeoutException>()
             .WaitAndRetryAsync(
                 maxRetries,
                 retryAttempt => TimeSpan.FromMilliseconds(Math.Pow(2, retryAttempt) * 200),
-                onRetry: (exception, delay, retryCount, _) =>
+                onRetry: (outcome, delay, retryCount, _) =>
                 {
-                    Log.Debug("Persistor operation '{Operation}' retry {RetryCount}/{MaxRetries} after {Delay}ms due to {ExceptionType}",
-                        operation, retryCount, maxRetries, delay.TotalMilliseconds, exception.GetType().Name);
+                    string reason = outcome.Exception?.GetType().Name ??
+                                    (outcome.Result.IsErr ? outcome.Result.UnwrapErr().GetType().Name : "Unknown");
+                    Log.Debug("Persistor operation '{Operation}' retry {RetryCount}/{MaxRetries} after {Delay}ms due to {Reason}",
+                        operation, retryCount, maxRetries, delay.TotalMilliseconds, reason);
                 });
     }
 
-    private static AsyncTimeoutPolicy CreateTimeoutPolicy(
+    private static AsyncTimeoutPolicy<Result<TResult, TFailure>> CreateTimeoutPolicy<TResult, TFailure>(
         PersistorOperation operation,
         TimeSpan operationTimeout)
     {
-        return Policy.TimeoutAsync(
+        return Policy.TimeoutAsync<Result<TResult, TFailure>>(
             operationTimeout,
             TimeoutStrategy.Pessimistic,
             onTimeoutAsync: (_, timeout, _, _) =>
@@ -54,9 +58,11 @@ public static class PersistorRetryPolicy
         CancellationToken cancellationToken = default)
         where TFailure : IFailureBase
     {
-        AsyncTimeoutPolicy timeoutPolicy = CreateTimeoutPolicy(operationType, operationTimeout);
-        AsyncRetryPolicy retryPolicy = CreateRetryPolicy(operationType);
-        AsyncPolicyWrap policyWrap = Policy.WrapAsync(retryPolicy, timeoutPolicy);
+        AsyncTimeoutPolicy<Result<TResult, TFailure>> timeoutPolicy =
+            CreateTimeoutPolicy<TResult, TFailure>(operationType, operationTimeout);
+        AsyncRetryPolicy<Result<TResult, TFailure>> retryPolicy =
+            CreateRetryPolicy<TResult, TFailure>(operationType);
+        AsyncPolicyWrap<Result<TResult, TFailure>> policyWrap = Policy.WrapAsync(retryPolicy, timeoutPolicy);
 
         try
         {

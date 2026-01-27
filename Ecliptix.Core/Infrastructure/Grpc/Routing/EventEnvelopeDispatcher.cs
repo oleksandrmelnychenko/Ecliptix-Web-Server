@@ -239,9 +239,17 @@ public sealed class EventEnvelopeDispatcher(
         dispatchContext.Metadata.Security ??= new SecurityContext();
         dispatchContext.Metadata.Identity ??= new EventIdentity();
 
-        if (dispatchContext.Metadata.Security.ConnectId == 0 && uint.TryParse(dispatchContext.Metadata.Identity.PartitionKey, out uint parsed))
+        if (dispatchContext.Metadata.Security.ConnectId == 0 &&
+            !string.IsNullOrWhiteSpace(dispatchContext.Metadata.Identity.PartitionKey) &&
+            uint.TryParse(dispatchContext.Metadata.Identity.PartitionKey, out uint parsed) &&
+            parsed > 0)
         {
             dispatchContext.Metadata.Security.ConnectId = parsed;
+        }
+
+        if (dispatchContext.Metadata.Security.ConnectId == 0)
+        {
+            return Fail(dispatchContext, DispatcherErrorCodes.ConnectIdRequired);
         }
 
         if (string.IsNullOrWhiteSpace(dispatchContext.Metadata.Identity.PartitionKey))

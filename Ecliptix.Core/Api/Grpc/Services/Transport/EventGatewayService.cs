@@ -151,7 +151,20 @@ public sealed class EventGatewayService(EventEnvelopeDispatcher dispatcher) : Ev
         }
 
         string? value = GetHeaderValue(headers, key);
-        return !string.IsNullOrWhiteSpace(value) ? ByteString.FromBase64(value) : current;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return current;
+        }
+
+        try
+        {
+            return ByteString.FromBase64(value);
+        }
+        catch (FormatException)
+        {
+            Log.Warning("[EventGateway] Invalid base64 header value for {HeaderKey}", key);
+            return current;
+        }
     }
 
     private static string? GetHeaderValue(Metadata headers, string key) =>
