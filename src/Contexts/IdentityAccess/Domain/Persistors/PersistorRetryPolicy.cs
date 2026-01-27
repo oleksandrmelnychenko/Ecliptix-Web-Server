@@ -1,15 +1,98 @@
 using System.Data.Common;
+using System.Collections.Concurrent;
 using Ecliptix.SharedKernel;
 using Polly;
 using Polly.Retry;
 using Polly.Timeout;
 using Npgsql;
+using Polly.Wrap;
 using Serilog;
 
 namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
 public static class PersistorRetryPolicy
 {
+    private static readonly ConcurrentDictionary<(Type, Type, PersistorOperation, int), object> RetryPolicyCache = new();
+    private static readonly ConcurrentDictionary<(Type, Type, PersistorOperation, TimeSpan), object> TimeoutPolicyCache = new();
+    private static readonly ConcurrentDictionary<(Type, Type), object> NoOpPolicyCache = new();
+    private static readonly ConcurrentDictionary<(Type, Type, PersistorOperation, TimeSpan, int), object> PolicyWrapCache = new();
+
+
+    private static IAsyncPolicy<Result<TResult, TFailure>> GetNoOpPolicy<TResult, TFailure>(
+        PersistorOperation operation)
+    {
+        (Type, Type) key = (typeof(TResult), typeof(TFailure));
+
+        IAsyncPolicy<Result<TResult, TFailure>> policy = (IAsyncPolicy<Result<TResult, TFailure>>)NoOpPolicyCache.GetOrAdd(
+            key,
+            _ =>
+            {
+                return Policy.NoOpAsync<Result<TResult, TFailure>>();
+            });
+
+        return policy;
+    }
+
+    private static AsyncRetryPolicy<Result<TResult, TFailure>> GetOrCreateRetryPolicy<TResult, TFailure>(
+        PersistorOperation operation,
+        int maxRetries = 3)
+        where TFailure : IFailureBase
+    {
+        (Type, Type, PersistorOperation operation, int maxRetries) key = (typeof(TResult), typeof(TFailure), operation, maxRetries);
+
+        AsyncRetryPolicy<Result<TResult, TFailure>> policy = (AsyncRetryPolicy<Result<TResult, TFailure>>)RetryPolicyCache.GetOrAdd(
+            key,
+            _ =>
+            {
+                return CreateRetryPolicy<TResult, TFailure>(operation, maxRetries);
+            });
+
+        return policy;
+    }
+
+    private static IAsyncPolicy<Result<TResult, TFailure>> GetOrCreateTimeoutPolicy<TResult, TFailure>(
+        PersistorOperation operation,
+        TimeSpan operationTimeout)
+    {
+        if (operationTimeout == Timeout.InfiniteTimeSpan || operationTimeout <= TimeSpan.Zero)
+        {
+            return GetNoOpPolicy<TResult, TFailure>(operation);
+        }
+
+        (Type, Type, PersistorOperation operation, TimeSpan operationTimeout) key = (typeof(TResult), typeof(TFailure), operation, operationTimeout);
+
+        IAsyncPolicy<Result<TResult, TFailure>> policy = (IAsyncPolicy<Result<TResult, TFailure>>)TimeoutPolicyCache.GetOrAdd(
+            key,
+            _ =>
+            {
+                return CreateTimeoutPolicy<TResult, TFailure>(operation, operationTimeout);
+            });
+
+        return policy;
+    }
+
+    private static IAsyncPolicy<Result<TResult, TFailure>> GetOrCreatePolicyWrap<TResult, TFailure>(
+        PersistorOperation operation,
+        TimeSpan operationTimeout,
+        int maxRetries = 3)
+        where TFailure : IFailureBase
+    {
+        (Type, Type, PersistorOperation operation, TimeSpan operationTimeout, int maxRetries) key = (typeof(TResult), typeof(TFailure), operation, operationTimeout, maxRetries);
+
+        IAsyncPolicy<Result<TResult, TFailure>> policy = (IAsyncPolicy<Result<TResult, TFailure>>)PolicyWrapCache.GetOrAdd(
+            key,
+            _ =>
+            {
+                AsyncRetryPolicy<Result<TResult, TFailure>> retryPolicy = GetOrCreateRetryPolicy<TResult, TFailure>(operation, maxRetries);
+                IAsyncPolicy<Result<TResult, TFailure>> timeoutPolicy = GetOrCreateTimeoutPolicy<TResult, TFailure>(operation, operationTimeout);
+                AsyncPolicyWrap<Result<TResult, TFailure>>? wrap = Policy.WrapAsync(retryPolicy, timeoutPolicy);
+
+                return wrap;
+            });
+
+        return policy;
+    }
+
     private static AsyncRetryPolicy<Result<TResult, TFailure>> CreateRetryPolicy<TResult, TFailure>(
         PersistorOperation operation,
         int maxRetries = 3)
@@ -36,11 +119,6 @@ public static class PersistorRetryPolicy
         PersistorOperation operation,
         TimeSpan operationTimeout)
     {
-        if (operationTimeout == Timeout.InfiniteTimeSpan || operationTimeout <= TimeSpan.Zero)
-        {
-            return Policy.NoOpAsync<Result<TResult, TFailure>>();
-        }
-
         return Policy.TimeoutAsync<Result<TResult, TFailure>>(
             operationTimeout,
             TimeoutStrategy.Pessimistic,
@@ -59,14 +137,12 @@ public static class PersistorRetryPolicy
         Func<DbException, PersistorOperation, TFailure> dbExceptionMapper,
         Func<TimeoutException, PersistorOperation, TFailure> timeoutExceptionMapper,
         Func<Exception, PersistorOperation, TFailure> genericExceptionMapper,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int maxRetries = 3)
         where TFailure : IFailureBase
     {
-        IAsyncPolicy<Result<TResult, TFailure>> timeoutPolicy =
-            CreateTimeoutPolicy<TResult, TFailure>(operationType, operationTimeout);
-        AsyncRetryPolicy<Result<TResult, TFailure>> retryPolicy =
-            CreateRetryPolicy<TResult, TFailure>(operationType);
-        IAsyncPolicy<Result<TResult, TFailure>> policyWrap = Policy.WrapAsync(retryPolicy, timeoutPolicy);
+        IAsyncPolicy<Result<TResult, TFailure>> policyWrap =
+            GetOrCreatePolicyWrap<TResult, TFailure>(operationType, operationTimeout, maxRetries);
 
         try
         {
