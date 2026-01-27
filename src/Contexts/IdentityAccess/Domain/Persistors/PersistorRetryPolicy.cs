@@ -3,7 +3,6 @@ using Ecliptix.SharedKernel;
 using Polly;
 using Polly.Retry;
 using Polly.Timeout;
-using Polly.Wrap;
 using Npgsql;
 using Serilog;
 
@@ -33,10 +32,15 @@ public static class PersistorRetryPolicy
                 });
     }
 
-    private static AsyncTimeoutPolicy<Result<TResult, TFailure>> CreateTimeoutPolicy<TResult, TFailure>(
+    private static IAsyncPolicy<Result<TResult, TFailure>> CreateTimeoutPolicy<TResult, TFailure>(
         PersistorOperation operation,
         TimeSpan operationTimeout)
     {
+        if (operationTimeout == Timeout.InfiniteTimeSpan || operationTimeout <= TimeSpan.Zero)
+        {
+            return Policy.NoOpAsync<Result<TResult, TFailure>>();
+        }
+
         return Policy.TimeoutAsync<Result<TResult, TFailure>>(
             operationTimeout,
             TimeoutStrategy.Pessimistic,
@@ -58,11 +62,11 @@ public static class PersistorRetryPolicy
         CancellationToken cancellationToken = default)
         where TFailure : IFailureBase
     {
-        AsyncTimeoutPolicy<Result<TResult, TFailure>> timeoutPolicy =
+        IAsyncPolicy<Result<TResult, TFailure>> timeoutPolicy =
             CreateTimeoutPolicy<TResult, TFailure>(operationType, operationTimeout);
         AsyncRetryPolicy<Result<TResult, TFailure>> retryPolicy =
             CreateRetryPolicy<TResult, TFailure>(operationType);
-        AsyncPolicyWrap<Result<TResult, TFailure>> policyWrap = Policy.WrapAsync(retryPolicy, timeoutPolicy);
+        IAsyncPolicy<Result<TResult, TFailure>> policyWrap = Policy.WrapAsync(retryPolicy, timeoutPolicy);
 
         try
         {
