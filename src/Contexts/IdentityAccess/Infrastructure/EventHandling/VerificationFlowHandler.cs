@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using Akka.Actor;
 using System.Globalization;
@@ -39,6 +40,8 @@ public sealed class VerificationFlowHandler(
         ServerCallContext context,
         EventMetadata metadata)
     {
+        Stopwatch sw = Stopwatch.StartNew();
+
         Result<SecureEnvelope, FailureBase> result =
             await _service
                 .ExecuteEncryptedStreamingOperationAsync<OtpVerificationRequest, OtpCountdownUpdate>(
@@ -48,9 +51,10 @@ public sealed class VerificationFlowHandler(
                         BoundedChannelOptions channelOptions =
                             new(GrpcServiceConstants.ChannelOptions.BoundedChannelCapacity)
                             {
-                                FullMode = BoundedChannelFullMode.Wait,
+                                FullMode = BoundedChannelFullMode.DropWrite,
                                 SingleReader = true,
-                                SingleWriter = false
+                                SingleWriter = false,
+                                AllowSynchronousContinuations = false
                             };
 
                         using CancellationTokenSource linkedCancellationTokenSource =
@@ -67,31 +71,52 @@ public sealed class VerificationFlowHandler(
                         Log.Information("[verification.flow.grpc.start] ConnectId {ConnectId} Purpose {Purpose}",
                             connectId, initiateRequest.Purpose);
 
+                        Log.Information("[DEBUG] ConnectId {ConnectId}: Starting StreamCountdownUpdatesAsync task...", connectId);
+
                         Task streamingTask = StreamCountdownUpdatesAsync(responseStream, channel.Reader, context, linkedCancellationTokenSource.Token);
+
+                        Log.Information("[DEBUG] ConnectId {ConnectId}: Streaming task started. Time: {Elapsed}ms", connectId, sw.ElapsedMilliseconds);
 
                         Guid deviceId = new(metadata.Client.DeviceId.Span);
 
-                        Task<Result<Unit, VerificationFlowFailure>> initiationTask =
-                            _verificationFlowManagerActor.Ask<Result<Unit, VerificationFlowFailure>>(
-                                new InitiateVerificationFlowCommand(
-                                    connectId,
-                                    Helpers.FromByteStringToGuid(initiateRequest.MobileNumberId),
-                                    deviceId,
-                                    ConvertProtoPurposeToDomain(initiateRequest.Purpose),
-                                    initiateRequest.Type,
-                                    channel.Writer,
-                                    _cultureName,
-                                    idempotencyKey,
-                                    linkedCancellationTokenSource.Token
-                                ),
-                                TimeoutConfiguration.Actor.StreamingTimeout);
-
-                        Result<Unit, VerificationFlowFailure> initiationResult =
-                            await initiationTask.WaitAsync(linkedCancellationTokenSource.Token).ConfigureAwait(false);
-
-                        if (initiationResult.IsErr)
+                        try
                         {
-                            return Result<OtpCountdownUpdate, FailureBase>.Err(initiationResult.UnwrapErr());
+                            Task<Result<Unit, VerificationFlowFailure>> initiationTask =
+                                _verificationFlowManagerActor.Ask<Result<Unit, VerificationFlowFailure>>(
+                                    new InitiateVerificationFlowCommand(
+                                        connectId,
+                                        Helpers.FromByteStringToGuid(initiateRequest.MobileNumberId),
+                                        deviceId,
+                                        ConvertProtoPurposeToDomain(initiateRequest.Purpose),
+                                        initiateRequest.Type,
+                                        channel.Writer,
+                                        _cultureName,
+                                        idempotencyKey,
+                                        linkedCancellationTokenSource.Token
+                                    ),
+                                    TimeoutConfiguration.Actor.StreamingTimeout);
+
+                            Log.Information("[DEBUG] ConnectId {ConnectId}: Awaiting Actor response (Timeout setting: {Timeout})...", connectId, TimeoutConfiguration.Actor.StreamingTimeout);
+
+                            Result<Unit, VerificationFlowFailure> initiationResult =
+                                await initiationTask.WaitAsync(linkedCancellationTokenSource.Token).ConfigureAwait(false);
+
+                            Log.Information("[DEBUG] ConnectId {ConnectId}: Actor responded. IsSuccess: {IsSuccess}. Time: {Elapsed}ms", connectId, initiationResult.IsOk, sw.ElapsedMilliseconds);
+
+                            if (initiationResult.IsErr)
+                            {
+                                return Result<OtpCountdownUpdate, FailureBase>.Err(initiationResult.UnwrapErr());
+                            }
+                        }
+                        catch (TimeoutException)
+                        {
+                            Log.Error("[DEBUG] ConnectId {ConnectId}: Actor Ask TIMED OUT after {Elapsed}ms", connectId, sw.ElapsedMilliseconds);
+                            throw; // Rethrow to let gRPC handle it, or return Failure
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Error(ex, "[DEBUG] ConnectId {ConnectId}: Exception during Actor Ask/Wait", connectId);
+                            throw;
                         }
 
                         try
@@ -291,13 +316,17 @@ public sealed class VerificationFlowHandler(
         ServerCallContext context,
         CancellationToken cancellationToken)
     {
+        Log.Debug("[DEBUG-STREAM] StreamCountdownUpdatesAsync entered. Extracting ConnectId...");
         uint connectId = ServiceUtilities.ExtractConnectId(context);
+        Log.Debug("[DEBUG-STREAM] StreamCountdownUpdatesAsync ConnectId: {ConnectId}. Entering loop...", connectId);
 
         try
         {
             await foreach (Result<OtpCountdownUpdate, VerificationFlowFailure> updateResult in reader.ReadAllAsync(
                                cancellationToken))
             {
+                Log.Debug("[DEBUG-STREAM] ConnectId {ConnectId}: Received update from channel. IsError: {IsError}", connectId, updateResult.IsErr);
+
                 SecureEnvelope payload;
 
                 if (updateResult.IsErr)
@@ -334,6 +363,11 @@ public sealed class VerificationFlowHandler(
         {
             Log.Information("[verification.flow.grpc.stream-cancelled] ConnectId {ConnectId}", connectId);
             Log.Debug(ex, "[verification.flow.grpc.stream-cancelled] ConnectId {ConnectId}", connectId);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "[DEBUG-STREAM] ConnectId {ConnectId}: Fatal error in stream loop", connectId);
+            throw;
         }
     }
 

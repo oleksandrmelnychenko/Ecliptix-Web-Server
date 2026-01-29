@@ -110,12 +110,23 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
 
         if (!existingActor.IsNobody() && (actorToCleanup == null || !existingActor!.Equals(actorToCleanup)))
         {
+            Log.Information(
+                "[verification.flow.manager.stopping-existing] Stopping existing actor {ActorName} before creating new one",
+                baseActorName);
+
             await TerminateFlowActorAsync(existingActor!, Option<string>.None, actorEvent.CancellationToken);
+
+            // Time out for proper cleaning
+            await Task.Delay(100, actorEvent.CancellationToken);
         }
 
         IActorRef? stillExists = Context.Child(baseActorName);
         if (!stillExists.IsNobody())
         {
+            Log.Error(
+                "[verification.flow.manager.actor-still-exists] Actor {ActorName} still exists after termination attempt",
+                baseActorName);
+
             Sender.Tell(Result<Unit, VerificationFlowFailure>.Err(
                 new VerificationFlowFailure(
                     VerificationFlowFailureType.Generic,
@@ -195,7 +206,8 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         return (false, trackedActor);
     }
 
-    private async Task TerminateFlowActorAsync(IActorRef actorToStop,
+    private async Task TerminateFlowActorAsync(
+        IActorRef actorToStop,
         Option<string> idempotencyKey,
         CancellationToken cancellationToken)
     {
@@ -209,10 +221,12 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         }
 
         VerificationFlowActorSettings settings = _securityConfig.CurrentValue.VerificationFlowActor;
+
+        // Lowered time out for faster response TODO
         TimeSpan terminationTimeout = TimeSpan.FromSeconds(
-            Math.Max(settings.ActorTerminationMinTimeoutSeconds,
-                _securityConfig.CurrentValue.VerificationFlow.ChannelWriteTimeoutSeconds +
-                _securityConfig.CurrentValue.VerificationFlow.OtpExpirationSeconds));
+            Math.Min(5,
+                Math.Max(settings.ActorTerminationMinTimeoutSeconds,
+                    _securityConfig.CurrentValue.VerificationFlow.ChannelWriteTimeoutSeconds)));
 
         bool gracefulStopSucceeded = false;
         try
@@ -232,8 +246,10 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
 
             if (gracefulStopSucceeded)
             {
-                Log.Information("[verification.flow.manager.graceful-stop] Successfully stopped {ActorName}",
+                Log.Information(
+                    "[verification.flow.manager.graceful-stop] Successfully stopped {ActorName}",
                     actorName);
+                return;
             }
         }
         catch (OperationCanceledException)
@@ -241,30 +257,38 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
             Log.Debug(
                 "[verification.flow.manager.force-stop] Cancellation while waiting for termination of {ActorName}, using PoisonPill",
                 actorName);
-            actorToStop.Tell(PoisonPill.Instance);
         }
         catch (Exception ex)
         {
             Log.Warning(ex,
                 "[verification.flow.manager.force-stop] Graceful stop failed for {ActorName}, using PoisonPill",
                 actorName);
-            actorToStop.Tell(PoisonPill.Instance);
         }
 
         if (!gracefulStopSucceeded)
         {
-            TimeSpan waitTimeout = TimeSpan.FromSeconds(5);
+            actorToStop.Tell(PoisonPill.Instance);
+
+            // Lowered timeout for faster response TODO
+            TimeSpan waitTimeout = TimeSpan.FromSeconds(2); //Been 5 sec
             bool removed = await WaitForActorRemovalAsync(actorName, waitTimeout, cancellationToken);
 
             if (removed)
             {
-                Log.Information("[verification.flow.manager.force-stop-success] {ActorName} removed after PoisonPill",
+                Log.Information(
+                    "[verification.flow.manager.force-stop-success] {ActorName} removed after PoisonPill",
+                    actorName);
+            }
+            else
+            {
+                Log.Warning(
+                    "[verification.flow.manager.force-stop-timeout] {ActorName} did not stop within timeout, continuing anyway",
                     actorName);
             }
         }
     }
 
-    private static async Task<bool> WaitForActorRemovalAsync(
+    private async Task<bool> WaitForActorRemovalAsync(
         string actorName,
         TimeSpan timeout,
         CancellationToken cancellationToken)
@@ -276,7 +300,8 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
         {
             if (Context.Child(actorName).IsNobody())
             {
-                Log.Debug("[verification.flow.manager.actor-removed] {ActorName} successfully removed from hierarchy",
+                Log.Debug(
+                    "[verification.flow.manager.actor-removed] {ActorName} successfully removed from hierarchy",
                     actorName);
                 return true;
             }
@@ -287,7 +312,8 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
             }
             catch (OperationCanceledException)
             {
-                Log.Debug("[verification.flow.manager.wait-cancelled] Wait for {ActorName} removal was cancelled",
+                Log.Debug(
+                    "[verification.flow.manager.wait-cancelled] Wait for {ActorName} removal was cancelled",
                     actorName);
                 return false;
             }
@@ -442,22 +468,22 @@ public sealed class VerificationFlowManagerActor : ReceiveActor
                     "The verification process was terminated due to an internal server error."
                 );
 
-                bool writeSuccess =
-                    writer.TryWrite(Result<OtpCountdownUpdate, VerificationFlowFailure>.Err(failure));
+                bool writeSuccess = writer.TryWrite(
+                    Result<OtpCountdownUpdate, VerificationFlowFailure>.Err(failure));
+
                 if (!writeSuccess)
                 {
                     Log.Warning(
                         "[verification.flow.manager.channel-write-failed] Unable to notify client for terminated actor {ActorPath}",
                         deadActor.Path);
                 }
-
-                bool completeSuccess = writer.TryComplete();
-                if (!completeSuccess)
-                {
-                    Log.Warning(
-                        "[verification.flow.manager.channel-complete-failed] Channel completion failed for terminated actor {ActorPath}",
-                        deadActor.Path);
-                }
+            }
+            bool completeSuccess = writer.TryComplete();
+            if (!completeSuccess)
+            {
+                Log.Debug(
+                    "[verification.flow.manager.channel-already-completed] Channel already completed for terminated actor {ActorPath}",
+                    deadActor.Path);
             }
         }
         else

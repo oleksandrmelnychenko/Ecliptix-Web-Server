@@ -226,17 +226,27 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
                     message = _localizationService.Localize(failure.Message, _cultureName);
                 }
 
-                await SafeWriteToChannelAsync(Result<OtpCountdownUpdate, VerificationFlowFailure>.Ok(
-                    new OtpCountdownUpdate
-                    {
-                        SecondsRemaining = 0,
-                        SessionId = _verificationFlow.IsSome
-                            ? Helpers.GuidToByteString(_verificationFlow.Value!.UniqueIdentifier)
-                            : ByteString.Empty,
-                        Status = OtpCountdownUpdate.Types.Status.OtpCountdownStatusFailed,
-                        Message = message,
-                        MessageKey = messageKey
-                    }));
+                bool writeSucceeded = _writer?.TryWrite(
+                    Result<OtpCountdownUpdate, VerificationFlowFailure>.Ok(
+                        new OtpCountdownUpdate
+                        {
+                            SecondsRemaining = 0,
+                            SessionId = ByteString.Empty,
+                            Status = OtpCountdownUpdate.Types.Status.OtpCountdownStatusFailed,
+                            Message = message,
+                            MessageKey = messageKey
+                        })) ?? false;
+
+                if (!writeSucceeded)
+                {
+                    Serilog.Log.Warning(
+                        "[verification.flow.write-failed] ConnectId {ConnectId}: Failed to write rate limit error",
+                        _connectId);
+                }
+
+                CompleteWriter();
+                await TerminateActor(graceful: false, reason: "rate_limit_exceeded");
+                return;
             }
 
             if (failure.FailureType is VerificationFlowFailureType.NotFound or VerificationFlowFailureType.Generic)
@@ -1816,35 +1826,73 @@ public sealed class VerificationFlowActor : ReceivePersistentActor, IWithStash
     private async Task SafeWriteToChannelAsync(Result<OtpCountdownUpdate, VerificationFlowFailure> update)
     {
         ChannelWriter<Result<OtpCountdownUpdate, VerificationFlowFailure>>? writer = _writer;
-        if (writer == null)
+        if (writer == null || _writerCompleted)
         {
+            Serilog.Log.Debug(
+                "[verification.channel.write.skipped] ConnectId {ConnectId}: Writer is null or completed",
+                _connectId);
             return;
         }
 
         try
         {
-            using CancellationTokenSource timeoutCancellationTokenSource =
-                CancellationTokenSource.CreateLinkedTokenSource(_currentRequestCancellationToken);
-            timeoutCancellationTokenSource.CancelAfter(_timeouts.ChannelWriteTimeout);
-            await writer.WriteAsync(update, timeoutCancellationTokenSource.Token);
+            if (writer.TryWrite(update))
+            {
+                Serilog.Log.Debug(
+                    "[verification.channel.write.success] ConnectId {ConnectId}: TryWrite succeeded",
+                    _connectId);
+                return;
+            }
+
+            // Tried to write to the channel
+            // if failed writing with a timeout
+
+            Serilog.Log.Information(
+                "[verification.channel.write.blocking] ConnectId {ConnectId}: TryWrite failed, falling back to WriteAsync with timeout",
+                _connectId);
+
+            using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(
+                _currentRequestCancellationToken);
+
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
+
+            await writer.WriteAsync(update, timeoutCts.Token).ConfigureAwait(false);
+
+            Serilog.Log.Information(
+                "[verification.channel.write.success] ConnectId {ConnectId}: WriteAsync completed",
+                _connectId);
+        }
+        catch (ChannelClosedException)
+        {
+            Serilog.Log.Warning(
+                "[verification.channel.closed] ConnectId {ConnectId}: Channel already closed",
+                _connectId);
+            CompleteWriter();
         }
         catch (InvalidOperationException)
         {
-            Log.Warning(
-                "[verification.channel.drop] Channel closed while writing update for ConnectId {0}",
+            Serilog.Log.Warning(
+                "[verification.channel.invalid] ConnectId {ConnectId}: Channel closed during write",
                 _connectId);
             CompleteWriter();
         }
         catch (OperationCanceledException)
         {
-            Log.Warning("[verification.channel.drop] Write cancelled for ConnectId {0}", _connectId);
+            Serilog.Log.Warning(
+                "[verification.channel.timeout] ConnectId {ConnectId}: Write timeout or cancellation",
+                _connectId);
+
+            // If timeout exception possible client disconnnection
             if (!_currentRequestCancellationToken.IsCancellationRequested)
             {
                 CompleteWriter();
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Serilog.Log.Error(ex,
+                "[verification.channel.error] ConnectId {ConnectId}: Unexpected error during write",
+                _connectId);
             CompleteWriter();
         }
     }
