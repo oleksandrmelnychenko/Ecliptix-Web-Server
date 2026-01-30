@@ -24,6 +24,7 @@ public sealed record MembershipFailure(
         MembershipFailureType.AlreadyExists => true,
         MembershipFailureType.ValidationFailed => true,
         MembershipFailureType.InvalidStatus => true,
+        MembershipFailureType.RateLimitExceeded => true,
         _ => false
     };
 
@@ -56,10 +57,17 @@ public sealed record MembershipFailure(
         MembershipFailureType.CreationFailed => "membership.create_failed",
         MembershipFailureType.UpdateFailed => "membership.update_failed",
         MembershipFailureType.StatusUpdateFailed => "membership.status_update_failed",
+        MembershipFailureType.RateLimitExceeded => "membership.rate_limit_exceeded",
         _ => "membership.internal"
     };
 
     public override string? UserMessageKey => GetDefaultI18NKey(FailureType);
+
+    public static MembershipFailure RateLimitExceeded(string? details = null)
+    {
+        return new MembershipFailure(MembershipFailureType.RateLimitExceeded,
+            details ?? "Rate limit exceeded");
+    }
 
     public static MembershipFailure NotFound(string? details = null)
     {
@@ -299,6 +307,10 @@ public sealed record MembershipFailure(
                 StatusCode.Unavailable,
                 i18nKey,
                 Retryable: true),
+            MembershipFailureType.RateLimitExceeded => new GrpcErrorDescriptor(
+                ErrorCode.ResourceExhausted,
+                StatusCode.ResourceExhausted,
+                i18nKey),
             _ => new GrpcErrorDescriptor(
                 ErrorCode.InternalError,
                 StatusCode.Internal,
@@ -317,6 +329,7 @@ public sealed record MembershipFailure(
             MembershipFailureType.UpdateFailed => ErrorI18NKeys.DatabaseUnavailable,
             MembershipFailureType.StatusUpdateFailed => ErrorI18NKeys.DatabaseUnavailable,
             MembershipFailureType.PersistorAccess => ErrorI18NKeys.DatabaseUnavailable,
+            MembershipFailureType.RateLimitExceeded => ErrorI18NKeys.ResourceExhausted,
             _ => ErrorI18NKeys.Internal
         };
 

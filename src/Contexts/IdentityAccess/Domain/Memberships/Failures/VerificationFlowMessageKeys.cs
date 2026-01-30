@@ -61,6 +61,7 @@ public static class VerificationFlowMessageKeys
     public const string IncrementAttemptCountFailed = "increment_attempt_count_failed";
     public const string LogAttemptFailed = "log_attempt_failed";
 
+    public const string SignInRateLimitExceeded = "signin_too_many_attempts";
     public const string DeviceRateLimitExceeded = "device_rate_limit_exceeded";
 
     public const string Generic = "generic_error";

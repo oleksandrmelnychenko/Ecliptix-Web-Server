@@ -9,6 +9,8 @@ public sealed class MembershipPersistorSettings
     public int MembershipCreationWindowHours { get; set; } = 1;
     public int MaxMembershipCreationAttempts { get; set; } = 5;
     public int PasswordRecoveryValidationWindowMinutes { get; set; } = 10;
+    public int InitAttemptsInWindowMinutes { get; set; } = 5;
+    public int MaxSignInInitAttempts { get; set; } = 5;
 
     public TimeSpan LoginLockoutDuration => TimeSpan.FromMinutes(LoginLockoutDurationMinutes);
     public TimeSpan FailedLoginLookback => TimeSpan.FromMinutes(FailedLoginLookbackMinutes);

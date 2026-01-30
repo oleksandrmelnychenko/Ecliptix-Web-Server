@@ -235,7 +235,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                     int remainingMinutes = (int)Math.Ceiling((lockoutMarker.LockedUntil!.Value - now).TotalMinutes);
                     await RollbackSilentlyAsync(transaction);
                     return Result<MembershipQueryRecord, MembershipFailure>.Err(
-                        MembershipFailure.ValidationFailed(
+                        MembershipFailure.RateLimitExceeded(
                             $"Account is locked. Try again in {remainingMinutes} minutes."));
                 }
 
@@ -244,6 +244,37 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                                  la.AttemptedAt <= lockoutMarker.AttemptedAt &&
                                  !la.IsDeleted)
                     .ExecuteDeleteAsync(cancellationToken);
+            }
+
+            MembershipPersistorSettings settings = _securityConfig.CurrentValue.MembershipPersistor;
+
+            DateTimeOffset velocityLookback =
+                now.AddMinutes(-settings.InitAttemptsInWindowMinutes);
+
+            int maxInitAttempts = settings.MaxSignInInitAttempts;
+
+            int recentActivityCount = await schemaContext.LoginAttempts
+                .CountAsync(la => la.MobileNumber == command.MobileNumber &&
+                                  la.AttemptedAt > velocityLookback &&
+                                  !la.IsDeleted,
+                    cancellationToken);
+
+            if (recentActivityCount >= maxInitAttempts)
+            {
+                schemaContext.LoginAttempts.Add(new LoginAttemptEntity
+                {
+                    MobileNumber = command.MobileNumber,
+                    Outcome = "velocity_limit_exceeded",
+                    IsSuccess = false,
+                    AttemptedAt = now
+                });
+
+                await schemaContext.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+
+                return Result<MembershipQueryRecord, MembershipFailure>.Err(
+                    MembershipFailure.RateLimitExceeded(
+                        $"Too many initialization requests. Please wait {settings.InitAttemptsInWindowMinutes} minutes."));
             }
 
             DateTimeOffset failedLoginLookback = now - persistorSettings.FailedLoginLookback;
@@ -270,7 +301,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
 
                 await transaction.CommitAsync(cancellationToken);
                 return Result<MembershipQueryRecord, MembershipFailure>.Err(
-                    MembershipFailure.ValidationFailed(
+                    MembershipFailure.RateLimitExceeded(
                         $"Too many login attempts. Try again in {lockoutDurationMinutes} minutes."));
             }
 

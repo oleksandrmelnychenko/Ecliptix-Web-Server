@@ -818,6 +818,33 @@ public sealed class MembershipActor : ReceivePersistentActor
         {
             MembershipFailure failure = persistorResult.UnwrapErr();
 
+            if (failure.FailureType == MembershipFailureType.RateLimitExceeded)
+            {
+                int lockoutMinutes = _securityConfig.CurrentValue.MembershipPersistor.LoginLockoutDurationMinutes;
+
+                string localizedFormat = _localizationService.Localize(
+                    VerificationFlowMessageKeys.SignInRateLimitExceeded,
+                    command.CultureName);
+
+                string formattedMessage;
+                try
+                {
+                    formattedMessage = string.Format(localizedFormat, lockoutMinutes);
+                }
+                catch (FormatException)
+                {
+                    formattedMessage = localizedFormat;
+                }
+
+                replyTo.Tell(Result<OpaqueSignInInitResponse, MembershipFailure>.Ok(
+                    new OpaqueSignInInitResponse
+                    {
+                        Result = OpaqueOperationResult.LoginAttemptsExceeded,
+                        Message = formattedMessage
+                    }));
+                return;
+            }
+
             if (failure.IsUserFacing)
             {
                 string message = _localizationService.Localize(

@@ -58,7 +58,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationService
                 ["password_recovery_rate_limit_exceeded"] = "Too many password recovery attempts. Please try again later.",
                 ["security_suspicious_activity"] = "Unusual activity detected; access restricted.",
                 ["membership_too_many_attempts"] = "Too many membership attempts; wait {0} min or contact support.",
-                ["signin_too_many_attempts"] = "Too many sign-in attempts; wait {0} min or contact support.",
+                ["signin_too_many_attempts"] = "Too many sign-in attempts; wait up to {0} min or contact support.",
                 ["activity_status_invalid"] = "Invalid activity status.",
                 ["app_device_created_but_invalid_id"] = "Device registered but ID issue; contact support.",
                 ["app_device_invalid_id"] = "Invalid app device ID.",
@@ -185,7 +185,7 @@ public sealed class VerificationFlowLocalizer : ILocalizationService
                 ["security_suspicious_activity"] = "Виявлено незвичайну активність; доступ обмежено.",
                 ["membership_too_many_attempts"] =
                     "Забагато спроб членства; зачекайте {0} хв або зв'яжіться з підтримкою.",
-                ["signin_too_many_attempts"] = "Забагато спроб входу; зачекайте {0} хв або зв'яжіться з підтримкою.",
+                ["signin_too_many_attempts"] = "Забагато спроб входу; зачекайте до {0} хв або зв'яжіться з підтримкою.",
                 ["activity_status_invalid"] = "Неправильний статус активності.",
                 ["app_device_created_but_invalid_id"] =
                     "Пристрій зареєстровано, але проблема з ID; зв'яжіться з підтримкою.",

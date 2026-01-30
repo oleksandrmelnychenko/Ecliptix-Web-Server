@@ -10,5 +10,6 @@ public enum MembershipFailureType : short
     ValidationFailed,
     InvalidStatus,
     PersistorAccess,
-    InternalError
+    InternalError,
+    RateLimitExceeded
 }
