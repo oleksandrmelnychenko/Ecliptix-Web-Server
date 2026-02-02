@@ -9,9 +9,9 @@ public interface IOpaqueProtocolService
 {
     (byte[] Response, int KeyVersion) ProcessOprfRequest(byte[] oprfRequest, Guid accountId);
 
-    Result<(OpaqueSignInInitResponse Response, byte[] ServerMac), OpaqueFailure> InitiateSignIn(
+    Result<(OpaqueSignInInitResponse Response, byte[] RelayMac), OpaqueFailure> InitiateSignIn(
         OpaqueSignInInitRequest request, MembershipOpaqueQueryRecord queryRecord);
 
     Result<(SodiumSecureMemoryHandle MasterKeyHandle, OpaqueSignInFinalizeResponse Response), OpaqueFailure>
-        CompleteSignInWithMasterKey(OpaqueSignInFinalizeRequest request, byte[]? serverMac, int keyVersion);
+        CompleteSignInWithMasterKey(OpaqueSignInFinalizeRequest request, byte[]? relayMac, int keyVersion);
 }

@@ -14,11 +14,11 @@ public sealed class KE3
         Array.Copy(data, Data, data.Length);
     }
 
-    public static Result<KE3, OpaqueServerFailure> Create(byte[] data)
+    public static Result<KE3, OpaqueRelayFailure> Create(byte[] data)
     {
         return data.Length != OpaqueConstants.KE3_LENGTH
-            ? Result<KE3, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.InvalidInput($"KE3 must be {OpaqueConstants.KE3_LENGTH} bytes"))
-            : Result<KE3, OpaqueServerFailure>.Ok(new KE3(data));
+            ? Result<KE3, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.InvalidInput($"KE3 must be {OpaqueConstants.KE3_LENGTH} bytes"))
+            : Result<KE3, OpaqueRelayFailure>.Ok(new KE3(data));
     }
 }

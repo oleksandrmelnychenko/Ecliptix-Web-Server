@@ -480,7 +480,7 @@ static void InitializeOpaqueService(WebApplication app)
         activeKeyVersion = 1;
     }
 
-    Result<Unit, OpaqueServerFailure> initializationResult =
+    Result<Unit, OpaqueRelayFailure> initializationResult =
         opaqueService.Initialize(keyRing, activeKeyVersion);
     if (!initializationResult.IsErr)
     {
@@ -490,8 +490,8 @@ static void InitializeOpaqueService(WebApplication app)
         return;
     }
 
-    OpaqueServerFailure failure = initializationResult.UnwrapErr();
-    Log.Error("OPAQUE server initialization failed: {Error}", failure.Message);
+    OpaqueRelayFailure failure = initializationResult.UnwrapErr();
+    Log.Error("OPAQUE relay initialization failed: {Error}", failure.Message);
     throw new InvalidOperationException(failure.Message, failure.Exception);
 }
 

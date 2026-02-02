@@ -14,12 +14,12 @@ public sealed class RegistrationResponse
         Array.Copy(data, Data, data.Length);
     }
 
-    public static Result<RegistrationResponse, OpaqueServerFailure> Create(byte[] data)
+    public static Result<RegistrationResponse, OpaqueRelayFailure> Create(byte[] data)
     {
         return data.Length != OpaqueConstants.REGISTRATION_RESPONSE_LENGTH
-            ? Result<RegistrationResponse, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.InvalidInput(
+            ? Result<RegistrationResponse, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.InvalidInput(
                     $"Registration response must be {OpaqueConstants.REGISTRATION_RESPONSE_LENGTH} bytes"))
-            : Result<RegistrationResponse, OpaqueServerFailure>.Ok(new RegistrationResponse(data));
+            : Result<RegistrationResponse, OpaqueRelayFailure>.Ok(new RegistrationResponse(data));
     }
 }
