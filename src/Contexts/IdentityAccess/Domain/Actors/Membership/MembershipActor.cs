@@ -105,6 +105,8 @@ public sealed class MembershipActor : ReceivePersistentActor
         CommandAsync<CompleteOprfSecureKeyRecoveryCommand>(HandleCompleteRecoverySecureKeyEvent);
         CommandAsync<GetMembershipByVerificationFlowQuery>(HandleGetMembershipByVerificationFlow);
         CommandAsync<GetAccountProfileQuery>(HandleGetAccountProfile);
+        CommandAsync<GetMembershipStateQuery>(HandleGetMembershipState);
+
 
         Command<SaveSnapshotSuccess>(_ =>
             Log.Info("[MEMBERSHIP-SNAPSHOT] ✅ Snapshot saved successfully at sequence {0}", LastSequenceNr));
@@ -280,6 +282,16 @@ public sealed class MembershipActor : ReceivePersistentActor
         _passwordRecoveryCleanupTimer?.Cancel();
         ClearState();
         base.PostStop();
+    }
+
+    private async Task HandleGetMembershipState(GetMembershipStateQuery query)
+    {
+        Result<MembershipStateQueryRecord, MembershipFailure> result =
+            await _membershipPersistor.Ask<Result<MembershipStateQueryRecord, MembershipFailure>>(
+                query,
+                query.CancellationToken);
+
+        Sender.Tell(result);
     }
 
     private async Task HandleGetAccountProfile(GetAccountProfileQuery query)

@@ -1,6 +1,7 @@
 using System.Data.Common;
 using Akka.Actor;
 using Ecliptix.IdentityAccess.Domain.Actors.AccountProfile;
+using Ecliptix.IdentityAccess.Domain.Memberships;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
@@ -9,7 +10,9 @@ using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.SharedKernel;
 using Ecliptix.SharedKernel.Actors;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
+using Serilog;
 
 namespace Ecliptix.IdentityAccess.Domain.Persistors;
 
@@ -115,34 +118,49 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
     }
 
     private static async Task<Result<AccountProfileInfo, AccountProfileFailure>> UpdateAccountProfileAsync(
-        EcliptixSchemaContext schemaContext, UpdateAccountProfileCommand command, CancellationToken cancellationToken)
+        EcliptixSchemaContext schemaContext,
+        UpdateAccountProfileCommand command,
+        CancellationToken cancellationToken)
     {
+        await using IDbContextTransaction transaction =
+            await schemaContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
+
         try
         {
-
             Option<AccountProfileEntity> profileOpt =
                 await AccountProfileQueries.GetByAccountIdTracking(schemaContext, command.AccountId);
 
             AccountProfileEntity profile;
+            Guid membershipId;
 
             if (profileOpt.IsSome)
             {
                 profile = profileOpt.Value!;
-
                 profile.ProfileName = command.ProfileName;
                 profile.DisplayName = command.DisplayName;
                 profile.UpdatedAt = DateTimeOffset.UtcNow;
 
+                Option<Guid> membershipIdOpt = await AccountProfileQueries.GetMembershipIdByAccountId(
+                    schemaContext, command.AccountId);
+
+                if (!membershipIdOpt.IsSome)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return Result<AccountProfileInfo, AccountProfileFailure>.Err(
+                        AccountProfileFailure.NotFound("Account integrity error."));
+                }
+                membershipId = membershipIdOpt.Value;
             }
             else
             {
-                bool accountExists = await schemaContext.Accounts
-                    .AnyAsync(a => a.UniqueId == command.AccountId, cancellationToken);
+                AccountEntity? account = await schemaContext.Accounts
+                    .FirstOrDefaultAsync(a => a.UniqueId == command.AccountId, cancellationToken);
 
-                if (!accountExists)
+                if (account == null)
                 {
+                    await transaction.RollbackAsync(cancellationToken);
                     return Result<AccountProfileInfo, AccountProfileFailure>.Err(
-                        AccountProfileFailure.NotFound("Account not found. Cannot create profile."));
+                        AccountProfileFailure.NotFound("Account not found."));
                 }
 
                 profile = new AccountProfileEntity
@@ -154,30 +172,66 @@ public class AccountProfilePersistorActor : PersistorBase<AccountProfileFailure>
                 };
 
                 schemaContext.AccountProfiles.Add(profile);
+                membershipId = account.MembershipId;
+            }
+
+            Option<MembershipCreationStatus> currentStatusOpt =
+                await MembershipQueries.GetCreationStatusById(schemaContext, membershipId);
+
+            if (!currentStatusOpt.IsSome)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return Result<AccountProfileInfo, AccountProfileFailure>.Err(
+                    AccountProfileFailure.InternalError("Membership missing for account."));
+            }
+
+            MembershipCreationStatus currentStatus = currentStatusOpt.Value;
+            MembershipCreationStatus targetStatus = MembershipCreationStatus.ProfileSet;
+
+            if (currentStatus < targetStatus)
+            {
+                Log.Information("Promoting Membership {Id} status from {Old} to ProfileSet",
+                    membershipId, currentStatus);
+
+                int affected = await schemaContext.Memberships
+                    .Where(m => m.UniqueId == membershipId)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(m => m.CreationStatus, targetStatus)
+                        .SetProperty(m => m.UpdatedAt, DateTimeOffset.UtcNow),
+                        cancellationToken);
+
+                if (affected == 0)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return Result<AccountProfileInfo, AccountProfileFailure>.Err(
+                        AccountProfileFailure.InternalError("Failed to update membership status."));
+                }
             }
 
             await schemaContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
 
-            AccountProfileInfo resultInfo = new(
+            return Result<AccountProfileInfo, AccountProfileFailure>.Ok(new AccountProfileInfo(
                 profile.UniqueId,
                 profile.AccountId,
                 profile.ProfileName,
                 profile.DisplayName
-            );
-
-            return Result<AccountProfileInfo, AccountProfileFailure>.Ok(resultInfo);
+            ));
         }
         catch (DbUpdateException dbEx) when (dbEx.InnerException is PostgresException
                                              { SqlState: PostgresErrorCodes.UniqueViolation })
         {
+            await transaction.RollbackAsync(cancellationToken);
             return Result<AccountProfileInfo, AccountProfileFailure>.Err(
                 AccountProfileFailure.AlreadyExists($"Profile name '{command.ProfileName}' is already taken."));
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync(cancellationToken);
             return Result<AccountProfileInfo, AccountProfileFailure>.Err(AccountProfileFailure.DatabaseError(ex));
         }
     }
+
 
     protected override AccountProfileFailure MapDbException(DbException ex)
     {

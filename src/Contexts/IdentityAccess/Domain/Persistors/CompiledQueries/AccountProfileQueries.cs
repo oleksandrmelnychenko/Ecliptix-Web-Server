@@ -87,4 +87,20 @@ public static class AccountProfileQueries
     {
         return IsProfileNameTakenCompiled(ctx, profileName);
     }
+
+    private static readonly Func<EcliptixSchemaContext, Guid, Task<Guid?>>
+        GetMembershipIdByAccountIdCompiled = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, Guid accountId) =>
+                ctx.Accounts
+                    .Where(a => a.UniqueId == accountId && !a.IsDeleted)
+                    .Select(a => (Guid?)a.MembershipId)
+                    .FirstOrDefault());
+
+    public static async Task<Option<Guid>> GetMembershipIdByAccountId(
+        EcliptixSchemaContext ctx,
+        Guid accountId)
+    {
+        Guid? result = await GetMembershipIdByAccountIdCompiled(ctx, accountId);
+        return result.HasValue ? Option<Guid>.Some(result.Value) : Option<Guid>.None;
+    }
 }

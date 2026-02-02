@@ -7,6 +7,7 @@ using Ecliptix.IdentityAccess.Domain.Actors.Membership;
 using Ecliptix.IdentityAccess.Domain.Actors.VerificationFlow;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Memberships.MobileNumberValidation;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.IdentityAccess.Domain.Services;
 using Ecliptix.Protobuf.Protocol;
@@ -869,6 +870,44 @@ public sealed class MembershipEventHandler(
 
         return Result<Unit, LogoutResponse>.Ok(Unit.Value);
     }
+
+    public async Task<SecureEnvelope> GetMembershipState(SecureEnvelope request, ServerCallContext context)
+    {
+        return await _service.ExecuteEncryptedOperationAsync<GetMembershipStateRequest, GetMembershipStateResponse>(
+            request, context,
+            async (message, _, _, cancellationToken) =>
+            {
+                Guid membershipId = Helpers.FromByteStringToGuid(message.MembershipId);
+                Guid deviceId = Helpers.FromByteStringToGuid(message.DeviceId);
+
+                GetMembershipStateQuery query = new(membershipId, deviceId, cancellationToken);
+
+                Task<Result<MembershipStateQueryRecord, MembershipFailure>> queryTask =
+                    _membershipActor.Ask<Result<MembershipStateQueryRecord, MembershipFailure>>(
+                        query,
+                        TimeoutConfiguration.Actor.AskTimeout);
+
+                Result<MembershipStateQueryRecord, MembershipFailure> queryResult =
+                    await queryTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                if (queryResult.IsErr)
+                {
+                    return Result<GetMembershipStateResponse, FailureBase>.Err(queryResult.UnwrapErr());
+                }
+
+                MembershipStateQueryRecord record = queryResult.Unwrap();
+
+                return Result<GetMembershipStateResponse, FailureBase>.Ok(new GetMembershipStateResponse
+                {
+                    Status = record.AvailabilityStatus,
+                    CreationStatus = record.CreationStatus,
+                    ActivityStatus = record.ActivityStatus,
+                    CanContinue = record.CanContinue,
+                    LocalizationKey = record.LocalizationKey
+                });
+            });
+    }
+
 
     public async Task<SecureEnvelope> AnonymousLogout(SecureEnvelope request, ServerCallContext context, EventMetadata metadata)
     {

@@ -14,6 +14,7 @@ public enum PersistorOperation
     GetMembershipByUniqueId,
     UpdateMembershipVerificationFlow,
     UpdateMembershipCreationStatus,
+    GetMembershipState,
 
     // Account operations
     CreateDefaultAccount,

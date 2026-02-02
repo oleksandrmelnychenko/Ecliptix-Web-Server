@@ -1168,7 +1168,7 @@ namespace Ecliptix.IdentityAccess.Infrastructure.Migrations
 
                     b.ToTable("memberships", null, t =>
                         {
-                            t.HasCheckConstraint("CHK_Memberships_CreationStatus", "creation_status IN ('otp_verified', 'secure_key_set', 'passphrase_set')");
+                            t.HasCheckConstraint("CHK_Memberships_CreationStatus", "creation_status IN ('otp_verified', 'secure_key_set', 'profile_set', 'passphrase_set')");
 
                             t.HasCheckConstraint("CHK_Memberships_Status", "status IN ('active', 'inactive')");
                         });

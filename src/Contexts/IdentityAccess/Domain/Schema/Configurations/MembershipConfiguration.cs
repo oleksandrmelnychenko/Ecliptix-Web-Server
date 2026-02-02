@@ -37,7 +37,7 @@ public class MembershipConfiguration : EntityBaseMap<MembershipEntity>
             "status IN ('active', 'inactive')"));
 
         builder.ToTable(t => t.HasCheckConstraint("CHK_Memberships_CreationStatus",
-            "creation_status IN ('otp_verified', 'secure_key_set', 'passphrase_set')"));
+            "creation_status IN ('otp_verified', 'secure_key_set', 'profile_set', 'passphrase_set')"));
 
         builder.HasIndex(e => e.UniqueId)
             .IsUnique()

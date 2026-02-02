@@ -785,6 +785,7 @@ public class VerificationFlowPersistorActor : PersistorBase<VerificationFlowFail
                 MembershipCreationStatus.OtpVerified => ProtoMembership.Types.CreationStatus.OtpVerified,
                 MembershipCreationStatus.SecureKeySet => ProtoMembership.Types.CreationStatus.SecureKeySet,
                 MembershipCreationStatus.PassphraseSet => ProtoMembership.Types.CreationStatus.PassphraseSet,
+                MembershipCreationStatus.ProfileSet => Membership.Types.CreationStatus.ProfileSet,
                 _ => ProtoMembership.Types.CreationStatus.OtpVerified
             };
 

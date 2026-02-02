@@ -19,7 +19,8 @@ message Membership {
     CREATION_STATUS_UNSPECIFIED = 0;
     CREATION_STATUS_OTP_VERIFIED = 1;
     CREATION_STATUS_SECURE_KEY_SET = 2;
-    CREATION_STATUS_PASSPHRASE_SET = 3;
+    CREATION_STATUS_PROFILE_SET = 3;
+    CREATION_STATUS_PASSPHRASE_SET = 4;
   }
 
   ActivityStatus status = 3;
@@ -51,6 +52,19 @@ message MobileNumberAvailabilityResponse {
   optional Membership.ActivityStatus activity_status = 7;
   string localization_key = 8;
   optional bytes account_id = 9;
+}
+
+message GetMembershipStateRequest {
+  bytes membership_id = 1;
+  bytes device_id = 2;
+}
+
+message GetMembershipStateResponse {
+  MobileNumberAvailabilityStatus status = 1;
+  Membership.CreationStatus creation_status = 2;
+  Membership.ActivityStatus activity_status = 3;
+  bool can_continue = 4;
+  string localization_key = 5;
 }
 
 enum LogoutScope {

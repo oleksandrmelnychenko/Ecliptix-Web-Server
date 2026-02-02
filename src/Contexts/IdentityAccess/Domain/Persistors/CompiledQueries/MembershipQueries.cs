@@ -1,3 +1,5 @@
+using Ecliptix.IdentityAccess.Domain.Memberships;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.SharedKernel;
@@ -86,4 +88,45 @@ public static class MembershipQueries
         MembershipEntity? result = await GetByMobileUniqueIdCompiled(ctx, mobileUniqueId);
         return result is not null ? Option<MembershipEntity>.Some(result) : Option<MembershipEntity>.None;
     }
+
+    private static readonly Func<EcliptixSchemaContext, Guid, Task<MembershipStateResult?>>
+        GetStateByUniqueIdCompiled = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, Guid uniqueId) =>
+                ctx.Memberships
+                    .AsNoTracking()
+                    .Where(m => m.UniqueId == uniqueId && !m.IsDeleted)
+                    .Select(m => new MembershipStateResult(
+                        m.UniqueId,
+                        m.DeviceId,
+                        m.Status,
+                        m.CreationStatus,
+                        m.CreatedAt
+                    ))
+                    .FirstOrDefault());
+
+    public static async Task<Option<MembershipStateResult>> GetStateByUniqueId(
+        EcliptixSchemaContext ctx,
+        Guid uniqueId,
+        CancellationToken cancellationToken = default)
+    {
+        MembershipStateResult? result = await GetStateByUniqueIdCompiled(ctx, uniqueId);
+        return result is not null ? Option<MembershipStateResult>.Some(result) : Option<MembershipStateResult>.None;
+    }
+
+    private static readonly Func<EcliptixSchemaContext, Guid, Task<MembershipCreationStatus?>>
+        GetCreationStatusByIdCompiled = EF.CompileAsyncQuery(
+            (EcliptixSchemaContext ctx, Guid membershipId) =>
+                ctx.Memberships
+                    .Where(m => m.UniqueId == membershipId && !m.IsDeleted)
+                    .Select(m => (MembershipCreationStatus?)m.CreationStatus)
+                    .FirstOrDefault());
+
+    public static async Task<Option<MembershipCreationStatus>> GetCreationStatusById(
+        EcliptixSchemaContext ctx,
+        Guid membershipId)
+    {
+        MembershipCreationStatus? result = await GetCreationStatusByIdCompiled(ctx, membershipId);
+        return result.HasValue ? Option<MembershipCreationStatus>.Some(result.Value) : Option<MembershipCreationStatus>.None;
+    }
+
 }

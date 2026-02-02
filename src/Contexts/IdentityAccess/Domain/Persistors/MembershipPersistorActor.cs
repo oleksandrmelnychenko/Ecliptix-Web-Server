@@ -6,6 +6,7 @@ using Ecliptix.IdentityAccess.Domain.Memberships.Otp;
 using Ecliptix.IdentityAccess.Domain.Memberships.Failures;
 using Ecliptix.IdentityAccess.Domain.Persistors.CompiledQueries;
 using Ecliptix.IdentityAccess.Domain.Persistors.QueryRecords;
+using Ecliptix.IdentityAccess.Domain.Persistors.QueryResults;
 using Ecliptix.IdentityAccess.Domain.Schema;
 using Ecliptix.IdentityAccess.Domain.Schema.Entities;
 using Ecliptix.Protobuf.Account;
@@ -100,6 +101,10 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
         ReceivePersistorCommand<UpdateMembershipCreationStatusCommand, Unit>(
             UpdateMembershipCreationStatusAsync,
             PersistorOperation.UpdateMembershipCreationStatus);
+
+        ReceivePersistorCommand<GetMembershipStateQuery, MembershipStateQueryRecord>(
+            GetMembershipStateAsync,
+            PersistorOperation.GetMembershipState);
     }
 
     private void ReceivePersistorCommand<TMessage, TResult>(
@@ -210,6 +215,97 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
             List<AccountInfo> list => list,
             _ => accounts.ToList()
         };
+    }
+
+   private static async Task<Result<MembershipStateQueryRecord, MembershipFailure>> GetMembershipStateAsync(
+        EcliptixSchemaContext schemaContext,
+        GetMembershipStateQuery query,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            Option<MembershipStateResult> stateOpt =
+                await MembershipQueries.GetStateByUniqueId(schemaContext, query.MembershipId, cancellationToken);
+
+            if (!stateOpt.IsSome)
+            {
+                return Result<MembershipStateQueryRecord, MembershipFailure>.Ok(new MembershipStateQueryRecord
+                {
+                    AvailabilityStatus = MobileNumberAvailabilityStatus.MobileNumberAvailabilityAvailable,
+                    ActivityStatus = Membership.Types.ActivityStatus.Inactive,
+                    CreationStatus = Membership.Types.CreationStatus.OtpVerified,
+                    CanContinue = false,
+                    LocalizationKey = "Membership.State.NotFound"
+                });
+            }
+
+            MembershipStateResult membership = stateOpt.Value!;
+
+            Membership.Types.CreationStatus creationStatus = membership.CreationStatus switch
+            {
+                MembershipCreationStatus.OtpVerified => Membership.Types.CreationStatus.OtpVerified,
+                MembershipCreationStatus.SecureKeySet => Membership.Types.CreationStatus.SecureKeySet,
+                MembershipCreationStatus.PassphraseSet => Membership.Types.CreationStatus.PassphraseSet,
+                MembershipCreationStatus.ProfileSet => Membership.Types.CreationStatus.ProfileSet,
+                _ => Membership.Types.CreationStatus.OtpVerified
+            };
+
+            Membership.Types.ActivityStatus activityStatus = membership.Status switch
+            {
+                MembershipStatus.Inactive => Membership.Types.ActivityStatus.Inactive,
+                _ => Membership.Types.ActivityStatus.Active
+            };
+
+            bool isRegistrationComplete = creationStatus == Membership.Types.CreationStatus.PassphraseSet;
+            bool isSameDevice = membership.DeviceId == query.RequestingDeviceId;
+            bool isActive = activityStatus == Membership.Types.ActivityStatus.Active;
+
+            MobileNumberAvailabilityStatus availabilityStatus;
+            bool canContinue;
+            string locKey;
+
+            if (!isActive)
+            {
+                availabilityStatus = MobileNumberAvailabilityStatus.MobileNumberAvailabilityTakenInactive;
+                canContinue = false;
+                locKey = "Membership.State.Inactive";
+            }
+            else if (isRegistrationComplete)
+            {
+                availabilityStatus = MobileNumberAvailabilityStatus.MobileNumberAvailabilityTakenActive;
+                canContinue = true;
+                locKey = "Membership.State.ReadyForLogin";
+            }
+            else
+            {
+                if (isSameDevice)
+                {
+                    availabilityStatus = MobileNumberAvailabilityStatus.MobileNumberAvailabilityIncompleteRegistration;
+                    canContinue = true;
+                    locKey = "Membership.State.ResumeRegistration";
+                }
+                else
+                {
+                    availabilityStatus = MobileNumberAvailabilityStatus.MobileNumberAvailabilityIncompleteRegistration;
+                    canContinue = false;
+                    locKey = "Membership.State.DifferentDevice";
+                }
+            }
+
+            return Result<MembershipStateQueryRecord, MembershipFailure>.Ok(new MembershipStateQueryRecord
+            {
+                AvailabilityStatus = availabilityStatus,
+                CreationStatus = creationStatus,
+                ActivityStatus = activityStatus,
+                CanContinue = canContinue,
+                LocalizationKey = locKey
+            });
+        }
+        catch (Exception ex)
+        {
+            return Result<MembershipStateQueryRecord, MembershipFailure>.Err(
+                MembershipFailure.PersistorAccess("Failed to get membership state", ex));
+        }
     }
 
     private async Task<Result<MembershipQueryRecord, MembershipFailure>> SignInMembershipAsync(

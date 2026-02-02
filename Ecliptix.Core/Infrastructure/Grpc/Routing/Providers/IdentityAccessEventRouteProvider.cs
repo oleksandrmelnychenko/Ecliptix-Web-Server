@@ -121,6 +121,16 @@ public static class IdentityAccessEventRouteProvider
             static (handler, request, context, meta) => handler.CheckMobileNumberAvailability(request, context, meta),
             cancellationToken);
 
+    [EventRoute(TransportEventType.IdentityMembershipStatus, IdentityAccessContext)]
+    internal static Task<Result<IMessage, FailureBase>> HandleGetMembershipStatus(
+        IServiceProvider services,
+        SecureEnvelope envelope,
+        EventMetadata metadata,
+        CancellationToken cancellationToken) =>
+        WithMembership(services, envelope, metadata,
+            static (handler, request, context, meta) => handler.GetMembershipState(request, context),
+            cancellationToken);
+
     [EventRoute(TransportEventType.IdentityRecoveryMobileVerify, IdentityAccessContext)]
     internal static Task<Result<IMessage, FailureBase>> HandleIdentityRecoveryMobileVerify(
         IServiceProvider services,
