@@ -11,8 +11,8 @@ public static class CertificatePinningConfigurationConstants
 
     public const int RsaKeySize = 2048;
     public const int RsaEncryptedBlockSize = 256;
-    public const int RsaMaxPlaintextSize = 214;
-    public const int RsaOptimalChunkSize = 200;
+    public const int RsaMaxPlaintextSize = 190;   // RSA-2048 with OAEP SHA-256: 256 - 2*32 - 2 = 190 bytes
+    public const int RsaOptimalChunkSize = 180;   // Use 180 for safety margin
 
     public static class ErrorMessages
     {

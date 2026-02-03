@@ -7,35 +7,35 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Akka" />
-    <PackageReference Include="Akka.Persistence.Sql" />
-    <PackageReference Include="EFCore.NamingConventions" />
-    <PackageReference Include="Grpc.AspNetCore.Server" />
-    <PackageReference Include="libphonenumber-csharp" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+    <PackageReference Include="Akka" Version="1.5.57" />
+    <PackageReference Include="Akka.Persistence.Sql" Version="1.5.55.1" />
+    <PackageReference Include="EFCore.NamingConventions" Version="10.0.0-rc.2" />
+    <PackageReference Include="Grpc.AspNetCore.Server" Version="2.76.0" />
+    <PackageReference Include="libphonenumber-csharp" Version="9.0.21" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.1">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
-    <PackageReference Include="Otp.NET" />
-    <PackageReference Include="Polly" />
-    <PackageReference Include="protobuf-net" />
-    <PackageReference Include="protobuf-net.Grpc" />
-    <PackageReference Include="Protobuf.Grpc" />
-    <PackageReference Include="Google.Protobuf" />
-    <PackageReference Include="Grpc.Tools">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.1" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+    <PackageReference Include="Otp.NET" Version="1.4.1" />
+    <PackageReference Include="Polly" Version="8.6.5" />
+    <PackageReference Include="protobuf-net" Version="3.2.56" />
+    <PackageReference Include="protobuf-net.Grpc" Version="1.2.2" />
+    <PackageReference Include="Protobuf.Grpc" Version="1.0.170" />
+    <PackageReference Include="Google.Protobuf" Version="3.33.2" />
+    <PackageReference Include="Grpc.Tools" Version="2.76.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Pixelbin" />
-    <PackageReference Include="protobuf-net.Grpc.AspNetCore" />
-    <PackageReference Include="Serilog.AspNetCore" />
-    <PackageReference Include="Serilog.Enrichers.Environment" />
-    <PackageReference Include="Serilog.Enrichers.Thread" />
-    <PackageReference Include="Serilog.Sinks.Console" />
-    <PackageReference Include="Twilio.AspNet.Core" />
+    <PackageReference Include="Pixelbin" Version="2.0.0" />
+    <PackageReference Include="protobuf-net.Grpc.AspNetCore" Version="1.2.2" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+    <PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Twilio.AspNet.Core" Version="8.1.2" />
   </ItemGroup>
 
   <ItemGroup>

@@ -85,11 +85,11 @@ ECLIPTIX_SERVER_API ecliptix_server_result_t ECLIPTIX_SERVER_CALL ecliptix_serve
     try {
         g_openssl_lib = std::make_unique<ecliptix::openssl::Library>();
 
-        std::string server_keys_dir = "/Users/oleksandrmelnychenko/RiderProjects/Ecliptix/server-keys/";
+        std::string server_keys_dir = "/Users/oleksandrmelnychenko/RiderProjects/Ecliptix/Ecliptix.Core/";
 
-        g_ed25519_private_key = load_private_key_from_file(server_keys_dir + "ecliptix_ed25519_private.pem");
+        g_ed25519_private_key = load_private_key_from_file(server_keys_dir + "server_ed25519_private.pem");
 
-        g_rsa_private_key = load_private_key_from_file(server_keys_dir + "ecliptix_server_private.pem");
+        g_rsa_private_key = load_private_key_from_file(server_keys_dir + "server_private.pem");
 
         g_initialized.store(true);
         return ECLIPTIX_SERVER_SUCCESS;
@@ -299,3 +299,6 @@ ECLIPTIX_SERVER_API ecliptix_server_result_t ECLIPTIX_SERVER_CALL ecliptix_serve
     }
 }
 
+} // extern "C"
+
+} // namespace

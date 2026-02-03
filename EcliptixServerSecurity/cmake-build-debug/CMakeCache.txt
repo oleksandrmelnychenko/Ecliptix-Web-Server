@@ -223,13 +223,16 @@ EcliptixServerSecurity_IS_TOP_LEVEL:STATIC=ON
 EcliptixServerSecurity_SOURCE_DIR:STATIC=/Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity
 
 //Path to a library.
-OPENSSL_CRYPTO_LIBRARY:FILEPATH=/opt/homebrew/Cellar/openssl@3/3.4.1/lib/libcrypto.dylib
+OPENSSL_CRYPTO_LIBRARY:FILEPATH=/opt/homebrew/opt/openssl@3/lib/libcrypto.dylib
 
 //Path to a file.
-OPENSSL_INCLUDE_DIR:PATH=/opt/homebrew/Cellar/openssl@3/3.4.1/include
+OPENSSL_INCLUDE_DIR:PATH=/opt/homebrew/opt/openssl@3/include
+
+//No help, variable specified on the command line.
+OPENSSL_ROOT_DIR:UNINITIALIZED=/opt/homebrew/opt/openssl@3
 
 //Path to a library.
-OPENSSL_SSL_LIBRARY:FILEPATH=/opt/homebrew/Cellar/openssl@3/3.4.1/lib/libssl.dylib
+OPENSSL_SSL_LIBRARY:FILEPATH=/opt/homebrew/opt/openssl@3/lib/libssl.dylib
 
 //Arguments to supply to pkg-config
 PKG_CONFIG_ARGN:STRING=
@@ -238,10 +241,10 @@ PKG_CONFIG_ARGN:STRING=
 PKG_CONFIG_EXECUTABLE:FILEPATH=/opt/homebrew/bin/pkg-config
 
 //Path to a library.
-pkgcfg_lib__OPENSSL_crypto:FILEPATH=/opt/homebrew/Cellar/openssl@3/3.4.1/lib/libcrypto.dylib
+pkgcfg_lib__OPENSSL_crypto:FILEPATH=/opt/homebrew/Cellar/openssl@3/3.6.1/lib/libcrypto.dylib
 
 //Path to a library.
-pkgcfg_lib__OPENSSL_ssl:FILEPATH=/opt/homebrew/Cellar/openssl@3/3.4.1/lib/libssl.dylib
+pkgcfg_lib__OPENSSL_ssl:FILEPATH=/opt/homebrew/Cellar/openssl@3/3.6.1/lib/libssl.dylib
 
 
 ########################
@@ -386,7 +389,7 @@ COMPILER_HAS_HIDDEN_INLINE_VISIBILITY:INTERNAL=1
 //Test COMPILER_HAS_HIDDEN_VISIBILITY
 COMPILER_HAS_HIDDEN_VISIBILITY:INTERNAL=1
 //Details about finding OpenSSL
-FIND_PACKAGE_MESSAGE_DETAILS_OpenSSL:INTERNAL=[/opt/homebrew/Cellar/openssl@3/3.4.1/lib/libcrypto.dylib][/opt/homebrew/Cellar/openssl@3/3.4.1/include][c ][v3.4.1()]
+FIND_PACKAGE_MESSAGE_DETAILS_OpenSSL:INTERNAL=[/opt/homebrew/opt/openssl@3/lib/libcrypto.dylib][/opt/homebrew/opt/openssl@3/include][c ][v3.6.1()]
 //Details about finding Threads
 FIND_PACKAGE_MESSAGE_DETAILS_Threads:INTERNAL=[TRUE][v()]
 //ADVANCED property for variable: OPENSSL_CRYPTO_LIBRARY
@@ -399,37 +402,37 @@ OPENSSL_SSL_LIBRARY-ADVANCED:INTERNAL=1
 PKG_CONFIG_ARGN-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: PKG_CONFIG_EXECUTABLE
 PKG_CONFIG_EXECUTABLE-ADVANCED:INTERNAL=1
-_OPENSSL_CFLAGS:INTERNAL=-I/opt/homebrew/Cellar/openssl@3/3.4.1/include
+_OPENSSL_CFLAGS:INTERNAL=-I/opt/homebrew/Cellar/openssl@3/3.6.1/include
 _OPENSSL_CFLAGS_I:INTERNAL=
 _OPENSSL_CFLAGS_OTHER:INTERNAL=
 _OPENSSL_FOUND:INTERNAL=1
-_OPENSSL_INCLUDEDIR:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.4.1/include
-_OPENSSL_INCLUDE_DIRS:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.4.1/include
-_OPENSSL_LDFLAGS:INTERNAL=-L/opt/homebrew/Cellar/openssl@3/3.4.1/lib;-lssl;-lcrypto
+_OPENSSL_INCLUDEDIR:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.6.1/include
+_OPENSSL_INCLUDE_DIRS:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.6.1/include
+_OPENSSL_LDFLAGS:INTERNAL=-L/opt/homebrew/Cellar/openssl@3/3.6.1/lib;-lssl;-lcrypto
 _OPENSSL_LDFLAGS_OTHER:INTERNAL=
-_OPENSSL_LIBDIR:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.4.1/lib
+_OPENSSL_LIBDIR:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.6.1/lib
 _OPENSSL_LIBRARIES:INTERNAL=ssl;crypto
-_OPENSSL_LIBRARY_DIRS:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.4.1/lib
+_OPENSSL_LIBRARY_DIRS:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.6.1/lib
 _OPENSSL_LIBS:INTERNAL=
 _OPENSSL_LIBS_L:INTERNAL=
 _OPENSSL_LIBS_OTHER:INTERNAL=
 _OPENSSL_LIBS_PATHS:INTERNAL=
 _OPENSSL_MODULE_NAME:INTERNAL=openssl
-_OPENSSL_PREFIX:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.4.1
-_OPENSSL_STATIC_CFLAGS:INTERNAL=-I/opt/homebrew/Cellar/openssl@3/3.4.1/include
+_OPENSSL_PREFIX:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.6.1
+_OPENSSL_STATIC_CFLAGS:INTERNAL=-I/opt/homebrew/Cellar/openssl@3/3.6.1/include
 _OPENSSL_STATIC_CFLAGS_I:INTERNAL=
 _OPENSSL_STATIC_CFLAGS_OTHER:INTERNAL=
-_OPENSSL_STATIC_INCLUDE_DIRS:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.4.1/include
-_OPENSSL_STATIC_LDFLAGS:INTERNAL=-L/opt/homebrew/Cellar/openssl@3/3.4.1/lib;-lssl;-lcrypto
+_OPENSSL_STATIC_INCLUDE_DIRS:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.6.1/include
+_OPENSSL_STATIC_LDFLAGS:INTERNAL=-L/opt/homebrew/Cellar/openssl@3/3.6.1/lib;-lssl;-lcrypto
 _OPENSSL_STATIC_LDFLAGS_OTHER:INTERNAL=
 _OPENSSL_STATIC_LIBDIR:INTERNAL=
 _OPENSSL_STATIC_LIBRARIES:INTERNAL=ssl;crypto
-_OPENSSL_STATIC_LIBRARY_DIRS:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.4.1/lib
+_OPENSSL_STATIC_LIBRARY_DIRS:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.6.1/lib
 _OPENSSL_STATIC_LIBS:INTERNAL=
 _OPENSSL_STATIC_LIBS_L:INTERNAL=
 _OPENSSL_STATIC_LIBS_OTHER:INTERNAL=
 _OPENSSL_STATIC_LIBS_PATHS:INTERNAL=
-_OPENSSL_VERSION:INTERNAL=3.4.1
+_OPENSSL_VERSION:INTERNAL=3.6.1
 _OPENSSL_openssl_INCLUDEDIR:INTERNAL=
 _OPENSSL_openssl_LIBDIR:INTERNAL=
 _OPENSSL_openssl_PREFIX:INTERNAL=
@@ -440,5 +443,5 @@ __pkg_config_checked__OPENSSL:INTERNAL=1
 pkgcfg_lib__OPENSSL_crypto-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: pkgcfg_lib__OPENSSL_ssl
 pkgcfg_lib__OPENSSL_ssl-ADVANCED:INTERNAL=1
-prefix_result:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.4.1/lib
+prefix_result:INTERNAL=/opt/homebrew/Cellar/openssl@3/3.6.1/lib
 

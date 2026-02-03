@@ -857,81 +857,81 @@ CMakeFiles/ecliptix_server_security.dir/src/openssl_wrapper.cpp.o: /Users/oleksa
   /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/17/include/stddef.h \
   /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/17/include/stdint.h \
   /Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/include/internal/openssl_wrapper.hpp \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/aes.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/asn1.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/asn1err.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/async.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/asyncerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/bio.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/bioerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/bn.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/bnerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/buffer.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/buffererr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/comp.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/comperr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/conf.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/conferr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/configuration.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/conftypes.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/core.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/core_dispatch.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/crypto.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/cryptoerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/cryptoerr_legacy.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ct.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/cterr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dh.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dherr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dsa.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dsaerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dtls1.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/e_os2.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/e_ostime.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ec.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ecerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/err.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/evp.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/evperr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/hmac.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/http.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/indicator.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/kdf.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/lhash.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/macros.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/obj_mac.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/objects.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/objectserr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/opensslconf.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/opensslv.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/params.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/pem.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/pemerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/pkcs7.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/pkcs7err.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/prov_ssl.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/quic.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/rand.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/randerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/rsa.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/rsaerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/safestack.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/sha.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/srtp.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ssl.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ssl2.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ssl3.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/sslerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/sslerr_legacy.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/stack.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/symhacks.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/tls1.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/types.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509_vfy.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509err.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509v3.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509v3err.h
+  /opt/homebrew/opt/openssl@3/include/openssl/aes.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/asn1.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/asn1err.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/async.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/asyncerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/bio.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/bioerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/bn.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/bnerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/buffer.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/buffererr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/comp.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/comperr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/conf.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/conferr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/configuration.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/conftypes.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/core.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/core_dispatch.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/crypto.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/cryptoerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/cryptoerr_legacy.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/ct.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/cterr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/dh.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/dherr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/dsa.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/dsaerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/dtls1.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/e_os2.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/e_ostime.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/ec.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/ecerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/err.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/evp.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/evperr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/hmac.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/http.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/indicator.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/kdf.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/lhash.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/macros.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/obj_mac.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/objects.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/objectserr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/opensslconf.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/opensslv.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/params.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/pem.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/pemerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/pkcs7.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/pkcs7err.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/prov_ssl.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/quic.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/rand.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/randerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/rsa.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/rsaerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/safestack.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/sha.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/srtp.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/ssl.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/ssl2.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/ssl3.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/sslerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/sslerr_legacy.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/stack.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/symhacks.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/tls1.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/types.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/x509.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/x509_vfy.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/x509err.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/x509v3.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/x509v3err.h
 
 CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/src/server_security.cpp \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/Availability.h \
@@ -1659,79 +1659,79 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
   /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/17/include/stdint.h \
   /Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/include/ecliptix/server_security.h \
   /Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/include/internal/openssl_wrapper.hpp \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/aes.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/asn1.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/asn1err.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/async.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/asyncerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/bio.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/bioerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/bn.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/bnerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/buffer.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/buffererr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/comp.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/comperr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/conf.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/conferr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/configuration.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/conftypes.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/core.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/core_dispatch.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/crypto.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/cryptoerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/cryptoerr_legacy.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ct.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/cterr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dh.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dherr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dsa.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dsaerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dtls1.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/e_os2.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/e_ostime.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ec.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ecerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/err.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/evp.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/evperr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/hmac.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/http.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/indicator.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/kdf.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/lhash.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/macros.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/obj_mac.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/objects.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/objectserr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/opensslconf.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/opensslv.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/params.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/pem.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/pemerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/pkcs7.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/pkcs7err.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/prov_ssl.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/quic.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/rand.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/randerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/rsa.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/rsaerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/safestack.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/sha.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/srtp.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ssl.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ssl2.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ssl3.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/sslerr.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/sslerr_legacy.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/stack.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/symhacks.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/tls1.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/types.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509_vfy.h \
-  /opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509err.h
+  /opt/homebrew/opt/openssl@3/include/openssl/aes.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/asn1.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/asn1err.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/async.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/asyncerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/bio.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/bioerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/bn.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/bnerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/buffer.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/buffererr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/comp.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/comperr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/conf.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/conferr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/configuration.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/conftypes.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/core.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/core_dispatch.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/crypto.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/cryptoerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/cryptoerr_legacy.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/ct.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/cterr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/dh.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/dherr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/dsa.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/dsaerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/dtls1.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/e_os2.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/e_ostime.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/ec.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/ecerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/err.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/evp.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/evperr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/hmac.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/http.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/indicator.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/kdf.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/lhash.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/macros.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/obj_mac.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/objects.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/objectserr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/opensslconf.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/opensslv.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/params.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/pem.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/pemerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/pkcs7.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/pkcs7err.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/prov_ssl.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/quic.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/rand.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/randerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/rsa.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/rsaerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/safestack.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/sha.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/srtp.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/ssl.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/ssl2.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/ssl3.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/sslerr.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/sslerr_legacy.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/stack.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/symhacks.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/tls1.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/types.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/x509.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/x509_vfy.h \
+  /opt/homebrew/opt/openssl@3/include/openssl/x509err.h
 
 
 /Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/include/ecliptix/server_security.h:
@@ -1751,8 +1751,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__system_error/throw_system_error.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__mutex/unique_lock.h:
-
-/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__mutex/tag_types.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__mutex/mutex.h:
 
@@ -1774,10 +1772,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__filesystem/directory_options.h:
 
-/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__filesystem/copy_options.h:
-
-/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__chrono/convert_to_timespec.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__atomic/fence.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__atomic/atomic_ref.h:
@@ -1786,99 +1780,107 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__atomic/aliases.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509_vfy.h:
+/opt/homebrew/opt/openssl@3/include/openssl/x509v3.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509.h:
+/opt/homebrew/opt/openssl@3/include/openssl/x509err.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/tls1.h:
+/opt/homebrew/opt/openssl@3/include/openssl/types.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/stack.h:
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__filesystem/copy_options.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/sslerr_legacy.h:
+/opt/homebrew/opt/openssl@3/include/openssl/stack.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ssl2.h:
+/opt/homebrew/opt/openssl@3/include/openssl/sslerr_legacy.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/srtp.h:
+/opt/homebrew/opt/openssl@3/include/openssl/ssl3.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/safestack.h:
+/opt/homebrew/opt/openssl@3/include/openssl/ssl2.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/rsaerr.h:
+/opt/homebrew/opt/openssl@3/include/openssl/ssl.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/randerr.h:
+/opt/homebrew/opt/openssl@3/include/openssl/srtp.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/rand.h:
+/opt/homebrew/opt/openssl@3/include/openssl/sha.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/prov_ssl.h:
+/opt/homebrew/opt/openssl@3/include/openssl/safestack.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/pkcs7err.h:
+/opt/homebrew/opt/openssl@3/include/openssl/rsaerr.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/pkcs7.h:
+/opt/homebrew/opt/openssl@3/include/openssl/randerr.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/pemerr.h:
+/opt/homebrew/opt/openssl@3/include/openssl/rand.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/pem.h:
+/opt/homebrew/opt/openssl@3/include/openssl/quic.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/params.h:
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__chrono/convert_to_timespec.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/opensslv.h:
+/opt/homebrew/opt/openssl@3/include/openssl/prov_ssl.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/opensslconf.h:
+/opt/homebrew/opt/openssl@3/include/openssl/pkcs7err.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/macros.h:
+/opt/homebrew/opt/openssl@3/include/openssl/pkcs7.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/lhash.h:
+/opt/homebrew/opt/openssl@3/include/openssl/params.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/kdf.h:
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__mutex/tag_types.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/indicator.h:
+/opt/homebrew/opt/openssl@3/include/openssl/opensslv.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/hmac.h:
+/opt/homebrew/opt/openssl@3/include/openssl/opensslconf.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/evperr.h:
+/opt/homebrew/opt/openssl@3/include/openssl/objects.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/evp.h:
+/opt/homebrew/opt/openssl@3/include/openssl/obj_mac.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/err.h:
+/opt/homebrew/opt/openssl@3/include/openssl/macros.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ecerr.h:
+/opt/homebrew/opt/openssl@3/include/openssl/lhash.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ec.h:
+/opt/homebrew/opt/openssl@3/include/openssl/kdf.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/e_ostime.h:
+/opt/homebrew/opt/openssl@3/include/openssl/http.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/e_os2.h:
+/opt/homebrew/opt/openssl@3/include/openssl/hmac.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dsaerr.h:
+/opt/homebrew/opt/openssl@3/include/openssl/evperr.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dsa.h:
+/opt/homebrew/opt/openssl@3/include/openssl/evp.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dherr.h:
+/opt/homebrew/opt/openssl@3/include/openssl/ecerr.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ct.h:
+/opt/homebrew/opt/openssl@3/include/openssl/e_ostime.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/cryptoerr_legacy.h:
+/opt/homebrew/opt/openssl@3/include/openssl/e_os2.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/core_dispatch.h:
+/opt/homebrew/opt/openssl@3/include/openssl/dsa.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/core.h:
+/opt/homebrew/opt/openssl@3/include/openssl/dherr.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/conferr.h:
+/opt/homebrew/opt/openssl@3/include/openssl/dh.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/conf.h:
+/opt/homebrew/opt/openssl@3/include/openssl/cryptoerr_legacy.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/comp.h:
+/opt/homebrew/opt/openssl@3/include/openssl/cryptoerr.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/buffererr.h:
+/opt/homebrew/opt/openssl@3/include/openssl/core_dispatch.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/bn.h:
+/opt/homebrew/opt/openssl@3/include/openssl/core.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/bioerr.h:
+/opt/homebrew/opt/openssl@3/include/openssl/conferr.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/bio.h:
+/opt/homebrew/opt/openssl@3/include/openssl/buffererr.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/async.h:
+/opt/homebrew/opt/openssl@3/include/openssl/buffer.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/asn1err.h:
+/opt/homebrew/opt/openssl@3/include/openssl/bn.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/bioerr.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/asyncerr.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/async.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/aes.h:
 
 /Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/include/internal/openssl_wrapper.hpp:
 
@@ -1903,6 +1905,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/17/include/__stdarg___va_copy.h:
 
 /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/17/include/__stdarg___gnuc_va_list.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/dtls1.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/xlocale/_wchar.h:
 
@@ -1957,8 +1961,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_types/_ino64_t.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_types/_sigaltstack.h:
-
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ssl3.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_types/_seek_set.h:
 
@@ -2033,8 +2035,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/partial_sort.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_pthread/_pthread_attr_t.h:
-
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509err.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_posix_availability.h:
 
@@ -2118,6 +2118,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/libkern/arm/_OSByteOrder.h:
 
+/opt/homebrew/opt/openssl@3/include/openssl/bio.h:
+
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/merge.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/limits:
@@ -2198,8 +2200,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__utility/is_pointer_in_range.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509v3.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/remove_const_ref.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/promote.h:
@@ -2226,8 +2226,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_trivially_destructible.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/conftypes.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_types/_rsize_t.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_trivially_copyable.h:
@@ -2243,6 +2241,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_standard_layout.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_types/_clock_t.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/asn1err.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_signed_integer.h:
 
@@ -2318,11 +2318,11 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/disjunction.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/objectserr.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/detected_or.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/dependent_type.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/sslerr.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/decay.h:
 
@@ -2340,8 +2340,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/stddef.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/ssl.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_count_if.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__tuple/tuple_like_ext.h:
@@ -2353,6 +2351,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__system_error/error_code.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_types/_fd_def.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/objectserr.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__system_error/errc.h:
 
@@ -2379,8 +2379,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__ranges/data.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__vector/vector_bool.h:
-
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/aes.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__ranges/dangling.h:
 
@@ -2414,6 +2412,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__new/placement_new_delete.h:
 
+/opt/homebrew/opt/openssl@3/include/openssl/asn1.h:
+
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__new/launder.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__new/global_typed_new_delete.h:
@@ -2430,13 +2430,15 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__memory_resource/polymorphic_allocator.h:
 
+/opt/homebrew/opt/openssl@3/include/openssl/cterr.h:
+
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__memory_resource/memory_resource.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__memory/uses_allocator_construction.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__memory/uses_allocator.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dtls1.h:
+/opt/homebrew/opt/openssl@3/include/openssl/ec.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_set_symmetric_difference.h:
 
@@ -2458,6 +2460,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/malloc/_malloc.h:
 
+/opt/homebrew/opt/openssl@3/include/openssl/ct.h:
+
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_scalar.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_integral.h:
@@ -2473,8 +2477,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_signed.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__tuple/tuple_indices.h:
-
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/cryptoerr.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__memory/out_ptr.h:
 
@@ -2498,6 +2500,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__memory/compressed_pair.h:
 
+/opt/homebrew/opt/openssl@3/include/openssl/pem.h:
+
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/_ctermid.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/_wchar.h:
@@ -2509,8 +2513,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__compare/common_comparison_category.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__memory/array_cookie.h:
-
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/crypto.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__memory/allocator_traits.h:
 
@@ -2552,15 +2554,9 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/climits:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/comperr.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_arithmetic.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/objects.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__locale_dir/locale_base_api.h:
-
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/http.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/remove_cvref.h:
 
@@ -2638,8 +2634,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_types/_fsfilcnt_t.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/types.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_allocator.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_max_element.h:
@@ -2667,6 +2661,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__fwd/sstream.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__concepts/same_as.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/tls1.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__fwd/span.h:
 
@@ -2716,8 +2712,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__functional/bind_front.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/rsa.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__functional/bind_back.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__functional/bind.h:
@@ -2746,7 +2740,7 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__bit/bit_cast.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/buffer.h:
+/opt/homebrew/opt/openssl@3/include/openssl/rsa.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/AvailabilityInternalLegacy.h:
 
@@ -2769,8 +2763,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_types/_dev_t.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__configuration/compiler.h:
-
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/bnerr.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__concepts/regular.h:
 
@@ -2830,13 +2822,13 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__iterator/concepts.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/cterr.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__concepts/equality_comparable.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/simd_utils.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/alloca.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/indicator.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/max_element.h:
 
@@ -2880,6 +2872,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/mach/arm/_structs.h:
 
+/opt/homebrew/opt/openssl@3/include/openssl/x509_vfy.h:
+
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_nothrow_assignable.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/xlocale.h:
@@ -2900,8 +2894,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__charconv/tables.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/asn1.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__cstddef/ptrdiff_t.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_types/_fd_set.h:
@@ -2915,6 +2907,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__config_site:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__bit_reference:
+
+/opt/homebrew/opt/openssl@3/include/openssl/configuration.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_unsigned.h:
 
@@ -2950,8 +2944,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/nth_element.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/quic.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_is_partitioned.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__functional/binder1st.h:
@@ -2983,6 +2975,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_unique.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/unique.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/pemerr.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/__wctype.h:
 
@@ -3128,11 +3122,15 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__bit/blsr.h:
 
+/opt/homebrew/opt/openssl@3/include/openssl/dsaerr.h:
+
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_replace.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__filesystem/filesystem_error.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/machine/limits.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/x509.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_remove_if.h:
 
@@ -3174,6 +3172,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__iterator/bounded_iter.h:
 
+/opt/homebrew/opt/openssl@3/include/openssl/bnerr.h:
+
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_next_permutation.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_types/_caddr_t.h:
@@ -3187,6 +3187,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/libkern/_OSByteOrder.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_remove_copy_if.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/conftypes.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_make_heap.h:
 
@@ -3264,8 +3266,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__atomic/to_gcc_order.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/obj_mac.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/in_found_result.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__iterator/back_insert_iterator.h:
@@ -3277,8 +3277,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__vector/vector.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_find_end.h:
-
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/sha.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/minmax.h:
 
@@ -3308,6 +3306,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/machine/_types.h:
 
+/opt/homebrew/opt/openssl@3/include/openssl/x509v3err.h:
+
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/xlocale/_ctype.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_clamp.h:
@@ -3315,6 +3315,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_nothrow_destructible.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/lexicographical_compare_three_way.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/comp.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_count.h:
 
@@ -3366,11 +3368,7 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/iomanip:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/configuration.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/_bounds.h:
-
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/sslerr.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__iterator/permutable.h:
 
@@ -3379,8 +3377,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/pstl.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__filesystem/file_time_type.h:
-
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/asyncerr.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__ranges/access.h:
 
@@ -3460,8 +3456,6 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__iterator/sortable.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/symhacks.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__charconv/to_chars_base_10.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/sys/_pthread/_pthread_mutexattr_t.h:
@@ -3502,6 +3496,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/for_each_n.h:
 
+/opt/homebrew/opt/openssl@3/include/openssl/err.h:
+
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/find_end.h:
 
 /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/17/include/__stddef_nullptr_t.h:
@@ -3531,6 +3527,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/equal.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__tuple/tuple_like_no_subrange.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/comperr.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/_types/_uint32_t.h:
 
@@ -3578,11 +3576,11 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/arm/signal.h:
 
+/opt/homebrew/opt/openssl@3/include/openssl/symhacks.h:
+
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_is_heap.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__fwd/ostream.h:
-
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/x509v3err.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/malloc/_ptrcheck.h:
 
@@ -3599,6 +3597,8 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/transform.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_max.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/crypto.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__assertion_handler:
 
@@ -3632,9 +3632,9 @@ CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o: /Users/oleksa
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_is_heap_until.h:
 
-/opt/homebrew/Cellar/openssl@3/3.4.1/include/openssl/dh.h:
-
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/container_traits.h:
+
+/opt/homebrew/opt/openssl@3/include/openssl/conf.h:
 
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/copy_if.h:
 

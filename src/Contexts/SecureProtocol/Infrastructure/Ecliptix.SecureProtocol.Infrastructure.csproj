@@ -6,8 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Akka" />
-    <PackageReference Include="Akka.Persistence" />
+    <PackageReference Include="Akka" Version="1.5.57" />
+    <PackageReference Include="Akka.Persistence" Version="1.5.57" />
   </ItemGroup>
 
   <ItemGroup>
