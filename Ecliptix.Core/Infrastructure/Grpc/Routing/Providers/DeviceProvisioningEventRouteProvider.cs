@@ -334,18 +334,18 @@ public static class DeviceProvisioningEventRouteProvider
         IServerNonceStore nonceStore = scope.ServiceProvider.GetRequiredService<IServerNonceStore>();
         IActorRef protocolActor = actorRegistry.Get(ActorIds.EcliptixProtectionProtocolActor);
 
-        Result<byte[], OpaqueServerFailure> serverPublicKeyResult = opaqueService.GetServerPublicKey();
-        if (serverPublicKeyResult.IsErr)
+        Result<byte[], OpaqueRelayFailure> relayPublicKeyResult = opaqueService.GetRelayPublicKey();
+        if (relayPublicKeyResult.IsErr)
         {
-            Log.Error("[GetServerPublicKeys] Failed to get server public key: {Error}",
-                serverPublicKeyResult.UnwrapErr().Message);
+            Log.Error("[GetRelayPublicKeys] Failed to get relay public key: {Error}",
+                relayPublicKeyResult.UnwrapErr().Message);
             return Result<IMessage, FailureBase>.Err(
                 SecureChannelFailure.ProtocolError(
-                    $"Failed to get server public key: {serverPublicKeyResult.UnwrapErr().Message}"));
+                    $"Failed to get relay public key: {relayPublicKeyResult.UnwrapErr().Message}"));
         }
 
-        Log.Debug("[GetServerPublicKeys] Got server public key, length: {Length}",
-            serverPublicKeyResult.Unwrap().Length);
+        Log.Debug("[GetRelayPublicKeys] Got relay public key, length: {Length}",
+            relayPublicKeyResult.Unwrap().Length);
 
         RouteToConnectionCommand forwardEvent =
             new(connectId, new GetPreKeyBundleQuery());
@@ -356,28 +356,28 @@ public static class DeviceProvisioningEventRouteProvider
             await bundleTask.WaitAsync(cancellationToken).ConfigureAwait(false);
         if (bundleResult.IsErr)
         {
-            Log.Error("[GetServerPublicKeys] Failed to get server prekey bundle: {Error}",
+            Log.Error("[GetRelayPublicKeys] Failed to get relay prekey bundle: {Error}",
                 bundleResult.UnwrapErr().Message);
             return Result<IMessage, FailureBase>.Err(
                 SecureChannelFailure.ProtocolError(
-                    $"Failed to get server prekey bundle: {bundleResult.UnwrapErr().Message}"));
+                    $"Failed to get relay prekey bundle: {bundleResult.UnwrapErr().Message}"));
         }
 
-        Log.Debug("[GetServerPublicKeys] Got prekey bundle, length: {Length}", bundleResult.Unwrap().Length);
+        Log.Debug("[GetRelayPublicKeys] Got prekey bundle, length: {Length}", bundleResult.Unwrap().Length);
 
-        byte[] serverNonce = RandomNumberGenerator.GetBytes(DeviceProvisioningConstants.Nonce.ServerLength);
-        nonceStore.Store(connectId, serverNonce, DeviceProvisioningConstants.ReplayProtection.ServerNonceTtl);
+        byte[] relayNonce = RandomNumberGenerator.GetBytes(DeviceProvisioningConstants.Nonce.ServerLength);
+        nonceStore.Store(connectId, relayNonce, DeviceProvisioningConstants.ReplayProtection.ServerNonceTtl);
 
         ServerPublicKeysResponse response = new()
         {
-            ServerPublicKey = ByteString.CopyFrom(serverPublicKeyResult.Unwrap()),
+            ServerPublicKey = ByteString.CopyFrom(relayPublicKeyResult.Unwrap()),
             ServerPrekeyBundle = ByteString.CopyFrom(bundleResult.Unwrap()),
-            ServerNonce = ByteString.CopyFrom(serverNonce)
+            ServerNonce = ByteString.CopyFrom(relayNonce)
         };
 
         Log.Information(
-            "[GetServerPublicKeys] Successfully prepared response with OPAQUE ({OpaqueSize} bytes) and prekey bundle ({BundleSize} bytes)",
-            serverPublicKeyResult.Unwrap().Length, bundleResult.Unwrap().Length);
+            "[GetRelayPublicKeys] Successfully prepared response with OPAQUE ({OpaqueSize} bytes) and prekey bundle ({BundleSize} bytes)",
+            relayPublicKeyResult.Unwrap().Length, bundleResult.Unwrap().Length);
 
         return Result<IMessage, FailureBase>.Ok(response);
     }

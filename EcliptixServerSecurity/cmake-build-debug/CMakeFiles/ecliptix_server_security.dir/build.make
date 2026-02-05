@@ -111,8 +111,8 @@ ecliptix_server_security_EXTERNAL_OBJECTS =
 lib/libecliptix_server_security.1.0.0.dylib: CMakeFiles/ecliptix_server_security.dir/src/server_security.cpp.o
 lib/libecliptix_server_security.1.0.0.dylib: CMakeFiles/ecliptix_server_security.dir/src/openssl_wrapper.cpp.o
 lib/libecliptix_server_security.1.0.0.dylib: CMakeFiles/ecliptix_server_security.dir/build.make
-lib/libecliptix_server_security.1.0.0.dylib: /opt/homebrew/Cellar/openssl@3/3.4.1/lib/libssl.dylib
-lib/libecliptix_server_security.1.0.0.dylib: /opt/homebrew/Cellar/openssl@3/3.4.1/lib/libcrypto.dylib
+lib/libecliptix_server_security.1.0.0.dylib: /opt/homebrew/opt/openssl@3/lib/libssl.dylib
+lib/libecliptix_server_security.1.0.0.dylib: /opt/homebrew/opt/openssl@3/lib/libcrypto.dylib
 lib/libecliptix_server_security.1.0.0.dylib: CMakeFiles/ecliptix_server_security.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/oleksandrmelnychenko/RiderProjects/Ecliptix/EcliptixServerSecurity/cmake-build-debug/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX shared library lib/libecliptix_server_security.dylib"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/ecliptix_server_security.dir/link.txt --verbose=$(VERBOSE)

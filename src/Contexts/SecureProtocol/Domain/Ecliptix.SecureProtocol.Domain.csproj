@@ -7,8 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="EPP.Relay" />
-    <PackageReference Include="Sodium.Core" />
+    <PackageReference Include="EPP.Relay" Version="1.0.1" />
+    <PackageReference Include="Sodium.Core" Version="1.4.0" />
   </ItemGroup>
 
   <ItemGroup>

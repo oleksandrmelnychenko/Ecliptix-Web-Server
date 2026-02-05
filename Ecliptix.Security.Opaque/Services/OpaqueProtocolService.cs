@@ -11,100 +11,100 @@ namespace Ecliptix.Security.Opaque.Services;
 
 public sealed class OpaqueProtocolService : IDisposable
 {
-    private OpaqueServer? _server;
-    private AuthenticationState? _currentServerState;
-    private ServerKeyPair? _serverKeys;
+    private OpaqueRelay? _relay;
+    private AuthenticationState? _currentRelayState;
+    private RelayKeyPair? _relayKeys;
     private bool _disposed;
 
-    public Result<Unit, OpaqueServerFailure> Initialize(string secretKeySeed)
+    public Result<Unit, OpaqueRelayFailure> Initialize(string secretKeySeed)
     {
         if (_disposed)
         {
-            return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.ServiceDisposed());
+            return Result<Unit, OpaqueRelayFailure>.Err(OpaqueRelayFailure.ServiceDisposed());
         }
 
-        ResetServer();
+        ResetRelay();
 
-        Result<ServerKeyPair, OpaqueServerFailure> keyResult = DeriveKeysFromMaterial(secretKeySeed);
+        Result<RelayKeyPair, OpaqueRelayFailure> keyResult = DeriveKeysFromMaterial(secretKeySeed);
         if (keyResult.IsErr)
         {
-            return Result<Unit, OpaqueServerFailure>.Err(keyResult.UnwrapErr());
+            return Result<Unit, OpaqueRelayFailure>.Err(keyResult.UnwrapErr());
         }
 
-        _serverKeys = keyResult.Unwrap();
+        _relayKeys = keyResult.Unwrap();
 
         try
         {
-            _server = OpaqueServer.Create(_serverKeys);
-            return Result<Unit, OpaqueServerFailure>.Ok(Unit.Value);
+            _relay = OpaqueRelay.Create(_relayKeys);
+            return Result<Unit, OpaqueRelayFailure>.Ok(Unit.Value);
         }
         catch (OpaqueException ex)
         {
-            ResetServer();
-            return Result<Unit, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.LibraryInitializationFailed(
-                    $"{OpaqueServerConstants.ErrorMessages.FailedToCreateServer}: {ex.ResultCode}"));
+            ResetRelay();
+            return Result<Unit, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.LibraryInitializationFailed(
+                    $"{OpaqueRelayConstants.ErrorMessages.FailedToCreateRelay}: {ex.ResultCode}"));
         }
         catch (ArgumentException ex)
         {
-            ResetServer();
-            return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(ex.Message));
+            ResetRelay();
+            return Result<Unit, OpaqueRelayFailure>.Err(OpaqueRelayFailure.InvalidInput(ex.Message));
         }
         catch (Exception ex)
         {
-            ResetServer();
-            return Result<Unit, OpaqueServerFailure>.Err(OpaqueServerFailure.InitializationException(ex));
+            ResetRelay();
+            return Result<Unit, OpaqueRelayFailure>.Err(OpaqueRelayFailure.InitializationException(ex));
         }
     }
 
-    public Result<RegistrationResponse, OpaqueServerFailure>
+    public Result<RegistrationResponse, OpaqueRelayFailure>
         CreateRegistrationResponse(RegistrationRequest request, Guid accountId)
     {
-        if (!TryEnsureReady(out OpaqueServerFailure failure))
+        if (!TryEnsureReady(out OpaqueRelayFailure failure))
         {
-            return Result<RegistrationResponse, OpaqueServerFailure>.Err(failure);
+            return Result<RegistrationResponse, OpaqueRelayFailure>.Err(failure);
         }
 
         byte[] accountIdBytes = accountId.ToByteArray();
 
         try
         {
-            byte[] responseBuffer = _server!.CreateRegistrationResponse(request.Data, accountIdBytes);
-            Result<RegistrationResponse, OpaqueServerFailure> registrationResult =
+            byte[] responseBuffer = _relay!.CreateRegistrationResponse(request.Data, accountIdBytes);
+            Result<RegistrationResponse, OpaqueRelayFailure> registrationResult =
                 RegistrationResponse.Create(responseBuffer);
 
             return registrationResult.IsErr
-                ? Result<RegistrationResponse, OpaqueServerFailure>.Err(registrationResult.UnwrapErr())
-                : Result<RegistrationResponse, OpaqueServerFailure>.Ok(registrationResult.Unwrap());
+                ? Result<RegistrationResponse, OpaqueRelayFailure>.Err(registrationResult.UnwrapErr())
+                : Result<RegistrationResponse, OpaqueRelayFailure>.Ok(registrationResult.Unwrap());
         }
         catch (ArgumentException ex)
         {
-            return Result<RegistrationResponse, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(ex.Message));
+            return Result<RegistrationResponse, OpaqueRelayFailure>.Err(OpaqueRelayFailure.InvalidInput(ex.Message));
         }
         catch (OpaqueException ex)
         {
-            return Result<RegistrationResponse, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.RegistrationFailed(
-                    $"{OpaqueServerConstants.ErrorMessages.FailedToCreateRegistrationResponse}: {ex.ResultCode}"));
+            return Result<RegistrationResponse, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.RegistrationFailed(
+                    $"{OpaqueRelayConstants.ErrorMessages.FailedToCreateRegistrationResponse}: {ex.ResultCode}"));
         }
         catch (ObjectDisposedException)
         {
-            return Result<RegistrationResponse, OpaqueServerFailure>.Err(OpaqueServerFailure.ServiceDisposed());
+            return Result<RegistrationResponse, OpaqueRelayFailure>.Err(OpaqueRelayFailure.ServiceDisposed());
         }
         catch (Exception ex)
         {
-            return Result<RegistrationResponse, OpaqueServerFailure>.Err(OpaqueServerFailure.CryptographicException(ex));
+            return Result<RegistrationResponse, OpaqueRelayFailure>.Err(OpaqueRelayFailure.CryptographicException(ex));
         }
     }
 
-    public Result<KE2, OpaqueServerFailure> GenerateKe2(KE1 ke1, Guid accountId, byte[] registrationRecord)
+    public Result<KE2, OpaqueRelayFailure> GenerateKe2(KE1 ke1, Guid accountId, byte[] registrationRecord)
     {
-        if (!TryEnsureReady(out OpaqueServerFailure failure))
+        if (!TryEnsureReady(out OpaqueRelayFailure failure))
         {
-            return Result<KE2, OpaqueServerFailure>.Err(failure);
+            return Result<KE2, OpaqueRelayFailure>.Err(failure);
         }
 
-        ResetServerState();
+        ResetRelayState();
 
         byte[] accountIdBytes = accountId.ToByteArray();
         AuthenticationState authState;
@@ -114,68 +114,68 @@ public sealed class OpaqueProtocolService : IDisposable
         }
         catch (OpaqueException ex)
         {
-            return Result<KE2, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.KeyExchangeFailed(
-                    $"{OpaqueServerConstants.ErrorMessages.FailedToCreateServerState}: {ex.ResultCode}"));
+            return Result<KE2, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.KeyExchangeFailed(
+                    $"{OpaqueRelayConstants.ErrorMessages.FailedToCreateRelayState}: {ex.ResultCode}"));
         }
         catch (Exception ex)
         {
-            return Result<KE2, OpaqueServerFailure>.Err(OpaqueServerFailure.CryptographicException(ex));
+            return Result<KE2, OpaqueRelayFailure>.Err(OpaqueRelayFailure.CryptographicException(ex));
         }
 
         try
         {
-            byte[] ke2Buffer = _server!.GenerateKe2(
+            byte[] ke2Buffer = _relay!.GenerateKe2(
                 ke1.Data,
                 accountIdBytes,
                 registrationRecord,
                 authState);
 
-            Result<KE2, OpaqueServerFailure> ke2Result = KE2.Create(ke2Buffer);
+            Result<KE2, OpaqueRelayFailure> ke2Result = KE2.Create(ke2Buffer);
             if (ke2Result.IsErr)
             {
                 authState.Dispose();
-                return Result<KE2, OpaqueServerFailure>.Err(ke2Result.UnwrapErr());
+                return Result<KE2, OpaqueRelayFailure>.Err(ke2Result.UnwrapErr());
             }
 
-            _currentServerState = authState;
-            return Result<KE2, OpaqueServerFailure>.Ok(ke2Result.Unwrap());
+            _currentRelayState = authState;
+            return Result<KE2, OpaqueRelayFailure>.Ok(ke2Result.Unwrap());
         }
         catch (ArgumentException ex)
         {
             authState.Dispose();
-            return Result<KE2, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(ex.Message));
+            return Result<KE2, OpaqueRelayFailure>.Err(OpaqueRelayFailure.InvalidInput(ex.Message));
         }
         catch (OpaqueException ex)
         {
             authState.Dispose();
-            return Result<KE2, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.KeyExchangeFailed(
-                    $"{OpaqueServerConstants.ErrorMessages.FailedToGenerateKE2}: {ex.ResultCode}"));
+            return Result<KE2, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.KeyExchangeFailed(
+                    $"{OpaqueRelayConstants.ErrorMessages.FailedToGenerateKE2}: {ex.ResultCode}"));
         }
         catch (ObjectDisposedException)
         {
             authState.Dispose();
-            return Result<KE2, OpaqueServerFailure>.Err(OpaqueServerFailure.ServiceDisposed());
+            return Result<KE2, OpaqueRelayFailure>.Err(OpaqueRelayFailure.ServiceDisposed());
         }
         catch (Exception ex)
         {
             authState.Dispose();
-            return Result<KE2, OpaqueServerFailure>.Err(OpaqueServerFailure.CryptographicException(ex));
+            return Result<KE2, OpaqueRelayFailure>.Err(OpaqueRelayFailure.CryptographicException(ex));
         }
     }
 
-    public Result<SodiumSecureMemoryHandle, OpaqueServerFailure> FinishAuthenticationWithMasterKey(KE3 ke3)
+    public Result<SodiumSecureMemoryHandle, OpaqueRelayFailure> FinishAuthenticationWithMasterKey(KE3 ke3)
     {
-        if (!TryEnsureReady(out OpaqueServerFailure failure))
+        if (!TryEnsureReady(out OpaqueRelayFailure failure))
         {
-            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(failure);
+            return Result<SodiumSecureMemoryHandle, OpaqueRelayFailure>.Err(failure);
         }
 
-        if (_currentServerState == null)
+        if (_currentRelayState == null)
         {
-            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.InvalidInput(OpaqueServerConstants.ValidationMessages.NoActiveServerState));
+            return Result<SodiumSecureMemoryHandle, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.InvalidInput(OpaqueRelayConstants.ValidationMessages.NoActiveRelayState));
         }
 
         byte[] sessionKeyBuffer = Array.Empty<byte>();
@@ -183,7 +183,7 @@ public sealed class OpaqueProtocolService : IDisposable
 
         try
         {
-            DerivedKeys keys = _server!.FinishAuthentication(ke3.Data, _currentServerState);
+            DerivedKeys keys = _relay!.FinishAuthentication(ke3.Data, _currentRelayState);
             sessionKeyBuffer = keys.SessionKey;
             masterKeyBuffer = keys.MasterKey;
 
@@ -192,8 +192,8 @@ public sealed class OpaqueProtocolService : IDisposable
 
             if (masterHandleResult.IsErr)
             {
-                return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
-                    OpaqueServerFailure.MemoryAllocationFailed(masterHandleResult.UnwrapErr().Message));
+                return Result<SodiumSecureMemoryHandle, OpaqueRelayFailure>.Err(
+                    OpaqueRelayFailure.MemoryAllocationFailed(masterHandleResult.UnwrapErr().Message));
             }
 
             SodiumSecureMemoryHandle masterHandle = masterHandleResult.Unwrap();
@@ -202,36 +202,36 @@ public sealed class OpaqueProtocolService : IDisposable
             if (writeResult.IsErr)
             {
                 masterHandle.Dispose();
-                return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
-                    OpaqueServerFailure.MemoryWriteFailed(writeResult.UnwrapErr().Message));
+                return Result<SodiumSecureMemoryHandle, OpaqueRelayFailure>.Err(
+                    OpaqueRelayFailure.MemoryWriteFailed(writeResult.UnwrapErr().Message));
             }
 
-            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Ok(masterHandle);
+            return Result<SodiumSecureMemoryHandle, OpaqueRelayFailure>.Ok(masterHandle);
         }
         catch (ArgumentException ex)
         {
-            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.InvalidInput(ex.Message));
+            return Result<SodiumSecureMemoryHandle, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.InvalidInput(ex.Message));
         }
         catch (OpaqueException ex)
         {
-            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.AuthenticationFailed(
-                    $"{OpaqueServerConstants.ErrorMessages.FailedToFinishAuthentication}: {ex.ResultCode}"));
+            return Result<SodiumSecureMemoryHandle, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.AuthenticationFailed(
+                    $"{OpaqueRelayConstants.ErrorMessages.FailedToFinishAuthentication}: {ex.ResultCode}"));
         }
         catch (ObjectDisposedException)
         {
-            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.ServiceDisposed());
+            return Result<SodiumSecureMemoryHandle, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.ServiceDisposed());
         }
         catch (Exception ex)
         {
-            return Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.CryptographicException(ex));
+            return Result<SodiumSecureMemoryHandle, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.CryptographicException(ex));
         }
         finally
         {
-            ResetServerState();
+            ResetRelayState();
             if (sessionKeyBuffer.Length > 0)
             {
                 CryptographicOperations.ZeroMemory(sessionKeyBuffer);
@@ -244,14 +244,14 @@ public sealed class OpaqueProtocolService : IDisposable
         }
     }
 
-    public Result<byte[], OpaqueServerFailure> GetServerPublicKey()
+    public Result<byte[], OpaqueRelayFailure> GetRelayPublicKey()
     {
-        if (!TryEnsureReady(out OpaqueServerFailure failure))
+        if (!TryEnsureReady(out OpaqueRelayFailure failure))
         {
-            return Result<byte[], OpaqueServerFailure>.Err(failure);
+            return Result<byte[], OpaqueRelayFailure>.Err(failure);
         }
 
-        return Result<byte[], OpaqueServerFailure>.Ok(_serverKeys!.GetPublicKeyCopy());
+        return Result<byte[], OpaqueRelayFailure>.Ok(_relayKeys!.GetPublicKeyCopy());
     }
 
     public void Dispose()
@@ -261,21 +261,21 @@ public sealed class OpaqueProtocolService : IDisposable
             return;
         }
 
-        ResetServer();
+        ResetRelay();
         _disposed = true;
     }
 
-    private bool TryEnsureReady(out OpaqueServerFailure failure)
+    private bool TryEnsureReady(out OpaqueRelayFailure failure)
     {
         if (_disposed)
         {
-            failure = OpaqueServerFailure.ServiceDisposed();
+            failure = OpaqueRelayFailure.ServiceDisposed();
             return false;
         }
 
-        if (_server == null || _serverKeys == null)
+        if (_relay == null || _relayKeys == null)
         {
-            failure = OpaqueServerFailure.ServiceNotInitialized();
+            failure = OpaqueRelayFailure.ServiceNotInitialized();
             return false;
         }
 
@@ -283,27 +283,27 @@ public sealed class OpaqueProtocolService : IDisposable
         return true;
     }
 
-    private void ResetServerState()
+    private void ResetRelayState()
     {
-        _currentServerState?.Dispose();
-        _currentServerState = null;
+        _currentRelayState?.Dispose();
+        _currentRelayState = null;
     }
 
-    private void ResetServer()
+    private void ResetRelay()
     {
-        ResetServerState();
-        _server?.Dispose();
-        _server = null;
-        _serverKeys?.Dispose();
-        _serverKeys = null;
+        ResetRelayState();
+        _relay?.Dispose();
+        _relay = null;
+        _relayKeys?.Dispose();
+        _relayKeys = null;
     }
 
-    private static Result<ServerKeyPair, OpaqueServerFailure> DeriveKeysFromMaterial(string keyMaterial)
+    private static Result<RelayKeyPair, OpaqueRelayFailure> DeriveKeysFromMaterial(string keyMaterial)
     {
         if (string.IsNullOrWhiteSpace(keyMaterial))
         {
-            return Result<ServerKeyPair, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.InvalidInput("OPAQUE key seed is required"));
+            return Result<RelayKeyPair, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.InvalidInput("OPAQUE key seed is required"));
         }
 
         byte[] seed;
@@ -313,22 +313,22 @@ public sealed class OpaqueProtocolService : IDisposable
         }
         catch (Exception ex)
         {
-            return Result<ServerKeyPair, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.InvalidInput($"Invalid OPAQUE key seed: {ex.Message}"));
+            return Result<RelayKeyPair, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.InvalidInput($"Invalid OPAQUE key seed: {ex.Message}"));
         }
 
         try
         {
-            return Result<ServerKeyPair, OpaqueServerFailure>.Ok(ServerKeyPair.DeriveFromSeed(seed));
+            return Result<RelayKeyPair, OpaqueRelayFailure>.Ok(RelayKeyPair.DeriveFromSeed(seed));
         }
         catch (ArgumentException ex)
         {
-            return Result<ServerKeyPair, OpaqueServerFailure>.Err(OpaqueServerFailure.InvalidInput(ex.Message));
+            return Result<RelayKeyPair, OpaqueRelayFailure>.Err(OpaqueRelayFailure.InvalidInput(ex.Message));
         }
         catch (OpaqueException ex)
         {
-            return Result<ServerKeyPair, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.LibraryInitializationFailed($"Failed to derive keys from seed: {ex.ResultCode}"));
+            return Result<RelayKeyPair, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.LibraryInitializationFailed($"Failed to derive keys from seed: {ex.ResultCode}"));
         }
         finally
         {

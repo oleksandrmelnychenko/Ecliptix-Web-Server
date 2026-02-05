@@ -3,8 +3,12 @@ namespace Ecliptix.Security.Certificate.Pinning.NativeResolver;
 public enum CertificatePinningResult
 {
     Success = 0,
-    InvalidParams = -1,
-    CryptoFailure = -2,
+    NotInitialized = -1,
+    InvalidInput = -2,
     VerificationFailed = -3,
-    InitFailed = -4
+    EncryptionFailed = -4,
+    DecryptionFailed = -5,
+    BufferTooSmall = -6,
+    InternalError = -7,
+    InvalidKey = -8
 }

@@ -1,6 +1,6 @@
 namespace Ecliptix.Security.Opaque.Failures;
 
-public enum OpaqueServerFailureType
+public enum OpaqueRelayFailureType
 {
     ServiceNotInitialized,
     ServiceDisposed,

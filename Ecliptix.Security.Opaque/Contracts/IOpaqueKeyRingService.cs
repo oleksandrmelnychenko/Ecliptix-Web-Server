@@ -11,20 +11,20 @@ public interface IOpaqueKeyRingService
 {
     int ActiveKeyVersion { get; }
 
-    Result<Unit, OpaqueServerFailure> Initialize(IReadOnlyDictionary<int, string> keyRing, int activeKeyVersion);
+    Result<Unit, OpaqueRelayFailure> Initialize(IReadOnlyDictionary<int, string> keyRing, int activeKeyVersion);
 
-    Result<RegistrationResponse, OpaqueServerFailure> CreateRegistrationResponse(
+    Result<RegistrationResponse, OpaqueRelayFailure> CreateRegistrationResponse(
         RegistrationRequest request,
         Guid accountId,
         int? keyVersion = null);
 
-    Result<KE2, OpaqueServerFailure> GenerateKe2(
+    Result<KE2, OpaqueRelayFailure> GenerateKe2(
         KE1 ke1,
         Guid accountId,
         byte[] registrationRecord,
         int keyVersion);
 
-    Result<SodiumSecureMemoryHandle, OpaqueServerFailure> FinishAuthenticationWithMasterKey(KE3 ke3, int keyVersion);
+    Result<SodiumSecureMemoryHandle, OpaqueRelayFailure> FinishAuthenticationWithMasterKey(KE3 ke3, int keyVersion);
 
-    Result<byte[], OpaqueServerFailure> GetServerPublicKey(int? keyVersion = null);
+    Result<byte[], OpaqueRelayFailure> GetRelayPublicKey(int? keyVersion = null);
 }

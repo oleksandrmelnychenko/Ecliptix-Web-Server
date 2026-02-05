@@ -12,18 +12,18 @@ public sealed class OpaqueKeyRingService : IOpaqueKeyRingService, IDisposable
 
     public int ActiveKeyVersion { get; private set; }
 
-    public Result<Unit, OpaqueServerFailure> Initialize(IReadOnlyDictionary<int, string> keyRing, int activeKeyVersion)
+    public Result<Unit, OpaqueRelayFailure> Initialize(IReadOnlyDictionary<int, string> keyRing, int activeKeyVersion)
     {
         if (keyRing.Count == 0)
         {
-            return Result<Unit, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.InvalidInput("OPAQUE key ring is empty"));
+            return Result<Unit, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.InvalidInput("OPAQUE key ring is empty"));
         }
 
         if (!keyRing.ContainsKey(activeKeyVersion))
         {
-            return Result<Unit, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.InvalidInput(
+            return Result<Unit, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.InvalidInput(
                     $"Active OPAQUE key version {activeKeyVersion} is missing from the key ring"));
         }
 
@@ -36,20 +36,20 @@ public sealed class OpaqueKeyRingService : IOpaqueKeyRingService, IDisposable
             {
                 DisposeServices();
                 _services.Clear();
-                return Result<Unit, OpaqueServerFailure>.Err(
-                    OpaqueServerFailure.InvalidInput($"Invalid OPAQUE key version: {entry.Key}"));
+                return Result<Unit, OpaqueRelayFailure>.Err(
+                    OpaqueRelayFailure.InvalidInput($"Invalid OPAQUE key version: {entry.Key}"));
             }
 
             if (string.IsNullOrWhiteSpace(entry.Value))
             {
                 DisposeServices();
                 _services.Clear();
-                return Result<Unit, OpaqueServerFailure>.Err(
-                    OpaqueServerFailure.InvalidInput($"OPAQUE key seed missing for version {entry.Key}"));
+                return Result<Unit, OpaqueRelayFailure>.Err(
+                    OpaqueRelayFailure.InvalidInput($"OPAQUE key seed missing for version {entry.Key}"));
             }
 
             OpaqueProtocolService service = new();
-            Result<Unit, OpaqueServerFailure> initResult = service.Initialize(entry.Value);
+            Result<Unit, OpaqueRelayFailure> initResult = service.Initialize(entry.Value);
             if (initResult.IsErr)
             {
                 service.Dispose();
@@ -62,49 +62,49 @@ public sealed class OpaqueKeyRingService : IOpaqueKeyRingService, IDisposable
         }
 
         ActiveKeyVersion = activeKeyVersion;
-        return Result<Unit, OpaqueServerFailure>.Ok(Unit.Value);
+        return Result<Unit, OpaqueRelayFailure>.Ok(Unit.Value);
     }
 
-    public Result<RegistrationResponse, OpaqueServerFailure> CreateRegistrationResponse(
+    public Result<RegistrationResponse, OpaqueRelayFailure> CreateRegistrationResponse(
         RegistrationRequest request,
         Guid accountId,
         int? keyVersion = null)
     {
         int version = keyVersion ?? ActiveKeyVersion;
-        Result<OpaqueProtocolService, OpaqueServerFailure> serviceResult = GetService(version);
+        Result<OpaqueProtocolService, OpaqueRelayFailure> serviceResult = GetService(version);
         return serviceResult.IsErr
-            ? Result<RegistrationResponse, OpaqueServerFailure>.Err(serviceResult.UnwrapErr())
+            ? Result<RegistrationResponse, OpaqueRelayFailure>.Err(serviceResult.UnwrapErr())
             : serviceResult.Unwrap().CreateRegistrationResponse(request, accountId);
     }
 
-    public Result<KE2, OpaqueServerFailure> GenerateKe2(
+    public Result<KE2, OpaqueRelayFailure> GenerateKe2(
         KE1 ke1,
         Guid accountId,
         byte[] registrationRecord,
         int keyVersion)
     {
-        Result<OpaqueProtocolService, OpaqueServerFailure> serviceResult = GetService(keyVersion);
+        Result<OpaqueProtocolService, OpaqueRelayFailure> serviceResult = GetService(keyVersion);
         return serviceResult.IsErr
-            ? Result<KE2, OpaqueServerFailure>.Err(serviceResult.UnwrapErr())
+            ? Result<KE2, OpaqueRelayFailure>.Err(serviceResult.UnwrapErr())
             : serviceResult.Unwrap().GenerateKe2(ke1, accountId, registrationRecord);
     }
 
-    public Result<SodiumSecureMemoryHandle, OpaqueServerFailure>
+    public Result<SodiumSecureMemoryHandle, OpaqueRelayFailure>
         FinishAuthenticationWithMasterKey(KE3 ke3, int keyVersion)
     {
-        Result<OpaqueProtocolService, OpaqueServerFailure> serviceResult = GetService(keyVersion);
+        Result<OpaqueProtocolService, OpaqueRelayFailure> serviceResult = GetService(keyVersion);
         return serviceResult.IsErr
-            ? Result<SodiumSecureMemoryHandle, OpaqueServerFailure>.Err(serviceResult.UnwrapErr())
+            ? Result<SodiumSecureMemoryHandle, OpaqueRelayFailure>.Err(serviceResult.UnwrapErr())
             : serviceResult.Unwrap().FinishAuthenticationWithMasterKey(ke3);
     }
 
-    public Result<byte[], OpaqueServerFailure> GetServerPublicKey(int? keyVersion = null)
+    public Result<byte[], OpaqueRelayFailure> GetRelayPublicKey(int? keyVersion = null)
     {
         int version = keyVersion ?? ActiveKeyVersion;
-        Result<OpaqueProtocolService, OpaqueServerFailure> serviceResult = GetService(version);
+        Result<OpaqueProtocolService, OpaqueRelayFailure> serviceResult = GetService(version);
         return serviceResult.IsErr
-            ? Result<byte[], OpaqueServerFailure>.Err(serviceResult.UnwrapErr())
-            : serviceResult.Unwrap().GetServerPublicKey();
+            ? Result<byte[], OpaqueRelayFailure>.Err(serviceResult.UnwrapErr())
+            : serviceResult.Unwrap().GetRelayPublicKey();
     }
 
     public void Dispose()
@@ -113,18 +113,18 @@ public sealed class OpaqueKeyRingService : IOpaqueKeyRingService, IDisposable
         _services.Clear();
     }
 
-    private Result<OpaqueProtocolService, OpaqueServerFailure> GetService(int keyVersion)
+    private Result<OpaqueProtocolService, OpaqueRelayFailure> GetService(int keyVersion)
     {
         if (_services.Count == 0)
         {
-            return Result<OpaqueProtocolService, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.ServiceNotInitialized());
+            return Result<OpaqueProtocolService, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.ServiceNotInitialized());
         }
 
         return _services.TryGetValue(keyVersion, out OpaqueProtocolService? service)
-            ? Result<OpaqueProtocolService, OpaqueServerFailure>.Ok(service)
-            : Result<OpaqueProtocolService, OpaqueServerFailure>.Err(
-                OpaqueServerFailure.InvalidInput($"OPAQUE key version {keyVersion} is not available"));
+            ? Result<OpaqueProtocolService, OpaqueRelayFailure>.Ok(service)
+            : Result<OpaqueProtocolService, OpaqueRelayFailure>.Err(
+                OpaqueRelayFailure.InvalidInput($"OPAQUE key version {keyVersion} is not available"));
     }
 
     private void DisposeServices()
