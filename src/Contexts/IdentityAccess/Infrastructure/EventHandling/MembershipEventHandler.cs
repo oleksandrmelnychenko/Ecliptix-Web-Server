@@ -141,7 +141,8 @@ public sealed class MembershipEventHandler(
                 context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    byte[] peerRecord = message.PeerRegistrationRecord.ToByteArray();
+                    ReadOnlySpan<byte> peerRecordSpan = message.PeerRegistrationRecord.Span;
+                    byte[] peerRecord = peerRecordSpan.ToArray();
 
                     try
                     {
@@ -179,7 +180,8 @@ public sealed class MembershipEventHandler(
                 request, context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    byte[] peerRecovery = message.PeerRecoveryRecord.ToByteArray();
+                    ReadOnlySpan<byte> peerRecoverySpan = message.PeerRecoveryRecord.Span;
+                    byte[] peerRecovery = peerRecoverySpan.ToArray();
 
                     try
                     {
@@ -219,7 +221,8 @@ public sealed class MembershipEventHandler(
                 request, context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    byte[] peerOprf = message.PeerOprf.ToByteArray();
+                    ReadOnlySpan<byte> peerOprfSpan = message.PeerOprf.Span;
+                    byte[] peerOprf = peerOprfSpan.ToArray();
                     try
                     {
                         GenerateOprfRegistrationCommand command = new(
@@ -255,7 +258,8 @@ public sealed class MembershipEventHandler(
                 request, context,
                 async (message, _, _, cancellationToken) =>
                 {
-                    byte[] peerOprf = message.PeerOprf.ToByteArray();
+                    ReadOnlySpan<byte> peerOprfSpan = message.PeerOprf.Span;
+                    byte[] peerOprf = peerOprfSpan.ToArray();
                     try
                     {
                         InitiateOprfSecureKeyRecoveryCommand command = new(
@@ -366,9 +370,8 @@ public sealed class MembershipEventHandler(
             try
             {
                 int actualByteCount = System.Text.Encoding.UTF8.GetBytes(canonical, canonicalBytes);
-                byte[] canonicalData = canonicalBytes.AsSpan(0, actualByteCount).ToArray();
-
-                byte[] clientHmac = message.HmacProof.ToByteArray();
+                ReadOnlySpan<byte> canonicalData = canonicalBytes.AsSpan(0, actualByteCount);
+                ReadOnlySpan<byte> clientHmac = message.HmacProof.Span;
                 bool isValid = LogoutKeyDerivation.VerifyHmac(logoutHmacKey, canonicalData, clientHmac);
 
                 if (!isValid)
@@ -452,45 +455,58 @@ public sealed class MembershipEventHandler(
 
             byte[] nonce = RandomNumberGenerator.GetBytes(nonceSize);
 
-            using MemoryStream canonicalStream = new();
-            await using BinaryWriter canonicalWriter = new(canonicalStream);
+            Span<byte> canonicalBuffer = stackalloc byte[16 + 4 + 8 + 4 + ratchetFingerprint.Length + nonceSize];
+            int offset = 0;
 
-            canonicalWriter.Write(membershipId.ToByteArray());
-            canonicalWriter.Write(connectId);
-            canonicalWriter.Write(serverTimestamp);
-            canonicalWriter.Write(ratchetFingerprint.Length);
+            membershipId.TryWriteBytes(canonicalBuffer.Slice(offset, 16));
+            offset += 16;
+
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(canonicalBuffer.Slice(offset, 4), connectId);
+            offset += 4;
+
+            System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(canonicalBuffer.Slice(offset, 8), serverTimestamp);
+            offset += 8;
+
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(canonicalBuffer.Slice(offset, 4), ratchetFingerprint.Length);
+            offset += 4;
+
             if (ratchetFingerprint.Length > 0)
             {
-                canonicalWriter.Write(ratchetFingerprint);
+                ratchetFingerprint.CopyTo(canonicalBuffer.Slice(offset, ratchetFingerprint.Length));
+                offset += ratchetFingerprint.Length;
             }
 
-            canonicalWriter.Write(nonce);
+            nonce.CopyTo(canonicalBuffer.Slice(offset, nonceSize));
 
-            canonicalWriter.Flush();
-            byte[] canonicalProofData = canonicalStream.ToArray();
-
-            byte[] hmacProof = LogoutKeyDerivation.ComputeHmac(proofKey, canonicalProofData);
+            byte[] hmacProof = LogoutKeyDerivation.ComputeHmac(proofKey, canonicalBuffer);
 
             Log.Information(
                 "[LOGOUT-PROOF] Generated HMAC revocation proof for AccountId: {AccountId}, ProofTagPrefix: {ProofTagPrefix}",
                 accountId, Convert.ToHexString(hmacProof).ToLowerInvariant()[..16]);
 
-            using MemoryStream proofStream = new();
-            await using BinaryWriter proofWriter = new(proofStream);
+            Span<byte> proofBuffer = stackalloc byte[1 + 4 + nonceSize + 4 + ratchetFingerprint.Length + hmacProof.Length];
+            offset = 0;
 
-            proofWriter.Write(proofVersionHmac);
-            proofWriter.Write(nonce.Length);
-            proofWriter.Write(nonce);
-            proofWriter.Write(ratchetFingerprint.Length);
+            proofBuffer[offset++] = proofVersionHmac;
+
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(proofBuffer.Slice(offset, 4), nonce.Length);
+            offset += 4;
+
+            nonce.CopyTo(proofBuffer.Slice(offset, nonceSize));
+            offset += nonceSize;
+
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(proofBuffer.Slice(offset, 4), ratchetFingerprint.Length);
+            offset += 4;
+
             if (ratchetFingerprint.Length > 0)
             {
-                proofWriter.Write(ratchetFingerprint);
+                ratchetFingerprint.CopyTo(proofBuffer.Slice(offset, ratchetFingerprint.Length));
+                offset += ratchetFingerprint.Length;
             }
 
-            proofWriter.Write(hmacProof);
+            hmacProof.CopyTo(proofBuffer.Slice(offset, hmacProof.Length));
 
-            proofWriter.Flush();
-            return proofStream.ToArray();
+            return proofBuffer.ToArray();
         }
         finally
         {
@@ -701,9 +717,8 @@ public sealed class MembershipEventHandler(
             try
             {
                 int actualByteCount = System.Text.Encoding.UTF8.GetBytes(canonical, canonicalBytes);
-                byte[] canonicalData = canonicalBytes.AsSpan(0, actualByteCount).ToArray();
-
-                byte[] clientHmac = message.HmacProof.ToByteArray();
+                ReadOnlySpan<byte> canonicalData = canonicalBytes.AsSpan(0, actualByteCount);
+                ReadOnlySpan<byte> clientHmac = message.HmacProof.Span;
                 bool isValid = LogoutKeyDerivation.VerifyHmac(logoutHmacKey, canonicalData, clientHmac);
 
                 if (!isValid)
