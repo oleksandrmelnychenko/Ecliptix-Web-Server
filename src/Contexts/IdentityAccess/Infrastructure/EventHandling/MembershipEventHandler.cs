@@ -538,7 +538,7 @@ public sealed class MembershipEventHandler(
         LogoutReason reason = ParseLogoutReason(message.LogoutReason);
         Guid deviceId = new(metadata.Client.DeviceId.Span);
 
-        await RecordLogoutAuditAsync(membershipId, accountId, deviceId, reason, cancellationToken);
+        RecordLogoutAudit(membershipId, accountId, deviceId, reason);
 
         byte[] ratchetFingerprint = await CaptureRatchetFingerprintAsync(connectId);
         byte[] revocationProof = await GenerateHmacRevocationProofAsync(
@@ -607,25 +607,10 @@ public sealed class MembershipEventHandler(
         return LogoutReason.UserInitiated;
     }
 
-    private async Task RecordLogoutAuditAsync(Guid membershipId, Guid? accountId, Guid deviceId, LogoutReason reason,
-        CancellationToken cancellationToken)
+    private void RecordLogoutAudit(Guid membershipId, Guid? accountId, Guid deviceId, LogoutReason reason)
     {
-        RecordLogoutCommand logoutEvent = new(membershipId, accountId, deviceId, reason,
-            "", "", cancellationToken);
-
-        Task<Result<Unit, LogoutFailure>> auditTask =
-            _logoutAuditPersistor.Ask<Result<Unit, LogoutFailure>>(
-                logoutEvent,
-                TimeoutConfiguration.Actor.AskTimeout);
-
-        Result<Unit, LogoutFailure> auditResult =
-            await auditTask.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-        if (auditResult.IsErr)
-        {
-            Log.Warning("Failed to record logout audit, but continuing with logout: {Error}",
-                auditResult.UnwrapErr().Message);
-        }
+        RecordLogoutCommand logoutEvent = new(membershipId, accountId, deviceId, reason, "", "", CancellationToken.None);
+        _logoutAuditPersistor.Tell(logoutEvent);
     }
 
     private void ScheduleProtocolCleanup(uint connectId)
@@ -790,7 +775,7 @@ public sealed class MembershipEventHandler(
             "[LOGOUT-ANONYMOUS] Processing anonymous logout for MembershipId: {MembershipId}, ConnectId: {ConnectId}, DeviceId: {DeviceId}, AccountId: {AccountId}, Reason: {Reason}, Scope: {Scope}",
             membershipId, connectId, deviceId, accountId, reason, message.Scope);
 
-        await RecordLogoutAuditAsync(membershipId, accountId, deviceId, reason, cancellationToken);
+        RecordLogoutAudit(membershipId, accountId, deviceId, reason);
 
         ScheduleProtocolCleanup(connectId);
 
