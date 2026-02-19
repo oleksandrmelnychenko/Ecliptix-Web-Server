@@ -1,0 +1,83 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecliptix-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ecliptix_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Dev_Password_2024}
+      POSTGRES_DB: ${POSTGRES_DB:-ecliptix_memberships}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecliptix_admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecliptix-network
+    restart: unless-stopped
+
+  # Ecliptix Server
+  ecliptix-server:
+    build:
+      context: .
+      dockerfile: Ecliptix.Core/Dockerfile
+    container_name: ecliptix-server
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5051
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB:-ecliptix_memberships};Username=${POSTGRES_USER:-ecliptix_admin};Password=${POSTGRES_PASSWORD:-Dev_Password_2024}
+    ports:
+      - "5051:5051"
+      - "8080:8080"
+      - "8081:8081"
+    volumes:
+      - ./logs:/app/logs
+      - ./Ecliptix.Core/server_private.pem:/app/server_private.pem:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ecliptix-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5051/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # pgAdmin (optional, for database management)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ecliptix-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@ecliptix.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-Admin_2024}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - ecliptix-network
+    restart: unless-stopped
+    profiles:
+      - tools
+
+volumes:
+  postgres_data:
+    name: ecliptix-postgres-data
+  pgadmin_data:
+    name: ecliptix-pgadmin-data
+
+networks:
+  ecliptix-network:
+    name: ecliptix-network
+    driver: bridge
