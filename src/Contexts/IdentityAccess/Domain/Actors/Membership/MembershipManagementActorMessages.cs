@@ -48,6 +48,7 @@ public record SignInMembershipCommand(
     uint ConnectId,
     string MobileNumber,
     Guid DeviceId,
+    Guid AppInstanceId,
     OpaqueSignInInitRequest OpaqueSignInInitRequest,
     string CultureName,
     CancellationToken CancellationToken = default

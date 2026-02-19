@@ -356,6 +356,23 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                     .Where(d => d.DeviceId == command.DeviceId && !d.IsDeleted)
                     .AnyAsync(cancellationToken);
 
+                if (!deviceExists && command.AppInstanceId != Guid.Empty)
+                {
+                    DeviceEntity newDevice = new()
+                    {
+                        AppInstanceId = command.AppInstanceId,
+                        DeviceId = command.DeviceId
+                    };
+                    schemaContext.Devices.Add(newDevice);
+                    deviceExists = true;
+
+                    Log.Information(
+                        "[SIGN-IN] Auto-provisioned missing device {DeviceId} with AppInstanceId {AppInstanceId}. Membership: {MembershipId}",
+                        command.DeviceId,
+                        command.AppInstanceId,
+                        membership.UniqueId);
+                }
+
                 if (deviceExists)
                 {
                     AccountInfo? defaultAccount = accounts.FirstOrDefault(a => a.IsDefault);
@@ -437,7 +454,7 @@ public class MembershipPersistorActor : PersistorBase<MembershipFailure>
                 credentials.Version,
                 credentials.OpaqueKeyVersion,
                 accounts,
-                deviceContext?.ActiveAccountId,
+                deviceContext?.ActiveAccountId ?? auth.AccountId,
                 auth.AccountId,
                 credentials.SecureKey,
                 credentials.MaskingKey);

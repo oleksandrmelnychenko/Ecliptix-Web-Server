@@ -86,11 +86,18 @@ public sealed class MembershipEventHandler(
                 }
 
                 Guid deviceId = new(metadata.Client.DeviceId.Span);
+                Guid appInstanceId = Guid.Empty;
+                if (!metadata.Client.ApplicationInstanceId.IsEmpty &&
+                    Helpers.TryFromByteStringToGuid(metadata.Client.ApplicationInstanceId, out Guid parsedAppInstanceId))
+                {
+                    appInstanceId = parsedAppInstanceId;
+                }
 
                 SignInMembershipCommand signInEvent = new(
                     connectId,
                     phoneNumberResult.ParsedMobileNumberE164.Value!,
                     deviceId,
+                    appInstanceId,
                     message,
                     _cultureName,
                     cancellationToken);
